@@ -608,7 +608,7 @@ class JellyfinBrowseRepositoryTest {
             items: List<JellyfinItemRecord>,
         ) {
             val serverRecords = records.getOrPut(serverId) { mutableMapOf() }
-            serverRecords.entries.removeIf { it.value.libraryId == libraryId }
+            serverRecords.entries.removeAll { it.value.libraryId == libraryId }
             items.forEach { serverRecords[it.id] = it }
         }
 

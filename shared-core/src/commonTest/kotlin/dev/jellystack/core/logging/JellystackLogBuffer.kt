@@ -1,15 +1,17 @@
 package dev.jellystack.core.logging
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
+
 object JellystackLogBuffer {
-    private val lock = Any()
-    private val backing = mutableListOf<String>()
+    private val backing = MutableStateFlow<List<String>>(emptyList())
 
     private val debugObserver: (String) -> Unit = { message ->
-        synchronized(lock) { backing += "D:$message" }
+        backing.update { it + "D:$message" }
     }
     private val errorObserver: (String, Throwable?) -> Unit = { message, throwable ->
         val suffix = throwable?.message?.let { ":$it" }.orEmpty()
-        synchronized(lock) { backing += "E:$message$suffix" }
+        backing.update { it + "E:$message$suffix" }
     }
 
     init {
@@ -19,9 +21,9 @@ object JellystackLogBuffer {
     }
 
     val entries: List<String>
-        get() = synchronized(lock) { backing.toList() }
+        get() = backing.value
 
     fun clear() {
-        synchronized(lock) { backing.clear() }
+        backing.value = emptyList()
     }
 }
