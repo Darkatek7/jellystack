@@ -1,0 +1,51 @@
+name: Bug report
+description: Report reproducible Jellystack behavior using sanitized information.
+title: "[Bug]: "
+labels: ["type:bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Never include passwords, tokens, cookies, private server URLs, personal media, or unredacted logs.
+        Security vulnerabilities must be reported privately through the Security tab.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      placeholder: "1. Open …\n2. Tap …\n3. Observe …"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Jellystack version
+      placeholder: "0.14.2"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Android and server versions
+      placeholder: "Android 15; Jellyfin 10.x; Seerr 2.x"
+    validations:
+      required: true
+  - type: checkboxes
+    id: sanitized
+    attributes:
+      label: Privacy check
+      options:
+        - label: I removed credentials, private hosts, personal media, and identifying data.
+          required: true

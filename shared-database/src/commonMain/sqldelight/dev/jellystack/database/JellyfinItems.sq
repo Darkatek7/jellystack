@@ -1,0 +1,222 @@
+CREATE TABLE jellyfin_items (
+    id TEXT NOT NULL PRIMARY KEY,
+    server_id TEXT NOT NULL,
+    library_id TEXT,
+    name TEXT NOT NULL,
+    sort_name TEXT,
+    overview TEXT,
+    type TEXT NOT NULL,
+    media_type TEXT,
+    location_type TEXT,
+    taglines TEXT,
+    parent_id TEXT,
+    primary_image_tag TEXT,
+    thumb_image_tag TEXT,
+    backdrop_image_tag TEXT,
+    series_id TEXT,
+    series_primary_image_tag TEXT,
+    series_thumb_image_tag TEXT,
+    series_backdrop_image_tag TEXT,
+    parent_logo_image_tag TEXT,
+    run_time_ticks INTEGER,
+    position_ticks INTEGER,
+    played_percentage REAL,
+    production_year INTEGER,
+    premiere_date TEXT,
+    community_rating REAL,
+    official_rating TEXT,
+    index_number INTEGER,
+    parent_index_number INTEGER,
+    series_name TEXT,
+    season_id TEXT,
+    episode_title TEXT,
+    last_played TEXT,
+    date_created TEXT,
+    updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE jellyfin_next_up (
+    server_id TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    sort_order INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (server_id, item_id)
+);
+
+selectByLibrary:
+SELECT *
+FROM jellyfin_items
+WHERE server_id = ? AND library_id = ?
+ORDER BY COALESCE(sort_name, name)
+LIMIT ? OFFSET ?;
+
+selectByParent:
+SELECT *
+FROM jellyfin_items
+WHERE server_id = ? AND library_id = ? AND parent_id = ?
+ORDER BY COALESCE(sort_name, name)
+LIMIT ? OFFSET ?;
+
+selectRecentShows:
+SELECT *
+FROM jellyfin_items
+WHERE server_id = ? AND (library_id = ? OR library_id IS NULL)
+  AND (type = 'Series' OR type = 'Episode')
+ORDER BY COALESCE(date_created, '') DESC, updated_at DESC
+LIMIT ?;
+
+selectRecentMovies:
+SELECT *
+FROM jellyfin_items
+WHERE server_id = ? AND (library_id = ? OR library_id IS NULL)
+  AND type = 'Movie'
+ORDER BY COALESCE(date_created, '') DESC, updated_at DESC
+LIMIT ?;
+
+selectContinueWatching:
+SELECT *
+FROM jellyfin_items
+WHERE server_id = ? AND position_ticks IS NOT NULL AND position_ticks > 0
+ORDER BY COALESCE(last_played, '') DESC, updated_at DESC
+LIMIT ?;
+
+selectNextUp:
+SELECT jellyfin_items.*
+FROM jellyfin_next_up
+JOIN jellyfin_items ON jellyfin_items.id = jellyfin_next_up.item_id
+WHERE jellyfin_next_up.server_id = ?
+ORDER BY jellyfin_next_up.sort_order
+LIMIT ?;
+
+clearAllContinueWatching:
+UPDATE jellyfin_items
+SET position_ticks = NULL,
+    played_percentage = NULL,
+    last_played = NULL
+WHERE server_id = ? AND position_ticks IS NOT NULL AND position_ticks > 0;
+
+clearContinueWatching:
+UPDATE jellyfin_items
+SET position_ticks = NULL,
+    played_percentage = NULL,
+    last_played = NULL
+WHERE server_id = ?
+  AND position_ticks IS NOT NULL
+  AND position_ticks > 0
+  AND id NOT IN ?;
+
+deleteNextUpByServer:
+DELETE FROM jellyfin_next_up
+WHERE server_id = ?;
+
+insertNextUp:
+INSERT OR REPLACE INTO jellyfin_next_up (
+    server_id,
+    item_id,
+    sort_order,
+    updated_at
+)
+VALUES (?, ?, ?, ?);
+
+selectEpisodesForSeries:
+SELECT *
+FROM jellyfin_items
+WHERE server_id = ? AND series_id = ?
+ORDER BY season_id, index_number;
+
+selectEpisodesForSeason:
+SELECT *
+FROM jellyfin_items
+WHERE server_id = ? AND season_id = ?
+ORDER BY index_number;
+
+selectById:
+SELECT *
+FROM jellyfin_items
+WHERE id = ?;
+
+insertOrReplace:
+INSERT OR REPLACE INTO jellyfin_items (
+    id,
+    server_id,
+    library_id,
+    name,
+    sort_name,
+    overview,
+    type,
+    media_type,
+    location_type,
+    taglines,
+    parent_id,
+    primary_image_tag,
+    thumb_image_tag,
+    backdrop_image_tag,
+    series_id,
+    series_primary_image_tag,
+    series_thumb_image_tag,
+    series_backdrop_image_tag,
+    parent_logo_image_tag,
+    run_time_ticks,
+    position_ticks,
+    played_percentage,
+    production_year,
+    premiere_date,
+    community_rating,
+    official_rating,
+    index_number,
+    parent_index_number,
+    series_name,
+    season_id,
+    episode_title,
+    last_played,
+    date_created,
+    updated_at
+)
+VALUES (
+    :id,
+    :server_id,
+    :library_id,
+    :name,
+    :sort_name,
+    :overview,
+    :type,
+    :media_type,
+    :location_type,
+    :taglines,
+    :parent_id,
+    :primary_image_tag,
+    :thumb_image_tag,
+    :backdrop_image_tag,
+    :series_id,
+    :series_primary_image_tag,
+    :series_thumb_image_tag,
+    :series_backdrop_image_tag,
+    :parent_logo_image_tag,
+    :run_time_ticks,
+    :position_ticks,
+    :played_percentage,
+    :production_year,
+    :premiere_date,
+    :community_rating,
+    :official_rating,
+    :index_number,
+    :parent_index_number,
+    :series_name,
+    :season_id,
+    :episode_title,
+    :last_played,
+    :date_created,
+    :updated_at
+);
+
+deleteByServerAndLibrary:
+DELETE FROM jellyfin_items
+WHERE server_id = ? AND library_id = ?;
+
+deleteByServerLibraryAndParent:
+DELETE FROM jellyfin_items
+WHERE server_id = ? AND library_id = ? AND parent_id = ?;
+
+deleteByServer:
+DELETE FROM jellyfin_items
+WHERE server_id = ?;

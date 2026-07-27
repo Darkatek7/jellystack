@@ -1,0 +1,7 @@
+CREATE TABLE jellyfin_next_up (
+    server_id TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    sort_order INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (server_id, item_id)
+);

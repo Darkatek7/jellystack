@@ -1,0 +1,1 @@
+ALTER TABLE jellyfin_items ADD COLUMN date_created TEXT;

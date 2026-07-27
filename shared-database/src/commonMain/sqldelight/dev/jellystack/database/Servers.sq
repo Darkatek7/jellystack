@@ -1,0 +1,50 @@
+CREATE TABLE servers (
+    id TEXT NOT NULL PRIMARY KEY,
+    type TEXT NOT NULL,
+    name TEXT NOT NULL,
+    base_url TEXT NOT NULL,
+    username TEXT,
+    device_id TEXT,
+    api_key TEXT,
+    access_token TEXT,
+    session_cookie TEXT,
+    user_id TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+selectAll:
+SELECT *
+FROM servers
+ORDER BY name;
+
+selectById:
+SELECT *
+FROM servers
+WHERE id = ?;
+
+selectByTypeAndUrl:
+SELECT *
+FROM servers
+WHERE type = ? AND base_url = ?;
+
+insertOrReplace:
+INSERT OR REPLACE INTO servers (
+    id,
+    type,
+    name,
+    base_url,
+    username,
+    device_id,
+    api_key,
+    access_token,
+    session_cookie,
+    user_id,
+    created_at,
+    updated_at
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteById:
+DELETE FROM servers
+WHERE id = ?;
