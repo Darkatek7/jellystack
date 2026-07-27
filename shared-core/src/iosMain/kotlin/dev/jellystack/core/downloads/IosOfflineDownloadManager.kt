@@ -1,11 +1,8 @@
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+
 package dev.jellystack.core.downloads
 
-import kotlinx.cinterop.ObjCObjectVar
-import kotlinx.cinterop.alloc
-import kotlinx.cinterop.convert
-import kotlinx.cinterop.memScoped
-import kotlinx.cinterop.ptr
-import kotlinx.cinterop.refTo
+import kotlinx.cinterop.readBytes
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -16,22 +13,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import platform.CommonCrypto.CC_LONG
-import platform.CommonCrypto.CC_SHA256
-import platform.CommonCrypto.CC_SHA256_DIGEST_LENGTH
 import platform.Foundation.NSData
 import platform.Foundation.NSError
 import platform.Foundation.NSFileManager
-import platform.Foundation.NSFileSize
+import platform.Foundation.NSHomeDirectory
 import platform.Foundation.NSMutableURLRequest
 import platform.Foundation.NSNumber
 import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSOperationQueue.Companion.mainQueue
-import platform.Foundation.NSSearchPathDirectory.NSDocumentDirectory
-import platform.Foundation.NSSearchPathDomainMask.NSUserDomainMask
-import platform.Foundation.NSSearchPathForDirectoriesInDomains
-import platform.Foundation.NSString
-import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSURL
 import platform.Foundation.NSURL.Companion.URLWithString
 import platform.Foundation.NSURLErrorCancelled
@@ -44,7 +33,8 @@ import platform.Foundation.NSURLSessionDownloadTask
 import platform.Foundation.NSURLSessionDownloadTaskResumeData
 import platform.Foundation.NSURLSessionTask
 import platform.Foundation.dataWithContentsOfFile
-import platform.Foundation.stringByDeletingLastPathComponent
+import platform.Foundation.setHTTPMethod
+import platform.Foundation.setValue
 import platform.darwin.NSObject
 import kotlin.Exception
 
@@ -180,7 +170,7 @@ class IosOfflineDownloadManager(
                     val url = NSURL.URLWithString(task.request.downloadUrl) ?: throw IosDownloadException("Invalid URL")
                     val request =
                         NSMutableURLRequest.requestWithURL(url).apply {
-                            HTTPMethod = "GET"
+                            setHTTPMethod("GET")
                             task.request.headers.forEach { (key, value) ->
                                 setValue(value, forHTTPHeaderField = key)
                             }
@@ -222,9 +212,9 @@ class IosOfflineDownloadManager(
     override fun URLSession(
         session: NSURLSession,
         downloadTask: NSURLSessionDownloadTask,
-        didWriteData: Int64,
-        totalBytesWritten: Int64,
-        totalBytesExpectedToWrite: Int64,
+        didWriteData: Long,
+        totalBytesWritten: Long,
+        totalBytesExpectedToWrite: Long,
     ) {
         val mediaId = downloadTask.taskDescription ?: return
         scope.launch {
@@ -290,7 +280,7 @@ class IosOfflineDownloadManager(
         scope.launch {
             mutex.withLock {
                 val tracked = tasks[mediaId] ?: return@withLock
-                if (tracked.isPaused && didCompleteWithError.code.toInt() == NSURLErrorCancelled) {
+                if (tracked.isPaused && didCompleteWithError.code == NSURLErrorCancelled) {
                     val resumeData = didCompleteWithError.userInfo?.get(NSURLSessionDownloadTaskResumeData) as? NSData
                     tracked.resumeData = resumeData
                     tracked.downloadTask = null
@@ -328,7 +318,9 @@ class IosOfflineDownloadManager(
             request.relativePath
                 ?: run {
                     val extension =
-                        request.mimeType?.substringAfter('/', missingDelimiterValue = null)
+                        request.mimeType
+                            ?.substringAfter('/', "")
+                            ?.takeIf { it.isNotBlank() }
                             ?: when (request.kind) {
                                 OfflineMediaKind.SUBTITLE -> "vtt"
                                 else -> "bin"
@@ -341,20 +333,22 @@ class IosOfflineDownloadManager(
     }
 
     private fun ensureDownloadsRoot(): String {
-        val base =
-            (NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, true).firstOrNull() as? String)
-                ?: NSTemporaryDirectory()
+        val base = NSHomeDirectory().trimEnd('/') + "/Documents"
         val path = base.appendingPathComponent(DOWNLOADS_FOLDER)
         ensureDirectory(path)
         return path
     }
 
     private fun ensureDirectory(path: String) {
-        memScoped {
-            val errorPtr = alloc<ObjCObjectVar<NSError?>>()
-            errorPtr.value = null
-            fileManager.createDirectoryAtPath(path, true, null, errorPtr.ptr)
-            errorPtr.value?.let { throw IosDownloadException("Failed to create directory: ${it.localizedDescription}") }
+        val created =
+            fileManager.createDirectoryAtPath(
+                path = path,
+                withIntermediateDirectories = true,
+                attributes = null,
+                error = null,
+            )
+        if (!created && !fileManager.fileExistsAtPath(path)) {
+            throw IosDownloadException("Failed to create directory.")
         }
     }
 
@@ -369,27 +363,22 @@ class IosOfflineDownloadManager(
         source: String,
         target: String,
     ) {
-        memScoped {
-            if (fileManager.fileExistsAtPath(target)) {
-                val removePtr = alloc<ObjCObjectVar<NSError?>>()
-                removePtr.value = null
-                fileManager.removeItemAtPath(target, removePtr.ptr)
-                removePtr.value?.let { throw IosDownloadException("Failed to replace file: ${it.localizedDescription}") }
+        if (fileManager.fileExistsAtPath(target)) {
+            val removed = fileManager.removeItemAtPath(target, error = null)
+            if (!removed) {
+                throw IosDownloadException("Failed to replace file.")
             }
-            ensureParentDirectory(target)
-            val errorPtr = alloc<ObjCObjectVar<NSError?>>()
-            errorPtr.value = null
-            fileManager.moveItemAtPath(source, target, errorPtr.ptr)
-            errorPtr.value?.let { throw IosDownloadException("Failed to move download: ${it.localizedDescription}") }
+        }
+        ensureParentDirectory(target)
+        val moved = fileManager.moveItemAtPath(source, toPath = target, error = null)
+        if (!moved) {
+            throw IosDownloadException("Failed to move download.")
         }
     }
 
     private fun removeFile(path: String) {
-        memScoped {
-            if (!fileManager.fileExistsAtPath(path)) return@memScoped
-            val errorPtr = alloc<ObjCObjectVar<NSError?>>()
-            errorPtr.value = null
-            fileManager.removeItemAtPath(path, errorPtr.ptr)
+        if (fileManager.fileExistsAtPath(path)) {
+            fileManager.removeItemAtPath(path, error = null)
         }
     }
 
@@ -413,25 +402,21 @@ class IosOfflineDownloadManager(
 
     private fun fileExists(path: String): Boolean = fileManager.fileExistsAtPath(path)
 
-    private fun fileSize(path: String): Long =
-        memScoped {
-            val errorPtr = alloc<ObjCObjectVar<NSError?>>()
-            errorPtr.value = null
-            val attributes = fileManager.attributesOfItemAtPath(path, errorPtr.ptr)
-            errorPtr.value?.let { throw IosDownloadException("Failed to read file size: ${it.localizedDescription}") }
-            val number = attributes?.get(NSFileSize) as? NSNumber ?: return@memScoped 0L
-            number.longLongValue
-        }
+    private fun fileSize(path: String): Long {
+        val attributes = fileManager.attributesOfItemAtPath(path, error = null)
+        val number = attributes?.get("NSFileSize") as? NSNumber ?: return 0L
+        return number.longLongValue
+    }
 
     private fun sha256(path: String): String {
         val data = NSData.dataWithContentsOfFile(path) ?: throw IosDownloadException("Unable to read file for checksum.")
-        val digest = UByteArray(CC_SHA256_DIGEST_LENGTH.toInt())
         val pointer = data.bytes ?: throw IosDownloadException("Checksum read returned empty buffer.")
-        CC_SHA256(pointer, data.length.convert<CC_LONG>(), digest.refTo(0))
-        return digest.joinToString("") { "%02x".format(it.toInt()) }
+        return sha256Hex(pointer.readBytes(data.length.toInt()))
     }
 
-    private fun String.parentPath(): String = (this as NSString).stringByDeletingLastPathComponent
+    private fun String.appendingPathComponent(component: String): String = trimEnd('/') + "/" + component.trimStart('/')
+
+    private fun String.parentPath(): String = substringBeforeLast('/', "")
 }
 
 private class DownloadTask(
