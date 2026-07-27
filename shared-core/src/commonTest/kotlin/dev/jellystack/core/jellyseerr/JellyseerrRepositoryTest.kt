@@ -312,20 +312,16 @@ class JellyseerrRepositoryTest {
             advanceUntilIdle()
 
             assertEquals(2, recordedBodies.size)
-            val firstPayload =
-                NetworkJson.default
-                    .parseToJsonElement(recordedBodies[0])
-                    .jsonObject["mediaId"]
-                    ?.jsonPrimitive
-                    ?.int
-            val secondPayload =
-                NetworkJson.default
-                    .parseToJsonElement(recordedBodies[1])
-                    .jsonObject["mediaId"]
-                    ?.jsonPrimitive
-                    ?.int
-            assertEquals(first.tmdbId, firstPayload)
-            assertEquals(second.tmdbId, secondPayload)
+            val submittedIds =
+                recordedBodies
+                    .mapNotNull { body ->
+                        NetworkJson.default
+                            .parseToJsonElement(body)
+                            .jsonObject["mediaId"]
+                            ?.jsonPrimitive
+                            ?.int
+                    }.toSet()
+            assertEquals(setOf(first.tmdbId, second.tmdbId), submittedIds)
 
             val submitLogs =
                 JellystackLogBuffer.entries

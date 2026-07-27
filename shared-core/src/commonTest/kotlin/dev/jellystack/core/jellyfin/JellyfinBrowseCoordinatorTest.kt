@@ -13,13 +13,14 @@ import io.ktor.http.headersOf
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.advanceUntilIdle
-import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
@@ -313,9 +314,13 @@ class JellyfinBrowseCoordinatorTest {
             assertTrue(coordinator.state.value.isPageLoading)
             coordinator.selectLibrary(root.selectedLibraryId!!)
             releasePageResponse.complete(Unit)
-            runCurrent()
 
-            val loaded = withTimeout(5_000) { coordinator.state.first { it.currentPage == 1 } }
+            val loaded =
+                withContext(Dispatchers.Default) {
+                    withTimeout(5_000) {
+                        coordinator.state.first { it.currentPage == 1 }
+                    }
+                }
             assertFalse(loaded.isPageLoading)
             assertEquals(listOf("item-1", "item-2", "item-3"), loaded.libraryItems.map { it.id })
         }
