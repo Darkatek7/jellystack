@@ -44,13 +44,17 @@ class IosOfflineDownloadManager(
     private val mediaStore: OfflineMediaStore,
     private val queueStore: OfflineDownloadQueueStore,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
-) : NSObject(),
-    OfflineDownloadManager,
-    NSURLSessionDownloadDelegateProtocol {
+) : OfflineDownloadManager {
     private val fileManager = NSFileManager.defaultManager()
     private val downloadsRoot = ensureDownloadsRoot()
     private val mutex = Mutex()
     private val tasks = mutableMapOf<String, DownloadTask>()
+    private val sessionDelegate =
+        IosDownloadSessionDelegate(
+            onProgress = ::handleProgress,
+            onFinished = ::handleFinished,
+            onError = ::handleError,
+        )
 
     private val _statuses = MutableStateFlow<Map<String, DownloadStatus>>(emptyMap())
     override val statuses: StateFlow<Map<String, DownloadStatus>> = _statuses.asStateFlow()
@@ -60,7 +64,7 @@ class IosOfflineDownloadManager(
     private val session: NSURLSession =
         NSURLSession.sessionWithConfiguration(
             NSURLSessionConfiguration.defaultSessionConfiguration(),
-            delegate = this,
+            delegate = sessionDelegate,
             delegateQueue = NSOperationQueue.mainQueue(),
         )
 
@@ -209,8 +213,7 @@ class IosOfflineDownloadManager(
             }
     }
 
-    override fun URLSession(
-        session: NSURLSession,
+    private fun handleProgress(
         downloadTask: NSURLSessionDownloadTask,
         didWriteData: Long,
         totalBytesWritten: Long,
@@ -229,8 +232,7 @@ class IosOfflineDownloadManager(
         }
     }
 
-    override fun URLSession(
-        session: NSURLSession,
+    private fun handleFinished(
         downloadTask: NSURLSessionDownloadTask,
         didFinishDownloadingToURL: NSURL,
     ) {
@@ -270,8 +272,7 @@ class IosOfflineDownloadManager(
         }
     }
 
-    override fun URLSession(
-        session: NSURLSession,
+    private fun handleError(
         task: NSURLSessionTask,
         didCompleteWithError: NSError?,
     ) {
@@ -432,3 +433,36 @@ private class IosDownloadException(
 ) : Exception(message)
 
 private fun NSError.asException(): Exception = IosDownloadException("$domain (${code.toInt()}): ${localizedDescription ?: "Unknown error"}")
+
+private class IosDownloadSessionDelegate(
+    private val onProgress: (NSURLSessionDownloadTask, Long, Long, Long) -> Unit,
+    private val onFinished: (NSURLSessionDownloadTask, NSURL) -> Unit,
+    private val onError: (NSURLSessionTask, NSError?) -> Unit,
+) : NSObject(),
+    NSURLSessionDownloadDelegateProtocol {
+    override fun URLSession(
+        session: NSURLSession,
+        downloadTask: NSURLSessionDownloadTask,
+        didWriteData: Long,
+        totalBytesWritten: Long,
+        totalBytesExpectedToWrite: Long,
+    ) {
+        onProgress(downloadTask, didWriteData, totalBytesWritten, totalBytesExpectedToWrite)
+    }
+
+    override fun URLSession(
+        session: NSURLSession,
+        downloadTask: NSURLSessionDownloadTask,
+        didFinishDownloadingToURL: NSURL,
+    ) {
+        onFinished(downloadTask, didFinishDownloadingToURL)
+    }
+
+    override fun URLSession(
+        session: NSURLSession,
+        task: NSURLSessionTask,
+        didCompleteWithError: NSError?,
+    ) {
+        onError(task, didCompleteWithError)
+    }
+}
