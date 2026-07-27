@@ -534,11 +534,19 @@ class JellyfinBrowseCoordinatorTest {
             favoriteIdsStarted.await()
             coordinator.bootstrap(forceRefresh = true)
             releaseFavoriteIds.complete(Unit)
-            advanceUntilIdle()
 
+            val state =
+                withContext(Dispatchers.Default) {
+                    withTimeout(5_000) {
+                        coordinator.state.first {
+                            !it.isInitialLoading &&
+                                it.libraryItems.map { item -> item.id } == listOf("normal-1")
+                        }
+                    }
+                }
             assertEquals(
                 listOf("normal-1"),
-                coordinator.state.value.libraryItems
+                state.libraryItems
                     .map { it.id },
             )
             assertEquals(emptySet(), coordinator.favorites.value)
