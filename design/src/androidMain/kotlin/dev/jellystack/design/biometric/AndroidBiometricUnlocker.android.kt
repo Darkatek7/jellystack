@@ -4,6 +4,8 @@ import android.app.KeyguardManager
 import android.content.Context
 import android.content.ContextWrapper
 import android.os.Build
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.compose.runtime.Composable
@@ -37,7 +39,16 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.stringResource
+import java.security.KeyStore
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
 import kotlin.coroutines.resume
+
+private const val APP_LOCK_PROMPT_KEY_ALIAS = "jellystack-app-lock-prompt"
+private const val APP_LOCK_CREDENTIAL_KEY_ALIAS = "jellystack-app-lock-credential"
+private const val APP_LOCK_CREDENTIAL_WINDOW_SECONDS = 30
+private val appLockProof = "jellystack-app-lock-proof".encodeToByteArray()
 
 @Composable
 actual fun rememberBiometricPlatformState(): BiometricPlatformState {
@@ -133,6 +144,7 @@ private class AndroidBiometricUnlocker(
     private val copy: AndroidAppLockCopy,
 ) : BiometricUnlocker {
     private val executor = ContextCompat.getMainExecutor(activity)
+    private val crypto = AndroidAppLockCrypto()
     private var activePrompt: BiometricPrompt? = null
     private var credentialJob: Job? = null
 
@@ -148,8 +160,11 @@ private class AndroidBiometricUnlocker(
             }.also { refreshCapability() }
         }
 
-    private suspend fun authenticateWithPrompt(route: AndroidAppLockRoute): BiometricAuthResult =
-        suspendCancellableCoroutine { continuation ->
+    private suspend fun authenticateWithPrompt(route: AndroidAppLockRoute): BiometricAuthResult {
+        val cryptoObject =
+            runCatching { crypto.promptCryptoObject() }
+                .getOrElse { return BiometricAuthResult.Failure(copy.authenticationUnavailable, it) }
+        return suspendCancellableCoroutine { continuation ->
             fun finish(result: BiometricAuthResult) {
                 if (continuation.isActive) continuation.resume(result)
             }
@@ -169,7 +184,19 @@ private class AndroidBiometricUnlocker(
                     executor,
                     object : BiometricPrompt.AuthenticationCallback() {
                         override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                            finish(BiometricAuthResult.Success)
+                            val verified =
+                                runCatching {
+                                    result.cryptoObject
+                                        ?.cipher
+                                        ?.doFinal(appLockProof) != null
+                                }.getOrDefault(false)
+                            finish(
+                                if (verified) {
+                                    BiometricAuthResult.Success
+                                } else {
+                                    BiometricAuthResult.Failure(copy.authenticationUnavailable)
+                                },
+                            )
                         }
 
                         override fun onAuthenticationError(
@@ -207,11 +234,12 @@ private class AndroidBiometricUnlocker(
                 credentialJob?.cancel()
                 activePrompt = null
             }
-            prompt.authenticate(promptInfo(route))
+            prompt.authenticate(promptInfo(route), cryptoObject)
         }.also {
             activePrompt = null
             credentialJob = null
         }
+    }
 
     private fun promptInfo(route: AndroidAppLockRoute): BiometricPrompt.PromptInfo {
         val builder =
@@ -227,19 +255,27 @@ private class AndroidBiometricUnlocker(
                 )
             AndroidAppLockRoute.BiometricThenCredential ->
                 builder
-                    .setAllowedAuthenticators(
-                        BiometricManager.Authenticators.BIOMETRIC_STRONG or
-                            BiometricManager.Authenticators.BIOMETRIC_WEAK,
-                    ).setNegativeButtonText(copy.useDeviceCredential)
+                    .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+                    .setNegativeButtonText(copy.useDeviceCredential)
             else -> builder.setNegativeButtonText(copy.cancel)
         }
         return builder.build()
     }
 
     private suspend fun confirmDeviceCredential(): BiometricAuthResult {
+        runCatching { crypto.prepareCredentialProof() }
+            .getOrElse { return BiometricAuthResult.Failure(copy.authenticationUnavailable, it) }
         val keyguard = ContextCompat.getSystemService(activity, KeyguardManager::class.java)
         val intent = keyguard?.createConfirmDeviceCredentialIntent(copy.title, copy.prompt)
-        return CredentialConfirmationFragment.confirm(activity, intent, copy.authenticationUnavailable)
+        val result = CredentialConfirmationFragment.confirm(activity, intent, copy.authenticationUnavailable)
+        if (result != BiometricAuthResult.Success) return result
+        return runCatching {
+            if (crypto.verifyRecentDeviceCredential()) {
+                BiometricAuthResult.Success
+            } else {
+                BiometricAuthResult.Failure(copy.authenticationUnavailable)
+            }
+        }.getOrElse { BiometricAuthResult.Failure(copy.authenticationUnavailable, it) }
     }
 
     override fun cancel() {
@@ -248,6 +284,84 @@ private class AndroidBiometricUnlocker(
         credentialJob?.cancel()
         credentialJob = null
         CredentialConfirmationFragment.cancel(activity)
+    }
+}
+
+private class AndroidAppLockCrypto {
+    fun promptCryptoObject(): BiometricPrompt.CryptoObject {
+        val cipher =
+            runCatching { promptCipher(loadOrCreateKey(APP_LOCK_PROMPT_KEY_ALIAS, credentialWindow = false)) }
+                .getOrElse {
+                    deleteKey(APP_LOCK_PROMPT_KEY_ALIAS)
+                    promptCipher(loadOrCreateKey(APP_LOCK_PROMPT_KEY_ALIAS, credentialWindow = false))
+                }
+        return BiometricPrompt.CryptoObject(cipher)
+    }
+
+    fun prepareCredentialProof() {
+        loadOrCreateKey(APP_LOCK_CREDENTIAL_KEY_ALIAS, credentialWindow = true)
+    }
+
+    fun verifyRecentDeviceCredential(): Boolean {
+        val key = loadOrCreateKey(APP_LOCK_CREDENTIAL_KEY_ALIAS, credentialWindow = true)
+        val cipher = Cipher.getInstance(AES_TRANSFORMATION)
+        cipher.init(Cipher.ENCRYPT_MODE, key)
+        return cipher.doFinal(appLockProof).isNotEmpty()
+    }
+
+    private fun promptCipher(key: SecretKey): Cipher =
+        Cipher.getInstance(AES_TRANSFORMATION).apply {
+            init(Cipher.ENCRYPT_MODE, key)
+        }
+
+    private fun loadOrCreateKey(
+        alias: String,
+        credentialWindow: Boolean,
+    ): SecretKey {
+        val keyStore =
+            KeyStore.getInstance(ANDROID_KEYSTORE).apply {
+                load(null)
+            }
+        (keyStore.getKey(alias, null) as? SecretKey)?.let { return it }
+
+        val builder =
+            KeyGenParameterSpec
+                .Builder(alias, KeyProperties.PURPOSE_ENCRYPT)
+                .setBlockModes(KeyProperties.BLOCK_MODE_CBC)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_PKCS7)
+                .setUserAuthenticationRequired(true)
+
+        if (credentialWindow) {
+            @Suppress("DEPRECATION")
+            builder.setUserAuthenticationValidityDurationSeconds(APP_LOCK_CREDENTIAL_WINDOW_SECONDS)
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            builder.setUserAuthenticationParameters(
+                0,
+                KeyProperties.AUTH_BIOMETRIC_STRONG or KeyProperties.AUTH_DEVICE_CREDENTIAL,
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            builder
+                .setUserAuthenticationValidityDurationSeconds(-1)
+                .setInvalidatedByBiometricEnrollment(true)
+        }
+
+        return KeyGenerator
+            .getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
+            .apply { init(builder.build()) }
+            .generateKey()
+    }
+
+    private fun deleteKey(alias: String) {
+        KeyStore
+            .getInstance(ANDROID_KEYSTORE)
+            .apply { load(null) }
+            .deleteEntry(alias)
+    }
+
+    private companion object {
+        const val ANDROID_KEYSTORE = "AndroidKeyStore"
+        const val AES_TRANSFORMATION = "AES/CBC/PKCS7Padding"
     }
 }
 
@@ -270,7 +384,6 @@ private fun androidCapabilitySnapshot(activity: FragmentActivity): AndroidCapabi
                 apiLevel = Build.VERSION.SDK_INT,
                 deviceSecure = deviceSecure,
                 strongBiometric = strongStatus == BiometricManager.BIOMETRIC_SUCCESS,
-                weakBiometric = weakStatus == BiometricManager.BIOMETRIC_SUCCESS,
             ),
         deviceSecure = deviceSecure,
         strongStatus = strongStatus,

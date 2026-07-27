@@ -12,7 +12,6 @@ class AndroidAppLockPolicyTest {
                 apiLevel = 30,
                 deviceSecure = true,
                 strongBiometric = true,
-                weakBiometric = true,
             ),
         )
     }
@@ -21,15 +20,19 @@ class AndroidAppLockPolicyTest {
     fun api24To29UsesBiometricThenCredentialOrCredentialOnly() {
         assertEquals(
             AndroidAppLockRoute.BiometricThenCredential,
-            androidAppLockRoute(29, deviceSecure = true, strongBiometric = true, weakBiometric = true),
+            androidAppLockRoute(29, deviceSecure = true, strongBiometric = true),
         )
         assertEquals(
             AndroidAppLockRoute.CredentialOnly,
-            androidAppLockRoute(24, deviceSecure = true, strongBiometric = false, weakBiometric = false),
+            androidAppLockRoute(29, deviceSecure = true, strongBiometric = false),
+        )
+        assertEquals(
+            AndroidAppLockRoute.CredentialOnly,
+            androidAppLockRoute(24, deviceSecure = true, strongBiometric = false),
         )
         assertEquals(
             AndroidAppLockRoute.Unavailable,
-            androidAppLockRoute(29, deviceSecure = false, strongBiometric = true, weakBiometric = true),
+            androidAppLockRoute(29, deviceSecure = false, strongBiometric = true),
         )
     }
 }
