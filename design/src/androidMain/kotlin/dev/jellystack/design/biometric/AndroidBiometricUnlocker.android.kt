@@ -45,8 +45,8 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import kotlin.coroutines.resume
 
-private const val APP_LOCK_PROMPT_KEY_ALIAS = "jellystack-app-lock-prompt"
-private const val APP_LOCK_CREDENTIAL_KEY_ALIAS = "jellystack-app-lock-credential"
+private const val APP_LOCK_PROMPT_KEY_ALIAS = "jellystack-app-lock-prompt-gcm-v2"
+private const val APP_LOCK_CREDENTIAL_KEY_ALIAS = "jellystack-app-lock-credential-gcm-v2"
 private const val APP_LOCK_CREDENTIAL_WINDOW_SECONDS = 30
 private val appLockProof = "jellystack-app-lock-proof".encodeToByteArray()
 
@@ -327,8 +327,8 @@ private class AndroidAppLockCrypto {
         val builder =
             KeyGenParameterSpec
                 .Builder(alias, KeyProperties.PURPOSE_ENCRYPT)
-                .setBlockModes(KeyProperties.BLOCK_MODE_CBC)
-                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_PKCS7)
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
                 .setUserAuthenticationRequired(true)
 
         if (credentialWindow) {
@@ -361,7 +361,7 @@ private class AndroidAppLockCrypto {
 
     private companion object {
         const val ANDROID_KEYSTORE = "AndroidKeyStore"
-        const val AES_TRANSFORMATION = "AES/CBC/PKCS7Padding"
+        const val AES_TRANSFORMATION = "AES/GCM/NoPadding"
     }
 }
 
