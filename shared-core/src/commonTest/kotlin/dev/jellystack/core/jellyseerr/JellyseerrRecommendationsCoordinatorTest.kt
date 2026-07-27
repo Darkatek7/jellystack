@@ -10,12 +10,15 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -107,9 +110,18 @@ class JellyseerrRecommendationsCoordinatorTest {
             )
 
             enrichmentGate.complete(Unit)
-            advanceUntilIdle()
 
-            val enriched = assertIs<JellyseerrMediaDetailState.Loaded>(coordinator.details.value[key])
+            val enriched =
+                withContext(Dispatchers.Default) {
+                    withTimeout(5_000) {
+                        coordinator.details
+                            .first { details ->
+                                (details[key] as? JellyseerrMediaDetailState.Loaded)
+                                    ?.enrichmentLoading == false
+                            }[key]
+                    }
+                }
+            assertIs<JellyseerrMediaDetailState.Loaded>(enriched)
             assertEquals(false, enriched.enrichmentLoading)
             assertEquals(8.8, enriched.detail.ratings?.imdb)
             assertEquals(
