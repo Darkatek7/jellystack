@@ -18,7 +18,7 @@ class JellyfinFavoritesStore(
     override fun observe(): Flow<Set<String>> = queries.selectAll().asFlow().map { it.executeAsList().toSet() }
 
     override suspend fun replaceAll(ids: Set<String>) =
-        withContext(Dispatchers.IO) {
+        withContext(Dispatchers.Default) {
             queries.transaction {
                 queries.clear()
                 ids.forEach { id -> queries.upsert(id, Clock.System.now().toEpochMilliseconds()) }
@@ -26,12 +26,12 @@ class JellyfinFavoritesStore(
         }
 
     override suspend fun upsert(id: String) =
-        withContext(Dispatchers.IO) {
+        withContext(Dispatchers.Default) {
             queries.upsert(id, Clock.System.now().toEpochMilliseconds())
         }
 
     override suspend fun delete(id: String) =
-        withContext(Dispatchers.IO) {
+        withContext(Dispatchers.Default) {
             queries.delete(id)
         }
 }
