@@ -57,11 +57,13 @@ class JellystackAccessibilityUiTest {
             .fetchSemanticsNodes()
             .forEach { node ->
                 assertTrue(
-                    "Clickable node ${node.config} width was ${node.boundsInRoot.width}px",
+                    "Clickable node ${node.config} at ${node.boundsInRoot} with children " +
+                        "${node.children.map { it.config }} width was ${node.boundsInRoot.width}px",
                     node.boundsInRoot.width >= minimumPx,
                 )
                 assertTrue(
-                    "Clickable node ${node.config} height was ${node.boundsInRoot.height}px",
+                    "Clickable node ${node.config} at ${node.boundsInRoot} with children " +
+                        "${node.children.map { it.config }} height was ${node.boundsInRoot.height}px",
                     node.boundsInRoot.height >= minimumPx,
                 )
             }
@@ -76,8 +78,8 @@ class JellystackAccessibilityUiTest {
         }
 
         composeRule.onNodeWithText("Configure request").performClick()
-        waitUntilFocused("Server default")
-        composeRule.onNodeWithText("Server default").assertIsFocused()
+        waitUntilFocused("Search request profiles")
+        composeRule.onNodeWithText("Search request profiles").assertIsFocused()
         composeRule.onNodeWithText("Close").performClick()
         waitUntilFocused("Configure request")
         composeRule.onNodeWithText("Configure request").assertIsFocused()
@@ -101,8 +103,10 @@ class JellystackAccessibilityUiTest {
         try {
             Locale.setDefault(locale)
             composeRule.setContent {
-                WithFontScale(2f) {
-                    JellystackPreviewFixture(fixtureName = "requests", darkTheme = false)
+                WithFontScale(fontScale = 2f, locale = locale) {
+                    JellystackTheme(isDarkTheme = false) {
+                        RequestConfigurationFixture()
+                    }
                 }
             }
             composeRule.onNodeWithText(action).performScrollTo()
@@ -112,11 +116,20 @@ class JellystackAccessibilityUiTest {
     }
 
     private fun waitUntilFocused(text: String) {
-        composeRule.waitUntil(timeoutMillis = 5_000L) {
-            composeRule
-                .onAllNodes(hasText(text) and isFocused())
-                .fetchSemanticsNodes()
-                .isNotEmpty()
+        runCatching {
+            composeRule.waitUntil(timeoutMillis = 5_000L) {
+                composeRule
+                    .onAllNodes(hasText(text) and isFocused())
+                    .fetchSemanticsNodes()
+                    .isNotEmpty()
+            }
+        }.getOrElse { failure ->
+            val focusedNodes =
+                composeRule
+                    .onAllNodes(isFocused(), useUnmergedTree = true)
+                    .fetchSemanticsNodes()
+                    .map { it.config }
+            throw AssertionError("Expected focus on '$text'; focused nodes were $focusedNodes", failure)
         }
     }
 }
@@ -167,11 +180,18 @@ private fun RequestConfigurationFixture(
 @Composable
 private fun WithFontScale(
     fontScale: Float,
+    locale: Locale? = null,
     content: @Composable () -> Unit,
 ) {
     val baseConfiguration = LocalConfiguration.current
     val baseDensity = LocalDensity.current
-    val configuration = remember(baseConfiguration, fontScale) { Configuration(baseConfiguration).apply { this.fontScale = fontScale } }
+    val configuration =
+        remember(baseConfiguration, fontScale, locale) {
+            Configuration(baseConfiguration).apply {
+                this.fontScale = fontScale
+                locale?.let(::setLocale)
+            }
+        }
     CompositionLocalProvider(
         LocalConfiguration provides configuration,
         LocalDensity provides Density(baseDensity.density, fontScale),

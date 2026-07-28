@@ -8,12 +8,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.window.Dialog
@@ -41,7 +41,6 @@ internal fun ModalFocusScope(
         onDismissRequest = onDismissRequest,
         properties = DialogProperties(usePlatformDefaultWidth = !fullScreen),
     ) {
-        val windowInfo = LocalWindowInfo.current
         Surface(
             modifier =
                 (if (fullScreen) Modifier.fillMaxSize() else Modifier)
@@ -49,10 +48,9 @@ internal fun ModalFocusScope(
         ) {
             content(initialFocusModifier)
         }
-        LaunchedEffect(windowInfo) {
-            snapshotFlow {
-                initialFocusTargetPlaced.value && windowInfo.isWindowFocused
-            }.first { it }
+        LaunchedEffect(Unit) {
+            snapshotFlow { initialFocusTargetPlaced.value }.first { it }
+            withFrameNanos { }
             firstFocus.requestFocus()
         }
     }

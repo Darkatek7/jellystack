@@ -1377,7 +1377,7 @@ private fun LibraryRailContainer(
             IconButton(
                 onClick = { onOpenLibrary?.invoke() },
                 enabled = onOpenLibrary != null,
-                modifier = Modifier.size(40.dp),
+                modifier = Modifier.size(JellystackLayoutTokens.minimumTouchTarget),
             ) {
                 Icon(
                     imageVector = Icons.Filled.KeyboardArrowRight,

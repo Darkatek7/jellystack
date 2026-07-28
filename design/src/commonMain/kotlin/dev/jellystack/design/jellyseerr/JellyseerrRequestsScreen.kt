@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -86,6 +87,7 @@ import dev.jellystack.core.jellyseerr.JellyseerrSearchItem
 import dev.jellystack.core.tmdb.tmdbPosterUrl
 import dev.jellystack.design.components.ShimmerPlaceholder
 import dev.jellystack.design.layout.LocalResponsiveProfile
+import dev.jellystack.design.theme.JellystackLayoutTokens
 import jellystack_mobile.design.generated.resources.Res
 import jellystack_mobile.design.generated.resources.back_to_discover
 import jellystack_mobile.design.generated.resources.manage_servers
@@ -414,7 +416,10 @@ private fun FilterRow(
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                 }
-                IconButton(onClick = onRefresh) {
+                IconButton(
+                    onClick = onRefresh,
+                    modifier = Modifier.size(JellystackLayoutTokens.minimumTouchTarget),
+                ) {
                     Icon(
                         imageVector = Icons.Filled.Refresh,
                         contentDescription = stringResource(Res.string.request_refresh),
@@ -432,6 +437,7 @@ private fun FilterRow(
                     selected = selected == filter,
                     onClick = { onSelectFilter(filter) },
                     label = { Text(filter.localizedLabel()) },
+                    modifier = Modifier.heightIn(min = JellystackLayoutTokens.minimumTouchTarget),
                 )
             }
         }
