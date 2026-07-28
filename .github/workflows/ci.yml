@@ -94,5 +94,5 @@ jobs:
           api-level: 36
           target: google_apis
           arch: x86_64
-          emulator-options: "-no-snapshot -noaudio -no-boot-anim"
+          emulator-options: "-no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim"
           script: ./gradlew :design:connectedDebugAndroidTest :app-android:connectedDebugAndroidTest --stacktrace
