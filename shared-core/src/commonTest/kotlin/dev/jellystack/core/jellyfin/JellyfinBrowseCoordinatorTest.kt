@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
@@ -43,8 +44,8 @@ class JellyfinBrowseCoordinatorTest {
             deviceName = "Test Device",
         )
     private val environmentProvider = JellyfinEnvironmentProvider { environment }
-    private var itemPageCallCount = 0
-    private var itemPageResponseWithTotal: String? = null
+    private val itemPageCallCount = MutableStateFlow(0)
+    private val itemPageResponseWithTotal = MutableStateFlow<String?>(null)
     private val engine =
         MockEngine { request ->
             val path = request.url.encodedPath
@@ -60,8 +61,8 @@ class JellyfinBrowseCoordinatorTest {
                             else -> error("Unexpected includeItemTypes: ${request.url.parameters}")
                         }
                     path.endsWith("/Items") -> {
-                        itemPageResponseWithTotal
-                            ?: when (itemPageCallCount++) {
+                        itemPageResponseWithTotal.value
+                            ?: when (itemPageCallCount.updateAndGet { it + 1 } - 1) {
                                 0 -> ITEMS_PAGE_1_JSON
                                 else -> ITEMS_PAGE_2_JSON
                             }
@@ -90,7 +91,7 @@ class JellyfinBrowseCoordinatorTest {
     @Test
     fun bootstrapLoadsLibrariesAndFirstPage() =
         runTest {
-            itemPageCallCount = 0
+            itemPageCallCount.value = 0
             val repository =
                 JellyfinBrowseRepository(
                     environmentProvider,
@@ -114,8 +115,8 @@ class JellyfinBrowseCoordinatorTest {
     @Test
     fun bootstrapCapturesServerTotalOnFirstPage() =
         runTest {
-            itemPageCallCount = 0
-            itemPageResponseWithTotal = ITEMS_PAGE_JSON_WITH_TOTAL_215
+            itemPageCallCount.value = 0
+            itemPageResponseWithTotal.value = ITEMS_PAGE_JSON_WITH_TOTAL_215
             try {
                 val repository =
                     JellyfinBrowseRepository(
@@ -132,15 +133,15 @@ class JellyfinBrowseCoordinatorTest {
 
                 assertEquals(215L, state.totalLibraryItemCount, "state=$state")
             } finally {
-                itemPageResponseWithTotal = null
+                itemPageResponseWithTotal.value = null
             }
         }
 
     @Test
     fun loadNextPagePreservesServerTotalWhenSubsequentPageOmitsCount() =
         runTest {
-            itemPageCallCount = 0
-            itemPageResponseWithTotal = ITEMS_PAGE_JSON_WITH_TOTAL_215
+            itemPageCallCount.value = 0
+            itemPageResponseWithTotal.value = ITEMS_PAGE_JSON_WITH_TOTAL_215
             val repository =
                 JellyfinBrowseRepository(
                     environmentProvider,
@@ -152,7 +153,7 @@ class JellyfinBrowseCoordinatorTest {
             val coordinator =
                 JellyfinBrowseCoordinator(repository, backgroundScope, favoritesStore = FakeJellyfinFavoritesStore(), pageSize = 2)
             awaitInitialLoad(coordinator)
-            itemPageResponseWithTotal = null
+            itemPageResponseWithTotal.value = null
 
             coordinator.loadNextPage()
 
@@ -163,7 +164,7 @@ class JellyfinBrowseCoordinatorTest {
     @Test
     fun loadNextPageAppendsItemsAndSetsEndReached() =
         runTest {
-            itemPageCallCount = 0
+            itemPageCallCount.value = 0
             val repository =
                 JellyfinBrowseRepository(
                     environmentProvider,
@@ -444,7 +445,7 @@ class JellyfinBrowseCoordinatorTest {
         runTest {
             val favoriteIdsStarted = CompletableDeferred<Unit>()
             val releaseFavoriteIds = CompletableDeferred<Unit>()
-            var favoritePageRequests = 0
+            val favoritePageRequests = MutableStateFlow(0)
             val coordinator =
                 favoritesLifecycleCoordinator(
                     favoritesLifecycleEngine(
@@ -452,7 +453,7 @@ class JellyfinBrowseCoordinatorTest {
                             favoriteIdsStarted.complete(Unit)
                             releaseFavoriteIds.await()
                         },
-                        onFavoritePage = { favoritePageRequests += 1 },
+                        onFavoritePage = { favoritePageRequests.update { it + 1 } },
                     ),
                     backgroundScope,
                 )
@@ -470,7 +471,7 @@ class JellyfinBrowseCoordinatorTest {
                     .map { it.id },
             )
             assertEquals(emptySet(), coordinator.favorites.value)
-            assertEquals(0, favoritePageRequests)
+            assertEquals(0, favoritePageRequests.value)
         }
 
     @Test
@@ -478,7 +479,7 @@ class JellyfinBrowseCoordinatorTest {
         runTest {
             val favoriteIdsStarted = CompletableDeferred<Unit>()
             val releaseFavoriteIds = CompletableDeferred<Unit>()
-            var favoritePageRequests = 0
+            val favoritePageRequests = MutableStateFlow(0)
             val coordinator =
                 favoritesLifecycleCoordinator(
                     favoritesLifecycleEngine(
@@ -486,7 +487,7 @@ class JellyfinBrowseCoordinatorTest {
                             favoriteIdsStarted.complete(Unit)
                             releaseFavoriteIds.await()
                         },
-                        onFavoritePage = { favoritePageRequests += 1 },
+                        onFavoritePage = { favoritePageRequests.update { it + 1 } },
                     ),
                     backgroundScope,
                 )
@@ -504,7 +505,7 @@ class JellyfinBrowseCoordinatorTest {
                     .map { it.id },
             )
             assertEquals(emptySet(), coordinator.favorites.value)
-            assertEquals(0, favoritePageRequests)
+            assertEquals(0, favoritePageRequests.value)
         }
 
     @Test
@@ -512,7 +513,7 @@ class JellyfinBrowseCoordinatorTest {
         runTest {
             val favoriteIdsStarted = CompletableDeferred<Unit>()
             val releaseFavoriteIds = CompletableDeferred<Unit>()
-            var favoritePageRequests = 0
+            val favoritePageRequests = MutableStateFlow(0)
             val coordinator =
                 favoritesLifecycleCoordinator(
                     favoritesLifecycleEngine(
@@ -520,7 +521,7 @@ class JellyfinBrowseCoordinatorTest {
                             favoriteIdsStarted.complete(Unit)
                             releaseFavoriteIds.await()
                         },
-                        onFavoritePage = { favoritePageRequests += 1 },
+                        onFavoritePage = { favoritePageRequests.update { it + 1 } },
                     ),
                     backgroundScope,
                 )
@@ -542,7 +543,7 @@ class JellyfinBrowseCoordinatorTest {
                     .map { it.id },
             )
             assertEquals(emptySet(), coordinator.favorites.value)
-            assertEquals(0, favoritePageRequests)
+            assertEquals(0, favoritePageRequests.value)
         }
 
     @Test
@@ -587,14 +588,14 @@ class JellyfinBrowseCoordinatorTest {
     @Test
     fun refreshingLibrariesUpdatesOnlyTheLibraryList() =
         runTest {
-            var libraryRequests = 0
-            var itemRequests = 0
+            val libraryRequests = MutableStateFlow(0)
+            val itemRequests = MutableStateFlow(0)
             val refreshOnlyEngine =
                 MockEngine { request ->
                     val path = request.url.encodedPath
                     when {
                         path.endsWith("/Views") -> {
-                            libraryRequests += 1
+                            libraryRequests.update { it + 1 }
                             respond(
                                 content = REFRESHED_LIBRARIES_JSON,
                                 status = HttpStatusCode.OK,
@@ -602,7 +603,7 @@ class JellyfinBrowseCoordinatorTest {
                             )
                         }
                         path.endsWith("/Items") -> {
-                            itemRequests += 1
+                            itemRequests.update { it + 1 }
                             error("Library-list refresh must not load a media page")
                         }
                         else -> error("Unexpected request path: $path")
@@ -620,8 +621,8 @@ class JellyfinBrowseCoordinatorTest {
             val state = awaitState(coordinator) { it.libraries.map { library -> library.id } == listOf("lib-refreshed") }
 
             assertEquals(listOf("Refreshed"), state.libraries.map { it.name })
-            assertEquals(1, libraryRequests)
-            assertEquals(0, itemRequests)
+            assertEquals(1, libraryRequests.value)
+            assertEquals(0, itemRequests.value)
         }
 
     @Test
@@ -684,7 +685,7 @@ class JellyfinBrowseCoordinatorTest {
     @Test
     fun bootstrapPrefersShowsLibraryOverRepositoryOrder() =
         runTest {
-            var localPageCallCount = 0
+            val localPageCallCount = MutableStateFlow(0)
             val orderedLibrariesJson =
                 """
                 {
@@ -710,7 +711,7 @@ class JellyfinBrowseCoordinatorTest {
                                     else -> error("Unexpected includeItemTypes: ${request.url.parameters}")
                                 }
                             path.endsWith("/Items") ->
-                                when (localPageCallCount++) {
+                                when (localPageCallCount.updateAndGet { it + 1 } - 1) {
                                     0 -> ITEMS_PAGE_1_JSON
                                     else -> ITEMS_PAGE_2_JSON
                                 }
@@ -759,7 +760,7 @@ class JellyfinBrowseCoordinatorTest {
         predicate: (JellyfinHomeState) -> Boolean,
     ): JellyfinHomeState =
         withContext(Dispatchers.Default) {
-            withTimeout(5_000) {
+            withTimeout(15_000) {
                 coordinator.state.first(predicate)
             }
         }

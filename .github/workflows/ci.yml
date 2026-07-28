@@ -52,6 +52,18 @@ jobs:
           :app-android:assembleDebug
           --stacktrace
 
+      - name: Print failing unit-test reports
+        if: failure()
+        shell: bash
+        run: |
+          while IFS= read -r -d '' report; do
+            if grep -qE '<(failure|error)' "$report"; then
+              echo "::group::$report"
+              cat "$report"
+              echo "::endgroup::"
+            fi
+          done < <(find . -path '*/build/test-results/*/TEST-*.xml' -type f -print0)
+
   android-instrumentation:
     runs-on: ubuntu-latest
     needs: build
