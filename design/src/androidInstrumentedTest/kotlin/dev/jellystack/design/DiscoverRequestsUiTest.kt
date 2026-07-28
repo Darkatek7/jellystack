@@ -23,7 +23,6 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performScrollToNode
@@ -155,9 +154,9 @@ class DiscoverRequestsUiTest {
 
         composeRule.onNodeWithText("Dune").performClick()
 
-        val rootWidth =
+        val detailWidth =
             composeRule
-                .onRoot()
+                .onNodeWithTag(SeerrImmersiveDetailTestTags.ROOT)
                 .fetchSemanticsNode()
                 .boundsInRoot.width
         val heroWidth =
@@ -166,7 +165,7 @@ class DiscoverRequestsUiTest {
                 .fetchSemanticsNode()
                 .boundsInRoot
                 .width
-        assertEquals(rootWidth, heroWidth, 1f)
+        assertEquals(detailWidth, heroWidth, 1f)
         composeRule
             .onNodeWithTag(SeerrImmersiveDetailTestTags.PRIMARY_ACTION)
             .assertHeightIsAtLeast(48.dp)
