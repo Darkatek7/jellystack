@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
@@ -155,7 +156,7 @@ class JellyfinBrowseCoordinatorTest {
 
             coordinator.loadNextPage()
 
-            val state = coordinator.state.first { it.currentPage == 1 && !it.isPageLoading }
+            val state = awaitState(coordinator) { it.currentPage == 1 && !it.isPageLoading }
             assertEquals(215L, state.totalLibraryItemCount, "state=$state")
         }
 
@@ -178,7 +179,7 @@ class JellyfinBrowseCoordinatorTest {
 
             coordinator.loadNextPage()
 
-            val state = coordinator.state.first { it.currentPage == 1 && !it.isPageLoading }
+            val state = awaitState(coordinator) { it.currentPage == 1 && !it.isPageLoading }
             assertEquals(3, state.libraryItems.size, "state=$state")
             assertTrue(state.endReached, "state=$state")
             assertEquals("item-3", state.libraryItems.last().id, "state=$state")
@@ -232,7 +233,7 @@ class JellyfinBrowseCoordinatorTest {
 
             awaitInitialLoad(coordinator)
             coordinator.loadNextPage()
-            val parent = coordinator.state.first { it.currentPage == 1 && !it.isPageLoading }
+            val parent = awaitState(coordinator) { it.currentPage == 1 && !it.isPageLoading }
             assertEquals(
                 listOf("folder-1", "parent-2", "parent-3"),
                 parent.libraryItems.map { it.id },
@@ -315,12 +316,7 @@ class JellyfinBrowseCoordinatorTest {
             coordinator.selectLibrary(root.selectedLibraryId!!)
             releasePageResponse.complete(Unit)
 
-            val loaded =
-                withContext(Dispatchers.Default) {
-                    withTimeout(5_000) {
-                        coordinator.state.first { it.currentPage == 1 }
-                    }
-                }
+            val loaded = awaitState(coordinator) { it.currentPage == 1 }
             assertFalse(loaded.isPageLoading)
             assertEquals(listOf("item-1", "item-2", "item-3"), loaded.libraryItems.map { it.id })
         }
@@ -428,7 +424,7 @@ class JellyfinBrowseCoordinatorTest {
 
             coordinator.selectFavorites()
             val favoritesPage =
-                coordinator.state.first { state ->
+                awaitState(coordinator) { state ->
                     !state.isInitialLoading && state.libraryItems.map { it.id } == listOf("favorite-1")
                 }
 
@@ -536,13 +532,9 @@ class JellyfinBrowseCoordinatorTest {
             releaseFavoriteIds.complete(Unit)
 
             val state =
-                withContext(Dispatchers.Default) {
-                    withTimeout(5_000) {
-                        coordinator.state.first {
-                            !it.isInitialLoading &&
-                                it.libraryItems.map { item -> item.id } == listOf("normal-1")
-                        }
-                    }
+                awaitState(coordinator) {
+                    !it.isInitialLoading &&
+                        it.libraryItems.map { item -> item.id } == listOf("normal-1")
                 }
             assertEquals(
                 listOf("normal-1"),
@@ -556,40 +548,40 @@ class JellyfinBrowseCoordinatorTest {
     @Test
     fun refreshingFavoritesReloadsIdsAndOnlyTheFavoriteFilteredPage() =
         runTest {
-            var favoriteIdsRequests = 0
-            var favoritePageRequests = 0
-            var unfilteredPageRequests = 0
+            val favoriteIdsRequests = MutableStateFlow(0)
+            val favoritePageRequests = MutableStateFlow(0)
+            val unfilteredPageRequests = MutableStateFlow(0)
             val coordinator =
                 favoritesLifecycleCoordinator(
                     favoritesLifecycleEngine(
                         favoriteIdsJson = {
-                            favoriteIdsRequests += 1
-                            if (favoriteIdsRequests == 1) FAVORITE_ONE_IDS_JSON else FAVORITE_TWO_IDS_JSON
+                            favoriteIdsRequests.update { it + 1 }
+                            if (favoriteIdsRequests.value == 1) FAVORITE_ONE_IDS_JSON else FAVORITE_TWO_IDS_JSON
                         },
                         favoritePageJson = {
-                            favoritePageRequests += 1
-                            if (favoritePageRequests == 1) FAVORITE_ONE_PAGE_JSON else FAVORITE_TWO_PAGE_JSON
+                            favoritePageRequests.update { it + 1 }
+                            if (favoritePageRequests.value == 1) FAVORITE_ONE_PAGE_JSON else FAVORITE_TWO_PAGE_JSON
                         },
-                        onUnfilteredPage = { unfilteredPageRequests += 1 },
+                        onUnfilteredPage = { unfilteredPageRequests.update { it + 1 } },
                     ),
                     backgroundScope,
                 )
             awaitInitialLoad(coordinator)
-            assertEquals(1, unfilteredPageRequests)
+            assertEquals(1, unfilteredPageRequests.value)
             coordinator.selectFavorites()
-            coordinator.state.first { it.libraryItems.map { item -> item.id } == listOf("favorite-1") }
+            awaitState(coordinator) { it.libraryItems.map { item -> item.id } == listOf("favorite-1") }
 
             coordinator.refreshFavorites()
             val refreshed =
-                coordinator.state.first { state ->
+                awaitState(coordinator) { state ->
                     !state.isInitialLoading && state.libraryItems.map { item -> item.id } == listOf("favorite-2")
                 }
 
             assertEquals(setOf("favorite-2"), coordinator.favorites.value)
             assertEquals(listOf("favorite-2"), refreshed.libraryItems.map { it.id })
-            assertEquals(2, favoriteIdsRequests)
-            assertEquals(2, favoritePageRequests)
-            assertEquals(1, unfilteredPageRequests)
+            assertEquals(2, favoriteIdsRequests.value)
+            assertEquals(2, favoritePageRequests.value)
+            assertEquals(1, unfilteredPageRequests.value)
         }
 
     @Test
@@ -625,7 +617,7 @@ class JellyfinBrowseCoordinatorTest {
                 )
 
             coordinator.refreshLibraries()
-            val state = coordinator.state.first { it.libraries.map { library -> library.id } == listOf("lib-refreshed") }
+            val state = awaitState(coordinator) { it.libraries.map { library -> library.id } == listOf("lib-refreshed") }
 
             assertEquals(listOf("Refreshed"), state.libraries.map { it.name })
             assertEquals(1, libraryRequests)
@@ -758,11 +750,17 @@ class JellyfinBrowseCoordinatorTest {
         }
 
     private suspend fun awaitInitialLoad(coordinator: JellyfinBrowseCoordinator): JellyfinHomeState =
+        awaitState(coordinator) {
+            it.selectedLibraryId != null && !it.isInitialLoading
+        }
+
+    private suspend fun awaitState(
+        coordinator: JellyfinBrowseCoordinator,
+        predicate: (JellyfinHomeState) -> Boolean,
+    ): JellyfinHomeState =
         withContext(Dispatchers.Default) {
             withTimeout(5_000) {
-                coordinator.state.first {
-                    it.selectedLibraryId != null && !it.isInitialLoading
-                }
+                coordinator.state.first(predicate)
             }
         }
 
