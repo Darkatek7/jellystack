@@ -175,11 +175,21 @@ class JellyfinBrowseCoordinator(
                                 val firstPageDeferred =
                                     selectedId?.let { id ->
                                         async {
-                                            val cached = repository.cachedLibraryPage(id, page = 0, pageSize = pageSize)
-                                            if (!forceRefresh && cached.isNotEmpty()) {
-                                                return@async LibraryPage(items = cached, totalRecordCount = null)
+                                            val cached =
+                                                cachedState
+                                                    ?.takeIf { it.selectedLibraryId == id }
+                                                    ?.libraryItems
+                                                    ?: repository.cachedLibraryPage(id, page = 0, pageSize = pageSize)
+                                            try {
+                                                repository.loadLibraryPage(id, page = 0, pageSize = pageSize, refresh = true)
+                                            } catch (cancellation: CancellationException) {
+                                                throw cancellation
+                                            } catch (_: Throwable) {
+                                                LibraryPage(
+                                                    items = cached,
+                                                    totalRecordCount = cachedState?.totalLibraryItemCount,
+                                                )
                                             }
-                                            repository.loadLibraryPage(id, page = 0, pageSize = pageSize, refresh = true)
                                         }
                                     }
 

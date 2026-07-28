@@ -118,14 +118,16 @@ class JellyfinBrowseCoordinatorTest {
             itemPageCallCount.value = 0
             itemPageResponseWithTotal.value = ITEMS_PAGE_JSON_WITH_TOTAL_215
             try {
+                val itemStore = InMemoryItemStore()
                 val repository =
                     JellyfinBrowseRepository(
                         environmentProvider,
                         InMemoryLibraryStore(),
-                        InMemoryItemStore(),
+                        itemStore,
                         InMemoryDetailStore(),
                         apiFactory,
                     )
+                repository.refreshNextUp(limit = 20, libraryId = "lib-2")
                 val coordinator =
                     JellyfinBrowseCoordinator(repository, backgroundScope, favoritesStore = FakeJellyfinFavoritesStore(), pageSize = 2)
 

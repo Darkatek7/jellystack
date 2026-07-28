@@ -131,24 +131,10 @@ class JellyfinBrowseRepository(
         } else {
             itemStore.upsert(records)
         }
-        val items =
-            if (!query.recursive && filters == null) {
-                itemStore.listByParent(
-                    environment.serverKey,
-                    libraryId,
-                    libraryId,
-                    pageSize.toLong(),
-                    startIndex.toLong(),
-                )
-            } else {
-                itemStore.listByLibrary(
-                    environment.serverKey,
-                    libraryId,
-                    limit = pageSize.toLong(),
-                    offset = startIndex.toLong(),
-                )
-            }.map { it.toDomain() }
-        return LibraryPage(items = items, totalRecordCount = response.totalRecordCount)
+        return LibraryPage(
+            items = records.map { it.toDomain() },
+            totalRecordCount = response.totalRecordCount,
+        )
     }
 
     private suspend fun fetchLibraryItemsWithFallback(
