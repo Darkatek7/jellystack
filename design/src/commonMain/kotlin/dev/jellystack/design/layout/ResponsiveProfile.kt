@@ -1,16 +1,11 @@
 package dev.jellystack.design.layout
 
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
-import androidx.compose.material3.windowsizeclass.WindowSizeClass
-import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.DpSize
-import androidx.compose.ui.unit.dp
 import dev.jellystack.design.theme.JellystackLayoutTokens
 
 internal enum class JellystackWidthClass {
@@ -54,26 +49,19 @@ internal data class ResponsiveProfile(
         get() = !isShortHeight
 }
 
-@OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
 internal fun responsiveProfile(
     widthDp: Float,
     heightDp: Float,
-): ResponsiveProfile {
-    val windowSizeClass =
-        WindowSizeClass.calculateFromSize(
-            DpSize(width = widthDp.dp, height = heightDp.dp),
-        )
-    return ResponsiveProfile(
+): ResponsiveProfile =
+    ResponsiveProfile(
         widthClass =
-            when (windowSizeClass.widthSizeClass) {
-                WindowWidthSizeClass.Compact -> JellystackWidthClass.Compact
-                WindowWidthSizeClass.Medium -> JellystackWidthClass.Medium
-                WindowWidthSizeClass.Expanded -> JellystackWidthClass.Expanded
-                else -> error("Unsupported width class: ${windowSizeClass.widthSizeClass}")
+            when {
+                widthDp < 600f -> JellystackWidthClass.Compact
+                widthDp < 840f -> JellystackWidthClass.Medium
+                else -> JellystackWidthClass.Expanded
             },
         isShortHeight = heightDp < 480f,
     )
-}
 
 internal val LocalResponsiveProfile =
     staticCompositionLocalOf {

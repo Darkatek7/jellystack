@@ -60,7 +60,6 @@ kotlin {
                 implementation(libs.compose.material3)
                 implementation(libs.compose.material.icons)
                 implementation(libs.compose.components.resources)
-                implementation(libs.compose.windowsize)
                 implementation(libs.coroutines.core)
                 implementation(libs.kotlinx.datetime)
                 implementation(libs.koin.core)
