@@ -15,7 +15,6 @@ import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
-import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -24,6 +23,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performScrollToNode
@@ -64,6 +64,7 @@ import dev.jellystack.design.shell.JellystackShell
 import dev.jellystack.design.shell.JellystackShellState
 import dev.jellystack.design.shell.ShellPaneMode
 import dev.jellystack.design.theme.JellystackTheme
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -154,7 +155,18 @@ class DiscoverRequestsUiTest {
 
         composeRule.onNodeWithText("Dune").performClick()
 
-        composeRule.onNodeWithTag(SeerrImmersiveDetailTestTags.HERO).assertWidthIsAtLeast(360.dp)
+        val rootWidth =
+            composeRule
+                .onRoot()
+                .fetchSemanticsNode()
+                .boundsInRoot.width
+        val heroWidth =
+            composeRule
+                .onNodeWithTag(SeerrImmersiveDetailTestTags.HERO)
+                .fetchSemanticsNode()
+                .boundsInRoot
+                .width
+        assertEquals(rootWidth, heroWidth, 1f)
         composeRule
             .onNodeWithTag(SeerrImmersiveDetailTestTags.PRIMARY_ACTION)
             .assertHeightIsAtLeast(48.dp)
