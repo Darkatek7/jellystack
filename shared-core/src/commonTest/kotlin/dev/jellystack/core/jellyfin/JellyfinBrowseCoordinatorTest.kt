@@ -234,6 +234,7 @@ class JellyfinBrowseCoordinatorTest {
 
             awaitInitialLoad(coordinator)
             coordinator.loadNextPage()
+            advanceUntilIdle()
             val parent = awaitState(coordinator) { it.currentPage == 1 && !it.isPageLoading }
             assertEquals(
                 listOf("folder-1", "parent-2", "parent-3"),
@@ -567,7 +568,11 @@ class JellyfinBrowseCoordinatorTest {
                     ),
                     backgroundScope,
                 )
-            awaitInitialLoad(coordinator)
+            awaitState(coordinator) {
+                it.selectedLibraryId != null &&
+                    !it.isInitialLoading &&
+                    unfilteredPageRequests.value == 1
+            }
             assertEquals(1, unfilteredPageRequests.value)
             coordinator.selectFavorites()
             awaitState(coordinator) { it.libraryItems.map { item -> item.id } == listOf("favorite-1") }
