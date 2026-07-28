@@ -101,7 +101,7 @@ class JellyfinBrowseCoordinatorTest {
             val coordinator =
                 JellyfinBrowseCoordinator(repository, backgroundScope, favoritesStore = FakeJellyfinFavoritesStore(), pageSize = 2)
 
-            val state = coordinator.state.first { !it.isInitialLoading }
+            val state = awaitInitialLoad(coordinator)
             assertEquals(listOf("lib-1", "lib-2"), state.libraries.map { it.id }, "state=$state")
             assertEquals("lib-2", state.selectedLibraryId, "state=$state")
             assertEquals(2, state.libraryItems.size, "state=$state")
@@ -127,7 +127,7 @@ class JellyfinBrowseCoordinatorTest {
                 val coordinator =
                     JellyfinBrowseCoordinator(repository, backgroundScope, favoritesStore = FakeJellyfinFavoritesStore(), pageSize = 2)
 
-                val state = coordinator.state.first { !it.isInitialLoading }
+                val state = awaitInitialLoad(coordinator)
 
                 assertEquals(215L, state.totalLibraryItemCount, "state=$state")
             } finally {
@@ -150,7 +150,7 @@ class JellyfinBrowseCoordinatorTest {
                 )
             val coordinator =
                 JellyfinBrowseCoordinator(repository, backgroundScope, favoritesStore = FakeJellyfinFavoritesStore(), pageSize = 2)
-            coordinator.state.first { !it.isInitialLoading }
+            awaitInitialLoad(coordinator)
             itemPageResponseWithTotal = null
 
             coordinator.loadNextPage()
@@ -174,7 +174,7 @@ class JellyfinBrowseCoordinatorTest {
             val coordinator =
                 JellyfinBrowseCoordinator(repository, backgroundScope, favoritesStore = FakeJellyfinFavoritesStore(), pageSize = 2)
 
-            coordinator.state.first { !it.isInitialLoading }
+            awaitInitialLoad(coordinator)
 
             coordinator.loadNextPage()
 
@@ -230,7 +230,7 @@ class JellyfinBrowseCoordinatorTest {
                     pageSize = 2,
                 )
 
-            coordinator.state.first { !it.isInitialLoading }
+            awaitInitialLoad(coordinator)
             coordinator.loadNextPage()
             val parent = coordinator.state.first { it.currentPage == 1 && !it.isPageLoading }
             assertEquals(
@@ -306,7 +306,7 @@ class JellyfinBrowseCoordinatorTest {
                     pageSize = 2,
                 )
 
-            val root = coordinator.state.first { !it.isInitialLoading }
+            val root = awaitInitialLoad(coordinator)
             coordinator.loadNextPage()
             pageRequestStarted.await()
             assertEquals(root.selectedLibraryId, coordinator.state.value.selectedLibraryId)
@@ -424,7 +424,7 @@ class JellyfinBrowseCoordinatorTest {
     fun leavingCompletedFavoritesRestoresPreviousLibraryPageImmediately() =
         runTest {
             val coordinator = favoritesLifecycleCoordinator(favoritesLifecycleEngine(), backgroundScope)
-            val parent = coordinator.state.first { !it.isInitialLoading }
+            val parent = awaitInitialLoad(coordinator)
 
             coordinator.selectFavorites()
             val favoritesPage =
@@ -460,7 +460,7 @@ class JellyfinBrowseCoordinatorTest {
                     ),
                     backgroundScope,
                 )
-            val parent = coordinator.state.first { !it.isInitialLoading }
+            val parent = awaitInitialLoad(coordinator)
 
             coordinator.selectFavorites()
             favoriteIdsStarted.await()
@@ -494,7 +494,7 @@ class JellyfinBrowseCoordinatorTest {
                     ),
                     backgroundScope,
                 )
-            val parent = coordinator.state.first { !it.isInitialLoading }
+            val parent = awaitInitialLoad(coordinator)
 
             coordinator.selectFavorites()
             favoriteIdsStarted.await()
@@ -528,7 +528,7 @@ class JellyfinBrowseCoordinatorTest {
                     ),
                     backgroundScope,
                 )
-            coordinator.state.first { !it.isInitialLoading }
+            awaitInitialLoad(coordinator)
 
             coordinator.selectFavorites()
             favoriteIdsStarted.await()
@@ -574,7 +574,7 @@ class JellyfinBrowseCoordinatorTest {
                     ),
                     backgroundScope,
                 )
-            coordinator.state.first { !it.isInitialLoading }
+            awaitInitialLoad(coordinator)
             assertEquals(1, unfilteredPageRequests)
             coordinator.selectFavorites()
             coordinator.state.first { it.libraryItems.map { item -> item.id } == listOf("favorite-1") }
@@ -753,8 +753,17 @@ class JellyfinBrowseCoordinatorTest {
             val coordinator =
                 JellyfinBrowseCoordinator(repository, backgroundScope, favoritesStore = FakeJellyfinFavoritesStore(), pageSize = 2)
 
-            val state = coordinator.state.first { !it.isInitialLoading }
+            val state = awaitInitialLoad(coordinator)
             assertEquals("lib-shows", state.selectedLibraryId, "state=$state")
+        }
+
+    private suspend fun awaitInitialLoad(coordinator: JellyfinBrowseCoordinator): JellyfinHomeState =
+        withContext(Dispatchers.Default) {
+            withTimeout(5_000) {
+                coordinator.state.first {
+                    it.selectedLibraryId != null && !it.isInitialLoading
+                }
+            }
         }
 
     private class InMemoryLibraryStore : JellyfinLibraryStore {

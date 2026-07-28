@@ -14,12 +14,17 @@ import io.ktor.http.content.TextContent
 import io.ktor.http.headersOf
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -208,7 +213,7 @@ class JellyseerrRepositoryTest {
     fun rapidSubmitRequestsRetainDistinctIds() =
         runTest {
             JellystackLogBuffer.clear()
-            val recordedBodies = mutableListOf<String>()
+            val recordedBodies = MutableStateFlow<List<String>>(emptyList())
             val client =
                 HttpClient(
                     MockEngine { request ->
@@ -216,7 +221,7 @@ class JellyseerrRepositoryTest {
                             request.method == HttpMethod.Post && request.url.encodedPath == "/api/v1/request" -> {
                                 val bodyText = (request.body as? TextContent)?.text
                                 assertNotNull(bodyText, "Expected JSON request body")
-                                recordedBodies += bodyText
+                                recordedBodies.update { it + bodyText }
                                 respond(
                                     content =
                                         """
@@ -239,6 +244,16 @@ class JellyseerrRepositoryTest {
                                         ),
                                 )
                             }
+                            request.method == HttpMethod.Get && request.url.encodedPath == "/api/v1/auth/me" ->
+                                respondJson("""{"id":1,"displayName":"Admin","permissions":18}""")
+                            request.method == HttpMethod.Get && request.url.encodedPath == "/api/v1/request" ->
+                                respondJson(
+                                    """{"pageInfo":{"pages":0,"pageSize":20,"results":0,"page":1},"results":[]}""",
+                                )
+                            request.method == HttpMethod.Get && request.url.encodedPath == "/api/v1/request/count" ->
+                                respondJson(
+                                    """{"total":0,"movie":0,"pending":0,"approved":0,"processing":0,"available":0,"completed":0,"declined":0,"tv":0}""",
+                                )
                             else -> respondJson("{}", HttpStatusCode.NotFound)
                         }
                     },
@@ -258,7 +273,11 @@ class JellyseerrRepositoryTest {
                     enablePolling = false,
                 )
 
-            advanceUntilIdle()
+            withContext(Dispatchers.Default) {
+                withTimeout(5_000) {
+                    coordinator.state.first { it is JellyseerrRequestsState.Ready }
+                }
+            }
 
             val profile =
                 JellyseerrLanguageProfileOption(
@@ -309,11 +328,16 @@ class JellyseerrRepositoryTest {
 
             coordinator.submitRequest(first, profile)
             coordinator.submitRequest(second, profile)
-            advanceUntilIdle()
 
-            assertEquals(2, recordedBodies.size)
+            val submittedBodies =
+                withContext(Dispatchers.Default) {
+                    withTimeout(5_000) {
+                        recordedBodies.first { it.size == 2 }
+                    }
+                }
+            assertEquals(2, submittedBodies.size)
             val submittedIds =
-                recordedBodies
+                submittedBodies
                     .mapNotNull { body ->
                         NetworkJson.default
                             .parseToJsonElement(body)
