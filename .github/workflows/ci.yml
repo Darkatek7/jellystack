@@ -69,7 +69,7 @@ jobs:
     needs: build
     env:
       CI: true
-      GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx2048m
+      GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx1024m -Dkotlin.daemon.jvm.options=-Xmx768m"
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -100,8 +100,9 @@ jobs:
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: 35
-          target: google_atd
+          target: google_apis
           arch: x86_64
+          profile: "10.1in WXGA (Tablet)"
           ram-size: 1536M
           emulator-options: "-no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics"
-          script: ./gradlew :design:connectedDebugAndroidTest :app-android:connectedDebugAndroidTest --max-workers=2 --stacktrace
+          script: ./gradlew :design:connectedDebugAndroidTest :app-android:connectedDebugAndroidTest --max-workers=1 --stacktrace
