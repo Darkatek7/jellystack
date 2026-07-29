@@ -15,6 +15,7 @@ import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -457,7 +458,9 @@ class DiscoverRequestsUiTest {
         composeRule.onNodeWithText("Dune: Part Two").performClick()
         composeRule.onNodeWithText("Dune: Part Two").assertExists()
         composeRule.onNodeWithContentDescription("Back").performClick()
-        composeRule.onNodeWithText("Dune", useUnmergedTree = true).assertExists()
+        composeRule
+            .onNodeWithTag(SeerrImmersiveDetailTestTags.TITLE)
+            .assertTextEquals("Dune")
 
         composeRule
             .onNodeWithTag(SeerrImmersiveDetailTestTags.ROOT)
@@ -465,7 +468,9 @@ class DiscoverRequestsUiTest {
         composeRule.onNodeWithText("Arrival").performClick()
         composeRule.onNodeWithText("Arrival").assertExists()
         composeRule.onNodeWithContentDescription("Back").performClick()
-        composeRule.onNodeWithText("Dune", useUnmergedTree = true).assertExists()
+        composeRule
+            .onNodeWithTag(SeerrImmersiveDetailTestTags.TITLE)
+            .assertTextEquals("Dune")
     }
 
     @Test
