@@ -64,9 +64,30 @@ jobs:
             fi
           done < <(find . -path '*/build/test-results/*/TEST-*.xml' -type f -print0)
 
-  android-instrumentation:
+  instrumentation_shards:
+    name: android-instrumentation (${{ matrix.name }})
     runs-on: ubuntu-latest
     needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: design-0
+            command: >-
+              ./gradlew :design:connectedDebugAndroidTest
+              -Pandroid.testInstrumentationRunnerArguments.numShards=2
+              -Pandroid.testInstrumentationRunnerArguments.shardIndex=0
+              --max-workers=1 --stacktrace
+          - name: design-1
+            command: >-
+              ./gradlew :design:connectedDebugAndroidTest
+              -Pandroid.testInstrumentationRunnerArguments.numShards=2
+              -Pandroid.testInstrumentationRunnerArguments.shardIndex=1
+              --max-workers=1 --stacktrace
+          - name: app
+            command: >-
+              ./gradlew :app-android:connectedDebugAndroidTest
+              --max-workers=1 --stacktrace
     env:
       CI: true
       GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2048m -Dkotlin.daemon.jvm.options=-Xmx768m"
@@ -105,4 +126,14 @@ jobs:
           profile: "10.1in WXGA (Tablet)"
           ram-size: 1536M
           emulator-options: "-no-window -gpu swiftshader -feature -Vulkan -no-snapshot -noaudio -no-boot-anim -no-metrics"
-          script: ./gradlew :design:connectedDebugAndroidTest :app-android:connectedDebugAndroidTest --continue --max-workers=1 --stacktrace
+          script: ${{ matrix.command }}
+
+  android-instrumentation:
+    runs-on: ubuntu-latest
+    needs: instrumentation_shards
+    if: ${{ always() }}
+    steps:
+      - name: Require every instrumentation shard to pass
+        env:
+          SHARD_RESULT: ${{ needs.instrumentation_shards.result }}
+        run: test "$SHARD_RESULT" = success
