@@ -104,5 +104,5 @@ jobs:
           arch: x86_64
           profile: "10.1in WXGA (Tablet)"
           ram-size: 1536M
-          emulator-options: "-no-window -gpu swiftshader -no-snapshot -noaudio -no-boot-anim -no-metrics"
+          emulator-options: "-no-window -gpu swiftshader -feature -Vulkan -no-snapshot -noaudio -no-boot-anim -no-metrics"
           script: ./gradlew :design:connectedDebugAndroidTest :app-android:connectedDebugAndroidTest --continue --max-workers=1 --stacktrace
