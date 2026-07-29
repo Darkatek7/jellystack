@@ -459,6 +459,9 @@ class DiscoverRequestsUiTest {
         composeRule.onNodeWithText("Dune: Part Two").assertExists()
         composeRule.onNodeWithContentDescription("Back").performClick()
         composeRule
+            .onNodeWithTag(SeerrImmersiveDetailTestTags.ROOT)
+            .performScrollToNode(hasTestTag(SeerrImmersiveDetailTestTags.TITLE))
+        composeRule
             .onNodeWithTag(SeerrImmersiveDetailTestTags.TITLE)
             .assertTextEquals("Dune")
 
@@ -468,6 +471,9 @@ class DiscoverRequestsUiTest {
         composeRule.onNodeWithText("Arrival").performClick()
         composeRule.onNodeWithText("Arrival").assertExists()
         composeRule.onNodeWithContentDescription("Back").performClick()
+        composeRule
+            .onNodeWithTag(SeerrImmersiveDetailTestTags.ROOT)
+            .performScrollToNode(hasTestTag(SeerrImmersiveDetailTestTags.TITLE))
         composeRule
             .onNodeWithTag(SeerrImmersiveDetailTestTags.TITLE)
             .assertTextEquals("Dune")
