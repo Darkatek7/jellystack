@@ -60,8 +60,7 @@ class JellystackAccessibilityUiTest {
             // Responsive transitions can retain unplaced semantics nodes with zero bounds.
             .filter { node ->
                 node.boundsInRoot.width > 0f || node.boundsInRoot.height > 0f
-            }
-            .forEach { node ->
+            }.forEach { node ->
                 assertTrue(
                     "Clickable node ${node.config} at ${node.boundsInRoot} with children " +
                         "${node.children.map { it.config }} width was ${node.boundsInRoot.width}px",
