@@ -1,67 +1,62 @@
-```markdown
-# Datenschutzerklärung – Jellystack
+# Jellystack
 
-**Stand:** Oktober 2025  
+[![Google Play](https://img.shields.io/badge/Google_Play-Install-414141?logo=googleplay)](https://play.google.com/store/apps/details?id=app.jellystack.mobile)
+[![CI](https://github.com/Darkatek7/jellystack/actions/workflows/ci.yml/badge.svg)](https://github.com/Darkatek7/jellystack/actions/workflows/ci.yml)
+[![Security](https://github.com/Darkatek7/jellystack/actions/workflows/security.yml/badge.svg)](https://github.com/Darkatek7/jellystack/actions/workflows/security.yml)
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-7c4dff.svg)](LICENSE)
 
-Diese Datenschutzerklärung informiert über Art, Umfang und Zweck der Verarbeitung personenbezogener Daten in der Android-App **Jellystack Mobile**.
+Jellystack is a privacy-focused Jellyfin and Seerr client with a native Android experience. Browse and play your own media, manage requests, download for offline use, and keep playback state in sync—without a Jellystack cloud, ads, analytics, or tracking.
 
----
+## Highlights
 
-## 1. Verantwortlicher
-**Entwickler:** Darkatek7 
-**E-Mail:** jellystack@darkatek7.com
+- Jellyfin libraries, favourites, watched state, progress, search, and Quick Connect
+- Direct Play and HLS playback with audio, subtitle, and quality selection
+- Offline downloads stored in app-specific storage
+- Seerr discovery, requests, seasons, request status, trailers, and recommendations
+- Cinematic details with cast, ratings, streams, collections, and similar titles
+- Phone and tablet layouts, English and German, light and dark themes
+- Contextual Cast permissions and an optional biometric app lock
 
----
+Android is the stable, published platform. The shared Kotlin Multiplatform code and iOS host remain experimental; iOS is not currently distributed as a supported release.
 
-## 2. Allgemeines
-Die App **Jellystack** dient der Verbindung mit selbst gehosteten **Jellyfin**- und **Jellyseerr**-Servern.  
-Alle Verbindungen erfolgen direkt zwischen deinem Gerät und den von dir konfigurierten Servern.  
-Es werden **keine personenbezogenen Daten an den Entwickler oder Dritte übertragen**.
+## Privacy
 
----
+Jellystack connects directly to servers configured by the user. Server credentials and tokens are stored in the platform-protected credential store. The app has no analytics SDK, automatic log upload, advertising, or developer-operated media proxy.
 
-## 3. Verarbeitete Daten
+See [Privacy](docs/privacy.md), [Permissions](docs/permissions.md), and the [German privacy policy](privacy-policy-de).
 
-### a) Lokale Daten
-- Server-Adressen, Benutzernamen, Tokens  
-- Wiedergabe-Fortschritte, Einstellungen, Downloads  
+## Build
 
-Diese Daten bleiben ausschließlich auf deinem Gerät oder auf deinem eigenen Server gespeichert.
+Requirements:
 
-### b) Berechtigungen
-Die App kann folgende Berechtigungen verwenden:
+- JDK 17
+- Android SDK API 36
+- Xcode on macOS for iOS targets
 
-- **Internetzugriff:** Verbindung zu den von dir angegebenen Servern.  
-- **Dateizugriff (optional):** Speicherung von Offline-Downloads.
+All Gradle commands run from the repository root:
 
-### c) Fehler- und Nutzungsdaten
-Wenn du die integrierte **„Report Issue“**-Funktion nutzt, können anonymisierte Protokolle ohne personenbezogene Daten an den Entwickler übermittelt werden.
-
----
-
-## 4. Weitergabe von Daten
-Es erfolgt **keine Weitergabe** von Daten an Dritte oder externe Dienste.  
-Die App enthält **keine Werbung, Analyse- oder Trackingdienste**.
-
----
-
-## 5. Datenspeicherung und Sicherheit
-Alle gespeicherten Informationen verbleiben lokal auf deinem Gerät oder deinem selbst betriebenen Server.  
-Du kannst diese Daten jederzeit über die App-Einstellungen löschen oder durch Deinstallation der App entfernen.
-
----
-
-## 6. Rechte der Nutzer
-Du hast das Recht auf Auskunft, Berichtigung und Löschung deiner Daten.  
-Da keine Daten an den Entwickler übertragen werden, verwaltest du sie ausschließlich auf deinem eigenen Gerät oder Server.
-
----
-
-## 7. Änderungen dieser Erklärung
-Diese Datenschutzerklärung kann angepasst werden, wenn sich technische oder rechtliche Anforderungen ändern.  
-Die aktuelle Fassung ist jederzeit über den Play-Store-Eintrag abrufbar.
-
----
-
-*© 2025 Jellystack / Darkatek7*
+```bash
+./gradlew :app-android:assembleDebug
 ```
+
+Useful verification:
+
+```bash
+./gradlew spotlessCheck detekt
+./gradlew :app-android:check
+./gradlew :shared-network:jvmTest :shared-core:testDebugUnitTest
+```
+
+See [Building](docs/building.md) for local setup and [Architecture](docs/architecture.md) for module boundaries.
+
+## Contributing
+
+Issues, discussions, and pull requests are welcome. Every change—including maintainer changes—lands through a pull request with required CI checks.
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), and [SECURITY.md](SECURITY.md) before contributing.
+
+## License and independence
+
+Jellystack is licensed under [AGPL-3.0](LICENSE). See [Third-Party Notices](THIRD_PARTY_NOTICES.md) for dependencies.
+
+Jellystack is an independent community project and is not affiliated with or endorsed by Jellyfin, the Jellyfin project, Seerr, or their maintainers.

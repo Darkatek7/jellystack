@@ -1,0 +1,5 @@
+ALTER TABLE jellyfin_items ADD COLUMN series_id TEXT;
+ALTER TABLE jellyfin_items ADD COLUMN series_primary_image_tag TEXT;
+ALTER TABLE jellyfin_items ADD COLUMN series_thumb_image_tag TEXT;
+ALTER TABLE jellyfin_items ADD COLUMN series_backdrop_image_tag TEXT;
+ALTER TABLE jellyfin_items ADD COLUMN parent_logo_image_tag TEXT;

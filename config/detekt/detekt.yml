@@ -1,0 +1,31 @@
+build:
+  maxIssues: 0
+  excludeCorrectable: true
+
+config:
+  validation: true
+
+processors:
+  active: true
+
+console-reports:
+  active: true
+
+comments:
+  CommentOverPrivateFunction:
+    active: false
+  CommentOverPrivateProperty:
+    active: false
+
+style:
+  MagicNumber:
+    active: false
+  WildcardImport:
+    active: true
+    excludes: ["**/test/**", "**/androidTest/**"]
+
+complexity:
+  LongMethod:
+    threshold: 80
+  LongParameterList:
+    threshold: 6

@@ -1,0 +1,16 @@
+CREATE TABLE IF NOT EXISTS jellyfin_favorites (
+    item_id TEXT NOT NULL PRIMARY KEY,
+    updated_at INTEGER NOT NULL
+);
+
+selectAll:
+SELECT item_id FROM jellyfin_favorites;
+
+upsert:
+INSERT OR REPLACE INTO jellyfin_favorites(item_id, updated_at) VALUES (?, ?);
+
+delete:
+DELETE FROM jellyfin_favorites WHERE item_id = ?;
+
+clear:
+DELETE FROM jellyfin_favorites;

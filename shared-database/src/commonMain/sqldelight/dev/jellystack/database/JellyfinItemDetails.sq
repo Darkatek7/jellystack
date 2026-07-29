@@ -1,0 +1,22 @@
+CREATE TABLE jellyfin_item_details (
+    item_id TEXT NOT NULL PRIMARY KEY,
+    json TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+selectByItem:
+SELECT *
+FROM jellyfin_item_details
+WHERE item_id = ?;
+
+insertOrReplace:
+INSERT OR REPLACE INTO jellyfin_item_details (
+    item_id,
+    json,
+    updated_at
+)
+VALUES (?, ?, ?);
+
+deleteByItem:
+DELETE FROM jellyfin_item_details
+WHERE item_id = ?;

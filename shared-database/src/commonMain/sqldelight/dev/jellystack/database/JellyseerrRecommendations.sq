@@ -1,0 +1,35 @@
+CREATE TABLE jellyseerr_recommendations (
+    server_id TEXT NOT NULL,
+    rail TEXT NOT NULL,
+    page INTEGER NOT NULL,
+    items_json TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (server_id, rail, page)
+);
+
+selectByServerAndRail:
+SELECT server_id, rail, page, items_json, updated_at
+FROM jellyseerr_recommendations
+WHERE server_id = ?1 AND rail = ?2
+ORDER BY page;
+
+insertOrReplace:
+INSERT OR REPLACE INTO jellyseerr_recommendations(
+    server_id,
+    rail,
+    page,
+    items_json,
+    updated_at
+) VALUES (?1, ?2, ?3, ?4, ?5);
+
+deleteByServerAndRail:
+DELETE FROM jellyseerr_recommendations
+WHERE server_id = ?1 AND rail = ?2;
+
+deleteByServer:
+DELETE FROM jellyseerr_recommendations
+WHERE server_id = ?1;
+
+deleteAfterPage:
+DELETE FROM jellyseerr_recommendations
+WHERE server_id = ?1 AND rail = ?2 AND page > ?3;

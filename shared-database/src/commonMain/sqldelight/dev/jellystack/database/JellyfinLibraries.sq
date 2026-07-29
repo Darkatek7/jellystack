@@ -1,0 +1,33 @@
+CREATE TABLE jellyfin_libraries (
+    id TEXT NOT NULL PRIMARY KEY,
+    server_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    collection_type TEXT,
+    primary_image_tag TEXT,
+    item_count INTEGER,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+selectAllByServer:
+SELECT *
+FROM jellyfin_libraries
+WHERE server_id = ?
+ORDER BY name;
+
+insertOrReplace:
+INSERT OR REPLACE INTO jellyfin_libraries (
+    id,
+    server_id,
+    name,
+    collection_type,
+    primary_image_tag,
+    item_count,
+    created_at,
+    updated_at
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteByServer:
+DELETE FROM jellyfin_libraries
+WHERE server_id = ?;

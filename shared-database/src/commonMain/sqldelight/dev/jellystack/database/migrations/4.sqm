@@ -1,0 +1,8 @@
+CREATE TABLE jellyseerr_recommendations (
+    server_id TEXT NOT NULL,
+    rail TEXT NOT NULL,
+    page INTEGER NOT NULL,
+    items_json TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (server_id, rail, page)
+);
