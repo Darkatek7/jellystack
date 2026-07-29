@@ -457,7 +457,7 @@ class DiscoverRequestsUiTest {
         composeRule.onNodeWithText("Dune: Part Two").performClick()
         composeRule.onNodeWithText("Dune: Part Two").assertExists()
         composeRule.onNodeWithContentDescription("Back").performClick()
-        composeRule.onNodeWithText("Dune").assertExists()
+        composeRule.onNodeWithText("Dune", useUnmergedTree = true).assertExists()
 
         composeRule
             .onNodeWithTag(SeerrImmersiveDetailTestTags.ROOT)
@@ -465,7 +465,7 @@ class DiscoverRequestsUiTest {
         composeRule.onNodeWithText("Arrival").performClick()
         composeRule.onNodeWithText("Arrival").assertExists()
         composeRule.onNodeWithContentDescription("Back").performClick()
-        composeRule.onNodeWithText("Dune").assertExists()
+        composeRule.onNodeWithText("Dune", useUnmergedTree = true).assertExists()
     }
 
     @Test
