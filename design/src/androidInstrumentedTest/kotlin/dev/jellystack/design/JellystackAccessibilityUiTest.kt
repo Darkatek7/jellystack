@@ -21,9 +21,10 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import dev.jellystack.core.jellyseerr.JellyseerrCreateSelection
@@ -33,6 +34,7 @@ import dev.jellystack.core.jellyseerr.JellyseerrRequestProfileSelection
 import dev.jellystack.core.jellyseerr.JellyseerrSearchItem
 import dev.jellystack.design.components.ModalFocusScope
 import dev.jellystack.design.jellyseerr.RequestConfiguration
+import dev.jellystack.design.jellyseerr.RequestConfigurationTestTags
 import dev.jellystack.design.preview.JellystackPreviewFixture
 import dev.jellystack.design.theme.JellystackTheme
 import org.junit.Assert.assertTrue
@@ -109,7 +111,9 @@ class JellystackAccessibilityUiTest {
                     }
                 }
             }
-            composeRule.onNodeWithText(action).performScrollTo()
+            composeRule
+                .onNodeWithTag(RequestConfigurationTestTags.CONTENT)
+                .performScrollToNode(hasText(action))
         } finally {
             Locale.setDefault(previous)
         }

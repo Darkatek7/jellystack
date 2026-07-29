@@ -29,6 +29,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -50,6 +51,10 @@ import jellystack_mobile.design.generated.resources.server_default
 import jellystack_mobile.design.generated.resources.server_default_supporting
 import jellystack_mobile.design.generated.resources.submit_request
 import org.jetbrains.compose.resources.stringResource
+
+internal object RequestConfigurationTestTags {
+    const val CONTENT = "request_configuration_content"
+}
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
@@ -118,7 +123,11 @@ internal fun RequestConfiguration(
         sheetState = sheetState,
     ) {
         LazyColumn(
-            modifier = modifier.fillMaxWidth().fillMaxHeight(0.9f),
+            modifier =
+                modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.9f)
+                    .testTag(RequestConfigurationTestTags.CONTENT),
             contentPadding = PaddingValues(24.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {

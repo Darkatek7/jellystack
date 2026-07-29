@@ -53,6 +53,7 @@ import dev.jellystack.design.jellyseerr.DiscoverPendingOperation
 import dev.jellystack.design.jellyseerr.DiscoverScreen
 import dev.jellystack.design.jellyseerr.DiscoverSelectionContent
 import dev.jellystack.design.jellyseerr.DiscoverUiState
+import dev.jellystack.design.jellyseerr.RequestConfigurationTestTags
 import dev.jellystack.design.jellyseerr.SeerrImmersiveDetailTestTags
 import dev.jellystack.design.jellyseerr.reduce
 import dev.jellystack.design.layout.LocalResponsiveProfile
@@ -397,6 +398,9 @@ class DiscoverRequestsUiTest {
 
         composeRule.onNodeWithText("Search request profiles").assertExists()
         composeRule.onNodeWithText("Search seasons").assertExists()
+        composeRule
+            .onNodeWithTag(RequestConfigurationTestTags.CONTENT)
+            .performScrollToNode(hasText("Submit request"))
         composeRule.onNodeWithText("Submit request").assertIsEnabled()
     }
 
