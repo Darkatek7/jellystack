@@ -1366,7 +1366,7 @@ private fun ExtrasSection(
 }
 
 @Composable
-private fun InfoSection(
+internal fun InfoSection(
     detail: JellyfinItemDetail,
     enrichment: MediaDetailEnrichment,
     modifier: Modifier = Modifier,

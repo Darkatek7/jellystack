@@ -71,6 +71,7 @@ import dev.jellystack.design.jellyfin.DetailActionTestTags
 import dev.jellystack.design.jellyfin.HomeSpotlight
 import dev.jellystack.design.jellyfin.ImmersiveDetailTestTags
 import dev.jellystack.design.jellyfin.ImmersiveMediaDetailContent
+import dev.jellystack.design.jellyfin.InfoSection
 import dev.jellystack.design.jellyfin.JellyfinBrowseScreen
 import dev.jellystack.design.jellyfin.JellyfinDetailContent
 import dev.jellystack.design.jellyfin.LibraryCardTestTags
@@ -2048,16 +2049,14 @@ class LibraryAndMediaUiTest {
 
         composeRule.setContent {
             JellystackTheme(isDarkTheme = true) {
-                ImmersiveMediaDetailContent(
-                    item = item,
+                InfoSection(
                     detail = detail,
                     enrichment = MediaDetailEnrichment(seerrDetail = seerrDetail),
+                    modifier = Modifier.fillMaxSize(),
                 )
             }
         }
 
-        composeRule.onNodeWithTag("immersive_detail_tab_info").performClick()
-        composeRule.onNodeWithTag(ImmersiveDetailTestTags.ROOT).performScrollToIndex(4)
         composeRule.onNodeWithText("jellyfin-language").assertExists()
         composeRule.onNodeWithText("Jellyfin Country").assertExists()
         composeRule.onNodeWithText("Jellyfin Studio").assertExists()
