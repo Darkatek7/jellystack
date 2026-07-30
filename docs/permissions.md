@@ -14,4 +14,4 @@ The release manifest is checked against an allowlist by `:app-android:verifyRele
 
 Jellystack does not request phone state, device identity, broad photo/media access, or read/write external-storage permissions. Downloads use app-specific storage.
 
-Google Play can show permissions from older published versions in its historical “all versions” view. The manifest of the current 0.14.2 bundle is authoritative for current installs.
+Google Play can show permissions from older published versions in its historical “all versions” view. The manifest of the current 0.14.3 bundle is authoritative for current installs.

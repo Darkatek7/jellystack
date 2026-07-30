@@ -1,5 +1,13 @@
 # Release Notes
 
+## 0.14.3
+
+- Make Seerr request options follow the connected user's movie, series, 4K, advanced-request, and management permissions.
+- Accept Jellyfin and Seerr addresses using IPv4, bracketed IPv6, custom ports, and reverse-proxy paths.
+- Improve Android audio compatibility by advertising only codecs the device can decode and using explicit media audio focus.
+- Apply the preferred or manually selected audio track to the actual stream, including HLS source re-resolution.
+- Keep Discover search focused while typing, with debounced and cancellable network requests.
+
 ## 0.14.2
 
 - Significantly reduce Android permissions and remove phone-state and broad storage access.

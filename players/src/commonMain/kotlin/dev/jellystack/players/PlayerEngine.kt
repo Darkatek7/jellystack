@@ -10,9 +10,23 @@ sealed interface PlayerEvent {
 
     data object Completed : PlayerEvent
 
+    data class AudioTrackSelectionApplied(
+        val trackId: String,
+    ) : PlayerEvent
+
+    data class AudioTrackSelectionUnavailable(
+        val trackId: String,
+    ) : PlayerEvent
+
     data class Error(
         val throwable: Throwable,
     ) : PlayerEvent
+}
+
+enum class AudioTrackSelectionResult {
+    APPLIED,
+    PENDING,
+    UNAVAILABLE,
 }
 
 interface PlayerEngine {
@@ -34,7 +48,7 @@ interface PlayerEngine {
 
     fun seekTo(positionMs: Long)
 
-    fun setAudioTrack(track: AudioTrack?)
+    fun setAudioTrack(track: AudioTrack?): AudioTrackSelectionResult
 
     fun setSubtitleTrack(track: SubtitleTrack?)
 
@@ -62,7 +76,7 @@ class NoopPlayerEngine : PlayerEngine {
 
     override fun seekTo(positionMs: Long) = Unit
 
-    override fun setAudioTrack(track: AudioTrack?) = Unit
+    override fun setAudioTrack(track: AudioTrack?): AudioTrackSelectionResult = AudioTrackSelectionResult.PENDING
 
     override fun setSubtitleTrack(track: SubtitleTrack?) = Unit
 

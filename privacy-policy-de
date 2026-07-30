@@ -5,3 +5,5 @@ Die aktuelle deutsche Datenschutzerklärung befindet sich unter:
 <https://github.com/Darkatek7/jellystack/blob/main/docs/privacy-de.md>
 
 Jellystack verwendet keine Werbung, Analysen, Tracking oder automatischen Log-Uploads. Die App verbindet sich direkt mit den vom Nutzer eingerichteten Jellyfin- und Seerr-Servern. Weitere Details einschließlich lokaler Speicherung, Cast-Berechtigungen und Kontaktmöglichkeiten stehen in der vollständigen Datenschutzerklärung.
+
+Jellystack erstellt keine eigenen Benutzerkonten und speichert keine Kontodaten beim Entwickler. Lokale App-Daten lassen sich über Androids Funktion „Speicherinhalt löschen“ oder durch Deinstallation entfernen. Serverseitige Jellyfin- und Seerr-Daten werden vom jeweiligen Serveradministrator verwaltet.

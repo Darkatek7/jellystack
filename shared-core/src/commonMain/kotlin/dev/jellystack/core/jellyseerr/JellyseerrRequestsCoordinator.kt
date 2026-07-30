@@ -23,6 +23,7 @@ class JellyseerrRequestsCoordinator(
     private val enablePolling: Boolean = true,
     private val clock: Clock = Clock.System,
     private val autoStart: Boolean = true,
+    private val searchDebounceMillis: Long = DEFAULT_SEARCH_DEBOUNCE_MILLIS,
 ) {
     private val mutex = Mutex()
     private val _state = MutableStateFlow<JellyseerrRequestsState>(JellyseerrRequestsState.Loading)
@@ -114,25 +115,26 @@ class JellyseerrRequestsCoordinator(
                     }
                     return@launch
                 }
-                val trimmed = query.trim()
+                val normalizedQuery = query.trim()
                 mutex.withLock {
                     if (generation != searchGeneration) return@launch
-                    currentQuery = trimmed
-                    if (trimmed.isEmpty()) {
+                    currentQuery = query
+                    if (normalizedQuery.isEmpty()) {
                         lastSearchResults = emptyList()
-                        updateReadyState { it.copy(query = "", searchResults = emptyList(), isSearching = false) }
+                        updateReadyState { it.copy(query = query, searchResults = emptyList(), isSearching = false) }
                         return@launch
                     }
-                    updateReadyState { it.copy(query = trimmed, isSearching = true, searchResults = it.searchResults) }
+                    updateReadyState { it.copy(query = query, isSearching = true, searchResults = it.searchResults) }
                 }
-                cancellationSafeRunCatching { repository.search(environment, trimmed) }
+                delay(searchDebounceMillis)
+                cancellationSafeRunCatching { repository.search(environment, normalizedQuery) }
                     .onSuccess { results ->
                         mutex.withLock {
-                            if (generation != searchGeneration || currentQuery != trimmed) return@withLock
+                            if (generation != searchGeneration || currentQuery != query) return@withLock
                             lastSearchResults = results
                             updateReadyState {
                                 it.copy(
-                                    query = trimmed,
+                                    query = query,
                                     searchResults = results,
                                     isSearching = false,
                                 )
@@ -140,21 +142,21 @@ class JellyseerrRequestsCoordinator(
                         }
                     }.onFailure { error ->
                         JellystackLog.e(
-                            "Jellyseerr search failed for ${environment.serverId} with query '$trimmed': ${error.message}",
+                            "Jellyseerr search failed for ${environment.serverId}: ${error.message}",
                             error,
                         )
                         mutex.withLock {
-                            if (generation != searchGeneration || currentQuery != trimmed) return@withLock
+                            if (generation != searchGeneration || currentQuery != query) return@withLock
                             updateReadyState {
                                 it.copy(
-                                    query = trimmed,
+                                    query = query,
                                     searchResults = lastSearchResults,
                                     isSearching = false,
                                     message =
                                         nextMessage(
                                             kind = JellyseerrMessageKind.ERROR,
                                             code = JellyseerrMessageCode.SearchFailed,
-                                            subject = trimmed,
+                                            subject = normalizedQuery,
                                             detail = error.message,
                                         ),
                                 )
@@ -181,26 +183,67 @@ class JellyseerrRequestsCoordinator(
         item: JellyseerrSearchItem,
         profileSelection: JellyseerrRequestProfileSelection,
         seasons: JellyseerrCreateSelection? = null,
+        variant: JellyseerrRequestVariant? = null,
     ) {
         val submitKey = item.mediaType to item.tmdbId
         val operationKey = JellyseerrOperationKey.Submit(item.mediaType, item.tmdbId)
         scope.launch {
-            val environment =
+            val submitContext =
                 mutex.withLock {
                     val resolvedEnvironment = currentEnvironment ?: return@launch
+                    val capabilities =
+                        currentProfile?.requestCapabilities()
+                            ?: JellyseerrRequestCapabilities.NONE
+                    val selectedProfile =
+                        (profileSelection as? JellyseerrRequestProfileSelection.Profile)?.option
+                    val resolvedVariant =
+                        variant
+                            ?: selectedProfile
+                                ?.is4k
+                                ?.let {
+                                    if (it) {
+                                        JellyseerrRequestVariant.FOUR_K
+                                    } else {
+                                        JellyseerrRequestVariant.STANDARD
+                                    }
+                                }
+                            ?: JellyseerrRequestVariant.STANDARD
+                    if (!capabilities.canRequest(item.mediaType, resolvedVariant)) {
+                        updateReadyState {
+                            it.copy(
+                                message =
+                                    nextMessage(
+                                        kind = JellyseerrMessageKind.ERROR,
+                                        code = JellyseerrMessageCode.RequestPermissionDenied,
+                                        subject = item.title,
+                                        operationKey = operationKey,
+                                    ),
+                            )
+                        }
+                        return@launch
+                    }
                     if (!pendingSubmitKeys.add(submitKey)) return@launch
                     updateReadyState { it.copy(isPerformingAction = true) }
-                    resolvedEnvironment
+                    SubmitContext(
+                        environment = resolvedEnvironment,
+                        capabilities = capabilities,
+                        variant = resolvedVariant,
+                    )
                 }
             val selectedProfile =
-                (profileSelection as? JellyseerrRequestProfileSelection.Profile)?.option
+                (profileSelection as? JellyseerrRequestProfileSelection.Profile)
+                    ?.option
+                    ?.takeIf {
+                        submitContext.capabilities.canUseAdvancedRequests &&
+                            it.is4k == (submitContext.variant == JellyseerrRequestVariant.FOUR_K)
+                    }
             val tmdbId = item.tmdbId
             val payload =
                 JellyseerrCreateRequest(
                     mediaId = tmdbId,
                     tvdbId = item.tvdbId,
                     mediaType = item.mediaType,
-                    is4k = selectedProfile?.is4k ?: false,
+                    is4k = submitContext.variant == JellyseerrRequestVariant.FOUR_K,
                     seasons = seasons,
                     serverId = selectedProfile?.serviceId,
                     profileId = selectedProfile?.profileId,
@@ -213,7 +256,7 @@ class JellyseerrRequestsCoordinator(
             JellystackLog.d(
                 "Submitting Jellyseerr request tmdbId=$tmdbId type=${payload.mediaType} title='${item.title}' server=${payload.serverId}",
             )
-            when (val result = repository.createRequest(environment, payload)) {
+            when (val result = repository.createRequest(submitContext.environment, payload)) {
                 is JellyseerrCreateResult.Success -> {
                     mutex.withLock {
                         pendingSubmitKeys.remove(submitKey)
@@ -294,6 +337,10 @@ class JellyseerrRequestsCoordinator(
             languageProfile?.let(JellyseerrRequestProfileSelection::Profile)
                 ?: JellyseerrRequestProfileSelection.ServerDefault,
         seasons = seasons,
+        variant =
+            languageProfile?.let {
+                if (it.is4k) JellyseerrRequestVariant.FOUR_K else JellyseerrRequestVariant.STANDARD
+            },
     )
 
     fun deleteRequest(requestId: Int) {
@@ -582,14 +629,21 @@ class JellyseerrRequestsCoordinator(
             val page: JellyseerrRequestsPage,
             val counts: JellyseerrRequestCounts,
             val languageProfiles: JellyseerrLanguageProfiles,
+            val capabilities: JellyseerrRequestCapabilities,
         )
         val loadResult =
             cancellationSafeRunCatching {
                 val profile = repository.profile(environment)
-                val languageProfiles = repository.fetchLanguageProfiles(environment)
+                val capabilities = profile.requestCapabilities()
+                val languageProfiles =
+                    if (capabilities.canUseAdvancedRequests) {
+                        repository.fetchLanguageProfiles(environment)
+                    } else {
+                        JellyseerrLanguageProfiles.EMPTY
+                    }
                 val page = repository.fetchRequests(environment, currentFilter)
                 val counts = repository.fetchCounts(environment)
-                InitialLoad(profile, page, counts, languageProfiles)
+                InitialLoad(profile, page, counts, languageProfiles, capabilities)
             }
         loadResult
             .onSuccess { result ->
@@ -616,11 +670,12 @@ class JellyseerrRequestsCoordinator(
                             isPerformingAction = false,
                             pendingApprovals = pendingApprovalIds,
                             message = null,
-                            isAdmin = result.profile.canManageRequests(),
+                            isAdmin = result.capabilities.canManageRequests,
                             lastUpdated = lastUpdated,
                             languageProfiles = lastLanguageProfiles,
                             currentRequestsByMedia = currentRequestsByMedia.toMap(),
                             currentUserId = result.profile.id,
+                            capabilities = result.capabilities,
                         )
                 }
                 startPolling()
@@ -775,5 +830,12 @@ class JellyseerrRequestsCoordinator(
 
     companion object {
         private const val DEFAULT_POLL_INTERVAL_MILLIS = 30_000L
+        private const val DEFAULT_SEARCH_DEBOUNCE_MILLIS = 300L
     }
 }
+
+private data class SubmitContext(
+    val environment: JellyseerrEnvironment,
+    val capabilities: JellyseerrRequestCapabilities,
+    val variant: JellyseerrRequestVariant,
+)

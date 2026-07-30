@@ -1417,6 +1417,230 @@ class PlaybackControllerTest {
         }
 
     @Test
+    fun selectingAudioOnHlsReResolvesTheSourceAndPreservesPlaybackState() =
+        runTest {
+            val controllerScope = TestScope(UnconfinedTestDispatcher(testScheduler))
+            val engine = RecordingPlayerEngine()
+            val resolver = RecordingAudioSwitchResolver()
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = resolver,
+                    playerEngine = engine,
+                    scope = controllerScope,
+                )
+
+            try {
+                controller.play(
+                    PlaybackRequest.from(
+                        sampleItem(),
+                        sampleDetail(includeJapaneseAudio = true, includeVtt = true),
+                    ),
+                    testEnvironment(),
+                )
+                controller.selectSubtitle("3")
+                controller.updateProgress(23_456L)
+                controller.pause()
+
+                controller.selectAudioTrack("8")
+                controllerScope.advanceUntilIdle()
+
+                val session = assertNotNull(controller.currentSession())
+                assertEquals(2, resolver.requests.size)
+                assertEquals(8, resolver.requests.last().audioStreamIndex)
+                assertEquals(2, engine.prepareCount)
+                assertEquals("8", session.audioTrack?.id)
+                assertEquals(8, session.source.audioStreamIndex)
+                assertEquals(23_456L, session.positionMs)
+                assertEquals("3", session.subtitleTrack?.id)
+                assertTrue(session.isPaused)
+                assertEquals(23_456L, engine.lastStartPositionMs)
+                assertEquals("8", engine.lastAudioTrack?.id)
+                assertEquals("3", engine.lastSubtitleTrack?.id)
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
+    fun failedHlsAudioSwitchKeepsTheActuallyPlayingTrackSelected() =
+        runTest {
+            val controllerScope = TestScope(UnconfinedTestDispatcher(testScheduler))
+            val engine = RecordingPlayerEngine()
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = FailingAudioSwitchResolver(),
+                    playerEngine = engine,
+                    scope = controllerScope,
+                )
+
+            try {
+                controller.play(
+                    PlaybackRequest.from(
+                        sampleItem(),
+                        sampleDetail(includeJapaneseAudio = true),
+                    ),
+                    testEnvironment(),
+                )
+                val original = assertNotNull(controller.currentSession()).audioTrack
+
+                controller.selectAudioTrack("8")
+                controllerScope.advanceUntilIdle()
+
+                val session = assertNotNull(controller.currentSession())
+                assertEquals(original?.id, session.audioTrack?.id)
+                assertEquals(1, engine.prepareCount)
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
+    fun newerHlsAudioSelectionCancelsAnOlderPendingSwitch() =
+        runTest {
+            val firstSwitchStarted = CompletableDeferred<Unit>()
+            val releaseFirstSwitch = CompletableDeferred<Unit>()
+            val resolver =
+                DelayingAudioSwitchResolver(
+                    firstSwitchStarted = firstSwitchStarted,
+                    releaseFirstSwitch = releaseFirstSwitch,
+                )
+            val controllerScope = TestScope(StandardTestDispatcher(testScheduler))
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = resolver,
+                    playerEngine = RecordingPlayerEngine(),
+                    scope = controllerScope,
+                )
+            val baseDetail = sampleDetail(includeJapaneseAudio = true)
+            val detail =
+                baseDetail.copy(
+                    mediaSources =
+                        baseDetail.mediaSources.map { source ->
+                            source.copy(
+                                streams =
+                                    source.streams +
+                                        audioStream(
+                                            index = 9,
+                                            language = "deu",
+                                            isDefault = false,
+                                        ),
+                            )
+                        },
+                )
+
+            try {
+                controller.play(PlaybackRequest.from(sampleItem(), detail), testEnvironment())
+                controller.selectAudioTrack("8")
+                controllerScope.runCurrent()
+                firstSwitchStarted.await()
+
+                controller.selectAudioTrack("9")
+                releaseFirstSwitch.complete(Unit)
+                controllerScope.advanceUntilIdle()
+
+                val session = assertNotNull(controller.currentSession())
+                assertEquals("9", session.audioTrack?.id)
+                assertEquals(9, session.source.audioStreamIndex)
+                assertEquals(listOf<Int?>(1, 8, 9), resolver.requestedAudioIndices)
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
+    fun preferredEnglishAudioIsSentInTheInitialPlaybackInfoRequest() =
+        runTest {
+            val controllerScope = TestScope(UnconfinedTestDispatcher(testScheduler))
+            val resolver = RecordingAudioSwitchResolver()
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = resolver,
+                    playerEngine = RecordingPlayerEngine(),
+                    playbackPreferencesProvider =
+                        PlaybackPreferencesProvider {
+                            AppSettings(preferredAudioLanguage = "eng")
+                        },
+                    scope = controllerScope,
+                )
+
+            try {
+                controller.play(
+                    PlaybackRequest.from(
+                        sampleItem(),
+                        sampleDetail(
+                            includeJapaneseAudio = true,
+                            englishIsDefault = false,
+                        ),
+                    ),
+                    testEnvironment(),
+                )
+
+                assertEquals(8, resolver.requests.single().audioStreamIndex)
+                assertEquals("eng", controller.currentSession()?.audioTrack?.language)
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
+    fun pendingDirectAudioSelectionUpdatesStateOnlyAfterEngineConfirmation() =
+        runTest {
+            val controllerScope = TestScope(UnconfinedTestDispatcher(testScheduler))
+            val engine =
+                RecordingPlayerEngine().apply {
+                    audioSelectionResult = AudioTrackSelectionResult.PENDING
+                }
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = TestPlaybackSourceResolver(),
+                    playerEngine = engine,
+                    scope = controllerScope,
+                )
+            val baseDetail = sampleDetail(withDirect = true)
+            val detail =
+                baseDetail.copy(
+                    mediaSources =
+                        baseDetail.mediaSources.map { source ->
+                            if (source.id == "direct-source") {
+                                source.copy(
+                                    streams =
+                                        source.streams +
+                                            audioStream(
+                                                index = 8,
+                                                language = "jpn",
+                                                isDefault = false,
+                                            ),
+                                )
+                            } else {
+                                source
+                            }
+                        },
+                )
+
+            try {
+                controller.play(
+                    PlaybackRequest.from(
+                        sampleItem(),
+                        detail,
+                    ),
+                    testEnvironment(),
+                )
+                val originalTrackId = controller.currentSession()?.audioTrack?.id
+
+                controller.selectAudioTrack("8")
+                assertEquals(originalTrackId, controller.currentSession()?.audioTrack?.id)
+
+                engine.emitEvent(PlayerEvent.AudioTrackSelectionApplied("8"))
+                controllerScope.advanceUntilIdle()
+
+                assertEquals("8", controller.currentSession()?.audioTrack?.id)
+                assertEquals(8, controller.currentSession()?.source?.audioStreamIndex)
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
     fun qualityOptionsDoNotExposeMediaTitleAsDirectQuality() {
         val episodeTitle = "MEINE WIEDERGEBURT ALS SCHLEIM IN EINER ANDEREN WELT - E01"
         val source =
@@ -2014,6 +2238,74 @@ private class QueuePlaybackSourceResolver(
     ): ResolvedPlaybackSource = queue.removeFirst()
 }
 
+private class RecordingAudioSwitchResolver : PlaybackSourceResolver {
+    val requests = mutableListOf<PlaybackSourceOptions>()
+
+    override suspend fun resolve(
+        request: PlaybackRequest,
+        selection: PlaybackStreamSelection,
+        environment: JellyfinEnvironment,
+        startPositionMs: Long,
+        options: PlaybackSourceOptions,
+    ): ResolvedPlaybackSource {
+        requests += options
+        return resolvedSource(
+            url = "https://example.test/${request.mediaId}-${options.audioStreamIndex}.m3u8",
+            mode = PlaybackMode.HLS,
+            playSessionId = options.playSessionId ?: "play-audio",
+            mediaSourceId = selection.sourceId,
+        ).copy(audioStreamIndex = options.audioStreamIndex)
+    }
+}
+
+private class FailingAudioSwitchResolver : PlaybackSourceResolver {
+    private var calls = 0
+
+    override suspend fun resolve(
+        request: PlaybackRequest,
+        selection: PlaybackStreamSelection,
+        environment: JellyfinEnvironment,
+        startPositionMs: Long,
+        options: PlaybackSourceOptions,
+    ): ResolvedPlaybackSource {
+        calls += 1
+        if (calls > 1) error("Audio switch failed")
+        return resolvedSource(
+            url = "https://example.test/${request.mediaId}.m3u8",
+            mode = PlaybackMode.HLS,
+            playSessionId = "play-audio",
+            mediaSourceId = selection.sourceId,
+        ).copy(audioStreamIndex = options.audioStreamIndex)
+    }
+}
+
+private class DelayingAudioSwitchResolver(
+    private val firstSwitchStarted: CompletableDeferred<Unit>,
+    private val releaseFirstSwitch: CompletableDeferred<Unit>,
+) : PlaybackSourceResolver {
+    val requestedAudioIndices = mutableListOf<Int?>()
+
+    override suspend fun resolve(
+        request: PlaybackRequest,
+        selection: PlaybackStreamSelection,
+        environment: JellyfinEnvironment,
+        startPositionMs: Long,
+        options: PlaybackSourceOptions,
+    ): ResolvedPlaybackSource {
+        requestedAudioIndices += options.audioStreamIndex
+        if (requestedAudioIndices.size == 2) {
+            firstSwitchStarted.complete(Unit)
+            releaseFirstSwitch.await()
+        }
+        return resolvedSource(
+            url = "https://example.test/${request.mediaId}-${options.audioStreamIndex}.m3u8",
+            mode = PlaybackMode.HLS,
+            playSessionId = options.playSessionId ?: "play-audio",
+            mediaSourceId = selection.sourceId,
+        ).copy(audioStreamIndex = options.audioStreamIndex)
+    }
+}
+
 private class BlockingInitialPlaybackResolver(
     private val firstResolveStarted: CompletableDeferred<Unit>,
     private val allowFirstResolve: CompletableDeferred<Unit>,
@@ -2151,15 +2443,25 @@ private fun sampleDetail(
     includeAss: Boolean = false,
     includeSsa: Boolean = false,
     includeJapaneseAudio: Boolean = false,
+    englishIsDefault: Boolean = true,
     durationMs: Long = 90_000L,
 ): JellyfinItemDetail {
     val baseStreams =
         mutableListOf(
-            audioStream(index = 1, language = "en", isDefault = true),
+            audioStream(
+                index = 1,
+                language = if (englishIsDefault) "en" else "jpn",
+                isDefault = true,
+            ),
             videoStream(displayTitle = "720p", codec = "h264"),
         )
     if (includeJapaneseAudio) {
-        baseStreams += audioStream(index = 8, language = "jpn", isDefault = false)
+        baseStreams +=
+            audioStream(
+                index = 8,
+                language = if (englishIsDefault) "jpn" else "eng",
+                isDefault = false,
+            )
     }
     if (includeSrt) {
         baseStreams += subtitleStream(index = 2, codec = "srt", displayTitle = "English SRT")
@@ -2302,6 +2604,7 @@ private class RecordingPlayerEngine : PlayerEngine {
     var lastQuality: Int? = null
     var released = false
     var prepareCount = 0
+    var audioSelectionResult = AudioTrackSelectionResult.APPLIED
 
     override suspend fun prepare(
         source: ResolvedPlaybackSource,
@@ -2332,8 +2635,9 @@ private class RecordingPlayerEngine : PlayerEngine {
         seekPositions += positionMs
     }
 
-    override fun setAudioTrack(track: AudioTrack?) {
+    override fun setAudioTrack(track: AudioTrack?): AudioTrackSelectionResult {
         lastAudioTrack = track
+        return audioSelectionResult
     }
 
     override fun setSubtitleTrack(track: SubtitleTrack?) {
@@ -2379,7 +2683,7 @@ private class BlockingPlayerEngine : PlayerEngine {
 
     override fun seekTo(positionMs: Long) = Unit
 
-    override fun setAudioTrack(track: AudioTrack?) = Unit
+    override fun setAudioTrack(track: AudioTrack?): AudioTrackSelectionResult = AudioTrackSelectionResult.PENDING
 
     override fun setSubtitleTrack(track: SubtitleTrack?) = Unit
 

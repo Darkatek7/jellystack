@@ -40,9 +40,11 @@ import dev.jellystack.core.jellyseerr.JellyseerrMediaDetailState
 import dev.jellystack.core.jellyseerr.JellyseerrMediaTrailer
 import dev.jellystack.core.jellyseerr.JellyseerrMediaType
 import dev.jellystack.core.jellyseerr.JellyseerrMediaVideo
+import dev.jellystack.core.jellyseerr.JellyseerrRequestCapabilities
 import dev.jellystack.core.jellyseerr.JellyseerrRequestProfileSelection
 import dev.jellystack.core.jellyseerr.JellyseerrRequestStatus
 import dev.jellystack.core.jellyseerr.JellyseerrRequestSummary
+import dev.jellystack.core.jellyseerr.JellyseerrRequestVariant
 import dev.jellystack.core.jellyseerr.JellyseerrSearchItem
 import jellystack_mobile.design.generated.resources.Res
 import jellystack_mobile.design.generated.resources.cancel
@@ -57,6 +59,7 @@ import jellystack_mobile.design.generated.resources.request_action_delete_media
 import jellystack_mobile.design.generated.resources.request_action_delete_media_confirm
 import jellystack_mobile.design.generated.resources.request_detail_load_failed
 import jellystack_mobile.design.generated.resources.request_more_seasons
+import jellystack_mobile.design.generated.resources.request_permission_denied
 import jellystack_mobile.design.generated.resources.request_status_approved
 import jellystack_mobile.design.generated.resources.request_status_completed
 import jellystack_mobile.design.generated.resources.request_status_declined
@@ -75,9 +78,17 @@ internal fun DiscoverSelectionContent(
     requests: List<JellyseerrRequestSummary> = emptyList(),
     currentRequestsByMedia: Map<Pair<JellyseerrMediaType, Int>, JellyseerrRequestSummary> = emptyMap(),
     liveRequestStateAvailable: Boolean = false,
+    capabilities: JellyseerrRequestCapabilities = JellyseerrRequestCapabilities.ALL,
     onSelectProfile: (JellyseerrRequestProfileSelection) -> Unit,
+    onSelectVariant: (JellyseerrRequestVariant) -> Unit = {},
     onSelectSeasons: (JellyseerrCreateSelection) -> Unit,
     onSubmit: (JellyseerrSearchItem, JellyseerrRequestProfileSelection, JellyseerrCreateSelection?) -> Unit,
+    onSubmitVariant: (
+        JellyseerrSearchItem,
+        JellyseerrRequestProfileSelection,
+        JellyseerrCreateSelection?,
+        JellyseerrRequestVariant,
+    ) -> Unit = { item, profile, seasons, _ -> onSubmit(item, profile, seasons) },
     onApprove: (JellyseerrRequestSummary) -> Unit,
     onDelete: (JellyseerrRequestSummary) -> Unit,
     onRemoveMedia: (JellyseerrRequestSummary) -> Unit,
@@ -121,6 +132,7 @@ internal fun DiscoverSelectionContent(
             item = item,
             request = request,
             detailState = detailState,
+            capabilities = capabilities,
             onApprove = onApprove,
             onDelete = onDelete,
             onRemoveMedia = onRemoveMedia,
@@ -162,9 +174,11 @@ internal fun DiscoverSelectionContent(
             state = state,
             detailState = detailState,
             languageProfiles = languageProfiles,
+            capabilities = capabilities,
             onSelectProfile = onSelectProfile,
+            onSelectVariant = onSelectVariant,
             onSelectSeasons = onSelectSeasons,
-            onSubmit = onSubmit,
+            onSubmit = onSubmitVariant,
             onClose = onCloseRequestConfiguration,
             onRetryDetail = onRetryDetail,
             initialFocusModifier = initialFocusModifier,
@@ -178,6 +192,7 @@ private fun DetailEntryContent(
     item: JellyseerrSearchItem,
     request: JellyseerrRequestSummary?,
     detailState: JellyseerrMediaDetailState?,
+    capabilities: JellyseerrRequestCapabilities,
     onApprove: (JellyseerrRequestSummary) -> Unit,
     onDelete: (JellyseerrRequestSummary) -> Unit,
     onRemoveMedia: (JellyseerrRequestSummary) -> Unit,
@@ -228,9 +243,12 @@ private fun DetailEntryContent(
             mediaStatus = mediaStatus,
             hasRequest = request != null,
             requestableSeasons = remainingSeasons,
+            capabilities = capabilities,
         )
     val status =
-        if (requestCommand.showStatus) {
+        if (requestCommand.permissionDenied) {
+            stringResource(Res.string.request_permission_denied)
+        } else if (requestCommand.showStatus) {
             availabilityLabel(item)
                 ?: request?.requestStatus?.localizedLabel()
         } else {
@@ -407,9 +425,16 @@ private fun RequestItemConfiguration(
     state: DiscoverUiState,
     detailState: JellyseerrMediaDetailState?,
     languageProfiles: JellyseerrLanguageProfiles,
+    capabilities: JellyseerrRequestCapabilities,
     onSelectProfile: (JellyseerrRequestProfileSelection) -> Unit,
+    onSelectVariant: (JellyseerrRequestVariant) -> Unit,
     onSelectSeasons: (JellyseerrCreateSelection) -> Unit,
-    onSubmit: (JellyseerrSearchItem, JellyseerrRequestProfileSelection, JellyseerrCreateSelection?) -> Unit,
+    onSubmit: (
+        JellyseerrSearchItem,
+        JellyseerrRequestProfileSelection,
+        JellyseerrCreateSelection?,
+        JellyseerrRequestVariant,
+    ) -> Unit,
     onClose: () -> Unit,
     onRetryDetail: (JellyseerrSearchItem) -> Unit,
     initialFocusModifier: Modifier,
@@ -474,14 +499,24 @@ private fun RequestItemConfiguration(
         availableSeasons = remainingSeasons,
         selected = state.pendingProfileSelection,
         seasonSelection = state.pendingSeasonSelection,
+        capabilities = capabilities,
+        variant = state.pendingRequestVariant,
         requestAllAvailableSeasonsExplicitly = request != null,
         isSubmitting =
             state.pendingOperation is DiscoverPendingOperation.Submit &&
                 state.pendingOperation.mediaType == item.mediaType &&
                 state.pendingOperation.tmdbId == item.tmdbId,
         onSelect = onSelectProfile,
+        onSelectVariant = onSelectVariant,
         onSelectSeasons = onSelectSeasons,
-        onSubmit = { onSubmit(item, state.pendingProfileSelection, it) },
+        onSubmit = {
+            onSubmit(
+                item,
+                state.pendingProfileSelection,
+                it,
+                state.pendingRequestVariant,
+            )
+        },
         onClose = onClose,
         initialFocusModifier = initialFocusModifier,
     )

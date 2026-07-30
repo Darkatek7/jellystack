@@ -14,8 +14,25 @@ enum class PlaybackVideoCodec(
     H264("h264"),
 }
 
+enum class PlaybackAudioCodec(
+    val jellyfinName: String,
+) {
+    AAC("aac"),
+    MP3("mp3"),
+    AC3("ac3"),
+    EAC3("eac3"),
+    OPUS("opus"),
+    VORBIS("vorbis"),
+    FLAC("flac"),
+}
+
 data class PlaybackDecoderCapabilities(
     val videoCodecs: Set<PlaybackVideoCodec>,
+    val audioCodecs: Set<PlaybackAudioCodec> =
+        setOf(
+            PlaybackAudioCodec.AAC,
+            PlaybackAudioCodec.MP3,
+        ),
 )
 
 fun interface PlaybackDeviceProfileProvider {
@@ -41,18 +58,22 @@ object PlaybackDeviceProfileFactory {
         fun directProfile(
             container: String,
             supportedCodecs: Set<PlaybackVideoCodec>,
-            audioCodec: String,
+            supportedAudioCodecs: Set<PlaybackAudioCodec>,
         ): JellyfinDirectPlayProfileDto? {
             val codecs = directCodecs.filter(supportedCodecs::contains)
-            return codecs
-                .takeIf { it.isNotEmpty() }
-                ?.let {
-                    JellyfinDirectPlayProfileDto(
-                        container = container,
-                        videoCodec = it.joinToString(",") { codec -> codec.jellyfinName },
-                        audioCodec = audioCodec,
-                    )
-                }
+            val audioCodecs =
+                PlaybackAudioCodec.entries
+                    .filter(capabilities.audioCodecs::contains)
+                    .filter(supportedAudioCodecs::contains)
+            return if (codecs.isNotEmpty() && audioCodecs.isNotEmpty()) {
+                JellyfinDirectPlayProfileDto(
+                    container = container,
+                    videoCodec = codecs.joinToString(",") { codec -> codec.jellyfinName },
+                    audioCodec = audioCodecs.joinToString(",") { codec -> codec.jellyfinName },
+                )
+            } else {
+                null
+            }
         }
 
         return JellyfinDeviceProfileDto(
@@ -67,22 +88,39 @@ object PlaybackDeviceProfileFactory {
                                 PlaybackVideoCodec.HEVC,
                                 PlaybackVideoCodec.H264,
                             ),
-                        audioCodec = "aac,mp3,ac3,eac3,flac",
+                        supportedAudioCodecs =
+                            setOf(
+                                PlaybackAudioCodec.AAC,
+                                PlaybackAudioCodec.MP3,
+                                PlaybackAudioCodec.AC3,
+                                PlaybackAudioCodec.EAC3,
+                                PlaybackAudioCodec.FLAC,
+                            ),
                     ),
                     directProfile(
                         container = "mkv",
                         supportedCodecs = PlaybackVideoCodec.entries.toSet(),
-                        audioCodec = "aac,mp3,ac3,eac3,opus,vorbis,flac",
+                        supportedAudioCodecs = PlaybackAudioCodec.entries.toSet(),
                     ),
                     directProfile(
                         container = "webm",
                         supportedCodecs = setOf(PlaybackVideoCodec.AV1, PlaybackVideoCodec.VP9),
-                        audioCodec = "opus,vorbis",
+                        supportedAudioCodecs =
+                            setOf(
+                                PlaybackAudioCodec.OPUS,
+                                PlaybackAudioCodec.VORBIS,
+                            ),
                     ),
                     directProfile(
                         container = "ts,mpegts",
                         supportedCodecs = setOf(PlaybackVideoCodec.HEVC, PlaybackVideoCodec.H264),
-                        audioCodec = "aac,mp3,ac3,eac3",
+                        supportedAudioCodecs =
+                            setOf(
+                                PlaybackAudioCodec.AAC,
+                                PlaybackAudioCodec.MP3,
+                                PlaybackAudioCodec.AC3,
+                                PlaybackAudioCodec.EAC3,
+                            ),
                     ),
                 ),
             transcodingProfiles =

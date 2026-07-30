@@ -47,6 +47,7 @@
     <string name="onboarding_seerr_body">F&#252;ge deine Seerr-URL hinzu. Jellystack versucht zuerst das verbundene Jellyfin-Konto.</string>
     <string name="onboarding_required_error">Dieses Feld ist erforderlich.</string>
     <string name="onboarding_url_error">Gib eine g&#252;ltige Server-URL ein.</string>
+    <string name="server_url_missing_protocol">Beginne die Adresse mit http:// oder https://, zum Beispiel http://192.168.1.20:8096.</string>
     <string name="show_password">Passwort anzeigen</string>
     <string name="hide_password">Passwort ausblenden</string>
     <string name="onboarding_saving">Verbindung wird hergestellt&#8230;</string>
@@ -153,6 +154,11 @@
     <string name="search_and_requests_supporting">Finde einen Titel, stelle eine Anfrage oder pr&#252;fe den Status.</string>
     <string name="back_to_discover">Zur&#252;ck zu Entdecken</string>
     <string name="request_profile_title">Anfrageprofil</string>
+    <string name="request_variant_title">Anfrageversion</string>
+    <string name="request_variant_standard">Standard</string>
+    <string name="request_variant_4k">4K</string>
+    <string name="request_permission_denied">Dein Seerr-Konto darf diesen Titel nicht anfragen.</string>
+    <string name="audio_track_switch_failed">Die Audiospur konnte nicht gewechselt werden. Die Wiedergabe läuft mit der vorherigen Spur weiter.</string>
     <string name="server_default">Serverstandard</string>
     <string name="server_default_supporting">Verwendet das im Seerr-Server konfigurierte Profil.</string>
     <string name="request_seasons_title">Staffeln</string>
@@ -393,6 +399,10 @@
     <string name="whats_new_0142_permissions">Deutlich reduzierte Android-Berechtigungen mit klaren, kontextbezogenen Anfragen.</string>
     <string name="whats_new_0142_privacy">Neue Erklärungen zu Berechtigungen und Datenschutz direkt in den Einstellungen.</string>
     <string name="whats_new_0142_open_source">Jellystack ist jetzt vollständig unter GPL-3.0 quelloffen.</string>
+    <string name="whats_new_0143_seerr_permissions">Seerr-Anfragen respektieren jetzt deine Serverrechte.</string>
+    <string name="whats_new_0143_server_addresses">IP-Adressen und benutzerdefinierte Ports funktionieren jetzt zuverlässig.</string>
+    <string name="whats_new_0143_audio">Verbesserte Audiokompatibilität und korrekte Sprachauswahl.</string>
+    <string name="whats_new_0143_search">Die Discover-Suche bleibt beim Tippen geöffnet.</string>
     <string name="insecure_http_warning">Dieser Server verwendet unverschlüsseltes HTTP. Zugangsdaten und Medienverkehr können für andere im Netzwerk sichtbar sein. Verwende wenn möglich HTTPS.</string>
     <string name="insecure_http_confirm">Ich verstehe das Risiko und möchte diesen HTTP-Server verwenden</string>
     <string name="privacy_title">Berechtigungen &amp; Datenschutz</string>

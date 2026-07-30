@@ -1,6 +1,6 @@
 # Jellystack Privacy Policy
 
-Last updated: 27 July 2026
+Last updated: 30 July 2026
 
 Jellystack is a self-hosted media client. It does not operate a Jellystack cloud service.
 
@@ -11,6 +11,12 @@ Jellystack connects directly from the user's device to Jellyfin and Seerr server
 Server configuration, access tokens, session credentials, preferences, playback progress pending synchronization, and offline-download metadata are stored locally. Authentication secrets use the platform-protected credential store where supported.
 
 Jellystack contains no advertising, analytics SDK, tracking, or automatic log upload. Debug information stays on the device unless the user deliberately shares sanitized information.
+
+## Accounts and deletion
+
+Jellystack does not create or operate user accounts. It only signs in to existing accounts on Jellyfin and Seerr servers selected by the user. Those accounts and their server-side data are controlled by the selected server and its administrator, not by the Jellystack developer.
+
+All locally stored Jellystack data can be removed through Android's **Clear storage** action or by uninstalling the app. To delete a Jellyfin or Seerr account or other server-side data, contact the administrator of that server.
 
 ## Optional Google Cast
 

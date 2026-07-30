@@ -93,6 +93,20 @@ class JellyseerrRepositoryTest {
                 HttpClient(
                     MockEngine { request ->
                         when {
+                            request.method == HttpMethod.Get && request.url.encodedPath == "/api/v1/auth/me" ->
+                                respondJson(
+                                    """{"id":1,"displayName":"Requester","permissions":${
+                                        JellyseerrPermission.REQUEST or JellyseerrPermission.REQUEST_ADVANCED
+                                    }}""",
+                                )
+                            request.method == HttpMethod.Get && request.url.encodedPath == "/api/v1/request" ->
+                                respondJson(
+                                    """{"pageInfo":{"pages":0,"pageSize":20,"results":0,"page":1},"results":[]}""",
+                                )
+                            request.method == HttpMethod.Get && request.url.encodedPath == "/api/v1/request/count" ->
+                                respondJson(
+                                    """{"total":0,"movie":0,"pending":0,"approved":0,"processing":0,"available":0,"completed":0,"declined":0,"tv":0}""",
+                                )
                             request.method == HttpMethod.Post && request.url.encodedPath == "/api/v1/request" -> {
                                 val bodyText = (request.body as? TextContent)?.text
                                 assertNotNull(bodyText, "Expected JSON request body")
@@ -139,7 +153,15 @@ class JellyseerrRepositoryTest {
                     enablePolling = false,
                 )
 
-            advanceUntilIdle()
+            val readyState =
+                withContext(Dispatchers.Default) {
+                    withTimeout(5_000) {
+                        coordinator.state.first { it !is JellyseerrRequestsState.Loading }
+                    }
+                }
+            assertIs<JellyseerrRequestsState.Ready>(readyState)
+            assertTrue(readyState.capabilities.canRequestMovie)
+            assertTrue(readyState.capabilities.canUseAdvancedRequests)
 
             val item =
                 JellyseerrSearchItem(
@@ -175,7 +197,9 @@ class JellyseerrRepositoryTest {
                 profileSelection = JellyseerrRequestProfileSelection.ServerDefault,
             )
             advanceUntilIdle()
-            bodyRecorded.receive()
+            withContext(Dispatchers.Default) {
+                withTimeout(5_000) { bodyRecorded.receive() }
+            }
 
             val serverDefaultPayload =
                 NetworkJson.default.parseToJsonElement(recordedBodies.single()).jsonObject
@@ -190,7 +214,9 @@ class JellyseerrRepositoryTest {
                 profileSelection = JellyseerrRequestProfileSelection.Profile(profile),
             )
             advanceUntilIdle()
-            bodyRecorded.receive()
+            withContext(Dispatchers.Default) {
+                withTimeout(5_000) { bodyRecorded.receive() }
+            }
 
             val namedPayload =
                 NetworkJson.default.parseToJsonElement(recordedBodies.last()).jsonObject

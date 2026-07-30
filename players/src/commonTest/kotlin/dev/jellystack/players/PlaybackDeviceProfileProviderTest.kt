@@ -13,12 +13,14 @@ class PlaybackDeviceProfileProviderTest {
                 name = "Test Android",
                 capabilities =
                     PlaybackDecoderCapabilities(
-                        setOf(
-                            PlaybackVideoCodec.AV1,
-                            PlaybackVideoCodec.HEVC,
-                            PlaybackVideoCodec.VP9,
-                            PlaybackVideoCodec.H264,
-                        ),
+                        videoCodecs =
+                            setOf(
+                                PlaybackVideoCodec.AV1,
+                                PlaybackVideoCodec.HEVC,
+                                PlaybackVideoCodec.VP9,
+                                PlaybackVideoCodec.H264,
+                            ),
+                        audioCodecs = PlaybackAudioCodec.entries.toSet(),
                     ),
             )
 
@@ -68,11 +70,34 @@ class PlaybackDeviceProfileProviderTest {
         val profile =
             PlaybackDeviceProfileFactory.create(
                 name = "VP9 only",
-                capabilities = PlaybackDecoderCapabilities(setOf(PlaybackVideoCodec.VP9)),
+                capabilities =
+                    PlaybackDecoderCapabilities(
+                        videoCodecs = setOf(PlaybackVideoCodec.VP9),
+                        audioCodecs = setOf(PlaybackAudioCodec.OPUS, PlaybackAudioCodec.VORBIS),
+                    ),
             )
 
         assertEquals(listOf("mkv", "webm"), profile.directPlayProfiles.map { it.container })
         assertTrue(profile.directPlayProfiles.all { it.videoCodec == "vp9" })
         assertTrue(profile.transcodingProfiles.isEmpty())
+    }
+
+    @Test
+    fun directPlayProfilesNeverAdvertiseUndetectedAudioCodecs() {
+        val profile =
+            PlaybackDeviceProfileFactory.create(
+                name = "AAC only",
+                capabilities =
+                    PlaybackDecoderCapabilities(
+                        videoCodecs = setOf(PlaybackVideoCodec.H264),
+                        audioCodecs = setOf(PlaybackAudioCodec.AAC),
+                    ),
+            )
+
+        assertTrue(profile.directPlayProfiles.isNotEmpty())
+        assertTrue(profile.directPlayProfiles.all { it.audioCodec == "aac" })
+        assertFalse(profile.directPlayProfiles.any { it.audioCodec.contains("ac3") })
+        assertFalse(profile.directPlayProfiles.any { it.audioCodec.contains("eac3") })
+        assertFalse(profile.directPlayProfiles.any { it.audioCodec.contains("opus") })
     }
 }

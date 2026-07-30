@@ -6,10 +6,13 @@ import dev.jellystack.core.jellyseerr.JellyseerrMediaAvailability
 import dev.jellystack.core.jellyseerr.JellyseerrMediaStatus
 import dev.jellystack.core.jellyseerr.JellyseerrMediaType
 import dev.jellystack.core.jellyseerr.JellyseerrMessageCode
+import dev.jellystack.core.jellyseerr.JellyseerrPermission
 import dev.jellystack.core.jellyseerr.JellyseerrRecommendationRail
+import dev.jellystack.core.jellyseerr.JellyseerrRequestCapabilities
 import dev.jellystack.core.jellyseerr.JellyseerrRequestFilter
 import dev.jellystack.core.jellyseerr.JellyseerrRequestProfileSelection
 import dev.jellystack.core.jellyseerr.JellyseerrRequestStatus
+import dev.jellystack.core.jellyseerr.JellyseerrRequestVariant
 import dev.jellystack.core.jellyseerr.JellyseerrSearchItem
 import dev.jellystack.core.jellyseerr.JellyseerrSeasonStatus
 import dev.jellystack.core.jellyseerr.JellyseerrUser
@@ -22,6 +25,36 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class DiscoverNavigationStateTest {
+    @Test
+    fun queryChangesDoNotRequestDestinationFocusReset() {
+        assertFalse(DiscoverAction.RequestQueryChanged("Dune ").requiresDestinationDispatch())
+        assertTrue(DiscoverAction.RequestFilterChanged(JellyseerrRequestFilter.PENDING).requiresDestinationDispatch())
+    }
+
+    @Test
+    fun switchingRequestVariantResetsAnIncompatibleAdvancedProfile() {
+        val profile =
+            JellyseerrRequestProfileSelection.Profile(
+                JellyseerrLanguageProfileOption(
+                    languageProfileId = 11,
+                    name = "Movie HD",
+                    serviceId = 21,
+                    serviceName = "Radarr",
+                    is4k = false,
+                    isDefault = false,
+                    profileId = 31,
+                ),
+            )
+
+        val updated =
+            DiscoverUiState()
+                .reduce(DiscoverAction.SelectProfile(profile))
+                .reduce(DiscoverAction.SelectRequestVariant(JellyseerrRequestVariant.FOUR_K))
+
+        assertEquals(JellyseerrRequestVariant.FOUR_K, updated.pendingRequestVariant)
+        assertEquals(JellyseerrRequestProfileSelection.ServerDefault, updated.pendingProfileSelection)
+    }
+
     @Test
     fun requestsRoundTripPreservesFeedAndRequestState() {
         val initial =
@@ -330,6 +363,34 @@ class DiscoverNavigationStateTest {
                 requestableSeasons = listOf(2, 3),
             ).primaryAction,
         )
+    }
+
+    @Test
+    fun requestCommandHidesMovieActionWithoutMoviePermission() {
+        val tvOnly =
+            JellyseerrRequestCapabilities.fromPermissions(JellyseerrPermission.REQUEST_TV)
+
+        val movie =
+            resolveSeerrRequestCommand(
+                mediaType = JellyseerrMediaType.MOVIE,
+                mediaStatus = null,
+                hasRequest = false,
+                requestableSeasons = emptyList(),
+                capabilities = tvOnly,
+            )
+        val show =
+            resolveSeerrRequestCommand(
+                mediaType = JellyseerrMediaType.TV,
+                mediaStatus = null,
+                hasRequest = false,
+                requestableSeasons = emptyList(),
+                capabilities = tvOnly,
+            )
+
+        assertNull(movie.primaryAction)
+        assertTrue(movie.permissionDenied)
+        assertEquals(SeerrPrimaryAction.Request, show.primaryAction)
+        assertFalse(show.permissionDenied)
     }
 
     @Test

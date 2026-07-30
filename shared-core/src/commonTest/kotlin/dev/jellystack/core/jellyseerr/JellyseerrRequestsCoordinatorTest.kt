@@ -10,6 +10,7 @@ import io.ktor.client.request.HttpRequestData
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.content.TextContent
 import io.ktor.http.headersOf
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CompletableDeferred
@@ -17,13 +18,16 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
+import kotlin.test.assertTrue
 
 class JellyseerrRequestsCoordinatorTest {
     private val environment =
@@ -64,6 +68,180 @@ class JellyseerrRequestsCoordinatorTest {
             assertEquals(1, ready.currentUserId)
             assertEquals(201, ready.currentRequestsByMedia[JellyseerrMediaType.MOVIE to 777]?.id)
 
+            coordinator.shutdown()
+        }
+
+    @Test
+    fun basicRequesterDoesNotLoadAdvancedProfiles() =
+        runTest {
+            var serviceCalls = 0
+            val client =
+                HttpClient(
+                    MockEngine { request ->
+                        when {
+                            request.method == HttpMethod.Get && request.url.encodedPath == "/api/v1/auth/me" ->
+                                respondJson(
+                                    """{"id":7,"displayName":"Requester","permissions":${JellyseerrPermission.REQUEST}}""",
+                                )
+                            request.url.encodedPath.startsWith("/api/v1/service/") -> {
+                                serviceCalls += 1
+                                respondJson("[]")
+                            }
+                            else -> defaultResponses(request)
+                        }
+                    },
+                ) {
+                    install(ContentNegotiation) { json(NetworkJson.default) }
+                }
+            val coordinator =
+                JellyseerrRequestsCoordinator(
+                    repository = JellyseerrRepository(httpClient = client),
+                    environmentProvider = FakeEnvironmentProvider(environment),
+                    scope = this,
+                    enablePolling = false,
+                    clock = FixedClock,
+                )
+
+            val ready = coordinator.state.filterIsInstance<JellyseerrRequestsState.Ready>().first()
+
+            assertFalse(ready.capabilities.canUseAdvancedRequests)
+            assertEquals(JellyseerrLanguageProfiles.EMPTY, ready.languageProfiles)
+            assertEquals(0, serviceCalls)
+            coordinator.shutdown()
+        }
+
+    @Test
+    fun searchPreservesRawTextAndNormalizesOnlyNetworkQuery() =
+        runTest {
+            var requestedQuery: String? = null
+            val requestedPaths = mutableListOf<String>()
+            val client =
+                HttpClient(
+                    MockEngine { request ->
+                        requestedPaths += request.url.encodedPath
+                        if (request.method == HttpMethod.Get && request.url.encodedPath == "/api/v1/search") {
+                            requestedQuery = request.url.parameters["query"]
+                            respondJson(searchResponse(title = "Dune", id = 778))
+                        } else {
+                            defaultResponses(request)
+                        }
+                    },
+                ) {
+                    install(ContentNegotiation) { json(NetworkJson.default) }
+                }
+            val coordinator =
+                JellyseerrRequestsCoordinator(
+                    repository = JellyseerrRepository(httpClient = client),
+                    environmentProvider = FakeEnvironmentProvider(environment),
+                    scope = this,
+                    enablePolling = false,
+                    clock = FixedClock,
+                    searchDebounceMillis = 0,
+                )
+            coordinator.state.filterIsInstance<JellyseerrRequestsState.Ready>().first()
+
+            coordinator.search(" Dune ")
+            advanceTimeBy(300)
+            val ready =
+                coordinator.state.filterIsInstance<JellyseerrRequestsState.Ready>().first {
+                    it.query == " Dune " && !it.isSearching && it.searchResults.isNotEmpty()
+                }
+            assertEquals(" Dune ", ready.query)
+            assertEquals(
+                "Dune",
+                requestedQuery,
+                "Requests=$requestedPaths message=${ready.message}",
+            )
+            assertFalse(ready.isSearching)
+            coordinator.shutdown()
+        }
+
+    @Test
+    fun coordinatorRejectsMovieRequestWithoutMoviePermission() =
+        runTest {
+            var createCalls = 0
+            val client =
+                HttpClient(
+                    MockEngine { request ->
+                        when {
+                            request.method == HttpMethod.Get && request.url.encodedPath == "/api/v1/auth/me" ->
+                                respondJson(
+                                    """{"id":7,"displayName":"TV only","permissions":${JellyseerrPermission.REQUEST_TV}}""",
+                                )
+                            request.method == HttpMethod.Post && request.url.encodedPath == "/api/v1/request" -> {
+                                createCalls += 1
+                                respondJson(createdRequestResponse(id = 301, tmdbId = 778))
+                            }
+                            else -> defaultResponses(request)
+                        }
+                    },
+                ) {
+                    install(ContentNegotiation) { json(NetworkJson.default) }
+                }
+            val coordinator =
+                JellyseerrRequestsCoordinator(
+                    repository = JellyseerrRepository(httpClient = client),
+                    environmentProvider = FakeEnvironmentProvider(environment),
+                    scope = this,
+                    enablePolling = false,
+                    clock = FixedClock,
+                )
+            coordinator.state.filterIsInstance<JellyseerrRequestsState.Ready>().first()
+
+            coordinator.submitRequest(
+                item = movieItem(tmdbId = 778, title = "Dune"),
+                profileSelection = JellyseerrRequestProfileSelection.ServerDefault,
+            )
+            advanceUntilIdle()
+
+            val ready = coordinator.state.value as JellyseerrRequestsState.Ready
+            assertEquals(0, createCalls)
+            assertEquals(JellyseerrMessageCode.RequestPermissionDenied, ready.message?.code)
+            coordinator.shutdown()
+        }
+
+    @Test
+    fun permitted4kRequestUsesServerDefaultWithoutAdvancedProfile() =
+        runTest {
+            var createBody = ""
+            val permissions =
+                JellyseerrPermission.REQUEST_MOVIE or JellyseerrPermission.REQUEST_4K_MOVIE
+            val client =
+                HttpClient(
+                    MockEngine { request ->
+                        when {
+                            request.method == HttpMethod.Get && request.url.encodedPath == "/api/v1/auth/me" ->
+                                respondJson("""{"id":7,"displayName":"4K requester","permissions":$permissions}""")
+                            request.method == HttpMethod.Post && request.url.encodedPath == "/api/v1/request" -> {
+                                createBody = (request.body as TextContent).text
+                                respondJson(createdRequestResponse(id = 301, tmdbId = 778))
+                            }
+                            else -> defaultResponses(request)
+                        }
+                    },
+                ) {
+                    install(ContentNegotiation) { json(NetworkJson.default) }
+                }
+            val coordinator =
+                JellyseerrRequestsCoordinator(
+                    repository = JellyseerrRepository(httpClient = client),
+                    environmentProvider = FakeEnvironmentProvider(environment),
+                    scope = this,
+                    enablePolling = false,
+                    clock = FixedClock,
+                )
+            coordinator.state.filterIsInstance<JellyseerrRequestsState.Ready>().first()
+
+            coordinator.submitRequest(
+                item = movieItem(tmdbId = 778, title = "Dune"),
+                profileSelection = JellyseerrRequestProfileSelection.ServerDefault,
+                variant = JellyseerrRequestVariant.FOUR_K,
+            )
+            coordinator.state.filterIsInstance<JellyseerrRequestsState.Ready>().first {
+                it.message?.code == JellyseerrMessageCode.RequestSubmitted
+            }
+
+            assertTrue(createBody.contains("\"is4k\":true"))
             coordinator.shutdown()
         }
 
