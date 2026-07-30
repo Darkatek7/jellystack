@@ -229,7 +229,11 @@ class SettingsOnboardingUiTest {
             .onNode(hasText("Connect Jellyfin") and hasClickAction())
             .performScrollTo()
             .performClick()
-        composeRule.onNodeWithText("Enter a valid server URL.").assertExists()
+        composeRule
+            .onNodeWithText(
+                "Start the address with http:// or https://, " +
+                    "for example http://192.168.1.20:8096.",
+            ).assertExists()
     }
 
     @Test
