@@ -297,7 +297,7 @@ class MainActivityTest {
             ).assertExists()
         composeRule
             .onNodeWithText(
-                "Jellystack is now fully open source under AGPL-3.0.",
+                "Jellystack is now fully open source under GPL-3.0.",
                 substring = true,
             ).assertExists()
     }

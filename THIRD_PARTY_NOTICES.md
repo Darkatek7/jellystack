@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-Jellystack is licensed under AGPL-3.0 and uses third-party software under its respective licenses.
+Jellystack is licensed under GPL-3.0 and uses third-party software under its respective licenses.
 
 Major components include:
 

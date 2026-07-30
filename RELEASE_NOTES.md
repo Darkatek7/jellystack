@@ -6,7 +6,7 @@
 - Explain every remaining permission, its trigger, and current status in Settings.
 - Keep Cast discovery and notification prompts contextual and optional.
 - Harden credential semantics, release logging, and unencrypted HTTP sign-in.
-- Publish the complete Kotlin Multiplatform project as open source under AGPL-3.0.
+- Publish the complete Kotlin Multiplatform project as open source under GPL-3.0.
 
 ## 0.14.1
 
