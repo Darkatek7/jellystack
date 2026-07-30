@@ -99,7 +99,7 @@ class ServerConnectionCoordinatorTest {
                     SeerrServerInput(
                         name = "Requests",
                         baseUrl = "https://requests.example/",
-                        appVersion = "0.14.2",
+                        appVersion = "0.14.3",
                     ),
                 )
 
@@ -111,7 +111,7 @@ class ServerConnectionCoordinatorTest {
                     jellyfinAccessToken = "dummy-quick-connect-token",
                     jellyfinUserId = "quick-user-id",
                     jellyfinDeviceId = "quick-device",
-                    appVersion = "0.14.2",
+                    appVersion = "0.14.3",
                 ),
                 authenticator.lastQuickConnectRequest,
             )

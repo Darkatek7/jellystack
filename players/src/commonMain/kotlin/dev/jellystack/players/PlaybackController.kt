@@ -26,8 +26,11 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlin.math.abs
@@ -49,6 +52,8 @@ class PlaybackController(
 ) {
     private val _state = MutableStateFlow<PlaybackState>(PlaybackState.Stopped)
     val state: StateFlow<PlaybackState> = _state
+    private val _notices = MutableSharedFlow<PlaybackNotice>(extraBufferCapacity = 4)
+    val notices: SharedFlow<PlaybackNotice> = _notices.asSharedFlow()
 
     private val deviceName = currentPlatform().name
     private var session: PlaybackSession? = null
@@ -66,6 +71,8 @@ class PlaybackController(
     private var retryContext: RetryContext? = null
     private var qualitySwitchJob: Job? = null
     private var qualitySwitchGeneration = 0L
+    private var audioSwitchJob: Job? = null
+    private var audioSwitchGeneration = 0L
     private var playGeneration = 0L
     private var released = false
 
@@ -325,6 +332,7 @@ class PlaybackController(
     ) {
         playGeneration += 1
         cancelQualitySwitch()
+        cancelAudioSwitch()
         cancelRecoveryPromotion()
         cancelCollectors()
         playerEngine.stop()
@@ -642,18 +650,157 @@ class PlaybackController(
     }
 
     fun selectAudioTrack(trackId: String) {
-        session?.let { current ->
-            val audio = current.stream.audioTracks.find { it.id == trackId } ?: return
-            saveAudioPreference(current, audio)
-            val updated =
-                current.copy(
-                    audioTrack = audio,
-                    source = current.source.copy(audioStreamIndex = audio.streamIndex),
-                )
-            session = updated
-            publishCurrentState(updated)
-            playerEngine.setAudioTrack(audio)
+        val current = session ?: return
+        val audio = current.stream.audioTracks.find { it.id == trackId } ?: return
+        if (current.audioTrack?.id == audio.id) return
+
+        if (qualitySwitchJob?.isActive == true) {
+            when (playerEngine.setAudioTrack(audio)) {
+                AudioTrackSelectionResult.APPLIED ->
+                    confirmPendingAudioSelection(audio.id)
+                AudioTrackSelectionResult.PENDING -> Unit
+                AudioTrackSelectionResult.UNAVAILABLE ->
+                    _notices.tryEmit(PlaybackNotice.AudioTrackSelectionFailed)
+            }
+            return
         }
+
+        if (current.source.mode == PlaybackMode.HLS && !isRemoteConnected()) {
+            switchHlsAudioTrack(current, audio)
+            return
+        }
+
+        when (playerEngine.setAudioTrack(audio)) {
+            AudioTrackSelectionResult.APPLIED ->
+                confirmPendingAudioSelection(audio.id)
+            AudioTrackSelectionResult.PENDING -> Unit
+            AudioTrackSelectionResult.UNAVAILABLE ->
+                _notices.tryEmit(PlaybackNotice.AudioTrackSelectionFailed)
+        }
+    }
+
+    private fun switchHlsAudioTrack(
+        current: PlaybackSession,
+        audio: AudioTrack,
+    ) {
+        val environment = lastEnvironment ?: return
+        cancelAudioSwitch()
+        val switchGeneration = audioSwitchGeneration
+        val switchPlayGeneration = playGeneration
+        audioSwitchJob =
+            scope.launch {
+                var prepareStarted = false
+                try {
+                    val resolved =
+                        playbackSourceResolver.resolve(
+                            request = current.request,
+                            selection = current.stream,
+                            environment = environment,
+                            startPositionMs = current.positionMs,
+                            options =
+                                PlaybackSourceOptions(
+                                    audioStreamIndex = audio.streamIndex,
+                                    playSessionId = current.source.playSessionId,
+                                ),
+                        )
+                    currentCoroutineContext().ensureActive()
+                    val latest =
+                        currentSessionForAudioSwitch(
+                            switchGeneration = switchGeneration,
+                            switchPlayGeneration = switchPlayGeneration,
+                            mediaId = current.mediaId,
+                        ) ?: return@launch
+                    val selectedAudio =
+                        latest.stream.audioTracks.firstOrNull { it.id == audio.id }
+                            ?: return@launch
+                    val position =
+                        latest.request.validPlaybackPosition(
+                            latest.positionMs,
+                            latest.stream.sourceId,
+                        )
+                    val selectedSubtitle = latest.subtitleTrack.reconciledWith(latest.stream)
+                    val preparedSource =
+                        resolved.forQualitySwitch(
+                            positionMs = position,
+                            audioTrack = selectedAudio,
+                            subtitleTrack = selectedSubtitle,
+                        )
+                    prepareStarted = true
+                    playerEngine.prepare(
+                        source = preparedSource,
+                        startPositionMs = position,
+                        audioTrack = selectedAudio,
+                        subtitleTrack = selectedSubtitle,
+                    )
+                    currentCoroutineContext().ensureActive()
+                    val confirmed =
+                        currentSessionForAudioSwitch(
+                            switchGeneration = switchGeneration,
+                            switchPlayGeneration = switchPlayGeneration,
+                            mediaId = current.mediaId,
+                        ) ?: return@launch
+                    playerEngine.setVideoQuality(confirmed.stream.maxBitrate)
+                    playerEngine.setAudioTrack(selectedAudio)
+                    playerEngine.setSubtitleTrack(selectedSubtitle)
+                    if (confirmed.isPaused) {
+                        playerEngine.pause()
+                    } else {
+                        playerEngine.play()
+                    }
+                    val updated =
+                        confirmed.copy(
+                            positionMs = position,
+                            audioTrack = selectedAudio,
+                            subtitleTrack = selectedSubtitle,
+                            source = preparedSource,
+                        )
+                    session = updated
+                    publishCurrentState(updated)
+                    saveAudioPreference(updated, selectedAudio)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Throwable) {
+                    if (
+                        switchGeneration == audioSwitchGeneration &&
+                        switchPlayGeneration == playGeneration
+                    ) {
+                        if (prepareStarted) restorePlaybackAfterAudioSwitchFailure(current)
+                        _notices.emit(PlaybackNotice.AudioTrackSelectionFailed)
+                    }
+                }
+            }
+    }
+
+    private suspend fun restorePlaybackAfterAudioSwitchFailure(previous: PlaybackSession) {
+        val latest = session ?: return
+        if (latest.mediaId != previous.mediaId) return
+        runCatching {
+            playerEngine.prepare(
+                source = latest.source,
+                startPositionMs = latest.positionMs,
+                audioTrack = latest.audioTrack,
+                subtitleTrack = latest.subtitleTrack,
+            )
+            playerEngine.setVideoQuality(latest.stream.maxBitrate)
+            if (latest.isPaused) playerEngine.pause() else playerEngine.play()
+        }
+    }
+
+    private fun currentSessionForAudioSwitch(
+        switchGeneration: Long,
+        switchPlayGeneration: Long,
+        mediaId: String,
+    ): PlaybackSession? {
+        if (switchGeneration != audioSwitchGeneration || switchPlayGeneration != playGeneration || released) {
+            return null
+        }
+        return session?.takeIf { it.mediaId == mediaId }
+    }
+
+    private fun cancelAudioSwitch() {
+        audioSwitchGeneration += 1
+        audioSwitchJob?.cancel()
+        audioSwitchJob = null
     }
 
     fun selectQuality(optionId: String) {
@@ -662,6 +809,7 @@ class PlaybackController(
         if (options.isEmpty()) return
         val option = options.firstOrNull { it.id == optionId } ?: return
         cancelQualitySwitch()
+        cancelAudioSwitch()
         if (option.id == current.stream.selectedQualityId) return
 
         val preferred = option.takeUnless { it.isAuto }
@@ -1174,7 +1322,11 @@ class PlaybackController(
         source: ResolvedPlaybackSource,
     ): OfflineTrackSelection {
         val sourceTracks = request.mediaSources.flatMap { mediaSource -> mediaSource.streams }
-        val audioTracks = sourceTracks.mapNotNull { it.toAudioTrack() }.distinctBy { it.id }
+        val audioTracks =
+            sourceTracks
+                .filter { it.type == dev.jellystack.core.jellyfin.JellyfinMediaStreamType.AUDIO }
+                .mapIndexedNotNull { audioIndex, stream -> stream.toAudioTrack(audioIndex) }
+                .distinctBy { it.id }
         val subtitlesFromSource = sourceTracks.mapNotNull { it.toSubtitleTrack() }.distinctBy { it.id }
         val subtitleTracks =
             if (subtitlesFromSource.isNotEmpty()) {
@@ -1267,6 +1419,10 @@ class PlaybackController(
                     when (event) {
                         PlayerEvent.Buffering -> updatePlaybackPhase(PlaybackPhase.Buffering)
                         PlayerEvent.Ready -> updatePlaybackPhase(PlaybackPhase.Ready)
+                        is PlayerEvent.AudioTrackSelectionApplied ->
+                            confirmPendingAudioSelection(event.trackId)
+                        is PlayerEvent.AudioTrackSelectionUnavailable ->
+                            _notices.tryEmit(PlaybackNotice.AudioTrackSelectionFailed)
                         PlayerEvent.Completed ->
                             session?.takeUnless { it.phase == PlaybackPhase.Ended }?.let {
                                 progressStore.clear(it.mediaId)
@@ -1296,6 +1452,20 @@ class PlaybackController(
         val updated = current.copy(phase = phase)
         session = updated
         publishCurrentState(updated)
+    }
+
+    private fun confirmPendingAudioSelection(trackId: String) {
+        val current = session ?: return
+        val audio = current.stream.audioTracks.firstOrNull { it.id == trackId } ?: return
+        if (current.audioTrack?.id == audio.id) return
+        val updated =
+            current.copy(
+                audioTrack = audio,
+                source = current.source.copy(audioStreamIndex = audio.streamIndex),
+            )
+        session = updated
+        publishCurrentState(updated)
+        saveAudioPreference(updated, audio)
     }
 
     private fun cancelCollectors() {

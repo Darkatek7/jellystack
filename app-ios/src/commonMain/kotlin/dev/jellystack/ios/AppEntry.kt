@@ -27,7 +27,7 @@ import platform.Foundation.NSUserDefaults
 import platform.UIKit.UIApplicationDidBecomeActiveNotification
 import platform.UIKit.UIApplicationWillResignActiveNotification
 
-private const val DEFAULT_APP_VERSION = "0.14.2"
+private const val DEFAULT_APP_VERSION = "0.14.3"
 
 @Suppress("FunctionName", "ktlint:standard:function-naming")
 @Composable

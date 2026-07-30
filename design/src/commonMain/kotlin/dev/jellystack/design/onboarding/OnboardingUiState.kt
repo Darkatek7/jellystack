@@ -3,6 +3,8 @@ package dev.jellystack.design.onboarding
 import dev.jellystack.core.preferences.TutorialStep
 import dev.jellystack.core.server.JellyfinQuickConnectState
 import dev.jellystack.core.server.JellyfinSignInMethod
+import dev.jellystack.core.server.ServerAddressValidation
+import dev.jellystack.core.server.validateServerAddress
 import dev.jellystack.design.ServerFormState
 
 internal data class OnboardingProgress(
@@ -23,6 +25,7 @@ internal enum class OnboardingField {
 
 internal enum class OnboardingValidationError {
     Required,
+    MissingProtocol,
     InvalidUrl,
     InsecureTransportNotConfirmed,
 }
@@ -120,27 +123,13 @@ private fun MutableMap<OnboardingField, OnboardingValidationError>.requireText(
 }
 
 private fun MutableMap<OnboardingField, OnboardingValidationError>.requireUrl(value: String) {
-    when {
-        value.isBlank() -> put(OnboardingField.Url, OnboardingValidationError.Required)
-        !isValidOnboardingUrl(value) -> put(OnboardingField.Url, OnboardingValidationError.InvalidUrl)
+    when (validateServerAddress(value)) {
+        is ServerAddressValidation.Valid -> Unit
+        ServerAddressValidation.Required ->
+            put(OnboardingField.Url, OnboardingValidationError.Required)
+        ServerAddressValidation.MissingProtocol ->
+            put(OnboardingField.Url, OnboardingValidationError.MissingProtocol)
+        ServerAddressValidation.Invalid ->
+            put(OnboardingField.Url, OnboardingValidationError.InvalidUrl)
     }
-}
-
-private fun isValidOnboardingUrl(value: String): Boolean {
-    val normalized = value.trim()
-    val remainder =
-        when {
-            normalized.startsWith("https://", ignoreCase = true) -> normalized.drop(8)
-            normalized.startsWith("http://", ignoreCase = true) -> normalized.drop(7)
-            else -> return false
-        }
-    val authority = remainder.substringBefore('/').substringBefore('?').substringBefore('#')
-    val hostAndPort = authority.substringAfterLast('@')
-    val host =
-        if (hostAndPort.startsWith('[')) {
-            hostAndPort.substringBefore(']').takeIf { hostAndPort.contains(']') }.orEmpty()
-        } else {
-            hostAndPort.substringBefore(':')
-        }
-    return host.isNotBlank() && host != "[" && authority.none(Char::isWhitespace)
 }

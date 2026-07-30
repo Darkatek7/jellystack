@@ -10,6 +10,25 @@ import kotlin.test.assertTrue
 
 class OnboardingUiStateTest {
     @Test
+    fun schemeLessIpAddressGetsSpecificProtocolError() {
+        val errors =
+            validateOnboarding(
+                step = TutorialStep.ConnectJellyfin,
+                form =
+                    ServerFormState(
+                        name = "Local server",
+                        baseUrl = "192.168.1.20:8096",
+                    ),
+                manualSeerrCredentialsRequired = false,
+            )
+
+        assertEquals(
+            OnboardingValidationError.MissingProtocol,
+            errors[OnboardingField.Url],
+        )
+    }
+
+    @Test
     fun fourStagesExposeOneBasedProgress() {
         assertEquals(OnboardingProgress(current = 1, total = 4), onboardingProgress(TutorialStep.Welcome))
         assertEquals(OnboardingProgress(current = 4, total = 4), onboardingProgress(TutorialStep.Explore))
@@ -23,7 +42,7 @@ class OnboardingUiStateTest {
                 form =
                     ServerFormState(
                         name = "",
-                        baseUrl = "not-a-url",
+                        baseUrl = "https://",
                         username = "",
                         password = "",
                         jellyfinSignInMethod = JellyfinSignInMethod.PASSWORD,

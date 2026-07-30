@@ -138,10 +138,12 @@ import dev.jellystack.core.server.ManagedServer
 import dev.jellystack.core.server.SeerrConnectionResult
 import dev.jellystack.core.server.SeerrLoginCredentials
 import dev.jellystack.core.server.SeerrServerInput
+import dev.jellystack.core.server.ServerAddressValidation
 import dev.jellystack.core.server.ServerConnectionCoordinator
 import dev.jellystack.core.server.ServerRepository
 import dev.jellystack.core.server.ServerType
 import dev.jellystack.core.server.StoredCredential
+import dev.jellystack.core.server.validateServerAddress
 import dev.jellystack.design.biometric.rememberBiometricPlatformState
 import dev.jellystack.design.cast.BindCastSnapshotProvider
 import dev.jellystack.design.cast.CastRoutePickerButton
@@ -165,6 +167,7 @@ import dev.jellystack.design.jellyseerr.DiscoverScreen
 import dev.jellystack.design.jellyseerr.DiscoverSelectionContent
 import dev.jellystack.design.jellyseerr.DiscoverUiState
 import dev.jellystack.design.jellyseerr.reduce
+import dev.jellystack.design.jellyseerr.requiresDestinationDispatch
 import dev.jellystack.design.jellyseerr.toSearchItemOrNull
 import dev.jellystack.design.layout.LocalResponsiveProfile
 import dev.jellystack.design.layout.ProvideResponsiveProfile
@@ -210,6 +213,7 @@ import dev.jellystack.players.AudioTrack
 import dev.jellystack.players.JellyfinDirectDownloadSourceResolver
 import dev.jellystack.players.PlaybackController
 import dev.jellystack.players.PlaybackMode
+import dev.jellystack.players.PlaybackNotice
 import dev.jellystack.players.PlaybackRequest
 import dev.jellystack.players.PlaybackSourceOptions
 import dev.jellystack.players.PlaybackStartPolicy
@@ -230,6 +234,7 @@ import jellystack_mobile.design.generated.resources.app_lock_prompt
 import jellystack_mobile.design.generated.resources.app_lock_unlock_before_disable
 import jellystack_mobile.design.generated.resources.app_lock_waiting
 import jellystack_mobile.design.generated.resources.app_title
+import jellystack_mobile.design.generated.resources.audio_track_switch_failed
 import jellystack_mobile.design.generated.resources.base_url
 import jellystack_mobile.design.generated.resources.cancel
 import jellystack_mobile.design.generated.resources.cast_connection_failed
@@ -269,6 +274,7 @@ import jellystack_mobile.design.generated.resources.nav_discover
 import jellystack_mobile.design.generated.resources.nav_library
 import jellystack_mobile.design.generated.resources.no_playable_episode
 import jellystack_mobile.design.generated.resources.onboarding_saving
+import jellystack_mobile.design.generated.resources.onboarding_url_error
 import jellystack_mobile.design.generated.resources.password
 import jellystack_mobile.design.generated.resources.play
 import jellystack_mobile.design.generated.resources.play_episode
@@ -287,6 +293,7 @@ import jellystack_mobile.design.generated.resources.request_failed
 import jellystack_mobile.design.generated.resources.request_media_id_missing
 import jellystack_mobile.design.generated.resources.request_media_requeue_failed
 import jellystack_mobile.design.generated.resources.request_media_requeued
+import jellystack_mobile.design.generated.resources.request_permission_denied
 import jellystack_mobile.design.generated.resources.request_refresh_failed
 import jellystack_mobile.design.generated.resources.request_remove_media_failed
 import jellystack_mobile.design.generated.resources.request_removed
@@ -299,6 +306,7 @@ import jellystack_mobile.design.generated.resources.seerr_automatic_login
 import jellystack_mobile.design.generated.resources.seerr_connect_jellyfin_first
 import jellystack_mobile.design.generated.resources.select_cast_device
 import jellystack_mobile.design.generated.resources.server_name
+import jellystack_mobile.design.generated.resources.server_url_missing_protocol
 import jellystack_mobile.design.generated.resources.show_password
 import jellystack_mobile.design.generated.resources.shows
 import jellystack_mobile.design.generated.resources.sign_in_with
@@ -306,9 +314,10 @@ import jellystack_mobile.design.generated.resources.use_different_account
 import jellystack_mobile.design.generated.resources.username
 import jellystack_mobile.design.generated.resources.version_label
 import jellystack_mobile.design.generated.resources.view_changelog
-import jellystack_mobile.design.generated.resources.whats_new_0142_open_source
-import jellystack_mobile.design.generated.resources.whats_new_0142_permissions
-import jellystack_mobile.design.generated.resources.whats_new_0142_privacy
+import jellystack_mobile.design.generated.resources.whats_new_0143_audio
+import jellystack_mobile.design.generated.resources.whats_new_0143_search
+import jellystack_mobile.design.generated.resources.whats_new_0143_seerr_permissions
+import jellystack_mobile.design.generated.resources.whats_new_0143_server_addresses
 import jellystack_mobile.design.generated.resources.whats_new_dialog_title
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -346,9 +355,10 @@ private const val OFF_SUBTITLE_TRACK_ID = "__off_subtitle__"
 @Composable
 private fun DefaultWhatsNewHighlights(): List<String> =
     listOf(
-        stringResource(Res.string.whats_new_0142_permissions),
-        stringResource(Res.string.whats_new_0142_privacy),
-        stringResource(Res.string.whats_new_0142_open_source),
+        stringResource(Res.string.whats_new_0143_seerr_permissions),
+        stringResource(Res.string.whats_new_0143_server_addresses),
+        stringResource(Res.string.whats_new_0143_audio),
+        stringResource(Res.string.whats_new_0143_search),
     )
 
 internal enum class ServerFormType {
@@ -404,6 +414,9 @@ internal data class ServerFormState(
     val automaticSeerrLogin: Boolean = false,
     val allowInsecureHttp: Boolean = false,
 ) {
+    val serverAddressValidation: ServerAddressValidation
+        get() = validateServerAddress(baseUrl)
+
     val requiresInsecureHttpConfirmation: Boolean
         get() =
             serverId == null &&
@@ -412,6 +425,7 @@ internal data class ServerFormState(
     val isValid: Boolean
         get() =
             (!requiresInsecureHttpConfirmation || allowInsecureHttp) &&
+                serverAddressValidation is ServerAddressValidation.Valid &&
                 when (type) {
                     ServerFormType.JELLYFIN ->
                         name.isNotBlank() &&
@@ -712,6 +726,15 @@ fun JellystackRoot(
                     if (shellFeedback?.id == feedbackId) shellFeedback = null
                 },
             )
+    }
+
+    LaunchedEffect(playbackController) {
+        playbackController.notices.collect { notice ->
+            when (notice) {
+                PlaybackNotice.AudioTrackSelectionFailed ->
+                    showShellFeedback(getString(Res.string.audio_track_switch_failed))
+            }
+        }
     }
 
     LaunchedEffect(castState) {
@@ -2381,7 +2404,7 @@ fun JellystackRoot(
                         activeShellModal = owner
                     }
                     val onDiscoverAction: (DiscoverAction) -> Unit = { action ->
-                        destinationDispatcher.dispatch {
+                        val applyAction: () -> Unit = {
                             discoverUiState = discoverUiState.reduce(action)
                             when (action) {
                                 is DiscoverAction.RequestQueryChanged -> jellyseerrCoordinator.search(action.query)
@@ -2397,6 +2420,12 @@ fun JellystackRoot(
                                     recommendationsCoordinator.loadDetail(action.item)
                                 else -> Unit
                             }
+                            Unit
+                        }
+                        if (action.requiresDestinationDispatch()) {
+                            destinationDispatcher.dispatch(applyAction)
+                        } else {
+                            applyAction()
                         }
                     }
                     val closeDiscoverSelection: () -> Unit = {
@@ -2648,13 +2677,22 @@ fun JellystackRoot(
                                 currentRequestsByMedia =
                                     readyRequestsState?.currentRequestsByMedia.orEmpty(),
                                 liveRequestStateAvailable = readyRequestsState != null,
+                                capabilities =
+                                    readyRequestsState?.capabilities
+                                        ?: dev.jellystack.core.jellyseerr.JellyseerrRequestCapabilities.NONE,
                                 onSelectProfile = {
                                     onDiscoverAction(DiscoverAction.SelectProfile(it))
+                                },
+                                onSelectVariant = {
+                                    onDiscoverAction(DiscoverAction.SelectRequestVariant(it))
                                 },
                                 onSelectSeasons = {
                                     onDiscoverAction(DiscoverAction.SelectSeasonSelection(it))
                                 },
                                 onSubmit = { item, profileSelection, seasons ->
+                                    jellyseerrCoordinator.submitRequest(item, profileSelection, seasons)
+                                },
+                                onSubmitVariant = { item, profileSelection, seasons, variant ->
                                     onDiscoverAction(
                                         DiscoverAction.OperationStarted(
                                             DiscoverPendingOperation.Submit(
@@ -2663,7 +2701,12 @@ fun JellystackRoot(
                                             ),
                                         ),
                                     )
-                                    jellyseerrCoordinator.submitRequest(item, profileSelection, seasons)
+                                    jellyseerrCoordinator.submitRequest(
+                                        item = item,
+                                        profileSelection = profileSelection,
+                                        seasons = seasons,
+                                        variant = variant,
+                                    )
                                 },
                                 onApprove = { summary ->
                                     onDiscoverAction(
@@ -3254,6 +3297,8 @@ private fun JellyseerrMessage.localizedText(): String {
             JellyseerrMessageCode.SearchFailed -> stringResource(Res.string.request_search_failed)
             JellyseerrMessageCode.RequestSubmitted ->
                 stringResource(Res.string.request_submitted, subject.orEmpty())
+            JellyseerrMessageCode.RequestPermissionDenied ->
+                stringResource(Res.string.request_permission_denied)
             JellyseerrMessageCode.RequestDuplicate ->
                 stringResource(Res.string.request_duplicate, subject.orEmpty())
             JellyseerrMessageCode.RequestFailed ->
@@ -3926,6 +3971,25 @@ private fun AddServerDialog(
                     placeholder = { Text("https://jellyfin.example.com") },
                     singleLine = true,
                     enabled = !isSaving,
+                    isError =
+                        state.serverAddressValidation is ServerAddressValidation.MissingProtocol ||
+                            state.serverAddressValidation is ServerAddressValidation.Invalid,
+                    supportingText =
+                        when (state.serverAddressValidation) {
+                            ServerAddressValidation.MissingProtocol ->
+                                {
+                                    {
+                                        Text(stringResource(Res.string.server_url_missing_protocol))
+                                    }
+                                }
+                            ServerAddressValidation.Invalid ->
+                                {
+                                    {
+                                        Text(stringResource(Res.string.onboarding_url_error))
+                                    }
+                                }
+                            else -> null
+                        },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next, keyboardType = KeyboardType.Uri),
                 )
                 if (state.requiresInsecureHttpConfirmation) {
@@ -4553,71 +4617,6 @@ private fun sanitizeFileSegment(value: String): String {
     val sanitized = value.lowercase().replace(Regex("[^a-z0-9._-]"), "_")
     val trimmed = sanitized.trim('_')
     return if (trimmed.isBlank()) "file" else trimmed
-}
-
-private data class ParsedServerUrl(
-    val scheme: String,
-    val host: String,
-    val explicitPort: Int?,
-    val path: String,
-)
-
-private val SERVER_URL_REGEX =
-    Regex("^(https?)://([^/:?#]+)(?::(\\d+))?([^?#]*)?.*$", RegexOption.IGNORE_CASE)
-
-private fun normalizeServerBaseUrl(url: String): String {
-    val trimmed = url.trim()
-    val parsed = parseServerUrl(trimmed) ?: return trimmed.trimTrailingSlashesPreserveScheme()
-    val defaultPort = if (parsed.scheme == "https") 443 else 80
-    val port = parsed.explicitPort ?: defaultPort
-    val includePort = parsed.explicitPort != null && parsed.explicitPort != defaultPort
-    return buildString {
-        append(parsed.scheme)
-        append("://")
-        append(parsed.host)
-        if (includePort) {
-            append(':')
-            append(port)
-        }
-        if (parsed.path.isNotBlank()) {
-            append(parsed.path)
-        }
-    }
-}
-
-private fun parseServerUrl(url: String): ParsedServerUrl? {
-    val match = SERVER_URL_REGEX.matchEntire(url.trim()) ?: return null
-    val scheme = match.groupValues[1].lowercase()
-    val host = match.groupValues[2]
-    val portValue =
-        match.groupValues
-            .getOrNull(3)
-            ?.takeIf { it.isNotBlank() }
-            ?.toInt()
-    val rawPath = match.groupValues.getOrNull(4) ?: ""
-    val sanitizedPath =
-        rawPath
-            .substringBefore('?')
-            .substringBefore('#')
-            .trimEnd('/')
-            .let { path ->
-                when {
-                    path.isBlank() || path == "/" -> ""
-                    path.startsWith('/') -> path
-                    else -> "/$path"
-                }
-            }
-    return ParsedServerUrl(
-        scheme = scheme,
-        host = host,
-        explicitPort = portValue,
-        path = sanitizedPath,
-    )
-}
-
-private fun String.trimTrailingSlashesPreserveScheme(): String {
-    if (endsWith("://")) return this
-    return trimEnd('/')
 }
 
 private fun Throwable.connectivityErrorMessage(): String =

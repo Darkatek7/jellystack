@@ -281,23 +281,28 @@ class MainActivityTest {
     }
 
     @Test
-    fun whatsNewShowsCanonical014Highlights() {
+    fun whatsNewShowsCanonical0143Highlights() {
         dismissOnboardingIfPresent()
         openWhatsNew()
-        composeRule.onAllNodesWithText("Version 0.14.2").onLast().assertExists()
+        composeRule.onAllNodesWithText("Version 0.14.3").onLast().assertExists()
         composeRule
             .onNodeWithText(
-                "Significantly reduced Android permissions with clearer, contextual requests.",
+                "Seerr requests now respect your server permissions.",
                 substring = true,
             ).assertExists()
         composeRule
             .onNodeWithText(
-                "New permission and privacy explanations directly in Settings.",
+                "IP addresses and custom ports now work reliably.",
                 substring = true,
             ).assertExists()
         composeRule
             .onNodeWithText(
-                "Jellystack is now fully open source under GPL-3.0.",
+                "Improved audio compatibility and correct language selection.",
+                substring = true,
+            ).assertExists()
+        composeRule
+            .onNodeWithText(
+                "Discover search stays open while you type.",
                 substring = true,
             ).assertExists()
     }
@@ -413,7 +418,7 @@ class MainActivityTest {
         composeRule.onNodeWithTag(PLAYER_OPTIONS_TAG).assertExists()
         composeRule.onNodeWithTag(PLAYER_AUDIO_SELECTOR_TAG).performClick()
         composeRule.onNodeWithText("Japanese · ja · AAC").performClick()
-        composeRule.onNodeWithTag(PLAYER_AUDIO_SELECTOR_TAG).assertTextContains("Japanese · ja · AAC")
+        composeRule.onNodeWithTag(PLAYER_AUDIO_SELECTOR_TAG).assertTextContains("Stereo · en · AAC")
 
         composeRule.onNodeWithTag(PLAYER_SUBTITLE_SELECTOR_TAG).performClick()
         composeRule.onNodeWithText("English · en · VTT").performClick()

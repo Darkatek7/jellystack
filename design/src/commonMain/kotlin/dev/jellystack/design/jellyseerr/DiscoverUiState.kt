@@ -6,9 +6,11 @@ import dev.jellystack.core.jellyseerr.JellyseerrMediaType
 import dev.jellystack.core.jellyseerr.JellyseerrMessageCode
 import dev.jellystack.core.jellyseerr.JellyseerrOperationKey
 import dev.jellystack.core.jellyseerr.JellyseerrRecommendationRail
+import dev.jellystack.core.jellyseerr.JellyseerrRequestCapabilities
 import dev.jellystack.core.jellyseerr.JellyseerrRequestFilter
 import dev.jellystack.core.jellyseerr.JellyseerrRequestProfileSelection
 import dev.jellystack.core.jellyseerr.JellyseerrRequestSummary
+import dev.jellystack.core.jellyseerr.JellyseerrRequestVariant
 import dev.jellystack.core.jellyseerr.JellyseerrSearchItem
 import dev.jellystack.design.navigation.DiscoverDestination
 
@@ -39,6 +41,7 @@ internal enum class SeerrPrimaryAction {
 internal data class SeerrRequestCommand(
     val primaryAction: SeerrPrimaryAction?,
     val showStatus: Boolean,
+    val permissionDenied: Boolean = false,
 )
 
 internal data class SeerrDetailEntry(
@@ -94,6 +97,8 @@ internal data class DiscoverUiState(
     val pendingItemKey: SeerrDetailKey? = null,
     val pendingProfileSelection: JellyseerrRequestProfileSelection =
         JellyseerrRequestProfileSelection.ServerDefault,
+    val pendingRequestVariant: JellyseerrRequestVariant =
+        JellyseerrRequestVariant.STANDARD,
     val pendingSeasonSelection: JellyseerrCreateSelection =
         JellyseerrCreateSelection.AllSeasons,
     val pendingOperation: DiscoverPendingOperation? = null,
@@ -145,6 +150,10 @@ internal sealed interface DiscoverAction {
 
     data class SelectProfile(
         val selection: JellyseerrRequestProfileSelection,
+    ) : DiscoverAction
+
+    data class SelectRequestVariant(
+        val variant: JellyseerrRequestVariant,
     ) : DiscoverAction
 
     data class SelectSeasonSelection(
@@ -255,6 +264,11 @@ internal fun DiscoverUiState.reduce(action: DiscoverAction): DiscoverUiState =
         is DiscoverAction.RequestQueryChanged -> copy(requestQuery = action.query)
         is DiscoverAction.RequestFilterChanged -> copy(requestFilter = action.filter)
         is DiscoverAction.SelectProfile -> copy(pendingProfileSelection = action.selection)
+        is DiscoverAction.SelectRequestVariant ->
+            copy(
+                pendingRequestVariant = action.variant,
+                pendingProfileSelection = JellyseerrRequestProfileSelection.ServerDefault,
+            )
         is DiscoverAction.SelectSeasonSelection -> copy(pendingSeasonSelection = action.selection)
         DiscoverAction.CloseSelection ->
             copy(
@@ -282,6 +296,8 @@ internal fun DiscoverUiState.reduce(action: DiscoverAction): DiscoverUiState =
         }
     }
 
+internal fun DiscoverAction.requiresDestinationDispatch(): Boolean = this !is DiscoverAction.RequestQueryChanged
+
 private fun DiscoverUiState.pushDetail(entry: SeerrDetailEntry): DiscoverUiState {
     val sameTop = selected?.key == entry.key
     val resolvedEntry =
@@ -303,6 +319,9 @@ private fun DiscoverUiState.pushDetail(entry: SeerrDetailEntry): DiscoverUiState
         pendingProfileSelection =
             pendingProfileSelection.takeIf { pendingItemKey == resolvedEntry.key }
                 ?: JellyseerrRequestProfileSelection.ServerDefault,
+        pendingRequestVariant =
+            pendingRequestVariant.takeIf { pendingItemKey == resolvedEntry.key }
+                ?: JellyseerrRequestVariant.STANDARD,
         pendingSeasonSelection =
             pendingSeasonSelection.takeIf { pendingItemKey == resolvedEntry.key }
                 ?: JellyseerrCreateSelection.AllSeasons,
@@ -352,6 +371,7 @@ internal fun resolveSeerrRequestCommand(
     mediaStatus: JellyseerrMediaStatus?,
     hasRequest: Boolean,
     requestableSeasons: List<Int>,
+    capabilities: JellyseerrRequestCapabilities = JellyseerrRequestCapabilities.ALL,
 ): SeerrRequestCommand {
     val requestMoreSeasons =
         mediaType == JellyseerrMediaType.TV &&
@@ -360,7 +380,7 @@ internal fun resolveSeerrRequestCommand(
                 hasRequest ||
                     mediaStatus == JellyseerrMediaStatus.PARTIALLY_AVAILABLE
             )
-    val primaryAction =
+    val candidateAction =
         when {
             mediaStatus == JellyseerrMediaStatus.AVAILABLE -> null
             mediaStatus == JellyseerrMediaStatus.PENDING -> null
@@ -370,8 +390,18 @@ internal fun resolveSeerrRequestCommand(
             hasRequest -> null
             else -> SeerrPrimaryAction.Request
         }
+    val permissionDenied =
+        candidateAction != null &&
+            !capabilities.canRequest(mediaType, JellyseerrRequestVariant.STANDARD) &&
+            !capabilities.canRequest(mediaType, JellyseerrRequestVariant.FOUR_K)
+    val primaryAction = candidateAction.takeUnless { permissionDenied }
     return SeerrRequestCommand(
         primaryAction = primaryAction,
-        showStatus = hasRequest || mediaStatus != null && mediaStatus != JellyseerrMediaStatus.UNKNOWN,
+        showStatus =
+            permissionDenied ||
+                hasRequest ||
+                mediaStatus != null &&
+                mediaStatus != JellyseerrMediaStatus.UNKNOWN,
+        permissionDenied = permissionDenied,
     )
 }

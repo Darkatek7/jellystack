@@ -41,6 +41,7 @@ import dev.jellystack.core.jellyseerr.JellyseerrMediaType
 import dev.jellystack.core.jellyseerr.JellyseerrRecommendationRail
 import dev.jellystack.core.jellyseerr.JellyseerrRecommendationRailState
 import dev.jellystack.core.jellyseerr.JellyseerrRecommendationsState
+import dev.jellystack.core.jellyseerr.JellyseerrRequestCapabilities
 import dev.jellystack.core.jellyseerr.JellyseerrRequestFilter
 import dev.jellystack.core.jellyseerr.JellyseerrRequestStatus
 import dev.jellystack.core.jellyseerr.JellyseerrRequestSummary
@@ -106,6 +107,32 @@ class DiscoverRequestsUiTest {
         composeRule.onNodeWithText("Request").performClick()
         composeRule.onNodeWithText("Search request profiles").assertExists()
         composeRule.onNodeWithText("Server default").assertIsEnabled().performClick()
+        composeRule.onNodeWithText("Submit request").assertIsEnabled()
+    }
+
+    @Test
+    fun basicRequesterDoesNotSeeAdvancedOr4kControls() {
+        val basicCapabilities =
+            JellyseerrRequestCapabilities(
+                canRequestMovie = true,
+                canRequestTv = true,
+                canRequest4kMovie = false,
+                canRequest4kTv = false,
+                canUseAdvancedRequests = false,
+                canManageRequests = false,
+            )
+        composeRule.setContent {
+            discoverRequestsHarness(
+                initialState = DiscoverUiState().reduce(DiscoverAction.SelectSearchResult(dune())),
+                requestsState = readyRequests(capabilities = basicCapabilities),
+                detailStates = mapOf(dune().mediaType to dune().tmdbId to loadedDetail(dune())),
+            )
+        }
+
+        composeRule.onNodeWithText("Request").performClick()
+
+        composeRule.onNodeWithTag(RequestConfigurationTestTags.VARIANT_SELECTOR).assertDoesNotExist()
+        composeRule.onNodeWithTag(RequestConfigurationTestTags.ADVANCED_PROFILE_SELECTOR).assertDoesNotExist()
         composeRule.onNodeWithText("Submit request").assertIsEnabled()
     }
 
@@ -658,9 +685,12 @@ private fun discoverRequestsHarness(
                         requests = requestsState.requests,
                         currentRequestsByMedia = requestsState.currentRequestsByMedia,
                         liveRequestStateAvailable = true,
+                        capabilities = requestsState.capabilities,
                         onSelectProfile = { state = state.reduce(DiscoverAction.SelectProfile(it)) },
+                        onSelectVariant = { state = state.reduce(DiscoverAction.SelectRequestVariant(it)) },
                         onSelectSeasons = { state = state.reduce(DiscoverAction.SelectSeasonSelection(it)) },
                         onSubmit = { _, _, _ -> },
+                        onSubmitVariant = { _, _, _, _ -> },
                         onApprove = {},
                         onDelete = {},
                         onRemoveMedia = {},
@@ -778,6 +808,7 @@ private fun readyRequests(
     requests: List<JellyseerrRequestSummary> = emptyList(),
     isAdmin: Boolean = true,
     currentUserId: Int? = 1,
+    capabilities: JellyseerrRequestCapabilities = JellyseerrRequestCapabilities.ALL,
 ): JellyseerrRequestsState.Ready =
     JellyseerrRequestsState.Ready(
         filter = JellyseerrRequestFilter.ALL,
@@ -798,6 +829,7 @@ private fun readyRequests(
                 summary.mediaType to requireNotNull(summary.tmdbId)
             },
         currentUserId = currentUserId,
+        capabilities = capabilities,
     )
 
 private fun dune(): JellyseerrSearchItem =

@@ -3,6 +3,7 @@
 **/build/
 **/out/
 /local.properties
+/local.integration.properties
 /captures/
 /.idea/
 /.idea/**/workspace.xml

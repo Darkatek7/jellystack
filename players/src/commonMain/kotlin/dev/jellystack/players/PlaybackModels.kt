@@ -115,6 +115,7 @@ data class AudioTrack(
     val codec: String?,
     val isDefault: Boolean,
     val streamIndex: Int?,
+    val audioIndex: Int? = null,
 )
 
 data class PlaybackQualityOption(
@@ -302,7 +303,11 @@ sealed interface PlaybackState {
     }
 }
 
-internal fun JellyfinMediaStream.toAudioTrack(): AudioTrack? =
+sealed interface PlaybackNotice {
+    data object AudioTrackSelectionFailed : PlaybackNotice
+}
+
+internal fun JellyfinMediaStream.toAudioTrack(audioIndex: Int? = null): AudioTrack? =
     if (type != JellyfinMediaStreamType.AUDIO) {
         null
     } else {
@@ -314,6 +319,7 @@ internal fun JellyfinMediaStream.toAudioTrack(): AudioTrack? =
             codec = codec,
             isDefault = isDefault,
             streamIndex = index,
+            audioIndex = audioIndex,
         )
     }
 

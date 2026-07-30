@@ -84,6 +84,7 @@ import jellystack_mobile.design.generated.resources.password
 import jellystack_mobile.design.generated.resources.quick_connect_description
 import jellystack_mobile.design.generated.resources.server_name
 import jellystack_mobile.design.generated.resources.server_url
+import jellystack_mobile.design.generated.resources.server_url_missing_protocol
 import jellystack_mobile.design.generated.resources.show_password
 import jellystack_mobile.design.generated.resources.skip_for_now
 import jellystack_mobile.design.generated.resources.start_exploring
@@ -421,6 +422,8 @@ private fun FieldErrorText(error: OnboardingValidationError) {
     Text(
         when (error) {
             OnboardingValidationError.Required -> stringResource(Res.string.onboarding_required_error)
+            OnboardingValidationError.MissingProtocol ->
+                stringResource(Res.string.server_url_missing_protocol)
             OnboardingValidationError.InvalidUrl -> stringResource(Res.string.onboarding_url_error)
             OnboardingValidationError.InsecureTransportNotConfirmed ->
                 stringResource(Res.string.insecure_http_confirm)

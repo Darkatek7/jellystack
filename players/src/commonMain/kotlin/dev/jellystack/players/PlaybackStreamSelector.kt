@@ -153,7 +153,10 @@ class PlaybackStreamSelector {
         qualityOptions: List<PlaybackQualityOption>,
         selectedQualityId: String,
     ): PlaybackStreamSelection {
-        val audioTracks = source.streams.mapNotNull { it.toAudioTrack() }
+        val audioTracks =
+            source.streams
+                .filter { it.type == JellyfinMediaStreamType.AUDIO }
+                .mapIndexedNotNull { audioIndex, stream -> stream.toAudioTrack(audioIndex) }
         val subtitleTracks = source.streams.mapNotNull { it.toSubtitleTrack() }
         val defaultAudioCodec =
             audioTracks.firstOrNull { it.isDefault }?.codec

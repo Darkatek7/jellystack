@@ -128,8 +128,8 @@ android {
         applicationId = "app.jellystack.mobile"
         minSdk = 24
         targetSdk = 36
-        versionCode = 16
-        versionName = "0.14.2"
+        versionCode = 17
+        versionName = "0.14.3"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         multiDexEnabled = true
     }

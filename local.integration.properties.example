@@ -1,0 +1,8 @@
+# Copy this file to local.integration.properties for manual integration tests.
+# The local file is ignored by Git and must contain test-only credentials.
+jellyfin.url=https://jellyfin.example.com
+jellyfin.username=integration-test-user
+jellyfin.password=replace-with-a-rotatable-test-password
+seerr.url=https://seerr.example.com
+seerr.username=integration-test-user
+seerr.password=replace-with-a-rotatable-test-password

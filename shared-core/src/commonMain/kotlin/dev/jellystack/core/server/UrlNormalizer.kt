@@ -1,38 +1,77 @@
 package dev.jellystack.core.server
 
+import io.ktor.http.URLBuilder
 import io.ktor.http.Url
 
-fun normalizeBaseUrl(raw: String): String {
+sealed interface ServerAddressValidation {
+    data class Valid(
+        val normalizedUrl: String,
+    ) : ServerAddressValidation
+
+    data object Required : ServerAddressValidation
+
+    data object MissingProtocol : ServerAddressValidation
+
+    data object Invalid : ServerAddressValidation
+}
+
+fun validateServerAddress(raw: String): ServerAddressValidation {
+    val trimmed = raw.trim()
+    if (trimmed.isEmpty()) {
+        return ServerAddressValidation.Required
+    }
+    if (!trimmed.hasHttpScheme()) {
+        return ServerAddressValidation.MissingProtocol
+    }
+    val authority =
+        trimmed
+            .substringAfter("://")
+            .substringBefore('/')
+            .substringBefore('?')
+            .substringBefore('#')
+    if (authority.isBlank() || authority.any(Char::isWhitespace)) {
+        return ServerAddressValidation.Invalid
+    }
     val parsed =
         try {
-            Url(raw)
+            Url(trimmed)
         } catch (_: Throwable) {
-            throw InvalidServerConfiguration("Server URL is not valid: $raw")
+            return ServerAddressValidation.Invalid
         }
 
     val scheme = parsed.protocol.name.lowercase()
     if (scheme != "http" && scheme != "https") {
-        throw InvalidServerConfiguration("Server URL must start with http or https")
+        return ServerAddressValidation.MissingProtocol
     }
     if (parsed.host.isBlank()) {
-        throw InvalidServerConfiguration("Server URL is missing host")
+        return ServerAddressValidation.Invalid
     }
 
-    val normalizedPath = parsed.encodedPath.trimEnd('/')
-    val portPart =
-        when {
-            parsed.port == parsed.protocol.defaultPort || parsed.port == 0 -> ""
-            else -> ":${parsed.port}"
-        }
-    return buildString {
-        append(scheme)
-        append("://")
-        append(parsed.host.lowercase())
-        append(portPart)
-        if (normalizedPath.isNotEmpty()) {
-            append(normalizedPath.ensureLeadingSlash())
-        }
-    }
+    val normalizedUrl =
+        URLBuilder(parsed)
+            .apply {
+                protocol = parsed.protocol
+                host = parsed.host.lowercase()
+                parameters.clear()
+                fragment = ""
+                user = null
+                password = null
+            }.buildString()
+            .trimEnd('/')
+    return ServerAddressValidation.Valid(normalizedUrl)
 }
 
-private fun String.ensureLeadingSlash(): String = if (startsWith('/')) this else "/$this"
+fun normalizeBaseUrl(raw: String): String =
+    when (val validation = validateServerAddress(raw)) {
+        is ServerAddressValidation.Valid -> validation.normalizedUrl
+        ServerAddressValidation.Required ->
+            throw InvalidServerConfiguration("Server URL is required")
+        ServerAddressValidation.MissingProtocol ->
+            throw InvalidServerConfiguration("Server URL must start with http:// or https://")
+        ServerAddressValidation.Invalid ->
+            throw InvalidServerConfiguration("Server URL is not valid")
+    }
+
+private fun String.hasHttpScheme(): Boolean =
+    startsWith("http://", ignoreCase = true) ||
+        startsWith("https://", ignoreCase = true)

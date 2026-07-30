@@ -47,6 +47,7 @@
     <string name="onboarding_seerr_body">Add your Seerr URL. Jellystack will first try the connected Jellyfin account.</string>
     <string name="onboarding_required_error">This field is required.</string>
     <string name="onboarding_url_error">Enter a valid server URL.</string>
+    <string name="server_url_missing_protocol">Start the address with http:// or https://, for example http://192.168.1.20:8096.</string>
     <string name="show_password">Show password</string>
     <string name="hide_password">Hide password</string>
     <string name="onboarding_saving">Connecting&#8230;</string>
@@ -153,6 +154,11 @@
     <string name="search_and_requests_supporting">Find a title, submit a request, or check its status.</string>
     <string name="back_to_discover">Back to Discover</string>
     <string name="request_profile_title">Request profile</string>
+    <string name="request_variant_title">Request version</string>
+    <string name="request_variant_standard">Standard</string>
+    <string name="request_variant_4k">4K</string>
+    <string name="request_permission_denied">Your Seerr account does not have permission to request this title.</string>
+    <string name="audio_track_switch_failed">Could not switch the audio track. Playback continues with the previous track.</string>
     <string name="server_default">Server default</string>
     <string name="server_default_supporting">Use the profile configured by your Seerr server.</string>
     <string name="request_seasons_title">Seasons</string>
@@ -393,6 +399,10 @@
     <string name="whats_new_0142_permissions">Significantly reduced Android permissions with clearer, contextual requests.</string>
     <string name="whats_new_0142_privacy">New permission and privacy explanations directly in Settings.</string>
     <string name="whats_new_0142_open_source">Jellystack is now fully open source under GPL-3.0.</string>
+    <string name="whats_new_0143_seerr_permissions">Seerr requests now respect your server permissions.</string>
+    <string name="whats_new_0143_server_addresses">IP addresses and custom ports now work reliably.</string>
+    <string name="whats_new_0143_audio">Improved audio compatibility and correct language selection.</string>
+    <string name="whats_new_0143_search">Discover search stays open while you type.</string>
     <string name="insecure_http_warning">This server uses unencrypted HTTP. Credentials and media traffic may be visible to others on the network. Use HTTPS whenever possible.</string>
     <string name="insecure_http_confirm">I understand and want to use this HTTP server</string>
     <string name="privacy_title">Permissions &amp; privacy</string>

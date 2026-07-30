@@ -14,6 +14,7 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -22,6 +23,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,7 +39,9 @@ import androidx.compose.ui.unit.dp
 import dev.jellystack.core.jellyseerr.JellyseerrCreateSelection
 import dev.jellystack.core.jellyseerr.JellyseerrLanguageProfileOption
 import dev.jellystack.core.jellyseerr.JellyseerrMediaType
+import dev.jellystack.core.jellyseerr.JellyseerrRequestCapabilities
 import dev.jellystack.core.jellyseerr.JellyseerrRequestProfileSelection
+import dev.jellystack.core.jellyseerr.JellyseerrRequestVariant
 import dev.jellystack.core.jellyseerr.JellyseerrSearchItem
 import jellystack_mobile.design.generated.resources.Res
 import jellystack_mobile.design.generated.resources.all_seasons
@@ -46,6 +50,9 @@ import jellystack_mobile.design.generated.resources.request_profile_search
 import jellystack_mobile.design.generated.resources.request_profile_title
 import jellystack_mobile.design.generated.resources.request_season_search
 import jellystack_mobile.design.generated.resources.request_seasons_title
+import jellystack_mobile.design.generated.resources.request_variant_4k
+import jellystack_mobile.design.generated.resources.request_variant_standard
+import jellystack_mobile.design.generated.resources.request_variant_title
 import jellystack_mobile.design.generated.resources.season_number
 import jellystack_mobile.design.generated.resources.server_default
 import jellystack_mobile.design.generated.resources.server_default_supporting
@@ -54,6 +61,8 @@ import org.jetbrains.compose.resources.stringResource
 
 internal object RequestConfigurationTestTags {
     const val CONTENT = "request_configuration_content"
+    const val VARIANT_SELECTOR = "request_configuration_variant_selector"
+    const val ADVANCED_PROFILE_SELECTOR = "request_configuration_advanced_profile_selector"
 }
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
@@ -64,19 +73,44 @@ internal fun RequestConfiguration(
     availableSeasons: List<Int>,
     selected: JellyseerrRequestProfileSelection,
     seasonSelection: JellyseerrCreateSelection,
+    capabilities: JellyseerrRequestCapabilities = JellyseerrRequestCapabilities.ALL,
+    variant: JellyseerrRequestVariant = JellyseerrRequestVariant.STANDARD,
     requestAllAvailableSeasonsExplicitly: Boolean = false,
     isSubmitting: Boolean = false,
     initialFocusModifier: Modifier = Modifier,
     modifier: Modifier = Modifier,
     onSelect: (JellyseerrRequestProfileSelection) -> Unit,
+    onSelectVariant: (JellyseerrRequestVariant) -> Unit = {},
     onSelectSeasons: (JellyseerrCreateSelection) -> Unit,
     onSubmit: (JellyseerrCreateSelection?) -> Unit,
     onClose: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val canRequestStandard =
+        capabilities.canRequest(item.mediaType, JellyseerrRequestVariant.STANDARD)
+    val canRequest4k =
+        capabilities.canRequest(item.mediaType, JellyseerrRequestVariant.FOUR_K)
+    val effectiveVariant =
+        when {
+            capabilities.canRequest(item.mediaType, variant) -> variant
+            canRequestStandard -> JellyseerrRequestVariant.STANDARD
+            canRequest4k -> JellyseerrRequestVariant.FOUR_K
+            else -> variant
+        }
+    LaunchedEffect(effectiveVariant, variant) {
+        if (effectiveVariant != variant) onSelectVariant(effectiveVariant)
+    }
+    val visibleProfiles =
+        if (capabilities.canUseAdvancedRequests) {
+            profiles.filter { option ->
+                option.is4k == (effectiveVariant == JellyseerrRequestVariant.FOUR_K)
+            }
+        } else {
+            emptyList()
+        }
     val options =
         listOf<JellyseerrRequestProfileSelection>(JellyseerrRequestProfileSelection.ServerDefault) +
-            profiles.map(JellyseerrRequestProfileSelection::Profile)
+            visibleProfiles.map(JellyseerrRequestProfileSelection::Profile)
     val sortedSeasons = remember(availableSeasons) { availableSeasons.distinct().sorted() }
     var profileQuery by rememberSaveable(item.mediaType, item.tmdbId) { mutableStateOf("") }
     var seasonQuery by rememberSaveable(item.mediaType, item.tmdbId) { mutableStateOf("") }
@@ -114,9 +148,12 @@ internal fun RequestConfiguration(
         }
     val allSeasonsSelected = selectedSeasonNumbers == sortedSeasons.toSet()
     val canSubmit =
-        item.mediaType != JellyseerrMediaType.TV ||
-            seasonSelection == JellyseerrCreateSelection.AllSeasons ||
-            selectedSeasonNumbers.isNotEmpty()
+        capabilities.canRequest(item.mediaType, effectiveVariant) &&
+            (
+                item.mediaType != JellyseerrMediaType.TV ||
+                    seasonSelection == JellyseerrCreateSelection.AllSeasons ||
+                    selectedSeasonNumbers.isNotEmpty()
+            )
 
     ModalBottomSheet(
         onDismissRequest = onClose,
@@ -138,35 +175,68 @@ internal fun RequestConfiguration(
                     modifier = Modifier.semantics { heading() },
                 )
             }
-            item {
-                Text(stringResource(Res.string.request_profile_title), style = MaterialTheme.typography.titleMedium)
-            }
-            item {
-                OutlinedTextField(
-                    value = profileQuery,
-                    onValueChange = { profileQuery = it },
-                    modifier = initialFocusModifier.fillMaxWidth(),
-                    placeholder = { Text(stringResource(Res.string.request_profile_search)) },
-                    singleLine = true,
-                )
-            }
-            items(visibleOptions) { option ->
-                val label =
-                    when (option) {
-                        JellyseerrRequestProfileSelection.ServerDefault -> stringResource(Res.string.server_default)
-                        is JellyseerrRequestProfileSelection.Profile -> option.option.name
+            if (canRequest4k) {
+                item {
+                    Text(stringResource(Res.string.request_variant_title), style = MaterialTheme.typography.titleMedium)
+                }
+                item {
+                    Row(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .testTag(RequestConfigurationTestTags.VARIANT_SELECTOR),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        if (canRequestStandard) {
+                            FilterChip(
+                                selected = effectiveVariant == JellyseerrRequestVariant.STANDARD,
+                                onClick = { onSelectVariant(JellyseerrRequestVariant.STANDARD) },
+                                label = { Text(stringResource(Res.string.request_variant_standard)) },
+                            )
+                        }
+                        FilterChip(
+                            selected = effectiveVariant == JellyseerrRequestVariant.FOUR_K,
+                            onClick = { onSelectVariant(JellyseerrRequestVariant.FOUR_K) },
+                            label = { Text(stringResource(Res.string.request_variant_4k)) },
+                        )
                     }
-                val supportingText =
-                    when (option) {
-                        JellyseerrRequestProfileSelection.ServerDefault -> stringResource(Res.string.server_default_supporting)
-                        is JellyseerrRequestProfileSelection.Profile -> option.option.serviceName
-                    }
-                RequestProfileRow(
-                    label = label,
-                    supportingText = supportingText,
-                    selected = option == selected,
-                    onClick = { onSelect(option) },
-                )
+                }
+            }
+            if (capabilities.canUseAdvancedRequests) {
+                item {
+                    Text(
+                        stringResource(Res.string.request_profile_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.testTag(RequestConfigurationTestTags.ADVANCED_PROFILE_SELECTOR),
+                    )
+                }
+                item {
+                    OutlinedTextField(
+                        value = profileQuery,
+                        onValueChange = { profileQuery = it },
+                        modifier = initialFocusModifier.fillMaxWidth(),
+                        placeholder = { Text(stringResource(Res.string.request_profile_search)) },
+                        singleLine = true,
+                    )
+                }
+                items(visibleOptions) { option ->
+                    val label =
+                        when (option) {
+                            JellyseerrRequestProfileSelection.ServerDefault -> stringResource(Res.string.server_default)
+                            is JellyseerrRequestProfileSelection.Profile -> option.option.name
+                        }
+                    val supportingText =
+                        when (option) {
+                            JellyseerrRequestProfileSelection.ServerDefault -> stringResource(Res.string.server_default_supporting)
+                            is JellyseerrRequestProfileSelection.Profile -> option.option.serviceName
+                        }
+                    RequestProfileRow(
+                        label = label,
+                        supportingText = supportingText,
+                        selected = option == selected,
+                        onClick = { onSelect(option) },
+                    )
+                }
             }
             if (item.mediaType == JellyseerrMediaType.TV) {
                 item {

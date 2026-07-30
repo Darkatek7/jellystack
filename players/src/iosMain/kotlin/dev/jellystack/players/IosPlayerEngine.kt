@@ -30,7 +30,7 @@ class IosPlayerEngine : PlayerEngine {
         positions.tryEmit(positionMs)
     }
 
-    override fun setAudioTrack(track: AudioTrack?) = Unit
+    override fun setAudioTrack(track: AudioTrack?): AudioTrackSelectionResult = AudioTrackSelectionResult.PENDING
 
     override fun setSubtitleTrack(track: SubtitleTrack?) = Unit
 

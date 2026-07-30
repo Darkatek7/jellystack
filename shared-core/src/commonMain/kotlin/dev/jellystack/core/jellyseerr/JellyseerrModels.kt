@@ -353,6 +353,11 @@ sealed interface JellyseerrRequestProfileSelection {
     ) : JellyseerrRequestProfileSelection
 }
 
+enum class JellyseerrRequestVariant {
+    STANDARD,
+    FOUR_K,
+}
+
 data class JellyseerrLanguageProfiles(
     val movies: List<JellyseerrLanguageProfileOption>,
     val tv: List<JellyseerrLanguageProfileOption>,
@@ -368,6 +373,85 @@ data class JellyseerrProfile(
     val permissions: Int,
 ) {
     fun canManageRequests(): Boolean = permissions.hasPermission(JellyseerrPermission.MANAGE_REQUESTS)
+
+    fun requestCapabilities(): JellyseerrRequestCapabilities = JellyseerrRequestCapabilities.fromPermissions(permissions)
+}
+
+data class JellyseerrRequestCapabilities(
+    val canRequestMovie: Boolean,
+    val canRequestTv: Boolean,
+    val canRequest4kMovie: Boolean,
+    val canRequest4kTv: Boolean,
+    val canUseAdvancedRequests: Boolean,
+    val canManageRequests: Boolean,
+) {
+    fun canRequest(
+        mediaType: JellyseerrMediaType,
+        variant: JellyseerrRequestVariant = JellyseerrRequestVariant.STANDARD,
+    ): Boolean =
+        when (mediaType) {
+            JellyseerrMediaType.MOVIE ->
+                when (variant) {
+                    JellyseerrRequestVariant.STANDARD -> canRequestMovie
+                    JellyseerrRequestVariant.FOUR_K -> canRequest4kMovie
+                }
+            JellyseerrMediaType.TV ->
+                when (variant) {
+                    JellyseerrRequestVariant.STANDARD -> canRequestTv
+                    JellyseerrRequestVariant.FOUR_K -> canRequest4kTv
+                }
+            else -> false
+        }
+
+    companion object {
+        val NONE =
+            JellyseerrRequestCapabilities(
+                canRequestMovie = false,
+                canRequestTv = false,
+                canRequest4kMovie = false,
+                canRequest4kTv = false,
+                canUseAdvancedRequests = false,
+                canManageRequests = false,
+            )
+
+        val ALL =
+            JellyseerrRequestCapabilities(
+                canRequestMovie = true,
+                canRequestTv = true,
+                canRequest4kMovie = true,
+                canRequest4kTv = true,
+                canUseAdvancedRequests = true,
+                canManageRequests = true,
+            )
+
+        fun fromPermissions(permissions: Int?): JellyseerrRequestCapabilities {
+            val isAdmin = permissions.hasPermission(JellyseerrPermission.ADMIN)
+            val canManage = permissions.hasPermission(JellyseerrPermission.MANAGE_REQUESTS)
+            return JellyseerrRequestCapabilities(
+                canRequestMovie =
+                    isAdmin ||
+                        permissions.hasPermissionDirectly(JellyseerrPermission.REQUEST) ||
+                        permissions.hasPermissionDirectly(JellyseerrPermission.REQUEST_MOVIE),
+                canRequestTv =
+                    isAdmin ||
+                        permissions.hasPermissionDirectly(JellyseerrPermission.REQUEST) ||
+                        permissions.hasPermissionDirectly(JellyseerrPermission.REQUEST_TV),
+                canRequest4kMovie =
+                    isAdmin ||
+                        permissions.hasPermissionDirectly(JellyseerrPermission.REQUEST_4K) ||
+                        permissions.hasPermissionDirectly(JellyseerrPermission.REQUEST_4K_MOVIE),
+                canRequest4kTv =
+                    isAdmin ||
+                        permissions.hasPermissionDirectly(JellyseerrPermission.REQUEST_4K) ||
+                        permissions.hasPermissionDirectly(JellyseerrPermission.REQUEST_4K_TV),
+                canUseAdvancedRequests =
+                    isAdmin ||
+                        canManage ||
+                        permissions.hasPermissionDirectly(JellyseerrPermission.REQUEST_ADVANCED),
+                canManageRequests = isAdmin || canManage,
+            )
+        }
+    }
 }
 
 enum class JellyseerrMessageKind { INFO, ERROR }
@@ -375,6 +459,7 @@ enum class JellyseerrMessageKind { INFO, ERROR }
 enum class JellyseerrMessageCode {
     SearchFailed,
     RequestSubmitted,
+    RequestPermissionDenied,
     RequestDuplicate,
     RequestFailed,
     RequestRemoved,
@@ -432,6 +517,7 @@ sealed interface JellyseerrRequestsState {
         val languageProfiles: JellyseerrLanguageProfiles,
         val currentRequestsByMedia: Map<Pair<JellyseerrMediaType, Int>, JellyseerrRequestSummary> = emptyMap(),
         val currentUserId: Int? = null,
+        val capabilities: JellyseerrRequestCapabilities = JellyseerrRequestCapabilities.NONE,
     ) : JellyseerrRequestsState
 
     data class Error(
@@ -471,9 +557,21 @@ sealed interface JellyseerrCreateResult {
 object JellyseerrPermission {
     const val ADMIN: Int = 2
     const val MANAGE_REQUESTS: Int = 16
+    const val REQUEST: Int = 32
+    const val REQUEST_4K: Int = 1024
+    const val REQUEST_4K_MOVIE: Int = 2048
+    const val REQUEST_4K_TV: Int = 4096
+    const val REQUEST_ADVANCED: Int = 8192
+    const val REQUEST_MOVIE: Int = 262_144
+    const val REQUEST_TV: Int = 524_288
 }
 
 fun Int?.hasPermission(permission: Int): Boolean {
     val value = this ?: return false
     return value and permission == permission || value and JellyseerrPermission.ADMIN == JellyseerrPermission.ADMIN
+}
+
+private fun Int?.hasPermissionDirectly(permission: Int): Boolean {
+    val value = this ?: return false
+    return value and permission == permission
 }
