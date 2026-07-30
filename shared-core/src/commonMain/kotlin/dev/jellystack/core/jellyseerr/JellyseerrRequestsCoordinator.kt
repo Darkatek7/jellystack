@@ -731,6 +731,24 @@ class JellyseerrRequestsCoordinator(
             } else {
                 Result.success(mutex.withLock { lastCounts })
             }
+        val profileResult =
+            if (fetchCounts) {
+                cancellationSafeRunCatching { repository.profile(context.environment) }
+            } else {
+                Result.success<JellyseerrProfile?>(null)
+            }
+        val refreshedProfile = profileResult.getOrNull()
+        val refreshedCapabilities = refreshedProfile?.requestCapabilities()
+        val languageProfilesResult =
+            when {
+                refreshedCapabilities == null ->
+                    Result.success<JellyseerrLanguageProfiles?>(null)
+                refreshedCapabilities.canUseAdvancedRequests ->
+                    cancellationSafeRunCatching {
+                        repository.fetchLanguageProfiles(context.environment)
+                    }
+                else -> Result.success(JellyseerrLanguageProfiles.EMPTY)
+            }
         mutex.withLock {
             if (
                 currentEnvironment != context.environment ||
@@ -738,6 +756,24 @@ class JellyseerrRequestsCoordinator(
                 requestsRefreshGeneration != context.generation
             ) {
                 return@withLock
+            }
+            if (refreshedProfile != null && refreshedCapabilities != null) {
+                currentProfile = refreshedProfile
+                if (refreshedCapabilities.canUseAdvancedRequests) {
+                    languageProfilesResult.getOrNull()?.let { profiles ->
+                        lastLanguageProfiles = profiles
+                    }
+                } else {
+                    lastLanguageProfiles = JellyseerrLanguageProfiles.EMPTY
+                }
+                updateReadyState {
+                    it.copy(
+                        isAdmin = refreshedCapabilities.canManageRequests,
+                        languageProfiles = lastLanguageProfiles,
+                        currentUserId = refreshedProfile.id,
+                        capabilities = refreshedCapabilities,
+                    )
+                }
             }
             requestsResult
                 .onSuccess { page ->

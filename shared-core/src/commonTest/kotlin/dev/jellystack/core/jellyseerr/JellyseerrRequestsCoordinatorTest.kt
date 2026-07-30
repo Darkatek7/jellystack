@@ -111,6 +111,50 @@ class JellyseerrRequestsCoordinatorTest {
         }
 
     @Test
+    fun manualRefreshDropsAdvancedProfilesWhenServerPermissionIsRemoved() =
+        runTest {
+            var permissions = JellyseerrPermission.REQUEST or JellyseerrPermission.REQUEST_ADVANCED
+            var profileCalls = 0
+            val client =
+                HttpClient(
+                    MockEngine { request ->
+                        if (request.method == HttpMethod.Get && request.url.encodedPath == "/api/v1/auth/me") {
+                            profileCalls += 1
+                            respondJson(
+                                """{"id":7,"displayName":"Requester","permissions":$permissions}""",
+                            )
+                        } else {
+                            defaultResponses(request)
+                        }
+                    },
+                ) {
+                    install(ContentNegotiation) { json(NetworkJson.default) }
+                }
+            val coordinator =
+                JellyseerrRequestsCoordinator(
+                    repository = JellyseerrRepository(httpClient = client),
+                    environmentProvider = FakeEnvironmentProvider(environment),
+                    scope = this,
+                    enablePolling = false,
+                    clock = FixedClock,
+                )
+
+            val initial = coordinator.state.filterIsInstance<JellyseerrRequestsState.Ready>().first()
+            assertTrue(initial.capabilities.canUseAdvancedRequests)
+
+            permissions = JellyseerrPermission.REQUEST
+            coordinator.refresh()
+            val refreshed =
+                coordinator.state
+                    .filterIsInstance<JellyseerrRequestsState.Ready>()
+                    .first { !it.capabilities.canUseAdvancedRequests }
+            assertEquals(2, profileCalls)
+            assertFalse(refreshed.capabilities.canUseAdvancedRequests)
+            assertEquals(JellyseerrLanguageProfiles.EMPTY, refreshed.languageProfiles)
+            coordinator.shutdown()
+        }
+
+    @Test
     fun searchPreservesRawTextAndNormalizesOnlyNetworkQuery() =
         runTest {
             var requestedQuery: String? = null

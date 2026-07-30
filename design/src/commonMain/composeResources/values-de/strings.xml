@@ -193,6 +193,7 @@
     <string name="request_refresh">Anfragen aktualisieren</string>
     <string name="request_configure">Anfrage konfigurieren</string>
     <string name="request_filter_all">Alle</string>
+    <string name="request_filter_label">Status</string>
     <string name="request_filter_pending">Ausstehend</string>
     <string name="request_filter_approved">Genehmigt</string>
     <string name="request_filter_processing">In Bearbeitung</string>

@@ -7,6 +7,8 @@
 - Improve Android audio compatibility by advertising only codecs the device can decode and using explicit media audio focus.
 - Apply the preferred or manually selected audio track to the actual stream, including HLS source re-resolution.
 - Keep Discover search focused while typing, with debounced and cancellable network requests.
+- Keep the Home spotlight visible and return to it after refreshing.
+- Replace the crowded request-status chips with a compact status selector.
 
 ## 0.14.2
 

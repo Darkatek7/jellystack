@@ -817,6 +817,81 @@ class LibraryAndMediaUiTest {
     }
 
     @Test
+    fun spotlightReturnsToTopAfterRefreshTemporarilyRemovesCandidates() {
+        val loadedState =
+            spotlightHomeState().copy(
+                continueWatching =
+                    listOf(
+                        movieItem(
+                            id = "continue-movie",
+                            name = "Continue movie",
+                            dateCreated = (Clock.System.now() - 3.days).toString(),
+                        ),
+                    ),
+            )
+        var beginRefresh: (() -> Unit)? = null
+        var finishRefresh: (() -> Unit)? = null
+
+        composeRule.setContent {
+            var state by remember { mutableStateOf(loadedState) }
+            beginRefresh = {
+                state =
+                    state.copy(
+                        isInitialLoading = true,
+                        libraryItems = emptyList(),
+                        recentShows = emptyList(),
+                        recentMovies = emptyList(),
+                    )
+            }
+            finishRefresh = {
+                state = loadedState.copy(isInitialLoading = false)
+            }
+
+            JellystackTheme(isDarkTheme = false) {
+                JellyfinBrowseScreen(
+                    state = state,
+                    onSelectLibrary = {},
+                    onRefresh = {},
+                    onLoadMore = {},
+                    onOpenDetail = {},
+                    onConnectServer = {},
+                    selectedSpotlightId = null,
+                    onSelectedSpotlightIdChange = {},
+                    showLibraryItems = false,
+                    spotlightAutoAdvanceEnabled = false,
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag(SpotlightTestTags.HERO).assertIsDisplayed()
+        composeRule.onNodeWithTag(SpotlightTestTags.HOME_LIST).performScrollToIndex(3)
+        composeRule.onNodeWithText("Recently added movies").assertIsDisplayed()
+        composeRule.runOnIdle { checkNotNull(beginRefresh).invoke() }
+        composeRule.waitForIdle()
+        composeRule.runOnIdle { checkNotNull(finishRefresh).invoke() }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag(SpotlightTestTags.HERO).assertIsDisplayed()
+        val listTop =
+            composeRule
+                .onNodeWithTag(SpotlightTestTags.HOME_LIST)
+                .fetchSemanticsNode()
+                .boundsInRoot
+                .top
+        val heroTop =
+            composeRule
+                .onNodeWithTag(SpotlightTestTags.HERO)
+                .fetchSemanticsNode()
+                .boundsInRoot
+                .top
+        val tolerance = 32f * composeRule.activity.resources.displayMetrics.density
+        assertTrue(
+            "Expected refreshed Home to return to the Spotlight, listTop=$listTop heroTop=$heroTop",
+            heroTop <= listTop + tolerance,
+        )
+    }
+
+    @Test
     fun spotlightPageChangeDoesNotStealIndicatorFocus() {
         usedHardwareInput = true
         composeRule.setContent { manualSpotlightHarness() }

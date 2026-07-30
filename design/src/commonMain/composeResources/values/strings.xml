@@ -193,6 +193,7 @@
     <string name="request_refresh">Refresh requests</string>
     <string name="request_configure">Configure request</string>
     <string name="request_filter_all">All</string>
+    <string name="request_filter_label">Status</string>
     <string name="request_filter_pending">Pending</string>
     <string name="request_filter_approved">Approved</string>
     <string name="request_filter_processing">Processing</string>
