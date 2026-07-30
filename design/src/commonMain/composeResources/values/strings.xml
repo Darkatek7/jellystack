@@ -392,7 +392,7 @@
     <string name="quick_connect_seerr_manual">Automatic Seerr linking was not available. Sign in manually with your Jellyfin or Seerr account.</string>
     <string name="whats_new_0142_permissions">Significantly reduced Android permissions with clearer, contextual requests.</string>
     <string name="whats_new_0142_privacy">New permission and privacy explanations directly in Settings.</string>
-    <string name="whats_new_0142_open_source">Jellystack is now fully open source under AGPL-3.0.</string>
+    <string name="whats_new_0142_open_source">Jellystack is now fully open source under GPL-3.0.</string>
     <string name="insecure_http_warning">This server uses unencrypted HTTP. Credentials and media traffic may be visible to others on the network. Use HTTPS whenever possible.</string>
     <string name="insecure_http_confirm">I understand and want to use this HTTP server</string>
     <string name="privacy_title">Permissions &amp; privacy</string>

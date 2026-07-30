@@ -3,7 +3,7 @@
 [![Google Play](https://img.shields.io/badge/Google_Play-Install-414141?logo=googleplay)](https://play.google.com/store/apps/details?id=app.jellystack.mobile)
 [![CI](https://github.com/Darkatek7/jellystack/actions/workflows/ci.yml/badge.svg)](https://github.com/Darkatek7/jellystack/actions/workflows/ci.yml)
 [![Security](https://github.com/Darkatek7/jellystack/actions/workflows/security.yml/badge.svg)](https://github.com/Darkatek7/jellystack/actions/workflows/security.yml)
-[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-7c4dff.svg)](LICENSE)
+[![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-7c4dff.svg)](LICENSE)
 
 Jellystack is a privacy-focused Jellyfin and Seerr client with a native Android experience. Browse and play your own media, manage requests, download for offline use, and keep playback state in sync—without a Jellystack cloud, ads, analytics, or tracking.
 
@@ -57,6 +57,6 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md
 
 ## License and independence
 
-Jellystack is licensed under [AGPL-3.0](LICENSE). See [Third-Party Notices](THIRD_PARTY_NOTICES.md) for dependencies.
+Jellystack is licensed under [GPL-3.0](LICENSE). See [Third-Party Notices](THIRD_PARTY_NOTICES.md) for dependencies.
 
 Jellystack is an independent community project and is not affiliated with or endorsed by Jellyfin, the Jellyfin project, Seerr, or their maintainers.
