@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Forward30
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -63,6 +64,7 @@ import dev.jellystack.players.PlaybackState
 import dev.jellystack.players.cast.CastConnectionState
 import dev.jellystack.players.formatPlaybackDuration
 import dev.jellystack.players.formatPlaybackTime
+import dev.jellystack.players.syncplay.SyncPlayCoordinator
 import kotlin.math.roundToLong
 
 internal object AndroidPlaybackTags {
@@ -95,14 +97,24 @@ internal fun BoxScope.PlaybackControls(
     onControlFocusChanged: (String, Boolean) -> Unit,
     seekBackSeconds: Int = 10,
     seekForwardSeconds: Int = 30,
+    syncPlayCoordinator: SyncPlayCoordinator? = null,
+    syncPlayActive: Boolean = false,
+    canUseSyncPlay: Boolean = false,
+    onShowSyncPlay: () -> Unit = {},
 ) {
     PlayerTopBar(
         state = state,
         castState = castState,
         castRouteButton = castRouteButton,
-        onClose = { controller.stop() },
+        onClose = {
+            if (syncPlayActive) syncPlayCoordinator?.leaveGroup()
+            controller.stop()
+        },
         onShowOptions = onShowOptions,
         onControlFocusChanged = onControlFocusChanged,
+        syncPlayActive = syncPlayActive,
+        canUseSyncPlay = canUseSyncPlay,
+        onShowSyncPlay = onShowSyncPlay,
     )
     PlayerBottomControls(
         state = state,
@@ -111,6 +123,8 @@ internal fun BoxScope.PlaybackControls(
         onControlFocusChanged = onControlFocusChanged,
         seekBackSeconds = seekBackSeconds,
         seekForwardSeconds = seekForwardSeconds,
+        syncPlayCoordinator = syncPlayCoordinator,
+        syncPlayActive = syncPlayActive,
     )
 }
 
@@ -122,6 +136,9 @@ private fun BoxScope.PlayerTopBar(
     onClose: () -> Unit,
     onShowOptions: () -> Unit,
     onControlFocusChanged: (String, Boolean) -> Unit,
+    syncPlayActive: Boolean,
+    canUseSyncPlay: Boolean,
+    onShowSyncPlay: () -> Unit,
 ) {
     Row(
         modifier =
@@ -158,16 +175,27 @@ private fun BoxScope.PlayerTopBar(
                 )
             }
         }
-        Box(
-            modifier =
-                Modifier
-                    .size(48.dp)
-                    .testTag(AndroidPlaybackTags.CAST_ROUTE_PICKER)
-                    .onFocusChanged { onControlFocusChanged("cast", it.hasFocus) }
-                    .focusGroup(),
-            contentAlignment = Alignment.Center,
-        ) {
-            castRouteButton(castState)
+        if (!syncPlayActive) {
+            Box(
+                modifier =
+                    Modifier
+                        .size(48.dp)
+                        .testTag(AndroidPlaybackTags.CAST_ROUTE_PICKER)
+                        .onFocusChanged { onControlFocusChanged("cast", it.hasFocus) }
+                        .focusGroup(),
+                contentAlignment = Alignment.Center,
+            ) {
+                castRouteButton(castState)
+            }
+        }
+        if (canUseSyncPlay) {
+            PlayerIconButton(
+                icon = { Icon(Icons.Filled.Groups, contentDescription = null) },
+                description = stringResource(R.string.syncplay_open),
+                onClick = onShowSyncPlay,
+                focusId = "syncplay",
+                onFocusChanged = onControlFocusChanged,
+            )
         }
         PlayerIconButton(
             icon = { Icon(Icons.Filled.MoreVert, contentDescription = null) },
@@ -187,6 +215,8 @@ private fun BoxScope.PlayerBottomControls(
     onControlFocusChanged: (String, Boolean) -> Unit,
     seekBackSeconds: Int,
     seekForwardSeconds: Int,
+    syncPlayCoordinator: SyncPlayCoordinator?,
+    syncPlayActive: Boolean,
 ) {
     val durationMs = state.durationMs?.takeIf { it > 0L }
     val maxValue = (durationMs ?: state.positionMs.coerceAtLeast(1L)).toFloat()
@@ -216,7 +246,11 @@ private fun BoxScope.PlayerBottomControls(
             },
             onValueChangeFinished = {
                 val target = sliderValue.roundToLong().let { durationMs?.let(it::coerceAtMost) ?: it }
-                controller.seekTo(target.coerceAtLeast(0L))
+                if (syncPlayActive) {
+                    syncPlayCoordinator?.requestSeek(target.coerceAtLeast(0L))
+                } else {
+                    controller.seekTo(target.coerceAtLeast(0L))
+                }
                 scrubbing = false
                 onInteraction()
             },
@@ -251,7 +285,8 @@ private fun BoxScope.PlayerBottomControls(
                 icon = { Icon(Icons.Filled.Replay10, contentDescription = null) },
                 description = stringResource(R.string.player_seek_back),
                 onClick = {
-                    controller.seekTo((state.positionMs - seekBackSeconds * 1_000L).coerceAtLeast(0L))
+                    val target = (state.positionMs - seekBackSeconds * 1_000L).coerceAtLeast(0L)
+                    if (syncPlayActive) syncPlayCoordinator?.requestSeek(target) else controller.seekTo(target)
                     onInteraction()
                 },
                 focusId = "seek-back",
@@ -261,7 +296,13 @@ private fun BoxScope.PlayerBottomControls(
                 icon = { Icon(if (state.isPaused) Icons.Filled.PlayArrow else Icons.Filled.Pause, contentDescription = null) },
                 description = stringResource(if (state.isPaused) R.string.player_play else R.string.player_pause),
                 onClick = {
-                    if (state.isPaused) controller.resume() else controller.pause()
+                    if (syncPlayActive) {
+                        if (state.isPaused) syncPlayCoordinator?.requestUnpause() else syncPlayCoordinator?.requestPause()
+                    } else if (state.isPaused) {
+                        controller.resume()
+                    } else {
+                        controller.pause()
+                    }
                     onInteraction()
                 },
                 focusId = "play-pause",
@@ -272,7 +313,8 @@ private fun BoxScope.PlayerBottomControls(
                 description = stringResource(R.string.player_seek_forward),
                 onClick = {
                     val target = state.positionMs + seekForwardSeconds * 1_000L
-                    controller.seekTo(durationMs?.let(target::coerceAtMost) ?: target)
+                    val bounded = durationMs?.let(target::coerceAtMost) ?: target
+                    if (syncPlayActive) syncPlayCoordinator?.requestSeek(bounded) else controller.seekTo(bounded)
                     onInteraction()
                 },
                 focusId = "seek-forward",

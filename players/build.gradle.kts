@@ -23,7 +23,10 @@ kotlin {
                 implementation(projects.sharedCore)
                 implementation(projects.sharedNetwork)
                 implementation(libs.coroutines.core)
+                implementation(libs.serialization.json)
                 implementation(libs.ktor.client.core)
+                implementation(libs.ktor.client.websockets)
+                implementation(libs.kotlinx.datetime)
                 implementation(libs.multiplatform.settings)
                 implementation(libs.napier)
             }

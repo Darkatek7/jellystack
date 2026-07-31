@@ -74,6 +74,7 @@ internal fun PlaybackOptionsSheet(
     controller: PlaybackController,
     orientation: Int,
     onDismiss: () -> Unit,
+    syncPlayActive: Boolean = false,
 ) {
     if (orientation == Configuration.ORIENTATION_LANDSCAPE) {
         Dialog(
@@ -103,7 +104,7 @@ internal fun PlaybackOptionsSheet(
                     color = MaterialTheme.colorScheme.surface,
                     tonalElevation = 6.dp,
                 ) {
-                    OptionsContent(state, controller, onDismiss)
+                    OptionsContent(state, controller, onDismiss, syncPlayActive)
                 }
             }
         }
@@ -113,7 +114,7 @@ internal fun PlaybackOptionsSheet(
             modifier = Modifier.testTag(AndroidPlaybackTags.OPTIONS),
             containerColor = MaterialTheme.colorScheme.surface,
         ) {
-            OptionsContent(state, controller, onDismiss)
+            OptionsContent(state, controller, onDismiss, syncPlayActive)
         }
     }
 }
@@ -124,6 +125,7 @@ private fun OptionsContent(
     state: PlaybackState.Active,
     controller: PlaybackController,
     onDismiss: () -> Unit,
+    syncPlayActive: Boolean,
 ) {
     val initialFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { initialFocus.requestFocus() }
@@ -215,7 +217,10 @@ private fun OptionsContent(
             selectedSummary = playbackSpeedLabel(state.playbackSpeed),
             options = speedOptions,
             onSelect = controller::setPlaybackSpeed,
-            enabled = state !is PlaybackState.CastConnecting && state !is PlaybackState.CastPlayback,
+            enabled =
+                !syncPlayActive &&
+                    state !is PlaybackState.CastConnecting &&
+                    state !is PlaybackState.CastPlayback,
             modifier = Modifier.testTag(AndroidPlaybackTags.SPEED_SELECTOR),
         )
         Row(
