@@ -10,6 +10,7 @@ import dev.jellystack.players.PlaybackController
 import dev.jellystack.players.PlaybackPhase
 import dev.jellystack.players.PlaybackState
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.HttpTimeoutConfig
 import io.ktor.client.plugins.websocket.WebSockets
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -53,7 +54,7 @@ class SyncPlayCoordinator(
             ClientConfig(
                 installLogging = false,
                 requestTimeoutMillis = 20_000,
-                socketTimeoutMillis = 0,
+                socketTimeoutMillis = HttpTimeoutConfig.INFINITE_TIMEOUT_MS,
                 configure = { install(WebSockets) },
             ),
         ),
