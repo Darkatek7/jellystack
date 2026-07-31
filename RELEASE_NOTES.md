@@ -6,6 +6,7 @@
 - Accept Jellyfin and Seerr addresses using IPv4, bracketed IPv6, custom ports, and reverse-proxy paths.
 - Improve Android audio compatibility by advertising only codecs the device can decode and using explicit media audio focus.
 - Apply the preferred or manually selected audio track to the actual stream, including HLS source re-resolution.
+- Close Jellyfin playback sessions reliably and report the exact final watch position when leaving the player.
 - Keep Discover search focused while typing, with debounced and cancellable network requests.
 - Keep the Home spotlight visible and return to it after refreshing.
 - Replace the crowded request-status chips with a compact status selector.

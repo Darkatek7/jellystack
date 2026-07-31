@@ -27,7 +27,11 @@ interface StreamingProgressReporter {
         positionMs: Long,
     )
 
-    suspend fun onCompleted(context: StreamingProgressContext)
+    suspend fun onStop(
+        context: StreamingProgressContext,
+        positionMs: Long?,
+        completed: Boolean,
+    )
 }
 
 object NoopStreamingProgressReporter : StreamingProgressReporter {
@@ -41,7 +45,11 @@ object NoopStreamingProgressReporter : StreamingProgressReporter {
         positionMs: Long,
     ) = Unit
 
-    override suspend fun onCompleted(context: StreamingProgressContext) = Unit
+    override suspend fun onStop(
+        context: StreamingProgressContext,
+        positionMs: Long?,
+        completed: Boolean,
+    ) = Unit
 }
 
 class JellyfinStreamingProgressReporter(
@@ -61,7 +69,11 @@ class JellyfinStreamingProgressReporter(
         repository.reportStreamingProgress(context, positionMs)
     }
 
-    override suspend fun onCompleted(context: StreamingProgressContext) {
-        repository.completeStreamingPlayback(context)
+    override suspend fun onStop(
+        context: StreamingProgressContext,
+        positionMs: Long?,
+        completed: Boolean,
+    ) {
+        repository.stopStreamingPlayback(context, positionMs, completed)
     }
 }

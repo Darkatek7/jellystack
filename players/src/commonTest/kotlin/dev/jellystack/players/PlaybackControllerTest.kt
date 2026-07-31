@@ -570,6 +570,95 @@ class PlaybackControllerTest {
         }
 
     @Test
+    fun reportsStreamingStopAtCurrentPositionWhenPlaybackCloses() =
+        runTest {
+            val controllerScope = TestScope(UnconfinedTestDispatcher())
+            val reporter = RecordingStreamingProgressReporter()
+            val controller =
+                PlaybackController(
+                    progressStore = InMemoryPlaybackProgressStore(),
+                    playbackSourceResolver = TestPlaybackSourceResolver(),
+                    playerEngine = NoopPlayerEngine(),
+                    streamingProgressReporter = reporter,
+                    scope = controllerScope,
+                )
+            val request = PlaybackRequest.from(sampleItem(), sampleDetail(withDirect = true))
+
+            try {
+                controller.play(request, testEnvironment())
+                controller.updateProgress(37_500L)
+
+                controller.stop()
+                controllerScope.testScheduler.advanceUntilIdle()
+
+                assertEquals(
+                    listOf(StreamingStopEvent(mediaId = "item-1", positionMs = 37_500L, completed = false)),
+                    reporter.stopEvents,
+                )
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
+    fun streamingStopWaitsForInFlightStartReport() =
+        runTest {
+            val controllerScope = TestScope(UnconfinedTestDispatcher(testScheduler))
+            val reporter = OrderedStreamingProgressReporter(blockStart = true)
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = TestPlaybackSourceResolver(),
+                    playerEngine = NoopPlayerEngine(),
+                    streamingProgressReporter = reporter,
+                    scope = controllerScope,
+                )
+            val request = PlaybackRequest.from(sampleItem(), sampleDetail(withDirect = true))
+
+            try {
+                controller.play(request, testEnvironment())
+                runCurrent()
+                assertEquals(listOf("start"), reporter.events)
+
+                controller.stop()
+                runCurrent()
+                assertEquals(listOf("start"), reporter.events)
+
+                reporter.allowStart.complete(Unit)
+                advanceUntilIdle()
+
+                assertEquals(listOf("start", "start-finished", "stop", "stop-finished"), reporter.events)
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
+    fun releaseAllowsInFlightStreamingStopToFinish() =
+        runTest {
+            val controllerScope = TestScope(UnconfinedTestDispatcher(testScheduler))
+            val reporter = OrderedStreamingProgressReporter(blockStop = true)
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = TestPlaybackSourceResolver(),
+                    playerEngine = NoopPlayerEngine(),
+                    streamingProgressReporter = reporter,
+                    scope = controllerScope,
+                )
+            val request = PlaybackRequest.from(sampleItem(), sampleDetail(withDirect = true))
+
+            controller.play(request, testEnvironment())
+            controller.stop()
+            runCurrent()
+            assertEquals(listOf("start", "start-finished", "stop"), reporter.events)
+
+            controller.release()
+            reporter.allowStop.complete(Unit)
+            advanceUntilIdle()
+
+            assertEquals(listOf("start", "start-finished", "stop", "stop-finished"), reporter.events)
+        }
+
+    @Test
     fun reportsStreamingCompletionWhenFinishingDirectPlayback() =
         runTest {
             val controllerScope = TestScope(UnconfinedTestDispatcher())
@@ -594,8 +683,10 @@ class PlaybackControllerTest {
                 controller.stop()
                 controllerScope.testScheduler.advanceUntilIdle()
 
-                val completedIds = reporter.completedEvents.map { it.mediaId }
-                assertEquals(listOf("item-1"), completedIds)
+                assertEquals(
+                    listOf(StreamingStopEvent(mediaId = "item-1", positionMs = 120_000L, completed = true)),
+                    reporter.stopEvents,
+                )
             } finally {
                 controller.release()
             }
@@ -2526,7 +2617,7 @@ private fun sampleDetail(
 private class RecordingStreamingProgressReporter : StreamingProgressReporter {
     val startEvents = mutableListOf<Pair<StreamingProgressContext, Long>>()
     val progressEvents = mutableListOf<Pair<StreamingProgressContext, Long>>()
-    val completedEvents = mutableListOf<StreamingProgressContext>()
+    val stopEvents = mutableListOf<StreamingStopEvent>()
 
     override suspend fun onStart(
         context: StreamingProgressContext,
@@ -2542,8 +2633,51 @@ private class RecordingStreamingProgressReporter : StreamingProgressReporter {
         progressEvents += context to positionMs
     }
 
-    override suspend fun onCompleted(context: StreamingProgressContext) {
-        completedEvents += context
+    override suspend fun onStop(
+        context: StreamingProgressContext,
+        positionMs: Long?,
+        completed: Boolean,
+    ) {
+        stopEvents += StreamingStopEvent(context.mediaId, positionMs, completed)
+    }
+}
+
+private data class StreamingStopEvent(
+    val mediaId: String,
+    val positionMs: Long?,
+    val completed: Boolean,
+)
+
+private class OrderedStreamingProgressReporter(
+    private val blockStart: Boolean = false,
+    private val blockStop: Boolean = false,
+) : StreamingProgressReporter {
+    val events = mutableListOf<String>()
+    val allowStart = CompletableDeferred<Unit>()
+    val allowStop = CompletableDeferred<Unit>()
+
+    override suspend fun onStart(
+        context: StreamingProgressContext,
+        positionMs: Long,
+    ) {
+        events += "start"
+        if (blockStart) allowStart.await()
+        events += "start-finished"
+    }
+
+    override suspend fun onProgress(
+        context: StreamingProgressContext,
+        positionMs: Long,
+    ) = Unit
+
+    override suspend fun onStop(
+        context: StreamingProgressContext,
+        positionMs: Long?,
+        completed: Boolean,
+    ) {
+        events += "stop"
+        if (blockStop) allowStop.await()
+        events += "stop-finished"
     }
 }
 

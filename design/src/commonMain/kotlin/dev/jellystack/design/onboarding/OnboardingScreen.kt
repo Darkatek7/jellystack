@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import dev.jellystack.core.preferences.TutorialStep
 import dev.jellystack.core.server.JellyfinSignInMethod
 import dev.jellystack.design.ServerFormState
+import dev.jellystack.design.components.InsecureHttpWarning
 import dev.jellystack.design.components.JellyfinQuickConnectStatus
 import dev.jellystack.design.components.JellyfinSignInMethodSelector
 import dev.jellystack.design.components.JellystackMark
@@ -66,7 +67,6 @@ import jellystack_mobile.design.generated.resources.continue_label
 import jellystack_mobile.design.generated.resources.email
 import jellystack_mobile.design.generated.resources.hide_password
 import jellystack_mobile.design.generated.resources.insecure_http_confirm
-import jellystack_mobile.design.generated.resources.insecure_http_warning
 import jellystack_mobile.design.generated.resources.onboarding_connect_jellyfin_first
 import jellystack_mobile.design.generated.resources.onboarding_jellyfin_body
 import jellystack_mobile.design.generated.resources.onboarding_jellyfin_title
@@ -341,15 +341,11 @@ private fun ServerFields(
             error = state.fieldErrors[OnboardingField.Url],
         )
         if (form.requiresInsecureHttpConfirmation) {
-            Text(
-                text = stringResource(Res.string.insecure_http_warning),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-            )
-            FilterChip(
-                selected = form.allowInsecureHttp,
-                onClick = { onChange(form.copy(allowInsecureHttp = !form.allowInsecureHttp)) },
-                label = { Text(stringResource(Res.string.insecure_http_confirm)) },
+            InsecureHttpWarning(
+                confirmed = form.allowInsecureHttp,
+                onConfirmedChange = { confirmed ->
+                    onChange(form.copy(allowInsecureHttp = confirmed))
+                },
             )
         }
         if (showUsername) {

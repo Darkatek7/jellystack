@@ -33,8 +33,8 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.jellystack.core.jellyseerr.JellyseerrDetailEnrichmentSection
-import dev.jellystack.core.jellyseerr.JellyseerrLanguageProfiles
 import dev.jellystack.core.jellyseerr.JellyseerrLanguageProfileOption
+import dev.jellystack.core.jellyseerr.JellyseerrLanguageProfiles
 import dev.jellystack.core.jellyseerr.JellyseerrMediaAvailability
 import dev.jellystack.core.jellyseerr.JellyseerrMediaDetail
 import dev.jellystack.core.jellyseerr.JellyseerrMediaDetailEnrichment

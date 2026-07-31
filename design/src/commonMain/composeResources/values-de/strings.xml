@@ -403,9 +403,11 @@
     <string name="whats_new_0143_seerr_permissions">Seerr-Anfragen respektieren jetzt deine Serverrechte.</string>
     <string name="whats_new_0143_server_addresses">IP-Adressen und benutzerdefinierte Ports funktionieren jetzt zuverlässig.</string>
     <string name="whats_new_0143_audio">Verbesserte Audiokompatibilität und korrekte Sprachauswahl.</string>
+    <string name="whats_new_0143_playback_sessions">Wiedergabesitzungen werden zuverlässig beendet und behalten die korrekte Position.</string>
     <string name="whats_new_0143_search">Die Discover-Suche bleibt beim Tippen geöffnet.</string>
+    <string name="insecure_http_title">Unverschlüsselte Verbindung</string>
     <string name="insecure_http_warning">Dieser Server verwendet unverschlüsseltes HTTP. Zugangsdaten und Medienverkehr können für andere im Netzwerk sichtbar sein. Verwende wenn möglich HTTPS.</string>
-    <string name="insecure_http_confirm">Ich verstehe das Risiko und möchte diesen HTTP-Server verwenden</string>
+    <string name="insecure_http_confirm">Diesen HTTP-Server trotzdem verwenden</string>
     <string name="privacy_title">Berechtigungen &amp; Datenschutz</string>
     <string name="privacy_summary">Jellystack verwendet keine Analysen, Werbung, Tracking oder automatischen Log-Uploads. Die App verbindet sich direkt mit den eingerichteten Jellyfin- und Seerr-Servern und schützt Server-Tokens im geschützten Anmeldedatenspeicher des Geräts.</string>
     <string name="privacy_network_title">Netzwerkzugriff</string>

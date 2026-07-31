@@ -510,21 +510,29 @@ class JellyfinBrowseRepository(
         runCatching { reportOfflineProgress(context.mediaId, positionMs) }
     }
 
-    suspend fun completeStreamingPlayback(context: StreamingProgressContext) {
+    suspend fun stopStreamingPlayback(
+        context: StreamingProgressContext,
+        positionMs: Long?,
+        completed: Boolean,
+    ) {
         val environment = environmentProvider.current() ?: return
         val api = apiFor(environment)
         val playSessionId = context.playSessionId ?: return
         val playMethod = context.strategy.toApiValue()
+        val positionTicks = positionMs?.let { if (it <= 0) 0L else it * 10_000 }
         val body =
             buildJsonObject {
                 put("ItemId", context.mediaId)
                 put("PlaySessionId", playSessionId)
                 context.mediaSourceId?.let { put("MediaSourceId", it) }
+                positionTicks?.let { put("PositionTicks", it) }
                 put("PlayMethod", playMethod)
                 environment.deviceId?.let { put("DeviceId", it) }
             }
         runCatching { api.stopStreamingPlayback(environment.userId, body) }
-        runCatching { markOfflinePlaybackCompleted(context.mediaId) }
+        if (completed) {
+            runCatching { markOfflinePlaybackCompleted(context.mediaId) }
+        }
     }
 
     private suspend fun refreshRecentlyAdded(

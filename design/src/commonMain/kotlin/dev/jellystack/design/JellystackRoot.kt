@@ -148,6 +148,7 @@ import dev.jellystack.design.biometric.rememberBiometricPlatformState
 import dev.jellystack.design.cast.BindCastSnapshotProvider
 import dev.jellystack.design.cast.CastRoutePickerButton
 import dev.jellystack.design.cast.rememberPlatformCastSessionManager
+import dev.jellystack.design.components.InsecureHttpWarning
 import dev.jellystack.design.components.JellyfinQuickConnectStatus
 import dev.jellystack.design.components.JellyfinSignInMethodSelector
 import dev.jellystack.design.components.ModalFocusScope
@@ -262,8 +263,6 @@ import jellystack_mobile.design.generated.resources.email
 import jellystack_mobile.design.generated.resources.favorite_update_failed
 import jellystack_mobile.design.generated.resources.favorites
 import jellystack_mobile.design.generated.resources.hide_password
-import jellystack_mobile.design.generated.resources.insecure_http_confirm
-import jellystack_mobile.design.generated.resources.insecure_http_warning
 import jellystack_mobile.design.generated.resources.item_detail_unavailable
 import jellystack_mobile.design.generated.resources.jellyfin_account
 import jellystack_mobile.design.generated.resources.libraries
@@ -315,6 +314,7 @@ import jellystack_mobile.design.generated.resources.username
 import jellystack_mobile.design.generated.resources.version_label
 import jellystack_mobile.design.generated.resources.view_changelog
 import jellystack_mobile.design.generated.resources.whats_new_0143_audio
+import jellystack_mobile.design.generated.resources.whats_new_0143_playback_sessions
 import jellystack_mobile.design.generated.resources.whats_new_0143_search
 import jellystack_mobile.design.generated.resources.whats_new_0143_seerr_permissions
 import jellystack_mobile.design.generated.resources.whats_new_0143_server_addresses
@@ -358,6 +358,7 @@ private fun DefaultWhatsNewHighlights(): List<String> =
         stringResource(Res.string.whats_new_0143_seerr_permissions),
         stringResource(Res.string.whats_new_0143_server_addresses),
         stringResource(Res.string.whats_new_0143_audio),
+        stringResource(Res.string.whats_new_0143_playback_sessions),
         stringResource(Res.string.whats_new_0143_search),
     )
 
@@ -3993,18 +3994,12 @@ private fun AddServerDialog(
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next, keyboardType = KeyboardType.Uri),
                 )
                 if (state.requiresInsecureHttpConfirmation) {
-                    Text(
-                        text = stringResource(Res.string.insecure_http_warning),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                    FilterChip(
-                        selected = state.allowInsecureHttp,
-                        onClick = {
-                            onValueChange(state.copy(allowInsecureHttp = !state.allowInsecureHttp))
+                    InsecureHttpWarning(
+                        confirmed = state.allowInsecureHttp,
+                        onConfirmedChange = { confirmed ->
+                            onValueChange(state.copy(allowInsecureHttp = confirmed))
                             onClearError()
                         },
-                        label = { Text(stringResource(Res.string.insecure_http_confirm)) },
                         enabled = !isSaving,
                     )
                 }

@@ -19,6 +19,7 @@ import dev.jellystack.players.cast.CastSubtitleTrack
 import dev.jellystack.players.cast.NoopCastSessionManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -33,6 +34,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.math.abs
 
 class PlaybackController(
@@ -74,6 +77,8 @@ class PlaybackController(
     private var audioSwitchJob: Job? = null
     private var audioSwitchGeneration = 0L
     private var playGeneration = 0L
+    private val streamingReportMutex = Mutex()
+    private var finalStreamingReportJob: Job? = null
     private var released = false
 
     init {
@@ -246,7 +251,9 @@ class PlaybackController(
                 playerEngine.play()
             }
             streamingContext(newSession)?.let { context ->
-                scope.launch { streamingProgressReporter.onStart(context, startingPosition) }
+                launchStreamingReport {
+                    onStart(context, startingPosition)
+                }
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -345,7 +352,11 @@ class PlaybackController(
                     scope.launch { offlineProgressSyncer.onCompleted(current.mediaId) }
                 } else {
                     streamingContext(current)?.let { context ->
-                        scope.launch { streamingProgressReporter.onCompleted(context) }
+                        launchStreamingStop(
+                            context = context,
+                            positionMs = current.positionMs,
+                            completed = true,
+                        )
                     }
                 }
             } else {
@@ -356,11 +367,21 @@ class PlaybackController(
                     }
                 } else {
                     streamingContext(current)?.let { context ->
-                        scope.launch {
-                            streamingProgressReporter.onProgress(context, current.positionMs)
-                        }
+                        launchStreamingStop(
+                            context = context,
+                            positionMs = current.positionMs,
+                            completed = false,
+                        )
                     }
                 }
+            }
+        } else if (current != null && current.phase != PlaybackPhase.Ended && current.stream.mode != PlaybackMode.LOCAL) {
+            streamingContext(current)?.let { context ->
+                launchStreamingStop(
+                    context = context,
+                    positionMs = null,
+                    completed = false,
+                )
             }
         }
         session = null
@@ -1095,7 +1116,14 @@ class PlaybackController(
         _state.value = PlaybackState.Stopped
         playerEngine.release()
         runBlocking { offlineProgressSyncer.flush() }
-        scope.cancel()
+        castStateJob?.cancel()
+        castProgressJob?.cancel()
+        val pendingFinalReport = finalStreamingReportJob
+        if (pendingFinalReport?.isActive == true) {
+            pendingFinalReport.invokeOnCompletion { scope.cancel() }
+        } else {
+            scope.cancel()
+        }
     }
 
     private fun publishCurrentState(
@@ -1200,7 +1228,9 @@ class PlaybackController(
                 }
             } else {
                 streamingContext(session)?.let { context ->
-                    scope.launch { streamingProgressReporter.onProgress(context, progress.positionMs) }
+                    launchStreamingReport {
+                        onProgress(context, progress.positionMs)
+                    }
                 }
             }
         }
@@ -1431,7 +1461,11 @@ class PlaybackController(
                                     scope.launch { offlineProgressSyncer.onCompleted(it.mediaId) }
                                 } else {
                                     streamingContext(it)?.let { context ->
-                                        scope.launch { streamingProgressReporter.onCompleted(context) }
+                                        launchStreamingStop(
+                                            context = context,
+                                            positionMs = it.positionMs,
+                                            completed = true,
+                                        )
                                     }
                                 }
                                 val ended = it.copy(isPaused = true, phase = PlaybackPhase.Ended)
@@ -1443,6 +1477,28 @@ class PlaybackController(
                         }
                     }
                 }
+            }
+    }
+
+    private fun launchStreamingReport(report: suspend StreamingProgressReporter.() -> Unit): Job =
+        scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            streamingReportMutex.withLock {
+                streamingProgressReporter.report()
+            }
+        }
+
+    private fun launchStreamingStop(
+        context: StreamingProgressContext,
+        positionMs: Long?,
+        completed: Boolean,
+    ) {
+        finalStreamingReportJob =
+            launchStreamingReport {
+                onStop(
+                    context = context,
+                    positionMs = positionMs,
+                    completed = completed,
+                )
             }
     }
 

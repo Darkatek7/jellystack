@@ -34,9 +34,7 @@ import dev.jellystack.core.security.BiometricCapability
 import dev.jellystack.core.security.BiometricLockState
 import dev.jellystack.core.server.ServerType
 import dev.jellystack.design.ServerFormState
-import dev.jellystack.design.onboarding.OnboardingField
 import dev.jellystack.design.onboarding.OnboardingUiState
-import dev.jellystack.design.onboarding.OnboardingValidationError
 import dev.jellystack.design.onboarding.onboardingProgress
 import dev.jellystack.design.settings.SettingsConnectionHealth
 import dev.jellystack.design.settings.SettingsConnectionUi
@@ -212,12 +210,13 @@ internal object JellystackPreviewData {
         OnboardingUiState(
             step = TutorialStep.ConnectJellyfin,
             progress = onboardingProgress(TutorialStep.ConnectJellyfin),
-            form = ServerFormState(name = "Home", baseUrl = "example.invalid", username = "alex"),
-            fieldErrors =
-                mapOf(
-                    OnboardingField.Url to OnboardingValidationError.InvalidUrl,
-                    OnboardingField.Password to OnboardingValidationError.Required,
+            form =
+                ServerFormState(
+                    name = "Home",
+                    baseUrl = "http://192.168.1.20:8096",
+                    username = "alex",
                 ),
+            fieldErrors = emptyMap(),
             manualSeerrCredentialsRequired = false,
             isSaving = false,
             serviceErrorDetail = null,
