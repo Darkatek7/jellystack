@@ -73,6 +73,58 @@ class HomeSectionsRepositoryTest {
             assertIs<HomeSectionsState.Unavailable>(repository.state.value)
         }
 
+    @Test
+    fun externalItemsWithSharedPlaceholderIdReceiveUniqueStableIds() =
+        runTest {
+            val repository =
+                repository { path ->
+                    when {
+                        path.endsWith("/HomeScreen/Meta") ->
+                            """{"Enabled":true,"PaginationEnabled":false}"""
+                        path.endsWith("/HomeScreen/Ready") -> ""
+                        path.endsWith("/HomeScreen/Sections") ->
+                            """{"Items":[{"Section":"Discover","DisplayText":"Discover"}]}"""
+                        path.endsWith("/HomeScreen/Section/Discover") ->
+                            """{"Items":[
+                                {"Id":"00000000000000000000000000000000","Name":"Movie","SourceType":"movie","ProviderIds":{"Jellyseerr":"42"}},
+                                {"Id":"00000000000000000000000000000000","Name":"Series","SourceType":"tv","ProviderIds":{"Jellyseerr":"84"}}
+                            ]}"""
+                        else -> error("Unexpected path $path")
+                    }
+                }
+
+            repository.refresh(enabledByUser = true, language = "en")
+
+            val items = assertIs<HomeSectionsState.Ready>(repository.state.value).sections.single().items
+            assertEquals(listOf("seerr:movie:42", "seerr:tv:84"), items.map(HomeSectionItem::id))
+        }
+
+    @Test
+    fun duplicatePluginItemsAreRemovedBeforeRendering() =
+        runTest {
+            val repository =
+                repository { path ->
+                    when {
+                        path.endsWith("/HomeScreen/Meta") ->
+                            """{"Enabled":true,"PaginationEnabled":false}"""
+                        path.endsWith("/HomeScreen/Ready") -> ""
+                        path.endsWith("/HomeScreen/Sections") ->
+                            """{"Items":[{"Section":"Discover","DisplayText":"Discover"}]}"""
+                        path.endsWith("/HomeScreen/Section/Discover") ->
+                            """{"Items":[
+                                {"Id":"00000000000000000000000000000000","Name":"Movie","SourceType":"movie","ProviderIds":{"Jellyseerr":"42"}},
+                                {"Id":"00000000000000000000000000000000","Name":"Movie","SourceType":"movie","ProviderIds":{"Jellyseerr":"42"}}
+                            ]}"""
+                        else -> error("Unexpected path $path")
+                    }
+                }
+
+            repository.refresh(enabledByUser = true, language = "en")
+
+            val items = assertIs<HomeSectionsState.Ready>(repository.state.value).sections.single().items
+            assertEquals(1, items.size)
+        }
+
     private fun repository(responseFor: (String) -> String): HomeSectionsRepository {
         val engine =
             MockEngine { request ->

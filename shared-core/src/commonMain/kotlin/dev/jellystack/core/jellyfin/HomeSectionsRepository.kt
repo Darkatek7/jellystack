@@ -97,6 +97,7 @@ class HomeSectionsRepository(
                                             .items
                                             .take(descriptor.limit.coerceAtLeast(1) * 40)
                                             .mapNotNull { it.toDomain(environment.baseUrl) }
+                                            .distinctBy(HomeSectionItem::id)
                                     HomeSection(
                                         id = "$type:${descriptor.additionalData.orEmpty()}",
                                         title = descriptor.displayText?.takeIf(String::isNotBlank) ?: type,
@@ -221,8 +222,23 @@ private fun HomeSectionItemDto.toDomain(baseUrl: String): HomeSectionItem? {
             seerrId != null -> HomeSectionAction.SEERR
             else -> HomeSectionAction.INFORMATION
         }
+    val providerIdentity =
+        providerIds
+            .orEmpty()
+            .toSortedMap()
+            .entries
+            .joinToString("|") { (key, value) -> "$key=$value" }
+            .takeIf(String::isNotBlank)
+    val stableId =
+        when {
+            localItem != null -> localItem.id
+            seerrId != null -> "seerr:${sourceType?.lowercase().orEmpty().ifBlank { "unknown" }}:$seerrId"
+            providerIdentity != null -> "external:$providerIdentity"
+            localId != null -> localId
+            else -> "information:${sourceType?.lowercase().orEmpty()}:$resolvedName"
+        }
     return HomeSectionItem(
-        id = localId ?: "${providerIds.orEmpty().values.joinToString(":")}:$resolvedName",
+        id = stableId,
         name = resolvedName,
         overview = overview,
         productionYear = productionYear,
