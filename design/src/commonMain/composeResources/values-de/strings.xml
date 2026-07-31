@@ -4,6 +4,7 @@
     <string name="nav_home">Startseite</string>
     <string name="nav_library">Bibliothek</string>
     <string name="nav_discover">Entdecken</string>
+    <string name="nav_admin">Admin</string>
     <string name="select_item_prompt">Element auswählen, um Details anzuzeigen</string>
     <string name="settings_title">Einstellungen</string>
     <string name="settings_appearance">Darstellung</string>

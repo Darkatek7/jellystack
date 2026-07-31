@@ -92,6 +92,8 @@ import dev.jellystack.core.jellyfin.JellyfinBrowseRepository
 import dev.jellystack.core.jellyfin.JellyfinEnvironment
 import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
 import dev.jellystack.core.jellyfin.JellyfinFavoritesStoreApi
+import dev.jellystack.core.jellyfin.JellyfinSessionRepository
+import dev.jellystack.core.jellyfin.JellyfinSessionState
 import dev.jellystack.core.jellyfin.JellyfinHomeState
 import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.JellyfinItemDetail
@@ -270,6 +272,7 @@ import jellystack_mobile.design.generated.resources.library_connect_server_statu
 import jellystack_mobile.design.generated.resources.loading_episodes
 import jellystack_mobile.design.generated.resources.movies
 import jellystack_mobile.design.generated.resources.nav_discover
+import jellystack_mobile.design.generated.resources.nav_admin
 import jellystack_mobile.design.generated.resources.nav_library
 import jellystack_mobile.design.generated.resources.no_playable_episode
 import jellystack_mobile.design.generated.resources.onboarding_saving
@@ -501,6 +504,7 @@ private fun shellTitle(
             } else {
                 stringResource(Res.string.nav_discover)
             }
+        PrimaryDestination.Admin -> stringResource(Res.string.nav_admin)
     }
 
 @Suppress("FunctionName", "ktlint:standard:function-naming")
@@ -567,6 +571,9 @@ fun JellystackRoot(
     val appSettingsRepository = remember(koin) { koin.get<AppSettingsRepository>() }
     val appSettings by appSettingsRepository.settings.collectAsState()
     val environmentProvider = remember(koin) { koin.get<JellyfinEnvironmentProvider>() }
+    val sessionRepository = remember(koin) { koin.get<JellyfinSessionRepository>() }
+    val sessionState by sessionRepository.state.collectAsState()
+    val sessionCapabilities = (sessionState as? JellyfinSessionState.Ready)?.capabilities
     val biometricGate = remember(koin) { koin.get<BiometricAuthGate>() }
     val biometricLockState by biometricGate.lockState.collectAsState()
     val biometricEnabled by biometricGate.isEnabled.collectAsState()
@@ -832,6 +839,14 @@ fun JellystackRoot(
     val activeSeerrServer by
         remember(serverRepository) { serverRepository.observeActiveServer(ServerType.JELLYSEERR) }
             .collectAsState(initial = serverRepository.activeServer(ServerType.JELLYSEERR))
+    LaunchedEffect(activeJellyfinServer?.id) {
+        sessionRepository.refresh()
+    }
+    LaunchedEffect(sessionCapabilities?.isAdministrator) {
+        if (primaryDestination == PrimaryDestination.Admin && sessionCapabilities?.isAdministrator != true) {
+            primaryDestination = PrimaryDestination.Home
+        }
+    }
     val onboardingPreferences = remember { koin.get<OnboardingPreferenceRepository>() }
     val tutorialSteps = remember { TutorialSequence }
     val tutorialState = remember { onboardingPreferences.tutorialState() }
@@ -1674,6 +1689,7 @@ fun JellystackRoot(
                     } else {
                         DetailOrigin.Discover
                     }
+                PrimaryDestination.Admin -> DetailOrigin.Home
             }
 
     fun loadDetail(
@@ -2648,6 +2664,17 @@ fun JellystackRoot(
                             PrimaryDestination.Home -> homeContent
                             PrimaryDestination.Library -> libraryContent
                             PrimaryDestination.Discover -> discoverContent
+                            PrimaryDestination.Admin -> { measuredPadding ->
+                                Box(
+                                    modifier =
+                                        Modifier
+                                            .fillMaxSize()
+                                            .padding(measuredPadding),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(stringResource(Res.string.nav_admin))
+                                }
+                            }
                         }
                     val detailPane: (@Composable (PaddingValues) -> Unit)? =
                         if (detailState == JellyfinDetailUiState.Hidden) {
@@ -2898,6 +2925,7 @@ fun JellystackRoot(
                                             !isTutorialVisible &&
                                             !isAppLockActive &&
                                             !compactImmersiveDetail,
+                                    showAdminDestination = sessionCapabilities?.isAdministrator == true,
                                     feedback = activeShellFeedback,
                                 ),
                             onAction = ::handleShellAction,

@@ -50,7 +50,7 @@ internal fun JellystackShell(
 
     Row(modifier = modifier.fillMaxSize()) {
         if (state.showNavigation && profile.navigationMode == JellystackNavigationMode.Rail) {
-            JellystackNavigationRail(selected = state.primary) { destination ->
+            JellystackNavigationRail(selected = state.primary, destinations = state.destinations) { destination ->
                 onAction(JellystackShellAction.SelectPrimary(destination))
             }
         }
@@ -70,6 +70,7 @@ internal fun JellystackShell(
                     JellystackBottomDock(
                         selected = state.primary,
                         showLabels = profile.dockShowsAllLabels,
+                        destinations = state.destinations,
                     ) { destination ->
                         onAction(JellystackShellAction.SelectPrimary(destination))
                     }

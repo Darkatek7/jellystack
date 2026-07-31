@@ -4,6 +4,7 @@
     <string name="nav_home">Home</string>
     <string name="nav_library">Library</string>
     <string name="nav_discover">Discover</string>
+    <string name="nav_admin">Admin</string>
     <string name="select_item_prompt">Select an item to view details</string>
     <string name="settings_title">Settings</string>
     <string name="settings_appearance">Appearance</string>

@@ -2,7 +2,7 @@ package dev.jellystack.design.navigation
 
 import dev.jellystack.core.preferences.TutorialStep
 
-internal enum class PrimaryDestination { Home, Library, Discover }
+internal enum class PrimaryDestination { Home, Library, Discover, Admin }
 
 internal enum class DiscoverDestination { Feed, Requests }
 
