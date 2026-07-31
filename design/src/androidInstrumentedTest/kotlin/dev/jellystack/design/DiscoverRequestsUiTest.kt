@@ -13,8 +13,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasTestTag
@@ -27,9 +29,11 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.jellystack.core.jellyseerr.JellyseerrDetailEnrichmentSection
+import dev.jellystack.core.jellyseerr.JellyseerrLanguageProfileOption
 import dev.jellystack.core.jellyseerr.JellyseerrLanguageProfiles
 import dev.jellystack.core.jellyseerr.JellyseerrMediaAvailability
 import dev.jellystack.core.jellyseerr.JellyseerrMediaDetail
@@ -56,6 +60,7 @@ import dev.jellystack.design.jellyseerr.DiscoverScreen
 import dev.jellystack.design.jellyseerr.DiscoverSelectionContent
 import dev.jellystack.design.jellyseerr.DiscoverUiState
 import dev.jellystack.design.jellyseerr.RequestConfigurationTestTags
+import dev.jellystack.design.jellyseerr.RequestsTestTags
 import dev.jellystack.design.jellyseerr.SeerrImmersiveDetailTestTags
 import dev.jellystack.design.jellyseerr.reduce
 import dev.jellystack.design.layout.LocalResponsiveProfile
@@ -124,7 +129,11 @@ class DiscoverRequestsUiTest {
         composeRule.setContent {
             discoverRequestsHarness(
                 initialState = DiscoverUiState().reduce(DiscoverAction.SelectSearchResult(dune())),
-                requestsState = readyRequests(capabilities = basicCapabilities),
+                requestsState =
+                    readyRequests(
+                        capabilities = basicCapabilities,
+                        languageProfiles = namedLanguageProfiles(),
+                    ),
                 detailStates = mapOf(dune().mediaType to dune().tmdbId to loadedDetail(dune())),
             )
         }
@@ -133,7 +142,42 @@ class DiscoverRequestsUiTest {
 
         composeRule.onNodeWithTag(RequestConfigurationTestTags.VARIANT_SELECTOR).assertDoesNotExist()
         composeRule.onNodeWithTag(RequestConfigurationTestTags.ADVANCED_PROFILE_SELECTOR).assertDoesNotExist()
+        composeRule.onNodeWithText("English HD").assertDoesNotExist()
         composeRule.onNodeWithText("Submit request").assertIsEnabled()
+    }
+
+    @Test
+    fun requestsSearchKeepsFocusAcrossEveryQueryUpdate() {
+        composeRule.setContent {
+            discoverRequestsHarness(
+                initialState = DiscoverUiState(destination = DiscoverDestination.Requests),
+            )
+        }
+
+        val search = composeRule.onNodeWithTag(RequestsTestTags.SEARCH_FIELD)
+        search.performClick()
+        search.performTextInput("v")
+        search.assertIsFocused()
+        search.performTextInput("o")
+        search.assertIsFocused()
+        search.performTextInput("m ")
+        search.assertIsFocused()
+    }
+
+    @Test
+    fun requestStatusFilterUsesCompactDropdown() {
+        composeRule.setContent {
+            discoverRequestsHarness(
+                initialState = DiscoverUiState(destination = DiscoverDestination.Requests),
+            )
+        }
+
+        composeRule.onNodeWithTag(RequestsTestTags.FILTER_SELECTOR).assertTextContains("All")
+        composeRule.onNodeWithText("Pending").assertDoesNotExist()
+
+        composeRule.onNodeWithTag(RequestsTestTags.FILTER_SELECTOR).performClick()
+        composeRule.onNodeWithText("Pending").assertExists().performClick()
+        composeRule.onNodeWithTag(RequestsTestTags.FILTER_SELECTOR).assertTextContains("Pending")
     }
 
     @Test
@@ -681,7 +725,7 @@ private fun discoverRequestsHarness(
                     DiscoverSelectionContent(
                         state = state,
                         detailStates = detailStates,
-                        languageProfiles = JellyseerrLanguageProfiles.EMPTY,
+                        languageProfiles = requestsState.languageProfiles,
                         requests = requestsState.requests,
                         currentRequestsByMedia = requestsState.currentRequestsByMedia,
                         liveRequestStateAvailable = true,
@@ -747,7 +791,7 @@ private fun discoverRequestsHarness(
                         recommendationsState = readyRecommendations(),
                         recommendationDetails = detailStates,
                         requestsState = requestsState,
-                        languageProfiles = JellyseerrLanguageProfiles.EMPTY,
+                        languageProfiles = requestsState.languageProfiles,
                         contentPadding = contentPadding,
                         onAction = { state = state.reduce(it) },
                         onRecommendationsRefresh = {},
@@ -809,6 +853,7 @@ private fun readyRequests(
     isAdmin: Boolean = true,
     currentUserId: Int? = 1,
     capabilities: JellyseerrRequestCapabilities = JellyseerrRequestCapabilities.ALL,
+    languageProfiles: JellyseerrLanguageProfiles = JellyseerrLanguageProfiles.EMPTY,
 ): JellyseerrRequestsState.Ready =
     JellyseerrRequestsState.Ready(
         filter = JellyseerrRequestFilter.ALL,
@@ -823,7 +868,7 @@ private fun readyRequests(
         message = null,
         isAdmin = isAdmin,
         lastUpdated = null,
-        languageProfiles = JellyseerrLanguageProfiles.EMPTY,
+        languageProfiles = languageProfiles,
         currentRequestsByMedia =
             requests.associateBy { summary ->
                 summary.mediaType to requireNotNull(summary.tmdbId)
@@ -831,6 +876,20 @@ private fun readyRequests(
         currentUserId = currentUserId,
         capabilities = capabilities,
     )
+
+private fun namedLanguageProfiles(): JellyseerrLanguageProfiles {
+    val option =
+        JellyseerrLanguageProfileOption(
+            languageProfileId = 1,
+            name = "English HD",
+            serviceId = 2,
+            serviceName = "sonarr",
+            is4k = false,
+            isDefault = true,
+            profileId = 3,
+        )
+    return JellyseerrLanguageProfiles(movies = listOf(option), tv = listOf(option))
+}
 
 private fun dune(): JellyseerrSearchItem =
     JellyseerrSearchItem(

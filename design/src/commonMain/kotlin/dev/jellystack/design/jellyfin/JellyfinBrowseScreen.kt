@@ -87,6 +87,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -245,6 +246,7 @@ import dev.jellystack.design.navigation.LibrarySection as ShellLibrarySection
 internal object SpotlightTestTags {
     const val HERO = "spotlight_hero"
     const val PAGER = "spotlight_pager"
+    const val HOME_LIST = "home_list"
     const val AUTO_CYCLE_PROGRESS = "spotlight_auto_cycle_progress"
     const val TITLE_LOGO = "spotlight_title_logo"
     const val PLAY = "spotlight_play"
@@ -841,6 +843,19 @@ internal fun JellyfinBrowseScreen(
                 state.continueWatching.isEmpty() &&
                 state.recentShows.isEmpty() &&
                 state.recentMovies.isEmpty()
+        var refreshWasActive by remember { mutableStateOf(false) }
+        LaunchedEffect(state.isInitialLoading, showSkeleton) {
+            when {
+                state.isInitialLoading && !showSkeleton -> {
+                    refreshWasActive = true
+                    listState.scrollToItem(0)
+                }
+                refreshWasActive -> {
+                    refreshWasActive = false
+                    listState.scrollToItem(0)
+                }
+            }
+        }
         val seriesGroups =
             remember(state.libraryItems, isTvLibrary) {
                 if (isTvLibrary) groupTvSeries(state.libraryItems) else emptyList()
@@ -954,7 +969,7 @@ internal fun JellyfinBrowseScreen(
                     HomeSkeleton(contentPadding = listPadding)
                 } else {
                     LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.fillMaxSize().testTag(SpotlightTestTags.HOME_LIST),
                         state = listState,
                         contentPadding = listPadding,
                         verticalArrangement = Arrangement.spacedBy(24.dp),
@@ -974,14 +989,16 @@ internal fun JellyfinBrowseScreen(
                         }
                         if (spotlightCandidates.isNotEmpty()) {
                             item(key = "spotlight") {
-                                HomeSpotlight(
-                                    candidates = spotlightCandidates,
-                                    selectedId = selectedSpotlightId,
-                                    onSelected = onSelectedSpotlightIdChange,
-                                    content = spotlightContent,
-                                    autoAdvanceEnabled = spotlightAutoAdvanceEnabled,
-                                    autoAdvanceIntervalMillis = spotlightAutoAdvanceIntervalMillis,
-                                )
+                                key(spotlightCandidateIds) {
+                                    HomeSpotlight(
+                                        candidates = spotlightCandidates,
+                                        selectedId = selectedSpotlightId,
+                                        onSelected = onSelectedSpotlightIdChange,
+                                        content = spotlightContent,
+                                        autoAdvanceEnabled = spotlightAutoAdvanceEnabled,
+                                        autoAdvanceIntervalMillis = spotlightAutoAdvanceIntervalMillis,
+                                    )
+                                }
                             }
                         }
                         if (state.continueWatching.isNotEmpty()) {

@@ -1,5 +1,7 @@
 package dev.jellystack.core.jellyfin
 
+import dev.jellystack.core.playback.StreamingPlayStrategy
+import dev.jellystack.core.playback.StreamingProgressContext
 import dev.jellystack.network.ClientConfig
 import dev.jellystack.network.NetworkClientFactory
 import dev.jellystack.network.jellyfin.JellyfinBrowseApi
@@ -8,10 +10,15 @@ import io.ktor.client.engine.mock.respond
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.content.TextContent
 import io.ktor.http.headersOf
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -127,6 +134,70 @@ class JellyfinBrowseRepositoryTest {
             assertEquals("Movies", libraries.first().name)
             val stored = libraryStore.list(environment.serverKey)
             assertEquals(libraries.size, stored.size)
+        }
+
+    @Test
+    fun stopStreamingPlaybackReportsExactPositionWithoutForcingCompletion() =
+        runTest {
+            var stopPayload: String? = null
+            var playedRequestCount = 0
+            val headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+            val trackingEngine =
+                MockEngine { request ->
+                    when (val path = request.url.encodedPath) {
+                        "/Sessions/Playing/Stopped" -> {
+                            stopPayload = (request.body as TextContent).text
+                            respond("", HttpStatusCode.NoContent, headers)
+                        }
+                        "/Users/user-123/PlayedItems/item-1" -> {
+                            playedRequestCount++
+                            respond(PLAYED_USER_DATA_JSON, HttpStatusCode.OK, headers)
+                        }
+                        else -> error("Unexpected request path: $path")
+                    }
+                }
+            val trackingClient = NetworkClientFactory.create(ClientConfig(engine = trackingEngine, installLogging = false))
+            val trackingApiFactory: JellyfinBrowseApiFactory = { env ->
+                JellyfinBrowseApi(
+                    trackingClient,
+                    env.baseUrl,
+                    env.accessToken,
+                    env.deviceId,
+                    clientName = "Test",
+                    deviceName = env.deviceName,
+                    clientVersion = "1.0",
+                )
+            }
+            val trackingRepository =
+                JellyfinBrowseRepository(
+                    environmentProvider,
+                    InMemoryLibraryStore(),
+                    InMemoryItemStore(),
+                    InMemoryDetailStore(),
+                    trackingApiFactory,
+                    clock = FixedClock,
+                )
+            val context =
+                StreamingProgressContext(
+                    mediaId = "item-1",
+                    mediaSourceId = "source-1",
+                    playSessionId = "play-session-1",
+                    audioStreamIndex = 2,
+                    subtitleStreamIndex = 3,
+                    strategy = StreamingPlayStrategy.DIRECT,
+                )
+
+            trackingRepository.stopStreamingPlayback(
+                context = context,
+                positionMs = 37_500L,
+                completed = false,
+            )
+
+            val payload = Json.parseToJsonElement(requireNotNull(stopPayload)).jsonObject
+            assertEquals("item-1", payload.getValue("ItemId").jsonPrimitive.content)
+            assertEquals("play-session-1", payload.getValue("PlaySessionId").jsonPrimitive.content)
+            assertEquals(375_000_000L, payload.getValue("PositionTicks").jsonPrimitive.long)
+            assertEquals(0, playedRequestCount)
         }
 
     @Test

@@ -16,9 +16,11 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsSelected
@@ -45,6 +47,7 @@ import dev.jellystack.core.server.JellyfinQuickConnectSession
 import dev.jellystack.core.server.JellyfinQuickConnectState
 import dev.jellystack.core.server.JellyfinSignInMethod
 import dev.jellystack.core.server.ServerType
+import dev.jellystack.design.components.InsecureHttpWarningTestTags
 import dev.jellystack.design.components.JellyfinSignInMethodSelector
 import dev.jellystack.design.navigation.DiscoverDestination
 import dev.jellystack.design.navigation.PrimaryDestination
@@ -246,6 +249,32 @@ class SettingsOnboardingUiTest {
     }
 
     @Test
+    fun onboardingShowsAccessibleHttpWarningCardAndConfirmation() {
+        composeRule.setContent {
+            onboardingHarness(
+                step = TutorialStep.ConnectJellyfin,
+                baseUrl = "http://192.168.1.20:8096",
+            )
+        }
+
+        composeRule
+            .onNodeWithTag(InsecureHttpWarningTestTags.CARD)
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("Unencrypted connection").assertIsDisplayed()
+        composeRule
+            .onNodeWithTag(InsecureHttpWarningTestTags.CONFIRMATION)
+            .assertHeightIsAtLeast(48.dp)
+            .performClick()
+            .assert(
+                SemanticsMatcher.expectValue(
+                    SemanticsProperties.ToggleableState,
+                    ToggleableState.On,
+                ),
+            )
+    }
+
+    @Test
     fun onboardingPasswordFieldIsMarkedSensitiveForAccessibility() {
         composeRule.setContent { onboardingHarness(step = TutorialStep.ConnectJellyfin) }
 
@@ -395,6 +424,7 @@ private fun onboardingHarness(
     step: TutorialStep,
     fontScale: Float = 1f,
     quickConnectState: JellyfinQuickConnectState? = null,
+    baseUrl: String? = null,
 ) {
     val baseConfiguration = LocalConfiguration.current
     val baseDensity = LocalDensity.current
@@ -419,7 +449,12 @@ private fun onboardingHarness(
                                     ServerFormType.JELLYFIN
                                 },
                             baseUrl =
-                                if (step == TutorialStep.ConnectJellyfin) "not-a-url" else "",
+                                baseUrl
+                                    ?: if (step == TutorialStep.ConnectJellyfin) {
+                                        "not-a-url"
+                                    } else {
+                                        ""
+                                    },
                         ),
                     fieldErrors = emptyMap(),
                     manualSeerrCredentialsRequired = false,

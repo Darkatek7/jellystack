@@ -35,6 +35,10 @@ macOS and Xcode are required for iOS compilation. iOS is experimental.
 
 `main` is protected. All changes use pull requests, linear history, and squash merges. Force pushes to `main` are disabled.
 
+## Release artifacts
+
+GitHub releases contain source code and release notes only. Android App Bundles are built and retained locally for direct upload to Google Play Console; do not attach `.aab` files to GitHub releases or commits.
+
 ## Test data and screenshots
 
 Use only clearly fictional credentials and reserved domains such as `example.com`, `example.org`, or `example.invalid`. Screenshots must come from a sanitized demo setup and must not contain account names, private hosts, personal media, or notification data.

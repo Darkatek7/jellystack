@@ -193,6 +193,7 @@
     <string name="request_refresh">Refresh requests</string>
     <string name="request_configure">Configure request</string>
     <string name="request_filter_all">All</string>
+    <string name="request_filter_label">Status</string>
     <string name="request_filter_pending">Pending</string>
     <string name="request_filter_approved">Approved</string>
     <string name="request_filter_processing">Processing</string>
@@ -402,9 +403,11 @@
     <string name="whats_new_0143_seerr_permissions">Seerr requests now respect your server permissions.</string>
     <string name="whats_new_0143_server_addresses">IP addresses and custom ports now work reliably.</string>
     <string name="whats_new_0143_audio">Improved audio compatibility and correct language selection.</string>
+    <string name="whats_new_0143_playback_sessions">Playback sessions now close reliably and preserve the correct watch position.</string>
     <string name="whats_new_0143_search">Discover search stays open while you type.</string>
+    <string name="insecure_http_title">Unencrypted connection</string>
     <string name="insecure_http_warning">This server uses unencrypted HTTP. Credentials and media traffic may be visible to others on the network. Use HTTPS whenever possible.</string>
-    <string name="insecure_http_confirm">I understand and want to use this HTTP server</string>
+    <string name="insecure_http_confirm">Use this HTTP server anyway</string>
     <string name="privacy_title">Permissions &amp; privacy</string>
     <string name="privacy_summary">Jellystack has no analytics, advertising, tracking, or automatic log uploads. It connects directly to the Jellyfin and Seerr servers you configure and protects server tokens in the device credential store.</string>
     <string name="privacy_network_title">Network access</string>

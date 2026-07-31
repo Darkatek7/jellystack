@@ -6,8 +6,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -41,7 +39,11 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -63,6 +65,7 @@ import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -104,6 +107,7 @@ import jellystack_mobile.design.generated.resources.request_filter_approved
 import jellystack_mobile.design.generated.resources.request_filter_available
 import jellystack_mobile.design.generated.resources.request_filter_deleted
 import jellystack_mobile.design.generated.resources.request_filter_failed
+import jellystack_mobile.design.generated.resources.request_filter_label
 import jellystack_mobile.design.generated.resources.request_filter_pending
 import jellystack_mobile.design.generated.resources.request_filter_processing
 import jellystack_mobile.design.generated.resources.request_filter_unavailable
@@ -135,6 +139,11 @@ import jellystack_mobile.design.generated.resources.seerr_connect_title
 import jellystack_mobile.design.generated.resources.something_went_wrong
 import org.jetbrains.compose.resources.stringResource
 import androidx.compose.foundation.lazy.grid.items as gridItems
+
+internal object RequestsTestTags {
+    const val SEARCH_FIELD = "requests_search_field"
+    const val FILTER_SELECTOR = "requests_filter_selector"
+}
 
 @Composable
 @OptIn(ExperimentalMaterialApi::class)
@@ -378,7 +387,7 @@ private fun SearchBar(
                 ),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().testTag(RequestsTestTags.SEARCH_FIELD),
         )
         if (isSearching) {
             LinearLoadingIndicator()
@@ -387,7 +396,7 @@ private fun SearchBar(
 }
 
 @Composable
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 private fun FilterRow(
     selected: JellyseerrRequestFilter,
     isRefreshing: Boolean,
@@ -427,18 +436,43 @@ private fun FilterRow(
                 }
             }
         }
-        FlowRow(
-            modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+        var expanded by remember { mutableStateOf(false) }
+        ExposedDropdownMenuBox(
+            expanded = expanded,
+            onExpandedChange = { expanded = !expanded },
         ) {
-            JellyseerrRequestFilter.values().forEach { filter ->
-                FilterChip(
-                    selected = selected == filter,
-                    onClick = { onSelectFilter(filter) },
-                    label = { Text(filter.localizedLabel()) },
-                    modifier = Modifier.heightIn(min = JellystackLayoutTokens.minimumTouchTarget),
-                )
+            OutlinedTextField(
+                value = selected.localizedLabel(),
+                onValueChange = {},
+                readOnly = true,
+                singleLine = true,
+                label = { Text(stringResource(Res.string.request_filter_label)) },
+                trailingIcon = {
+                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
+                },
+                modifier =
+                    Modifier
+                        .menuAnchor()
+                        .fillMaxWidth()
+                        .heightIn(min = JellystackLayoutTokens.minimumTouchTarget)
+                        .testTag(RequestsTestTags.FILTER_SELECTOR),
+            )
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+            ) {
+                JellyseerrRequestFilter.values().forEach { filter ->
+                    DropdownMenuItem(
+                        text = { Text(filter.localizedLabel()) },
+                        onClick = {
+                            expanded = false
+                            if (filter != selected) {
+                                onSelectFilter(filter)
+                            }
+                        },
+                        contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding,
+                    )
+                }
             }
         }
         Divider()
