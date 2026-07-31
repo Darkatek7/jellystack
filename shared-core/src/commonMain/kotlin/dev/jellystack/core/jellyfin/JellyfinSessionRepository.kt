@@ -3,11 +3,8 @@ package dev.jellystack.core.jellyfin
 import dev.jellystack.network.ClientConfig
 import dev.jellystack.network.NetworkClientFactory
 import dev.jellystack.network.jellyfin.JellyfinActivityEntryDto
-import dev.jellystack.network.jellyfin.JellyfinItemCountsDto
 import dev.jellystack.network.jellyfin.JellyfinSessionApi
-import dev.jellystack.network.jellyfin.JellyfinSystemInfoDto
 import dev.jellystack.network.jellyfin.JellyfinUserDto
-import dev.jellystack.network.jellyfin.JellyfinUserPolicyDto
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,9 +36,16 @@ data class JellyfinSessionCapabilities(
 
 sealed interface JellyfinSessionState {
     data object Disconnected : JellyfinSessionState
+
     data object Loading : JellyfinSessionState
-    data class Ready(val capabilities: JellyfinSessionCapabilities) : JellyfinSessionState
-    data class Error(val message: String) : JellyfinSessionState
+
+    data class Ready(
+        val capabilities: JellyfinSessionCapabilities,
+    ) : JellyfinSessionState
+
+    data class Error(
+        val message: String,
+    ) : JellyfinSessionState
 }
 
 typealias JellyfinSessionApiFactory = (JellyfinEnvironment) -> JellyfinSessionApi
@@ -75,8 +79,20 @@ class JellyfinSessionRepository(
 }
 
 data class JellyfinAdminOverview(
-    val system: JellyfinSystemInfoDto,
-    val counts: JellyfinItemCountsDto,
+    val serverName: String?,
+    val version: String?,
+    val operatingSystem: String?,
+    val counts: JellyfinAdminCounts,
+)
+
+data class JellyfinAdminCounts(
+    val movies: Int = 0,
+    val series: Int = 0,
+    val episodes: Int = 0,
+    val albums: Int = 0,
+    val songs: Int = 0,
+    val artists: Int = 0,
+    val books: Int = 0,
 )
 
 data class JellyfinAdminUser(

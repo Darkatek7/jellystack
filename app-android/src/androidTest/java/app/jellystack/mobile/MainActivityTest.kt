@@ -284,7 +284,7 @@ class MainActivityTest {
     fun whatsNewShowsCanonical0143Highlights() {
         dismissOnboardingIfPresent()
         openWhatsNew()
-        composeRule.onAllNodesWithText("Version 0.14.3").onLast().assertExists()
+        composeRule.onAllNodesWithText("Version 0.15.0").onLast().assertExists()
         composeRule
             .onNodeWithText(
                 "Seerr requests now respect your server permissions.",

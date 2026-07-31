@@ -1,5 +1,13 @@
 # Release Notes
 
+## 0.15.0
+
+- Follow the Home Sections layout configured on compatible Jellyfin servers, with an Appearance setting to use Jellystack's default Home instead.
+- Create and join Jellyfin SyncPlay groups, share current playback, and keep play, pause, and seeking synchronized.
+- Select playback speed per session and open live Stats for Nerds with stream, codec, resolution, buffer, and dropped-frame details.
+- Give Jellyfin administrators a dedicated Admin tab for library scans, server restart, library statistics, user management, and recent activity.
+- Approve or decline pending Seerr requests from the Admin tab when the connected Seerr account has permission.
+
 ## 0.14.3
 
 - Make Seerr request options follow the connected user's movie, series, 4K, advanced-request, and management permissions.

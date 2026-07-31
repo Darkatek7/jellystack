@@ -9,10 +9,10 @@ import io.ktor.client.HttpClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.supervisorScope
 
 enum class HomeSectionViewMode { PORTRAIT, LANDSCAPE, SQUARE, SMALL }
 
@@ -42,7 +42,9 @@ data class HomeSection(
 
 sealed interface HomeSectionsState {
     data object Unavailable : HomeSectionsState
+
     data object Loading : HomeSectionsState
+
     data class Ready(
         val sections: List<HomeSection>,
         val imageBaseUrl: String,
@@ -90,7 +92,8 @@ class HomeSectionsRepository(
                                 runCatching {
                                     val type = descriptor.section?.takeIf(String::isNotBlank) ?: return@runCatching null
                                     val items =
-                                        api.sectionItems(type, environment.userId, descriptor.additionalData, language)
+                                        api
+                                            .sectionItems(type, environment.userId, descriptor.additionalData, language)
                                             .items
                                             .take(descriptor.limit.coerceAtLeast(1) * 40)
                                             .mapNotNull { it.toDomain(environment.baseUrl) }

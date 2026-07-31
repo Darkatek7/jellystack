@@ -17,31 +17,50 @@ class HomeSectionsRepositoryTest {
     @Test
     fun loadsConfiguredOrderAndSafeActions() =
         runTest {
-            val repository = repository { path ->
-                when {
-                    path.endsWith("/HomeScreen/Meta") ->
-                        """{"Enabled":true,"PaginationEnabled":false,"NumResultsPerPage":10}"""
-                    path.endsWith("/HomeScreen/Ready") -> ""
-                    path.endsWith("/HomeScreen/Sections") ->
-                        """{"Items":[
+            val repository =
+                repository { path ->
+                    when {
+                        path.endsWith("/HomeScreen/Meta") ->
+                            """{"Enabled":true,"PaginationEnabled":false,"NumResultsPerPage":10}"""
+                        path.endsWith("/HomeScreen/Ready") -> ""
+                        path.endsWith("/HomeScreen/Sections") ->
+                            """{"Items":[
                             {"Section":"Discover","DisplayText":"Discover","ViewMode":"Portrait","OrderIndex":2},
                             {"Section":"ContinueWatching","DisplayText":"Continue watching","ViewMode":"Landscape","OrderIndex":1}
                         ]}"""
-                    path.endsWith("/HomeScreen/Section/ContinueWatching") ->
-                        """{"Items":[{"Id":"movie-1","Name":"Movie","Type":"Movie","ImageTags":{"Primary":"tag"}}]}"""
-                    path.endsWith("/HomeScreen/Section/Discover") ->
-                        """{"Items":[{"Name":"Upcoming","SourceType":"movie","ProviderIds":{"Jellyseerr":"42","JellyseerrPoster":"/HomeScreen/CachedImage/demo"}}]}"""
-                    else -> error("Unexpected path $path")
+                        path.endsWith("/HomeScreen/Section/ContinueWatching") ->
+                            """{"Items":[{"Id":"movie-1","Name":"Movie","Type":"Movie","ImageTags":{"Primary":"tag"}}]}"""
+                        path.endsWith("/HomeScreen/Section/Discover") ->
+                            """{"Items":[{"Name":"Upcoming","SourceType":"movie","ProviderIds":{"Jellyseerr":"42","JellyseerrPoster":"/HomeScreen/CachedImage/demo"}}]}"""
+                        else -> error("Unexpected path $path")
+                    }
                 }
-            }
 
             repository.refresh(enabledByUser = true, language = "en")
 
             val ready = assertIs<HomeSectionsState.Ready>(repository.state.value)
             assertEquals(listOf("ContinueWatching:", "Discover:"), ready.sections.map(HomeSection::id))
-            assertEquals(HomeSectionAction.JELLYFIN, ready.sections[0].items.single().action)
-            assertEquals(HomeSectionAction.SEERR, ready.sections[1].items.single().action)
-            assertEquals(42, ready.sections[1].items.single().seerrTmdbId)
+            assertEquals(
+                HomeSectionAction.JELLYFIN,
+                ready.sections[0]
+                    .items
+                    .single()
+                    .action,
+            )
+            assertEquals(
+                HomeSectionAction.SEERR,
+                ready.sections[1]
+                    .items
+                    .single()
+                    .action,
+            )
+            assertEquals(
+                42,
+                ready.sections[1]
+                    .items
+                    .single()
+                    .seerrTmdbId,
+            )
         }
 
     @Test

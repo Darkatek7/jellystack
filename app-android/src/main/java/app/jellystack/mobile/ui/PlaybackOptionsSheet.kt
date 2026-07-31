@@ -255,8 +255,7 @@ private fun OptionsContent(
     }
 }
 
-private fun playbackSpeedLabel(speed: Float): String =
-    if (speed == speed.toInt().toFloat()) "${speed.toInt()}x" else "${speed}x"
+private fun playbackSpeedLabel(speed: Float): String = if (speed == speed.toInt().toFloat()) "${speed.toInt()}x" else "${speed}x"
 
 private data class PlaybackSelectorOption<T>(
     val value: T,

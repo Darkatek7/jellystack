@@ -18,9 +18,10 @@ class JellyfinSessionRepositoryTest {
     @Test
     fun mapsAdministratorAndSyncPlayPolicy() =
         runTest {
-            val repository = repositoryWith(
-                """{"Id":"user-1","Name":"Admin","Policy":{"IsAdministrator":true,"SyncPlayAccess":"CreateAndJoinGroups"}}""",
-            )
+            val repository =
+                repositoryWith(
+                    """{"Id":"user-1","Name":"Admin","Policy":{"IsAdministrator":true,"SyncPlayAccess":"CreateAndJoinGroups"}}""",
+                )
 
             val capabilities = repository.refresh()
 
@@ -40,13 +41,14 @@ class JellyfinSessionRepositoryTest {
         }
 
     private fun repositoryWith(responseBody: String): JellyfinSessionRepository {
-        val engine = MockEngine {
-            respond(
-                content = responseBody,
-                status = HttpStatusCode.OK,
-                headers = headersOf(HttpHeaders.ContentType, "application/json"),
-            )
-        }
+        val engine =
+            MockEngine {
+                respond(
+                    content = responseBody,
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                )
+            }
         val client = NetworkClientFactory.create(dev.jellystack.network.ClientConfig(engine = engine))
         val environment =
             JellyfinEnvironment(

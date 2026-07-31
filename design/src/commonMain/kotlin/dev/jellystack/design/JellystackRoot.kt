@@ -87,19 +87,20 @@ import dev.jellystack.core.downloads.OfflineMediaMetadata
 import dev.jellystack.core.jellyfin.DetailTrailerContext
 import dev.jellystack.core.jellyfin.DetailTrailerResolver
 import dev.jellystack.core.jellyfin.DetailTrailerSource
+import dev.jellystack.core.jellyfin.HomeSectionItem
+import dev.jellystack.core.jellyfin.HomeSectionsRepository
+import dev.jellystack.core.jellyfin.HomeSectionsState
+import dev.jellystack.core.jellyfin.JellyfinAdminRepository
 import dev.jellystack.core.jellyfin.JellyfinBrowseCoordinator
 import dev.jellystack.core.jellyfin.JellyfinBrowseRepository
 import dev.jellystack.core.jellyfin.JellyfinEnvironment
 import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
 import dev.jellystack.core.jellyfin.JellyfinFavoritesStoreApi
-import dev.jellystack.core.jellyfin.HomeSectionItem
-import dev.jellystack.core.jellyfin.HomeSectionsRepository
-import dev.jellystack.core.jellyfin.HomeSectionsState
-import dev.jellystack.core.jellyfin.JellyfinSessionRepository
-import dev.jellystack.core.jellyfin.JellyfinSessionState
 import dev.jellystack.core.jellyfin.JellyfinHomeState
 import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.JellyfinItemDetail
+import dev.jellystack.core.jellyfin.JellyfinSessionRepository
+import dev.jellystack.core.jellyfin.JellyfinSessionState
 import dev.jellystack.core.jellyfin.MediaDetailEnrichment
 import dev.jellystack.core.jellyfin.MediaDetailEnrichmentLoader
 import dev.jellystack.core.jellyfin.SeriesPlaybackReason
@@ -150,6 +151,7 @@ import dev.jellystack.core.server.ServerRepository
 import dev.jellystack.core.server.ServerType
 import dev.jellystack.core.server.StoredCredential
 import dev.jellystack.core.server.validateServerAddress
+import dev.jellystack.design.admin.AdminScreen
 import dev.jellystack.design.biometric.rememberBiometricPlatformState
 import dev.jellystack.design.cast.BindCastSnapshotProvider
 import dev.jellystack.design.cast.CastRoutePickerButton
@@ -158,8 +160,8 @@ import dev.jellystack.design.components.InsecureHttpWarning
 import dev.jellystack.design.components.JellyfinQuickConnectStatus
 import dev.jellystack.design.components.JellyfinSignInMethodSelector
 import dev.jellystack.design.components.ModalFocusScope
-import dev.jellystack.design.jellyfin.ImmersiveMediaDetailContent
 import dev.jellystack.design.jellyfin.HomeSectionsScreen
+import dev.jellystack.design.jellyfin.ImmersiveMediaDetailContent
 import dev.jellystack.design.jellyfin.JellyfinBrowseScreen
 import dev.jellystack.design.jellyfin.JellyfinDetailLoadingSkeleton
 import dev.jellystack.design.jellyfin.LibraryNavigationState
@@ -235,6 +237,8 @@ import dev.jellystack.players.cast.CastConnectionState
 import dev.jellystack.players.cast.CastSessionManager
 import dev.jellystack.players.cast.NoopCastSessionManager
 import jellystack_mobile.design.generated.resources.Res
+import jellystack_mobile.design.generated.resources.admin_request_action_failed
+import jellystack_mobile.design.generated.resources.admin_request_declined
 import jellystack_mobile.design.generated.resources.app_lock_authentication_unavailable
 import jellystack_mobile.design.generated.resources.app_lock_enroll_device
 import jellystack_mobile.design.generated.resources.app_lock_locked_heading
@@ -276,8 +280,8 @@ import jellystack_mobile.design.generated.resources.libraries
 import jellystack_mobile.design.generated.resources.library_connect_server_status
 import jellystack_mobile.design.generated.resources.loading_episodes
 import jellystack_mobile.design.generated.resources.movies
-import jellystack_mobile.design.generated.resources.nav_discover
 import jellystack_mobile.design.generated.resources.nav_admin
+import jellystack_mobile.design.generated.resources.nav_discover
 import jellystack_mobile.design.generated.resources.nav_library
 import jellystack_mobile.design.generated.resources.no_playable_episode
 import jellystack_mobile.design.generated.resources.onboarding_saving
@@ -321,11 +325,10 @@ import jellystack_mobile.design.generated.resources.use_different_account
 import jellystack_mobile.design.generated.resources.username
 import jellystack_mobile.design.generated.resources.version_label
 import jellystack_mobile.design.generated.resources.view_changelog
-import jellystack_mobile.design.generated.resources.whats_new_0143_audio
-import jellystack_mobile.design.generated.resources.whats_new_0143_playback_sessions
-import jellystack_mobile.design.generated.resources.whats_new_0143_search
-import jellystack_mobile.design.generated.resources.whats_new_0143_seerr_permissions
-import jellystack_mobile.design.generated.resources.whats_new_0143_server_addresses
+import jellystack_mobile.design.generated.resources.whats_new_0150_admin
+import jellystack_mobile.design.generated.resources.whats_new_0150_home_sections
+import jellystack_mobile.design.generated.resources.whats_new_0150_playback
+import jellystack_mobile.design.generated.resources.whats_new_0150_syncplay
 import jellystack_mobile.design.generated.resources.whats_new_dialog_title
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -363,11 +366,10 @@ private const val OFF_SUBTITLE_TRACK_ID = "__off_subtitle__"
 @Composable
 private fun DefaultWhatsNewHighlights(): List<String> =
     listOf(
-        stringResource(Res.string.whats_new_0143_seerr_permissions),
-        stringResource(Res.string.whats_new_0143_server_addresses),
-        stringResource(Res.string.whats_new_0143_audio),
-        stringResource(Res.string.whats_new_0143_playback_sessions),
-        stringResource(Res.string.whats_new_0143_search),
+        stringResource(Res.string.whats_new_0150_home_sections),
+        stringResource(Res.string.whats_new_0150_syncplay),
+        stringResource(Res.string.whats_new_0150_playback),
+        stringResource(Res.string.whats_new_0150_admin),
     )
 
 internal enum class ServerFormType {
@@ -581,6 +583,8 @@ fun JellystackRoot(
     val sessionRepository = remember(koin) { koin.get<JellyfinSessionRepository>() }
     val sessionState by sessionRepository.state.collectAsState()
     val sessionCapabilities = (sessionState as? JellyfinSessionState.Ready)?.capabilities
+    val adminRepository = remember(koin) { koin.get<JellyfinAdminRepository>() }
+    val adminState by adminRepository.state.collectAsState()
     val biometricGate = remember(koin) { koin.get<BiometricAuthGate>() }
     val biometricLockState by biometricGate.lockState.collectAsState()
     val biometricEnabled by biometricGate.isEnabled.collectAsState()
@@ -862,6 +866,12 @@ fun JellystackRoot(
     LaunchedEffect(sessionCapabilities?.isAdministrator) {
         if (primaryDestination == PrimaryDestination.Admin && sessionCapabilities?.isAdministrator != true) {
             primaryDestination = PrimaryDestination.Home
+        }
+    }
+    LaunchedEffect(primaryDestination, sessionCapabilities?.isAdministrator, activeJellyfinServer?.id) {
+        if (primaryDestination == PrimaryDestination.Admin && sessionCapabilities?.isAdministrator == true) {
+            adminRepository.refresh()
+            jellyseerrCoordinator.refresh()
         }
     }
     val onboardingPreferences = remember { koin.get<OnboardingPreferenceRepository>() }
@@ -2716,15 +2726,49 @@ fun JellystackRoot(
                             PrimaryDestination.Library -> libraryContent
                             PrimaryDestination.Discover -> discoverContent
                             PrimaryDestination.Admin -> { measuredPadding ->
-                                Box(
-                                    modifier =
-                                        Modifier
-                                            .fillMaxSize()
-                                            .padding(measuredPadding),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Text(stringResource(Res.string.nav_admin))
-                                }
+                                AdminScreen(
+                                    state = adminState,
+                                    pendingRequests = readyRequestsState?.requests.orEmpty(),
+                                    canManageRequests = readyRequestsState?.capabilities?.canManageRequests == true,
+                                    currentUserId = sessionCapabilities?.userId,
+                                    onRefresh = {
+                                        coroutineScope.launch {
+                                            adminRepository.refresh()
+                                            jellyseerrCoordinator.refresh()
+                                        }
+                                    },
+                                    onLibraryScan = { coroutineScope.launch { adminRepository.startLibraryScan() } },
+                                    onRestart = { coroutineScope.launch { adminRepository.restartServer() } },
+                                    onCreateUser = { name, password ->
+                                        coroutineScope.launch { adminRepository.createUser(name, password) }
+                                    },
+                                    onSetUserDisabled = { userId, disabled ->
+                                        coroutineScope.launch { adminRepository.setUserDisabled(userId, disabled) }
+                                    },
+                                    onResetPassword = { userId, password ->
+                                        coroutineScope.launch { adminRepository.resetPassword(userId, password) }
+                                    },
+                                    onDeleteUser = { userId ->
+                                        coroutineScope.launch { adminRepository.deleteUser(userId) }
+                                    },
+                                    onApproveRequest = jellyseerrCoordinator::approveRequest,
+                                    onDeclineRequest = { request ->
+                                        coroutineScope.launch {
+                                            val environment = jellyseerrEnvironmentProvider.current()
+                                            val result =
+                                                environment?.let {
+                                                    jellyseerrRepository.updateRequestStatus(it, request.id, "decline")
+                                                }
+                                            if (result?.isSuccess == true) {
+                                                showShellFeedback(getString(Res.string.admin_request_declined))
+                                                jellyseerrCoordinator.refresh()
+                                            } else {
+                                                showShellFeedback(getString(Res.string.admin_request_action_failed))
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxSize().padding(measuredPadding),
+                                )
                             }
                         }
                     val detailPane: (@Composable (PaddingValues) -> Unit)? =

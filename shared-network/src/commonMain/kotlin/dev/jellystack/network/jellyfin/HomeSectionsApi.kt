@@ -34,21 +34,26 @@ class HomeSectionsApi(
         }
     }
 
-    private fun HeadersBuilder.appendIfAbsent(name: String, value: String) {
+    private fun HeadersBuilder.appendIfAbsent(
+        name: String,
+        value: String,
+    ) {
         if (!contains(name)) append(name, value)
     }
 
     suspend fun meta(): HomeSectionsMetaDto =
-        client.request {
-            method = HttpMethod.Get
-            configure("/HomeScreen/Meta")
-        }.body()
+        client
+            .request {
+                method = HttpMethod.Get
+                configure("/HomeScreen/Meta")
+            }.body()
 
     suspend fun ready(): Boolean =
-        client.request {
-            method = HttpMethod.Get
-            configure("/HomeScreen/Ready")
-        }.status.value in 200..299
+        client
+            .request {
+                method = HttpMethod.Get
+                configure("/HomeScreen/Ready")
+            }.status.value in 200..299
 
     suspend fun sections(
         userId: String,
@@ -56,14 +61,15 @@ class HomeSectionsApi(
         page: Int,
         pageSize: Int?,
     ): HomeSectionsResultDto<HomeSectionInfoDto> =
-        client.request {
-            method = HttpMethod.Get
-            configure("/HomeScreen/Sections")
-            parameter("userId", userId)
-            language?.takeIf(String::isNotBlank)?.let { parameter("language", it) }
-            parameter("page", page)
-            pageSize?.let { parameter("numResultsPerPage", it) }
-        }.body()
+        client
+            .request {
+                method = HttpMethod.Get
+                configure("/HomeScreen/Sections")
+                parameter("userId", userId)
+                language?.takeIf(String::isNotBlank)?.let { parameter("language", it) }
+                parameter("page", page)
+                pageSize?.let { parameter("numResultsPerPage", it) }
+            }.body()
 
     suspend fun sectionItems(
         sectionType: String,
@@ -71,13 +77,14 @@ class HomeSectionsApi(
         additionalData: String?,
         language: String?,
     ): HomeSectionsResultDto<HomeSectionItemDto> =
-        client.request {
-            method = HttpMethod.Get
-            configure("/HomeScreen/Section/$sectionType")
-            parameter("userId", userId)
-            additionalData?.takeIf(String::isNotBlank)?.let { parameter("additionalData", it) }
-            language?.takeIf(String::isNotBlank)?.let { parameter("language", it) }
-        }.body()
+        client
+            .request {
+                method = HttpMethod.Get
+                configure("/HomeScreen/Section/$sectionType")
+                parameter("userId", userId)
+                additionalData?.takeIf(String::isNotBlank)?.let { parameter("additionalData", it) }
+                language?.takeIf(String::isNotBlank)?.let { parameter("language", it) }
+            }.body()
 }
 
 @Serializable

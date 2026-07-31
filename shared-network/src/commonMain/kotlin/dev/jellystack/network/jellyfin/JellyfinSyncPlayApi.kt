@@ -39,18 +39,20 @@ class JellyfinSyncPlayApi(
     }
 
     suspend fun groups(): List<JellyfinSyncPlayGroupDto> =
-        client.request {
-            method = HttpMethod.Get
-            configure("/SyncPlay/List")
-        }.body()
+        client
+            .request {
+                method = HttpMethod.Get
+                configure("/SyncPlay/List")
+            }.body()
 
     suspend fun createGroup(name: String): JellyfinSyncPlayGroupDto =
-        client.request {
-            method = HttpMethod.Post
-            configure("/SyncPlay/New")
-            contentType(ContentType.Application.Json)
-            setBody(NewSyncPlayGroupRequest(name.trim().take(MAX_GROUP_NAME_LENGTH)))
-        }.body()
+        client
+            .request {
+                method = HttpMethod.Post
+                configure("/SyncPlay/New")
+                contentType(ContentType.Application.Json)
+                setBody(NewSyncPlayGroupRequest(name.trim().take(MAX_GROUP_NAME_LENGTH)))
+            }.body()
 
     suspend fun joinGroup(groupId: String) = post("/SyncPlay/Join", JoinSyncPlayGroupRequest(groupId))
 
@@ -122,13 +124,14 @@ class JellyfinSyncPlayApi(
     }
 
     private fun socketUrl(): String =
-        URLBuilder().apply {
-            takeFrom(baseUrl)
-            protocol = if (protocol == URLProtocol.HTTPS) URLProtocol.WSS else URLProtocol.WS
-            path("socket")
-            parameters.append("api_key", accessToken)
-            parameters.append("deviceId", deviceId)
-        }.buildString()
+        URLBuilder()
+            .apply {
+                takeFrom(baseUrl)
+                protocol = if (protocol == URLProtocol.HTTPS) URLProtocol.WSS else URLProtocol.WS
+                path("socket")
+                parameters.append("api_key", accessToken)
+                parameters.append("deviceId", deviceId)
+            }.buildString()
 
     private companion object {
         const val MAX_GROUP_NAME_LENGTH = 80
@@ -145,16 +148,24 @@ data class JellyfinSyncPlayGroupDto(
 )
 
 @Serializable
-private data class NewSyncPlayGroupRequest(@SerialName("GroupName") val groupName: String)
+private data class NewSyncPlayGroupRequest(
+    @SerialName("GroupName") val groupName: String,
+)
 
 @Serializable
-private data class JoinSyncPlayGroupRequest(@SerialName("GroupId") val groupId: String)
+private data class JoinSyncPlayGroupRequest(
+    @SerialName("GroupId") val groupId: String,
+)
 
 @Serializable
-private data class SyncPlaySeekRequest(@SerialName("PositionTicks") val positionTicks: Long)
+private data class SyncPlaySeekRequest(
+    @SerialName("PositionTicks") val positionTicks: Long,
+)
 
 @Serializable
-private data class SyncPlayPlaylistItemRequest(@SerialName("PlaylistItemId") val playlistItemId: String)
+private data class SyncPlayPlaylistItemRequest(
+    @SerialName("PlaylistItemId") val playlistItemId: String,
+)
 
 @Serializable
 private data class SyncPlayQueueRequest(

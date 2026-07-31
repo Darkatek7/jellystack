@@ -115,7 +115,12 @@ fun AndroidPlaybackSurface(
     var optionsVisible by rememberSaveable { mutableStateOf(false) }
     var syncPlayVisible by rememberSaveable { mutableStateOf(false) }
     val emptySyncPlayState =
-        remember { kotlinx.coroutines.flow.MutableStateFlow(dev.jellystack.players.syncplay.SyncPlayUiState()) }
+        remember {
+            kotlinx.coroutines.flow.MutableStateFlow(
+                dev.jellystack.players.syncplay
+                    .SyncPlayUiState(),
+            )
+        }
     val syncPlayState by (syncPlayCoordinator?.state ?: emptySyncPlayState).collectAsState()
     var interactionToken by remember { mutableIntStateOf(0) }
     val controlFocusStates = remember { mutableStateMapOf<String, Boolean>() }

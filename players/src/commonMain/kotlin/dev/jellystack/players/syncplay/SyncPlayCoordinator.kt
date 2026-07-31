@@ -182,8 +182,9 @@ class SyncPlayCoordinator(
 
     private suspend fun withApi(block: suspend (JellyfinSyncPlayApi) -> Unit) {
         try {
-            val environment = environmentProvider.current()
-                ?: error("No active Jellyfin server")
+            val environment =
+                environmentProvider.current()
+                    ?: error("No active Jellyfin server")
             val service = apiFor(environment)
             block(service)
             mutableState.value = state.value.copy(loading = false, connected = true, error = null)
@@ -302,8 +303,7 @@ class SyncPlayCoordinator(
         mutableState.value = state.value.copy(loading = false, error = failure.message ?: "SyncPlay connection failed")
     }
 
-    private fun JellyfinSyncPlayGroupDto.toDomain(): SyncPlayGroup =
-        SyncPlayGroup(groupId, groupName, state, participants)
+    private fun JellyfinSyncPlayGroupDto.toDomain(): SyncPlayGroup = SyncPlayGroup(groupId, groupName, state, participants)
 
     private fun JsonObject.toGroup(): SyncPlayGroup? {
         val id = string("GroupId") ?: return null
@@ -316,8 +316,11 @@ class SyncPlayCoordinator(
     }
 
     private fun JsonObject.string(name: String): String? = get(name)?.jsonPrimitive?.contentOrNull
+
     private fun JsonObject.long(name: String): Long? = string(name)?.toLongOrNull()
+
     private fun JsonObject.int(name: String): Int? = string(name)?.toIntOrNull()
+
     private fun JsonObject.obj(name: String): JsonObject? = get(name)?.let { runCatching { it.jsonObject }.getOrNull() }
 
     private companion object {

@@ -14,6 +14,10 @@ import io.ktor.http.path
 import io.ktor.http.takeFrom
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
 
 /** Authenticated Jellyfin session and administrator endpoints used by capability-gated features. */
 class JellyfinSessionApi(
@@ -46,41 +50,46 @@ class JellyfinSessionApi(
     }
 
     suspend fun currentUser(): JellyfinUserDto =
-        client.request {
-            method = HttpMethod.Get
-            configure("/Users/Me")
-        }.body()
+        client
+            .request {
+                method = HttpMethod.Get
+                configure("/Users/Me")
+            }.body()
 
     suspend fun users(): List<JellyfinUserDto> =
-        client.request {
-            method = HttpMethod.Get
-            configure("/Users")
-        }.body()
+        client
+            .request {
+                method = HttpMethod.Get
+                configure("/Users")
+            }.body()
 
     suspend fun systemInfo(): JellyfinSystemInfoDto =
-        client.request {
-            method = HttpMethod.Get
-            configure("/System/Info")
-        }.body()
+        client
+            .request {
+                method = HttpMethod.Get
+                configure("/System/Info")
+            }.body()
 
     suspend fun itemCounts(): JellyfinItemCountsDto =
-        client.request {
-            method = HttpMethod.Get
-            configure("/Items/Counts")
-        }.body()
+        client
+            .request {
+                method = HttpMethod.Get
+                configure("/Items/Counts")
+            }.body()
 
     suspend fun activity(
         startIndex: Int,
         limit: Int,
         hasUserId: Boolean? = null,
     ): JellyfinActivityResponseDto =
-        client.request {
-            method = HttpMethod.Get
-            configure("/System/ActivityLog/Entries")
-            parameter("startIndex", startIndex)
-            parameter("limit", limit)
-            hasUserId?.let { parameter("hasUserId", it) }
-        }.body()
+        client
+            .request {
+                method = HttpMethod.Get
+                configure("/System/ActivityLog/Entries")
+                parameter("startIndex", startIndex)
+                parameter("limit", limit)
+                hasUserId?.let { parameter("hasUserId", it) }
+            }.body()
 
     suspend fun refreshLibrary() {
         client.request {
@@ -100,12 +109,13 @@ class JellyfinSessionApi(
         name: String,
         password: String?,
     ): JellyfinUserDto =
-        client.request {
-            method = HttpMethod.Post
-            configure("/Users/New")
-            contentType(ContentType.Application.Json)
-            setBody(JellyfinCreateUserRequestDto(name = name, password = password))
-        }.body()
+        client
+            .request {
+                method = HttpMethod.Post
+                configure("/Users/New")
+                contentType(ContentType.Application.Json)
+                setBody(JellyfinCreateUserRequestDto(name = name, password = password))
+            }.body()
 
     suspend fun deleteUser(userId: String) {
         client.request {
@@ -114,15 +124,30 @@ class JellyfinSessionApi(
         }
     }
 
-    suspend fun updateUserPolicy(
+    /** Updates only the disabled flag while preserving every server-defined policy field. */
+    suspend fun setUserDisabled(
         userId: String,
-        policy: JellyfinUserPolicyDto,
+        disabled: Boolean,
     ) {
+        val user =
+            client
+                .request {
+                    method = HttpMethod.Get
+                    configure("/Users/$userId")
+                }.body<JsonObject>()
+        val existingPolicy =
+            user["Policy"]?.let { runCatching { it.jsonObject }.getOrNull() }
+                ?: JsonObject(emptyMap())
+        val updatedPolicy =
+            buildJsonObject {
+                existingPolicy.forEach { (key, value) -> put(key, value) }
+                put("IsDisabled", JsonPrimitive(disabled))
+            }
         client.request {
             method = HttpMethod.Post
             configure("/Users/$userId/Policy")
             contentType(ContentType.Application.Json)
-            setBody(policy)
+            setBody(updatedPolicy)
         }
     }
 

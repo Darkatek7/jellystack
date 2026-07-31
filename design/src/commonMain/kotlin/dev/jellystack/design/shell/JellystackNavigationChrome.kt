@@ -15,9 +15,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
@@ -48,10 +48,10 @@ import dev.jellystack.design.navigation.PrimaryDestination
 import dev.jellystack.design.theme.JellystackLayoutTokens
 import dev.jellystack.players.cast.CastConnectionState
 import jellystack_mobile.design.generated.resources.Res
+import jellystack_mobile.design.generated.resources.nav_admin
 import jellystack_mobile.design.generated.resources.nav_discover
 import jellystack_mobile.design.generated.resources.nav_home
 import jellystack_mobile.design.generated.resources.nav_library
-import jellystack_mobile.design.generated.resources.nav_admin
 import jellystack_mobile.design.generated.resources.navigate_back
 import jellystack_mobile.design.generated.resources.open_settings_description
 import org.jetbrains.compose.resources.stringResource

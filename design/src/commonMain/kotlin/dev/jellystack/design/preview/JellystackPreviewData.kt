@@ -203,7 +203,7 @@ internal object JellystackPreviewData {
                     SettingsConnectionUi("server-jellyfin", ServerType.JELLYFIN, "Living Room", true, SettingsConnectionHealth.Ready),
                     SettingsConnectionUi("server-seerr", ServerType.JELLYSEERR, "Requests", true, SettingsConnectionHealth.NeedsAttention),
                 ),
-            appVersion = "0.14.3",
+            appVersion = "0.15.0",
         )
 
     val onboardingState =
