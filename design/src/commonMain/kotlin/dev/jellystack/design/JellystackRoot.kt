@@ -92,6 +92,9 @@ import dev.jellystack.core.jellyfin.JellyfinBrowseRepository
 import dev.jellystack.core.jellyfin.JellyfinEnvironment
 import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
 import dev.jellystack.core.jellyfin.JellyfinFavoritesStoreApi
+import dev.jellystack.core.jellyfin.HomeSectionItem
+import dev.jellystack.core.jellyfin.HomeSectionsRepository
+import dev.jellystack.core.jellyfin.HomeSectionsState
 import dev.jellystack.core.jellyfin.JellyfinSessionRepository
 import dev.jellystack.core.jellyfin.JellyfinSessionState
 import dev.jellystack.core.jellyfin.JellyfinHomeState
@@ -106,6 +109,7 @@ import dev.jellystack.core.jellyfin.isBrowseContainer
 import dev.jellystack.core.jellyseerr.JellyseerrAuthenticator
 import dev.jellystack.core.jellyseerr.JellyseerrEnvironmentProvider
 import dev.jellystack.core.jellyseerr.JellyseerrLanguageProfiles
+import dev.jellystack.core.jellyseerr.JellyseerrMediaAvailability
 import dev.jellystack.core.jellyseerr.JellyseerrMediaTrailer
 import dev.jellystack.core.jellyseerr.JellyseerrMediaType
 import dev.jellystack.core.jellyseerr.JellyseerrMessage
@@ -155,6 +159,7 @@ import dev.jellystack.design.components.JellyfinQuickConnectStatus
 import dev.jellystack.design.components.JellyfinSignInMethodSelector
 import dev.jellystack.design.components.ModalFocusScope
 import dev.jellystack.design.jellyfin.ImmersiveMediaDetailContent
+import dev.jellystack.design.jellyfin.HomeSectionsScreen
 import dev.jellystack.design.jellyfin.JellyfinBrowseScreen
 import dev.jellystack.design.jellyfin.JellyfinDetailLoadingSkeleton
 import dev.jellystack.design.jellyfin.LibraryNavigationState
@@ -570,6 +575,8 @@ fun JellystackRoot(
     val themePreferences = remember(koin) { koin.get<ThemePreferenceRepository>() }
     val appSettingsRepository = remember(koin) { koin.get<AppSettingsRepository>() }
     val appSettings by appSettingsRepository.settings.collectAsState()
+    val homeSectionsRepository = remember(koin) { koin.get<HomeSectionsRepository>() }
+    val homeSectionsState by homeSectionsRepository.state.collectAsState()
     val environmentProvider = remember(koin) { koin.get<JellyfinEnvironmentProvider>() }
     val sessionRepository = remember(koin) { koin.get<JellyfinSessionRepository>() }
     val sessionState by sessionRepository.state.collectAsState()
@@ -841,6 +848,16 @@ fun JellystackRoot(
             .collectAsState(initial = serverRepository.activeServer(ServerType.JELLYSEERR))
     LaunchedEffect(activeJellyfinServer?.id) {
         sessionRepository.refresh()
+    }
+    LaunchedEffect(
+        activeJellyfinServer?.id,
+        appSettings.useServerHomeSections,
+        appSettings.appLanguage,
+    ) {
+        homeSectionsRepository.refresh(
+            enabledByUser = appSettings.useServerHomeSections,
+            language = appSettings.appLanguage.languageTag,
+        )
     }
     LaunchedEffect(sessionCapabilities?.isAdministrator) {
         if (primaryDestination == PrimaryDestination.Admin && sessionCapabilities?.isAdministrator != true) {
@@ -1619,7 +1636,15 @@ fun JellystackRoot(
     val onSelectLibrary: (String) -> Unit = { libraryId ->
         destinationDispatcher.dispatch { browseCoordinator.selectLibrary(libraryId) }
     }
-    val onRefreshHome: () -> Unit = { browseCoordinator.bootstrap(forceRefresh = true) }
+    val onRefreshHome: () -> Unit = {
+        browseCoordinator.bootstrap(forceRefresh = true)
+        coroutineScope.launch {
+            homeSectionsRepository.refresh(
+                enabledByUser = appSettings.useServerHomeSections,
+                language = appSettings.appLanguage.languageTag,
+            )
+        }
+    }
     val onRefreshLibrary: () -> Unit = {
         when (libraryNavigationState.destination.refreshTarget()) {
             LibraryRefreshTarget.CurrentLevel -> browseCoordinator.refreshSelectedLibrary()
@@ -2463,16 +2488,42 @@ fun JellystackRoot(
                             closeDiscoverSelection()
                         }
                     }
+                    val onOpenHomeSeerrItem: (HomeSectionItem) -> Unit = { homeItem ->
+                        homeItem.seerrTmdbId?.let { tmdbId ->
+                            val item =
+                                JellyseerrSearchItem(
+                                    tmdbId = tmdbId,
+                                    mediaType = JellyseerrMediaType.from(homeItem.seerrMediaType),
+                                    title = homeItem.name,
+                                    overview = homeItem.overview,
+                                    releaseYear = homeItem.productionYear?.toString(),
+                                    posterPath = homeItem.imageUrl,
+                                    backdropPath = null,
+                                    mediaInfoId = null,
+                                    tvdbId = null,
+                                    availability = JellyseerrMediaAvailability(standard = null, `4k` = null),
+                                    requests = emptyList(),
+                                )
+                            destinationDispatcher.dispatch {
+                                clearDetailStacks()
+                                primaryDestination = PrimaryDestination.Discover
+                                discoverUiState = discoverUiState.reduce(DiscoverAction.SelectSearchResult(item))
+                                recommendationsCoordinator.loadDetail(item)
+                            }
+                        }
+                    }
 
                     val homeContent: @Composable (PaddingValues) -> Unit = { measuredPadding ->
                         HomeContent(
                             hasServers = hasAnyServer,
                             browseState = browseState,
+                            homeSectionsState = homeSectionsState,
                             onSelectLibrary = onSelectLibrary,
                             onRefreshLibraries = onRefreshHome,
                             onLoadMore = onLoadMore,
                             onOpenItemDetail = onOpenItemDetail,
                             onPlayItem = onPlayItem,
+                            onOpenSeerrItem = onOpenHomeSeerrItem,
                             onConnectJellyfin = openJellyfinSettings,
                             onConnectJellyseerr = openJellyseerrSettings,
                             learnMoreUrl = learnMoreUrl,
@@ -3053,6 +3104,8 @@ fun JellystackRoot(
                                         appSettingsRepository.setSubtitleBackground(action.background)
                                     is SettingsAction.SetSpotlightAutoCycle ->
                                         appSettingsRepository.setSpotlightAutoCycle(action.enabled)
+                                    is SettingsAction.SetUseServerHomeSections ->
+                                        appSettingsRepository.setUseServerHomeSections(action.enabled)
                                     is SettingsAction.SetSpotlightIntervalSeconds ->
                                         appSettingsRepository.setSpotlightIntervalSeconds(action.seconds)
                                     is SettingsAction.SetDownloadsWifiOnly ->
@@ -3411,6 +3464,7 @@ private fun LibraryContent(
 internal fun HomeContent(
     hasServers: Boolean,
     browseState: JellyfinHomeState,
+    homeSectionsState: HomeSectionsState = HomeSectionsState.Unavailable,
     selectedSpotlightId: String?,
     onSelectedSpotlightIdChange: (String?) -> Unit,
     onSelectLibrary: (String) -> Unit,
@@ -3418,6 +3472,7 @@ internal fun HomeContent(
     onLoadMore: () -> Unit,
     onOpenItemDetail: (JellyfinItem) -> Unit,
     onPlayItem: (JellyfinItem) -> Unit,
+    onOpenSeerrItem: (HomeSectionItem) -> Unit = {},
     onConnectJellyfin: () -> Unit,
     onConnectJellyseerr: () -> Unit,
     learnMoreUrl: String,
@@ -3428,7 +3483,16 @@ internal fun HomeContent(
     spotlightAutoAdvanceEnabled: Boolean = true,
     spotlightAutoAdvanceIntervalMillis: Long = 6_000L,
 ) {
-    if (hasServers) {
+    val configuredHome = homeSectionsState as? HomeSectionsState.Ready
+    if (hasServers && configuredHome != null) {
+        HomeSectionsScreen(
+            state = configuredHome,
+            contentPadding = contentPadding,
+            onOpenJellyfinItem = onOpenItemDetail,
+            onOpenSeerrItem = onOpenSeerrItem,
+            modifier = modifier,
+        )
+    } else if (hasServers) {
         LibraryContent(
             browseState = browseState,
             selectedSpotlightId = selectedSpotlightId,

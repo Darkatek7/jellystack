@@ -27,6 +27,7 @@ class AppSettingsRepositoryTest {
         assertEquals(SubtitleBackground.SYSTEM, value.subtitleBackground)
         assertTrue(value.spotlightAutoCycle)
         assertEquals(6, value.spotlightIntervalSeconds)
+        assertTrue(value.useServerHomeSections)
         assertFalse(value.downloadsWifiOnly)
     }
 
@@ -50,6 +51,7 @@ class AppSettingsRepositoryTest {
         repository.setSubtitleBackground(SubtitleBackground.DARK)
         repository.setSpotlightAutoCycle(false)
         repository.setSpotlightIntervalSeconds(15)
+        repository.setUseServerHomeSections(false)
         repository.setDownloadsWifiOnly(true)
 
         assertEquals(
@@ -59,6 +61,7 @@ class AppSettingsRepositoryTest {
         assertEquals(AppLanguage.GERMAN, repository.settings.value.appLanguage)
         assertEquals("deu", repository.settings.value.preferredAudioLanguage)
         assertTrue(repository.settings.value.downloadsWifiOnly)
+        assertFalse(repository.settings.value.useServerHomeSections)
     }
 
     @Test

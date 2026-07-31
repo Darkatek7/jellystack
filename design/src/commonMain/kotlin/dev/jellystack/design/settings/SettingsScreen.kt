@@ -606,6 +606,17 @@ private fun AppearanceCard(
             HorizontalDivider()
         }
         SettingSwitchRow(
+            title = l10n("Use server Home layout", "Server-Home-Layout verwenden"),
+            summary =
+                l10n(
+                    "Use Home Sections when the plugin is available",
+                    "Home Sections verwenden, wenn das Plugin verfügbar ist",
+                ),
+            checked = state.appSettings.useServerHomeSections,
+            onCheckedChange = { onAction(SettingsAction.SetUseServerHomeSections(it)) },
+        )
+        HorizontalDivider()
+        SettingSwitchRow(
             title = l10n("Auto-cycle spotlight", "Spotlight automatisch wechseln"),
             summary = l10n("Move to the next title automatically", "Automatisch zum nächsten Titel wechseln"),
             checked = state.appSettings.spotlightAutoCycle,

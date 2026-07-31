@@ -4,10 +4,13 @@ import dev.jellystack.core.config.ServerConfigRepository
 import dev.jellystack.core.jellyfin.JellyfinBrowseApiFactory
 import dev.jellystack.core.jellyfin.JellyfinBrowseRepository
 import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
+import dev.jellystack.core.jellyfin.HomeSectionsApiFactory
+import dev.jellystack.core.jellyfin.HomeSectionsRepository
 import dev.jellystack.core.jellyfin.JellyfinSessionApiFactory
 import dev.jellystack.core.jellyfin.JellyfinSessionRepository
 import dev.jellystack.core.jellyfin.ServerRepositoryEnvironmentProvider
 import dev.jellystack.core.jellyfin.defaultJellyfinBrowseApiFactory
+import dev.jellystack.core.jellyfin.defaultHomeSectionsApiFactory
 import dev.jellystack.core.jellyfin.defaultJellyfinSessionApiFactory
 import dev.jellystack.core.jellyseerr.JellyseerrAuthenticator
 import dev.jellystack.core.jellyseerr.JellyseerrEnvironmentProvider
@@ -72,6 +75,8 @@ fun coreModule(): Module =
         single<JellyseerrEnvironmentProvider> { ServerRepositoryJellyseerrEnvironmentProvider(get()) }
         single<JellyfinBrowseApiFactory> { defaultJellyfinBrowseApiFactory() }
         single { JellyfinBrowseRepository(get(), get(), get(), get(), get()) }
+        single<HomeSectionsApiFactory> { defaultHomeSectionsApiFactory() }
+        single { HomeSectionsRepository(get(), get()) }
         single<JellyfinSessionApiFactory> { defaultJellyfinSessionApiFactory() }
         single { JellyfinSessionRepository(get(), get()) }
         single { JellyseerrRepository(recommendationsStore = get()) }

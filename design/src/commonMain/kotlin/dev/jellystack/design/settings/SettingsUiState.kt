@@ -120,6 +120,10 @@ internal sealed interface SettingsAction {
         val enabled: Boolean,
     ) : SettingsAction
 
+    data class SetUseServerHomeSections(
+        val enabled: Boolean,
+    ) : SettingsAction
+
     data class SetSpotlightIntervalSeconds(
         val seconds: Int,
     ) : SettingsAction
