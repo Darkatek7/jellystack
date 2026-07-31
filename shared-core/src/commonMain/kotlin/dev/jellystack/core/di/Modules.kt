@@ -40,8 +40,13 @@ import dev.jellystack.core.server.ServerRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import org.koin.core.module.Module
+import org.koin.core.qualifier.named
 import org.koin.dsl.module
 import org.koin.mp.KoinPlatformTools
+
+internal val jellyfinBrowseApiFactoryQualifier = named("jellyfinBrowseApiFactory")
+internal val homeSectionsApiFactoryQualifier = named("homeSectionsApiFactory")
+internal val jellyfinSessionApiFactoryQualifier = named("jellyfinSessionApiFactory")
 
 fun coreModule(): Module =
     module {
@@ -74,12 +79,30 @@ fun coreModule(): Module =
         }
         single<JellyfinEnvironmentProvider> { ServerRepositoryEnvironmentProvider(get()) }
         single<JellyseerrEnvironmentProvider> { ServerRepositoryJellyseerrEnvironmentProvider(get()) }
-        single<JellyfinBrowseApiFactory> { defaultJellyfinBrowseApiFactory() }
-        single { JellyfinBrowseRepository(get(), get(), get(), get(), get()) }
-        single<HomeSectionsApiFactory> { defaultHomeSectionsApiFactory() }
-        single { HomeSectionsRepository(get(), get()) }
-        single<JellyfinSessionApiFactory> { defaultJellyfinSessionApiFactory() }
-        single { JellyfinSessionRepository(get(), get()) }
+        single<JellyfinBrowseApiFactory>(jellyfinBrowseApiFactoryQualifier) { defaultJellyfinBrowseApiFactory() }
+        single {
+            JellyfinBrowseRepository(
+                environmentProvider = get(),
+                libraryStore = get(),
+                itemStore = get(),
+                detailStore = get(),
+                apiFactory = get(jellyfinBrowseApiFactoryQualifier),
+            )
+        }
+        single<HomeSectionsApiFactory>(homeSectionsApiFactoryQualifier) { defaultHomeSectionsApiFactory() }
+        single {
+            HomeSectionsRepository(
+                environmentProvider = get(),
+                apiFactory = get(homeSectionsApiFactoryQualifier),
+            )
+        }
+        single<JellyfinSessionApiFactory>(jellyfinSessionApiFactoryQualifier) { defaultJellyfinSessionApiFactory() }
+        single {
+            JellyfinSessionRepository(
+                environmentProvider = get(),
+                apiFactory = get(jellyfinSessionApiFactoryQualifier),
+            )
+        }
         single { JellyfinAdminRepository(get()) }
         single { JellyseerrRepository(recommendationsStore = get()) }
         single { JellyseerrAuthenticator() }
