@@ -53,6 +53,7 @@ import dev.jellystack.core.downloads.OfflineMedia
 import dev.jellystack.core.downloads.OfflineMediaKind
 import dev.jellystack.core.downloads.OfflineMediaMetadata
 import dev.jellystack.core.jellyfin.JellyfinHomeState
+import dev.jellystack.core.jellyfin.HomeSectionsState
 import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.JellyfinItemDetail
 import dev.jellystack.core.jellyfin.JellyfinLibrary
@@ -490,6 +491,38 @@ class LibraryAndMediaUiTest {
         } finally {
             composeRule.mainClock.autoAdvance = true
         }
+    }
+
+    @Test
+    fun configuredHomeSectionsKeepSpotlightAtTop() {
+        composeRule.setContent {
+            var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
+            JellystackTheme(isDarkTheme = false) {
+                HomeContent(
+                    hasServers = true,
+                    browseState = spotlightHomeState(),
+                    homeSectionsState =
+                        HomeSectionsState.Ready(
+                            sections = emptyList(),
+                            imageBaseUrl = "https://example.com",
+                            imageAccessToken = "token",
+                        ),
+                    selectedSpotlightId = selectedId,
+                    onSelectedSpotlightIdChange = { selectedId = it },
+                    onSelectLibrary = {},
+                    onRefreshLibraries = {},
+                    onLoadMore = {},
+                    onOpenItemDetail = {},
+                    onPlayItem = {},
+                    onConnectJellyfin = {},
+                    onConnectJellyseerr = {},
+                    learnMoreUrl = "https://example.com",
+                    downloadStatuses = emptyMap(),
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag(SpotlightTestTags.PAGER).assertIsDisplayed()
     }
 
     @Test
@@ -2247,6 +2280,7 @@ private fun rootOwnedSpotlightHarness() {
                 }
             PrimaryDestination.Library,
             PrimaryDestination.Discover,
+            PrimaryDestination.Admin,
             ->
                 Column {
                     Text("Library surface")

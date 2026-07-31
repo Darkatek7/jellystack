@@ -2790,7 +2790,7 @@ private fun SpotlightTitleText(title: String) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun HomeSpotlightCard(
+internal fun HomeSpotlightCard(
     item: JellyfinItem,
     actionItem: JellyfinItem = item,
     baseUrl: String?,

@@ -137,6 +137,8 @@ data class HomeSectionItemDto(
     @SerialName("ParentIndexNumber") val parentIndexNumber: Int? = null,
     @SerialName("SeriesName") val seriesName: String? = null,
     @SerialName("SeriesId") val seriesId: String? = null,
+    @SerialName("SeriesPrimaryImageTag") val seriesPrimaryImageTag: String? = null,
+    @SerialName("SeriesThumbImageTag") val seriesThumbImageTag: String? = null,
     @SerialName("SeasonId") val seasonId: String? = null,
     @SerialName("ImageTags") val imageTags: Map<String, String>? = null,
     @SerialName("BackdropImageTags") val backdropImageTags: List<String>? = null,

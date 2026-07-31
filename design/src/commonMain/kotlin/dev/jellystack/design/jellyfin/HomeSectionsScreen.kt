@@ -19,6 +19,9 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,15 +36,45 @@ import dev.jellystack.core.jellyfin.HomeSectionItem
 import dev.jellystack.core.jellyfin.HomeSectionViewMode
 import dev.jellystack.core.jellyfin.HomeSectionsState
 import dev.jellystack.core.jellyfin.JellyfinItem
+import dev.jellystack.core.jellyfin.JellyfinHomeState
+import kotlinx.datetime.Clock
 
 @Composable
 internal fun HomeSectionsScreen(
     state: HomeSectionsState.Ready,
+    browseState: JellyfinHomeState,
+    selectedSpotlightId: String?,
+    onSelectedSpotlightIdChange: (String?) -> Unit,
+    onOpenSpotlightItem: (JellyfinItem) -> Unit,
+    onPlaySpotlightItem: (JellyfinItem) -> Unit,
+    spotlightAutoAdvanceEnabled: Boolean,
+    spotlightAutoAdvanceIntervalMillis: Long,
     contentPadding: PaddingValues,
     onOpenJellyfinItem: (JellyfinItem) -> Unit,
     onOpenSeerrItem: (HomeSectionItem) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val spotlightEligibilityNow = remember { Clock.System.now() }
+    val spotlightCandidates =
+        remember(
+            browseState.recentShows,
+            browseState.recentMovies,
+            browseState.libraryItems,
+            spotlightEligibilityNow,
+        ) {
+            buildSpotlightCandidates(
+                recentShows = browseState.recentShows,
+                recentMovies = browseState.recentMovies,
+                now = spotlightEligibilityNow,
+                libraryItems = browseState.libraryItems,
+            )
+        }
+    val spotlightCandidateIds = remember(spotlightCandidates) { spotlightCandidates.map { it.displayItem.id } }
+    LaunchedEffect(spotlightCandidateIds.isEmpty(), selectedSpotlightId) {
+        if (spotlightCandidateIds.isEmpty() && selectedSpotlightId != null) {
+            onSelectedSpotlightIdChange(null)
+        }
+    }
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding =
@@ -53,6 +86,28 @@ internal fun HomeSectionsScreen(
             ),
         verticalArrangement = Arrangement.spacedBy(24.dp),
     ) {
+        if (spotlightCandidates.isNotEmpty()) {
+            item(key = "spotlight") {
+                key(spotlightCandidateIds) {
+                    HomeSpotlight(
+                        candidates = spotlightCandidates,
+                        selectedId = selectedSpotlightId,
+                        onSelected = onSelectedSpotlightIdChange,
+                        autoAdvanceEnabled = spotlightAutoAdvanceEnabled,
+                        autoAdvanceIntervalMillis = spotlightAutoAdvanceIntervalMillis,
+                    ) { candidate, _, _ ->
+                        HomeSpotlightCard(
+                            item = candidate.displayItem,
+                            actionItem = candidate.actionItem,
+                            baseUrl = browseState.imageBaseUrl,
+                            accessToken = browseState.imageAccessToken,
+                            onOpenItem = onOpenSpotlightItem,
+                            onPlayItem = onPlaySpotlightItem,
+                        )
+                    }
+                }
+            }
+        }
         items(state.sections, key = HomeSection::id) { section ->
             HomeSectionRail(
                 section = section,
@@ -113,16 +168,12 @@ private fun HomeSectionCard(
     onClick: () -> Unit,
 ) {
     val localItem = item.jellyfinItem
-    val imageType = if (viewMode == HomeSectionViewMode.LANDSCAPE) "Backdrop" else "Primary"
-    val tag =
-        if (imageType == "Backdrop") {
-            localItem?.backdropImageTag ?: localItem?.thumbImageTag ?: localItem?.primaryImageTag
-        } else {
-            localItem?.primaryImageTag ?: localItem?.thumbImageTag ?: localItem?.backdropImageTag
-        }
+    val artwork = localItem?.selectHomeSectionArtwork(viewMode)
     val imageUrl =
-        item.imageUrl
-            ?: localItem?.let { buildImageUrl(imageBaseUrl, it.id, tag, imageType, imageAccessToken) }
+        item.imageUrl?.takeIf(String::isNotBlank)
+            ?: artwork?.let {
+                buildImageUrl(imageBaseUrl, it.itemId, it.tag, it.imageType, imageAccessToken)
+            }
     val width =
         when (viewMode) {
             HomeSectionViewMode.PORTRAIT -> 142.dp
@@ -187,6 +238,28 @@ private fun HomeSectionCard(
                 )
             }
         }
+    }
+}
+
+internal fun JellyfinItem.selectHomeSectionArtwork(viewMode: HomeSectionViewMode): SpotlightArtwork? {
+    val inheritedOwner = seriesId?.takeIf { it.isNotBlank() && it != id }
+    fun inherited(tag: String?, imageType: String): SpotlightArtwork? =
+        tag?.takeIf { inheritedOwner != null }?.let {
+            SpotlightArtwork(itemId = requireNotNull(inheritedOwner), tag = it, imageType = imageType)
+        }
+    fun direct(tag: String?, imageType: String): SpotlightArtwork? =
+        tag?.let { SpotlightArtwork(itemId = id, tag = it, imageType = imageType) }
+
+    return if (viewMode == HomeSectionViewMode.LANDSCAPE) {
+        selectSpotlightArtwork()
+            ?: inherited(seriesPrimaryImageTag, "Primary")
+            ?: direct(primaryImageTag, "Primary")
+    } else {
+        inherited(seriesPrimaryImageTag, "Primary")
+            ?: direct(primaryImageTag, "Primary")
+            ?: inherited(seriesThumbImageTag, "Thumb")
+            ?: direct(thumbImageTag, "Thumb")
+            ?: selectSpotlightArtwork()
     }
 }
 

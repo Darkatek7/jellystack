@@ -125,6 +125,46 @@ class HomeSectionsRepositoryTest {
             assertEquals(1, items.size)
         }
 
+    @Test
+    fun preservesSeriesArtworkOwnershipForEpisodeCards() =
+        runTest {
+            val repository =
+                repository { path ->
+                    when {
+                        path.endsWith("/HomeScreen/Meta") ->
+                            """{"Enabled":true,"PaginationEnabled":false}"""
+                        path.endsWith("/HomeScreen/Ready") -> ""
+                        path.endsWith("/HomeScreen/Sections") ->
+                            """{"Items":[{"Section":"NextUp","DisplayText":"Next up","ViewMode":"Landscape"}]}"""
+                        path.endsWith("/HomeScreen/Section/NextUp") ->
+                            """{"Items":[{
+                                "Id":"episode-1",
+                                "Name":"Episode",
+                                "Type":"Episode",
+                                "SeriesId":"series-1",
+                                "ImageTags":{"Primary":"episode-primary"},
+                                "SeriesPrimaryImageTag":"series-primary",
+                                "SeriesThumbImageTag":"series-thumb",
+                                "ParentBackdropImageTags":["series-backdrop"]
+                            }]}"""
+                        else -> error("Unexpected path $path")
+                    }
+                }
+
+            repository.refresh(enabledByUser = true, language = "en")
+
+            val episode =
+                assertIs<HomeSectionsState.Ready>(repository.state.value)
+                    .sections.single()
+                    .items.single()
+                    .jellyfinItem
+            requireNotNull(episode)
+            assertEquals("series-1", episode.seriesId)
+            assertEquals("series-primary", episode.seriesPrimaryImageTag)
+            assertEquals("series-thumb", episode.seriesThumbImageTag)
+            assertEquals("series-backdrop", episode.seriesBackdropImageTag)
+        }
+
     private fun repository(responseFor: (String) -> String): HomeSectionsRepository {
         val engine =
             MockEngine { request ->

@@ -3531,6 +3531,13 @@ internal fun HomeContent(
     if (hasServers && configuredHome != null) {
         HomeSectionsScreen(
             state = configuredHome,
+            browseState = browseState,
+            selectedSpotlightId = selectedSpotlightId,
+            onSelectedSpotlightIdChange = onSelectedSpotlightIdChange,
+            onOpenSpotlightItem = onOpenItemDetail,
+            onPlaySpotlightItem = onPlayItem,
+            spotlightAutoAdvanceEnabled = spotlightAutoAdvanceEnabled,
+            spotlightAutoAdvanceIntervalMillis = spotlightAutoAdvanceIntervalMillis,
             contentPadding = contentPadding,
             onOpenJellyfinItem = onOpenItemDetail,
             onOpenSeerrItem = onOpenSeerrItem,

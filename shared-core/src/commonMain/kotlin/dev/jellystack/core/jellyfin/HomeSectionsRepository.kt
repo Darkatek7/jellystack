@@ -180,6 +180,11 @@ private fun HomeSectionItemDto.toDomain(baseUrl: String): HomeSectionItem? {
             }
         }
     val localId = id?.takeIf(String::isNotBlank)
+    val resolvedSeriesId =
+        seriesId?.takeIf(String::isNotBlank)
+            ?: parentId?.takeIf {
+                type.equals("Season", ignoreCase = true) && it.isNotBlank()
+            }
     val localItem =
         localId?.takeIf { seerrId == null && providerIds.orEmpty().keys.none { key -> key.endsWith("Poster") } }?.let {
             JellyfinItem(
@@ -195,11 +200,11 @@ private fun HomeSectionItemDto.toDomain(baseUrl: String): HomeSectionItem? {
                 parentId = parentId,
                 primaryImageTag = imageTags?.get("Primary"),
                 thumbImageTag = imageTags?.get("Thumb"),
-                backdropImageTag = backdropImageTags?.firstOrNull() ?: parentBackdropImageTags?.firstOrNull(),
-                seriesId = seriesId ?: parentId,
-                seriesPrimaryImageTag = null,
-                seriesThumbImageTag = null,
-                seriesBackdropImageTag = parentBackdropImageTags?.firstOrNull(),
+                backdropImageTag = backdropImageTags?.firstOrNull(),
+                seriesId = resolvedSeriesId,
+                seriesPrimaryImageTag = seriesPrimaryImageTag,
+                seriesThumbImageTag = seriesThumbImageTag,
+                seriesBackdropImageTag = parentBackdropImageTags?.firstOrNull()?.takeIf { resolvedSeriesId != null },
                 parentLogoImageTag = imageTags?.get("Logo"),
                 runTimeTicks = runTimeTicks,
                 positionTicks = userData?.playbackPositionTicks,
