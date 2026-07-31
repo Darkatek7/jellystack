@@ -9,6 +9,14 @@
     <string name="player_audio">Audio</string>
     <string name="player_subtitles">Subtitles</string>
     <string name="player_quality">Quality</string>
+    <string name="player_speed">Playback speed</string>
+    <string name="player_stats_for_nerds">Stats for nerds</string>
+    <string name="player_stats_for_nerds_summary">Show live stream and decoder details with the controls</string>
+    <string name="player_stats_mode">Mode</string>
+    <string name="player_stats_video">Video</string>
+    <string name="player_stats_audio">Audio</string>
+    <string name="player_stats_buffer">Buffer</string>
+    <string name="player_stats_dropped">Dropped frames</string>
     <string name="player_unavailable">Unavailable</string>
     <string name="player_off">Off</string>
     <string name="player_default">Default</string>

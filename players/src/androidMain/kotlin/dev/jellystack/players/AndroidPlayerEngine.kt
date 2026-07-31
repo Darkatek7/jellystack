@@ -15,6 +15,8 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
+import androidx.media3.common.C.COLOR_TRANSFER_HLG
+import androidx.media3.common.C.COLOR_TRANSFER_ST2084
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -31,8 +33,11 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -104,16 +109,19 @@ class AndroidPlayerEngine(
 
     private val positionFlow = MutableSharedFlow<Long>(replay = 1)
     private val eventFlow = MutableSharedFlow<PlayerEvent>(extraBufferCapacity = 4)
+    private val runtimeStatsFlow = MutableStateFlow(PlaybackRuntimeStats())
     private var positionJob =
         scope.launch {
             while (isActive) {
                 positionFlow.emit(exoPlayer.currentPosition)
+                runtimeStatsFlow.value = currentRuntimeStats()
                 delay(POSITION_POLL_INTERVAL_MS)
             }
         }
 
     override val positionUpdates: SharedFlow<Long> = positionFlow.asSharedFlow()
     override val events: SharedFlow<PlayerEvent> = eventFlow.asSharedFlow()
+    override val runtimeStats: StateFlow<PlaybackRuntimeStats> = runtimeStatsFlow.asStateFlow()
 
     fun createVideoSurface(context: Context): View =
         PlayerView(context).apply {
@@ -310,10 +318,36 @@ class AndroidPlayerEngine(
         exoPlayer.trackSelectionParameters = builder.build()
     }
 
+    override fun setPlaybackSpeed(speed: Float) {
+        exoPlayer.setPlaybackSpeed(speed.coerceIn(0.5f, 2f))
+    }
+
     override fun release() {
         positionJob.cancel()
         exoPlayer.release()
         scope.cancel()
+    }
+
+    private fun currentRuntimeStats(): PlaybackRuntimeStats {
+        val video = exoPlayer.videoFormat
+        val audio = exoPlayer.audioFormat
+        val transfer = video?.colorInfo?.colorTransfer
+        return runtimeStatsFlow.value.copy(
+            videoCodec = video?.codecs ?: video?.sampleMimeType,
+            audioCodec = audio?.codecs ?: audio?.sampleMimeType,
+            width = video?.width?.takeIf { it > 0 },
+            height = video?.height?.takeIf { it > 0 },
+            videoBitrate = video?.bitrate?.takeIf { it > 0 },
+            frameRate = video?.frameRate?.takeIf { it > 0f },
+            hdr =
+                when (transfer) {
+                    COLOR_TRANSFER_ST2084 -> "HDR10/PQ"
+                    COLOR_TRANSFER_HLG -> "HLG"
+                    else -> null
+                },
+            bufferedDurationMs = exoPlayer.totalBufferedDuration.coerceAtLeast(0L),
+            droppedFrames = exoPlayer.videoDecoderCounters?.droppedBufferCount,
+        )
     }
 
     private fun applyAudioTrack(track: AudioTrack?): AudioTrackSelectionResult {

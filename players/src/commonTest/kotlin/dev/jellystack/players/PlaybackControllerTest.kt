@@ -41,6 +41,49 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class PlaybackControllerTest {
     @Test
+    fun playbackSpeedIsSessionOnlyAndResetsForNewPlayback() =
+        runTest {
+            val engine = RecordingPlayerEngine()
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = TestPlaybackSourceResolver(),
+                    playerEngine = engine,
+                    scope = TestScope(UnconfinedTestDispatcher(testScheduler)),
+                )
+
+            controller.play(PlaybackRequest.from(sampleItem(), sampleDetail(withDirect = true)), testEnvironment())
+            controller.setPlaybackSpeed(1.5f)
+
+            assertEquals(1.5f, (controller.state.value as PlaybackState.Active).playbackSpeed)
+            assertEquals(1.5f, engine.lastSpeed)
+
+            controller.play(PlaybackRequest.from(sampleItem(id = "next"), sampleDetail(withDirect = true)), testEnvironment())
+
+            assertEquals(1f, (controller.state.value as PlaybackState.Active).playbackSpeed)
+            assertEquals(1f, engine.lastSpeed)
+            controller.release()
+        }
+
+    @Test
+    fun statsForNerdsIsSessionOnly() =
+        runTest {
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = TestPlaybackSourceResolver(),
+                    playerEngine = RecordingPlayerEngine(),
+                    scope = TestScope(UnconfinedTestDispatcher(testScheduler)),
+                )
+            controller.play(PlaybackRequest.from(sampleItem(), sampleDetail(withDirect = true)), testEnvironment())
+
+            controller.setStatsForNerdsEnabled(true)
+
+            assertTrue((controller.state.value as PlaybackState.Active).statsForNerdsEnabled)
+            controller.stop()
+            assertEquals(PlaybackState.Stopped, controller.state.value)
+            controller.release()
+        }
+
+    @Test
     fun stopInvalidatesInitialResolveBeforeItCanPreparePlayback() =
         runTest {
             val resolveStarted = CompletableDeferred<Unit>()
@@ -2736,6 +2779,7 @@ private class RecordingPlayerEngine : PlayerEngine {
     var lastAudioTrack: AudioTrack? = null
     var lastSubtitleTrack: SubtitleTrack? = null
     var lastQuality: Int? = null
+    var lastSpeed: Float? = null
     var released = false
     var prepareCount = 0
     var audioSelectionResult = AudioTrackSelectionResult.APPLIED
@@ -2780,6 +2824,10 @@ private class RecordingPlayerEngine : PlayerEngine {
 
     override fun setVideoQuality(maxBitrate: Int?) {
         lastQuality = maxBitrate
+    }
+
+    override fun setPlaybackSpeed(speed: Float) {
+        lastSpeed = speed
     }
 
     override fun release() {

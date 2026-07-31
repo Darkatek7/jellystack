@@ -374,6 +374,58 @@ private fun ActivePlayer(
                     seekBackSeconds = seekBackSeconds,
                     seekForwardSeconds = seekForwardSeconds,
                 )
+                if (state.statsForNerdsEnabled) {
+                    PlaybackStatsPanel(state)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BoxScope.PlaybackStatsPanel(state: PlaybackState.Active) {
+    val stats = state.runtimeStats
+    val modeLabel = stringResource(R.string.player_stats_mode)
+    val videoLabel = stringResource(R.string.player_stats_video)
+    val audioLabel = stringResource(R.string.player_stats_audio)
+    val bufferLabel = stringResource(R.string.player_stats_buffer)
+    val droppedLabel = stringResource(R.string.player_stats_dropped)
+    val entries =
+        buildList {
+            stats.playbackMode?.let { add(modeLabel to it.name) }
+            val resolution =
+                if (stats.width != null && stats.height != null) "${stats.width}x${stats.height}" else null
+            listOfNotNull(resolution, stats.videoCodec, stats.hdr, stats.frameRate?.let { "${it.toInt()} fps" })
+                .takeIf { it.isNotEmpty() }
+                ?.let { add(videoLabel to it.joinToString(" · ")) }
+            stats.audioCodec?.let { add(audioLabel to it) }
+            stats.bufferedDurationMs?.let {
+                add(bufferLabel to "${it / 1_000}s")
+            }
+            stats.droppedFrames?.let {
+                add(droppedLabel to it.toString())
+            }
+        }
+    if (entries.isEmpty()) return
+    Surface(
+        modifier =
+            Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 72.dp, end = 16.dp)
+                .testTag(AndroidPlaybackTags.STATS_PANEL),
+        color = Color.Black.copy(alpha = 0.78f),
+        shape = MaterialTheme.shapes.medium,
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            entries.forEach { (label, value) ->
+                Text(
+                    text = "$label: $value",
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelMedium,
+                )
             }
         }
     }

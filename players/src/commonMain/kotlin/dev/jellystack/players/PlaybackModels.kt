@@ -179,6 +179,9 @@ data class PlaybackSession(
     val qualityOptions: List<PlaybackQualityOption>,
     val selectedQualityId: String,
     val phase: PlaybackPhase = PlaybackPhase.Ready,
+    val playbackSpeed: Float = 1f,
+    val statsForNerdsEnabled: Boolean = false,
+    val runtimeStats: PlaybackRuntimeStats = PlaybackRuntimeStats(),
 )
 
 data class PlaybackProgress(
@@ -219,6 +222,9 @@ sealed interface PlaybackState {
         val metadata: PlaybackMetadata?
         val mediaKind: PlaybackMediaKind
         val phase: PlaybackPhase
+        val playbackSpeed: Float
+        val statsForNerdsEnabled: Boolean
+        val runtimeStats: PlaybackRuntimeStats
     }
 
     data class LocalPlayback(
@@ -236,6 +242,9 @@ sealed interface PlaybackState {
         override val metadata: PlaybackMetadata? = null,
         override val mediaKind: PlaybackMediaKind = PlaybackMediaKind.VIDEO,
         override val phase: PlaybackPhase = PlaybackPhase.Ready,
+        override val playbackSpeed: Float = 1f,
+        override val statsForNerdsEnabled: Boolean = false,
+        override val runtimeStats: PlaybackRuntimeStats = PlaybackRuntimeStats(),
     ) : Active {
         override val sessionDeviceName: String = deviceName
     }
@@ -256,6 +265,9 @@ sealed interface PlaybackState {
         override val metadata: PlaybackMetadata? = null,
         override val mediaKind: PlaybackMediaKind = PlaybackMediaKind.VIDEO,
         override val phase: PlaybackPhase = PlaybackPhase.Ready,
+        override val playbackSpeed: Float = 1f,
+        override val statsForNerdsEnabled: Boolean = false,
+        override val runtimeStats: PlaybackRuntimeStats = PlaybackRuntimeStats(),
     ) : Active {
         override val sessionDeviceName: String = targetDeviceName ?: localDeviceName
     }
@@ -277,6 +289,9 @@ sealed interface PlaybackState {
         override val metadata: PlaybackMetadata? = null,
         override val mediaKind: PlaybackMediaKind = PlaybackMediaKind.VIDEO,
         override val phase: PlaybackPhase = PlaybackPhase.Ready,
+        override val playbackSpeed: Float = 1f,
+        override val statsForNerdsEnabled: Boolean = false,
+        override val runtimeStats: PlaybackRuntimeStats = PlaybackRuntimeStats(),
     ) : Active {
         override val sessionDeviceName: String = castDeviceName
     }
@@ -298,6 +313,9 @@ sealed interface PlaybackState {
         override val metadata: PlaybackMetadata? = null,
         override val mediaKind: PlaybackMediaKind = PlaybackMediaKind.VIDEO,
         override val phase: PlaybackPhase = PlaybackPhase.Ready,
+        override val playbackSpeed: Float = 1f,
+        override val statsForNerdsEnabled: Boolean = false,
+        override val runtimeStats: PlaybackRuntimeStats = PlaybackRuntimeStats(),
     ) : Active {
         override val sessionDeviceName: String = localDeviceName
     }

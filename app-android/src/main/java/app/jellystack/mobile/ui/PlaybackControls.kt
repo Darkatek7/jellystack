@@ -79,6 +79,9 @@ internal object AndroidPlaybackTags {
     const val AUDIO_SELECTOR = "player_audio_selector"
     const val SUBTITLE_SELECTOR = "player_subtitle_selector"
     const val QUALITY_SELECTOR = "player_quality_selector"
+    const val SPEED_SELECTOR = "player_speed_selector"
+    const val STATS_TOGGLE = "player_stats_toggle"
+    const val STATS_PANEL = "player_stats_panel"
 }
 
 @Composable

@@ -10,6 +10,7 @@ class IosPlayerEngine : PlayerEngine {
 
     override val positionUpdates: Flow<Long> = positions.asSharedFlow()
     override val events: Flow<PlayerEvent> = playerEvents.asSharedFlow()
+    override val runtimeStats: Flow<PlaybackRuntimeStats> = kotlinx.coroutines.flow.emptyFlow()
 
     override suspend fun prepare(
         source: ResolvedPlaybackSource,
@@ -35,6 +36,8 @@ class IosPlayerEngine : PlayerEngine {
     override fun setSubtitleTrack(track: SubtitleTrack?) = Unit
 
     override fun setVideoQuality(maxBitrate: Int?) = Unit
+
+    override fun setPlaybackSpeed(speed: Float) = Unit
 
     override fun release() = Unit
 }

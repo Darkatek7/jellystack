@@ -9,6 +9,14 @@
     <string name="player_audio">Audio</string>
     <string name="player_subtitles">Untertitel</string>
     <string name="player_quality">Qualität</string>
+    <string name="player_speed">Wiedergabegeschwindigkeit</string>
+    <string name="player_stats_for_nerds">Stats for Nerds</string>
+    <string name="player_stats_for_nerds_summary">Live-Details zu Stream und Decoder bei sichtbarer Steuerung</string>
+    <string name="player_stats_mode">Modus</string>
+    <string name="player_stats_video">Video</string>
+    <string name="player_stats_audio">Audio</string>
+    <string name="player_stats_buffer">Puffer</string>
+    <string name="player_stats_dropped">Verworfene Frames</string>
     <string name="player_unavailable">Nicht verfügbar</string>
     <string name="player_off">Aus</string>
     <string name="player_default">Standard</string>

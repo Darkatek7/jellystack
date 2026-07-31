@@ -63,6 +63,7 @@ class PlaybackController(
     private var lastPersisted: PlaybackProgress? = null
     private var progressJob: Job? = null
     private var eventsJob: Job? = null
+    private var runtimeStatsJob: Job? = null
     private var lastEnvironment: JellyfinEnvironment? = null
     private var castState: CastConnectionState = CastConnectionState.Idle
     private var castStateJob: Job? = null
@@ -228,6 +229,14 @@ class PlaybackController(
                     qualityOptions = negotiatedSelection.qualityOptions,
                     selectedQualityId = negotiatedSelection.selectedQualityId,
                     phase = PlaybackPhase.Buffering,
+                    runtimeStats =
+                        PlaybackRuntimeStats(
+                            playbackMode = negotiatedSelection.mode,
+                            container = negotiatedSelection.container,
+                            videoCodec = negotiatedSelection.videoCodec,
+                            audioCodec = negotiatedSelection.audioCodec,
+                            videoBitrate = negotiatedSelection.videoBitrate,
+                        ),
                 )
             ensureCurrentPlayAttempt(attemptGeneration)
             playerEngine.prepare(
@@ -240,6 +249,7 @@ class PlaybackController(
             session = newSession
             startCollectors()
             playerEngine.setVideoQuality(negotiatedSelection.maxBitrate)
+            playerEngine.setPlaybackSpeed(1f)
             publishCurrentState(newSession)
             if (isRemoteConnected()) {
                 handoffPhase = HandoffPhase.CAST_ACTIVE
@@ -317,6 +327,23 @@ class PlaybackController(
                 playerEngine.play()
             }
         }
+    }
+
+    fun setPlaybackSpeed(speed: Float) {
+        val current = session ?: return
+        if (handoffPhase != HandoffPhase.LOCAL) return
+        val normalized = PLAYBACK_SPEEDS.minByOrNull { candidate -> kotlin.math.abs(candidate - speed) } ?: 1f
+        playerEngine.setPlaybackSpeed(normalized)
+        val updated = current.copy(playbackSpeed = normalized)
+        session = updated
+        publishCurrentState(updated)
+    }
+
+    fun setStatsForNerdsEnabled(enabled: Boolean) {
+        val current = session ?: return
+        val updated = current.copy(statsForNerdsEnabled = enabled)
+        session = updated
+        publishCurrentState(updated)
     }
 
     fun stop(saveProgress: Boolean = true) {
@@ -1149,6 +1176,9 @@ class PlaybackController(
                         metadata = session.request.metadata,
                         mediaKind = session.request.mediaKind,
                         phase = session.phase,
+                        playbackSpeed = session.playbackSpeed,
+                        statsForNerdsEnabled = session.statsForNerdsEnabled,
+                        runtimeStats = session.runtimeStats,
                     )
 
                 HandoffPhase.CAST_CONNECTING ->
@@ -1168,6 +1198,9 @@ class PlaybackController(
                         metadata = session.request.metadata,
                         mediaKind = session.request.mediaKind,
                         phase = session.phase,
+                        playbackSpeed = session.playbackSpeed,
+                        statsForNerdsEnabled = session.statsForNerdsEnabled,
+                        runtimeStats = session.runtimeStats,
                     )
 
                 HandoffPhase.CAST_ACTIVE ->
@@ -1188,6 +1221,9 @@ class PlaybackController(
                         metadata = session.request.metadata,
                         mediaKind = session.request.mediaKind,
                         phase = session.phase,
+                        playbackSpeed = session.playbackSpeed,
+                        statsForNerdsEnabled = session.statsForNerdsEnabled,
+                        runtimeStats = session.runtimeStats,
                     )
 
                 HandoffPhase.RECOVERING ->
@@ -1208,6 +1244,9 @@ class PlaybackController(
                         metadata = session.request.metadata,
                         mediaKind = session.request.mediaKind,
                         phase = session.phase,
+                        playbackSpeed = session.playbackSpeed,
+                        statsForNerdsEnabled = session.statsForNerdsEnabled,
+                        runtimeStats = session.runtimeStats,
                     )
             }
     }
@@ -1478,6 +1517,25 @@ class PlaybackController(
                     }
                 }
             }
+        runtimeStatsJob =
+            scope.launch {
+                playerEngine.runtimeStats.collect { stats ->
+                    val current = session ?: return@collect
+                    val merged =
+                        stats.copy(
+                            playbackMode = stats.playbackMode ?: current.stream.mode,
+                            container = stats.container ?: current.stream.container,
+                            videoCodec = stats.videoCodec ?: current.stream.videoCodec,
+                            audioCodec = stats.audioCodec ?: current.stream.audioCodec,
+                            videoBitrate = stats.videoBitrate ?: current.stream.videoBitrate,
+                        )
+                    if (merged != current.runtimeStats) {
+                        val updated = current.copy(runtimeStats = merged)
+                        session = updated
+                        publishCurrentState(updated)
+                    }
+                }
+            }
     }
 
     private fun launchStreamingReport(report: suspend StreamingProgressReporter.() -> Unit): Job =
@@ -1527,8 +1585,10 @@ class PlaybackController(
     private fun cancelCollectors() {
         progressJob?.cancel()
         eventsJob?.cancel()
+        runtimeStatsJob?.cancel()
         progressJob = null
         eventsJob = null
+        runtimeStatsJob = null
     }
 
     private fun scheduleRecoveryPromotion(mediaId: String) {
@@ -1555,6 +1615,7 @@ class PlaybackController(
     )
 
     companion object {
+        val PLAYBACK_SPEEDS: List<Float> = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
         private const val PROGRESS_WRITE_INTERVAL_MS = 5_000L
         private const val COMPLETION_THRESHOLD_PERCENT = 0.97
     }
