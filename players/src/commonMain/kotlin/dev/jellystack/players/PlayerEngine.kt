@@ -111,8 +111,7 @@ class NoopPlayerEngine : PlayerEngine {
 
     override fun setAudioTrack(track: AudioTrack?): AudioTrackSelectionResult = AudioTrackSelectionResult.PENDING
 
-    override fun setSubtitleTrack(track: SubtitleTrack?): SubtitleTrackSelectionResult =
-        SubtitleTrackSelectionResult.APPLIED
+    override fun setSubtitleTrack(track: SubtitleTrack?): SubtitleTrackSelectionResult = SubtitleTrackSelectionResult.APPLIED
 
     override fun setVideoQuality(maxBitrate: Int?) = Unit
 

@@ -136,8 +136,9 @@ class ServerConnectionCoordinator(
                         val jellyfin =
                             serverRepository.activeServer(ServerType.JELLYFIN)
                                 ?: throw passwordlessJellyfinLinkingException()
-                        val credential = jellyfin.credentials as? StoredCredential.Jellyfin
-                            ?: throw passwordlessJellyfinLinkingException()
+                        val credential =
+                            jellyfin.credentials as? StoredCredential.Jellyfin
+                                ?: throw passwordlessJellyfinLinkingException()
                         if (!credential.username.equals(credentials.username.trim(), ignoreCase = true)) {
                             throw passwordlessJellyfinLinkingException()
                         }

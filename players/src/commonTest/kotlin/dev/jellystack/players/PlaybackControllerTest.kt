@@ -3182,8 +3182,7 @@ private class BlockingPlayerEngine : PlayerEngine {
 
     override fun setAudioTrack(track: AudioTrack?): AudioTrackSelectionResult = AudioTrackSelectionResult.PENDING
 
-    override fun setSubtitleTrack(track: SubtitleTrack?): SubtitleTrackSelectionResult =
-        SubtitleTrackSelectionResult.PENDING
+    override fun setSubtitleTrack(track: SubtitleTrack?): SubtitleTrackSelectionResult = SubtitleTrackSelectionResult.PENDING
 
     override fun setVideoQuality(maxBitrate: Int?) = Unit
 

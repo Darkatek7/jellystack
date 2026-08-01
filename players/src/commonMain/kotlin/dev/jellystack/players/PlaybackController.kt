@@ -677,10 +677,11 @@ class PlaybackController(
 
     fun selectSubtitle(trackId: String?) {
         val current = session ?: return
-        val subtitle = trackId?.let { id -> current.stream.subtitleTracks.find { it.id == id } } ?: run {
-            if (trackId != null) return
-            null
-        }
+        val subtitle =
+            trackId?.let { id -> current.stream.subtitleTracks.find { it.id == id } } ?: run {
+                if (trackId != null) return
+                null
+            }
         if (current.subtitleTrack?.id == subtitle?.id) return
         if (isRemoteConnected()) {
             confirmPendingSubtitleSelection(subtitle?.id)

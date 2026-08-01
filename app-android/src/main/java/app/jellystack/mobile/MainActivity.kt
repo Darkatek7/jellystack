@@ -485,7 +485,7 @@ class MainActivity : AppCompatActivity() {
 }
 
 @OptIn(UnstableApi::class)
-@Suppress("FunctionName", "LongParameterList")
+@Suppress("CyclomaticComplexMethod", "FunctionName", "LongParameterList")
 @Composable
 private fun JellystackApp(
     appContext: Context,

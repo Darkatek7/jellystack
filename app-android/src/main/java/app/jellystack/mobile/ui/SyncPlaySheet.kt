@@ -1,3 +1,5 @@
+@file:Suppress("FunctionName")
+
 package app.jellystack.mobile.ui
 
 import androidx.compose.foundation.layout.Arrangement
@@ -29,7 +31,10 @@ import app.jellystack.mobile.R
 import dev.jellystack.players.syncplay.SyncPlayCoordinator
 import dev.jellystack.players.syncplay.SyncPlayUiState
 
+private const val MAX_GROUP_NAME_LENGTH = 80
+
 @OptIn(ExperimentalMaterial3Api::class)
+@Suppress("LongMethod")
 @Composable
 internal fun SyncPlaySheet(
     state: SyncPlayUiState,
@@ -81,7 +86,7 @@ internal fun SyncPlaySheet(
                 if (canCreate) {
                     OutlinedTextField(
                         value = groupName,
-                        onValueChange = { groupName = it.take(80) },
+                        onValueChange = { groupName = it.take(MAX_GROUP_NAME_LENGTH) },
                         label = { Text(stringResource(R.string.syncplay_group_name)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
@@ -102,7 +107,10 @@ internal fun SyncPlaySheet(
                 if (!canJoin) {
                     Text(stringResource(R.string.syncplay_no_permission))
                 } else if (state.groups.isEmpty() && !state.loading) {
-                    Text(stringResource(R.string.syncplay_no_groups), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        stringResource(R.string.syncplay_no_groups),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 } else {
                     LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp)) {
                         items(state.groups, key = { it.id }) { group ->

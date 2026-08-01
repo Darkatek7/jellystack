@@ -372,5 +372,4 @@ internal fun JellyfinMediaStream.toSubtitleTrack(): SubtitleTrack? {
 internal fun PlaybackStreamSelection.defaultAudioTrack(): AudioTrack? =
     audioTracks.firstOrNull { it.isDefault } ?: audioTracks.firstOrNull()
 
-internal fun PlaybackStreamSelection.defaultSubtitleTrack(): SubtitleTrack? =
-    subtitleTracks.firstOrNull { it.isDefault }
+internal fun PlaybackStreamSelection.defaultSubtitleTrack(): SubtitleTrack? = subtitleTracks.firstOrNull { it.isDefault }

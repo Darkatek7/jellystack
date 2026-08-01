@@ -539,14 +539,11 @@ class AndroidPlayerEngine(
         val formatId: String?
             get() = format.id
 
-        fun languageMatches(language: String?): Boolean =
-            language != null && format.language?.equals(language, ignoreCase = true) == true
+        fun languageMatches(language: String?): Boolean = language != null && format.language?.equals(language, ignoreCase = true) == true
 
-        fun labelMatches(label: String?): Boolean =
-            label != null && format.label?.equals(label, ignoreCase = true) == true
+        fun labelMatches(label: String?): Boolean = label != null && format.label?.equals(label, ignoreCase = true) == true
 
-        fun forcedMatches(isForced: Boolean): Boolean =
-            (format.selectionFlags and C.SELECTION_FLAG_FORCED != 0) == isForced
+        fun forcedMatches(isForced: Boolean): Boolean = (format.selectionFlags and C.SELECTION_FLAG_FORCED != 0) == isForced
 
         fun formatMatches(subtitleFormat: SubtitleFormat): Boolean {
             val mime = format.sampleMimeType.orEmpty().lowercase()

@@ -160,24 +160,24 @@ import dev.jellystack.design.cast.CastRoutePickerButton
 import dev.jellystack.design.cast.rememberPlatformCastSessionManager
 import dev.jellystack.design.components.InsecureHttpWarning
 import dev.jellystack.design.components.JellyfinQuickConnectStatus
-import dev.jellystack.design.components.SeerrCompatibilityNotice
 import dev.jellystack.design.components.JellyfinSignInMethodSelector
-import dev.jellystack.design.components.SeerrSignInMethodSelector
 import dev.jellystack.design.components.ModalFocusScope
+import dev.jellystack.design.components.SeerrCompatibilityNotice
+import dev.jellystack.design.components.SeerrSignInMethodSelector
 import dev.jellystack.design.jellyfin.HomeSectionsScreen
 import dev.jellystack.design.jellyfin.HomeSkeleton
 import dev.jellystack.design.jellyfin.ImmersiveMediaDetailContent
-import dev.jellystack.design.jellyfin.LibraryBackTarget
-import dev.jellystack.design.jellyfin.LibraryEntryOrigin
-import dev.jellystack.design.jellyfin.libraryBackTarget
-import dev.jellystack.design.jellyfin.homeLibraryNavigationState
 import dev.jellystack.design.jellyfin.JellyfinBrowseScreen
 import dev.jellystack.design.jellyfin.JellyfinDetailLoadingSkeleton
+import dev.jellystack.design.jellyfin.LibraryBackTarget
+import dev.jellystack.design.jellyfin.LibraryEntryOrigin
 import dev.jellystack.design.jellyfin.LibraryNavigationState
 import dev.jellystack.design.jellyfin.LibraryRefreshTarget
 import dev.jellystack.design.jellyfin.SeasonEpisodes
 import dev.jellystack.design.jellyfin.buildSeasonEpisodes
 import dev.jellystack.design.jellyfin.hasLocalMedia
+import dev.jellystack.design.jellyfin.homeLibraryNavigationState
+import dev.jellystack.design.jellyfin.libraryBackTarget
 import dev.jellystack.design.jellyfin.refreshTarget
 import dev.jellystack.design.jellyfin.supportsPlayedStatus
 import dev.jellystack.design.jellyseerr.DiscoverAction
@@ -202,8 +202,8 @@ import dev.jellystack.design.navigation.PrimaryDestination
 import dev.jellystack.design.navigation.ShellBackAction
 import dev.jellystack.design.navigation.ShellModal
 import dev.jellystack.design.navigation.ShellModalOwner
-import dev.jellystack.design.navigation.dismissActiveShellModal
 import dev.jellystack.design.navigation.destinationAfterClosingDiscoverSelection
+import dev.jellystack.design.navigation.dismissActiveShellModal
 import dev.jellystack.design.navigation.nextBackAction
 import dev.jellystack.design.navigation.publishIfCurrentDetailRequest
 import dev.jellystack.design.navigation.rememberDestinationChangeDispatcher
@@ -260,7 +260,6 @@ import jellystack_mobile.design.generated.resources.app_lock_unlock_before_disab
 import jellystack_mobile.design.generated.resources.app_lock_waiting
 import jellystack_mobile.design.generated.resources.app_title
 import jellystack_mobile.design.generated.resources.audio_track_switch_failed
-import jellystack_mobile.design.generated.resources.subtitle_track_switch_failed
 import jellystack_mobile.design.generated.resources.base_url
 import jellystack_mobile.design.generated.resources.cancel
 import jellystack_mobile.design.generated.resources.cast_connection_failed
@@ -334,6 +333,7 @@ import jellystack_mobile.design.generated.resources.server_url_missing_protocol
 import jellystack_mobile.design.generated.resources.show_password
 import jellystack_mobile.design.generated.resources.shows
 import jellystack_mobile.design.generated.resources.sign_in_with
+import jellystack_mobile.design.generated.resources.subtitle_track_switch_failed
 import jellystack_mobile.design.generated.resources.use_different_account
 import jellystack_mobile.design.generated.resources.username
 import jellystack_mobile.design.generated.resources.version_label
@@ -2102,7 +2102,7 @@ fun JellystackRoot(
                                         }
                                         showQuickConnectSeerrExplanation =
                                             result.requirement ==
-                                                SeerrCredentialsRequirement.QUICK_CONNECT_UNAVAILABLE
+                                            SeerrCredentialsRequirement.QUICK_CONNECT_UNAVAILABLE
                                         serverErrorMessage =
                                             result.reason.takeUnless {
                                                 result.requirement ==
