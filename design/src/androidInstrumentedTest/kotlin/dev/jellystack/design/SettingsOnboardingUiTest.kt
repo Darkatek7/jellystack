@@ -280,7 +280,7 @@ class SettingsOnboardingUiTest {
 
         composeRule.onNodeWithText("Username & password").performClick()
         composeRule
-            .onNodeWithText("Password")
+            .onNodeWithText("Password (optional)")
             .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Password))
     }
 

@@ -281,28 +281,28 @@ class MainActivityTest {
     }
 
     @Test
-    fun whatsNewShowsCanonical0143Highlights() {
+    fun whatsNewShowsCanonical0150Highlights() {
         dismissOnboardingIfPresent()
         openWhatsNew()
         composeRule.onAllNodesWithText("Version 0.15.0").onLast().assertExists()
         composeRule
             .onNodeWithText(
-                "Seerr requests now respect your server permissions.",
+                "Use your Jellyfin server's Home Sections layout in Jellystack.",
                 substring = true,
             ).assertExists()
         composeRule
             .onNodeWithText(
-                "IP addresses and custom ports now work reliably.",
+                "Create or join SyncPlay groups and watch together.",
                 substring = true,
             ).assertExists()
         composeRule
             .onNodeWithText(
-                "Improved audio compatibility and correct language selection.",
+                "Change playback speed and inspect live Stats for Nerds.",
                 substring = true,
             ).assertExists()
         composeRule
             .onNodeWithText(
-                "Discover search stays open while you type.",
+                "Administrators can manage Jellyfin and pending Seerr requests from the new Admin tab.",
                 substring = true,
             ).assertExists()
     }
@@ -422,7 +422,7 @@ class MainActivityTest {
 
         composeRule.onNodeWithTag(PLAYER_SUBTITLE_SELECTOR_TAG).performClick()
         composeRule.onNodeWithText("English · en · VTT").performClick()
-        composeRule.onNodeWithTag(PLAYER_SUBTITLE_SELECTOR_TAG).assertTextContains("English · en · VTT")
+        composeRule.onNodeWithTag(PLAYER_SUBTITLE_SELECTOR_TAG).assertTextContains("Off")
 
         composeRule.onNodeWithTag(PLAYER_QUALITY_SELECTOR_TAG).performClick()
         composeRule.onNodeWithText("4.0 Mbps · 720p · Adaptive").assertExists()
