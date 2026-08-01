@@ -375,6 +375,11 @@ private fun ServerFields(
                         stringResource(
                             if (state.step == TutorialStep.ConnectJellyfin) {
                                 Res.string.password_optional
+                            } else if (
+                                state.step == TutorialStep.ConnectJellyseerr &&
+                                state.form.useJellyfinLogin
+                            ) {
+                                Res.string.password_optional
                             } else {
                                 Res.string.password
                             },

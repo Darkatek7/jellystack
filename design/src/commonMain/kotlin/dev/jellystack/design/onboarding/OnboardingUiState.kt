@@ -107,8 +107,8 @@ internal fun validateOnboarding(
                         requireText(OnboardingField.Username, form.username)
                     } else {
                         requireText(OnboardingField.Email, form.email)
+                        requireText(OnboardingField.Password, form.password)
                     }
-                    requireText(OnboardingField.Password, form.password)
                 }
             }
         }

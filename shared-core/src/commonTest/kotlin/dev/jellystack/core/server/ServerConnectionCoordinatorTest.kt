@@ -52,7 +52,7 @@ class ServerConnectionCoordinatorTest {
         }
 
     @Test
-    fun automaticSeerrConnectionUsesStoredPasswordlessJellyfinCredentials() =
+    fun automaticSeerrConnectionUsesQuickConnectForStoredPasswordlessJellyfinCredentials() =
         runTest {
             val authenticator = RecordingAuthenticator()
             val repository = repository()
@@ -73,15 +73,56 @@ class ServerConnectionCoordinatorTest {
 
             assertIs<SeerrConnectionResult.Connected>(result)
             assertEquals(
-                JellyseerrAuthRequest(
+                JellyseerrQuickConnectAuthRequest(
                     baseUrl = "https://requests.example",
-                    method = JellyseerrAuthRequest.Method.JELLYFIN,
+                    jellyfinBaseUrl = "https://media.example",
+                    jellyfinAccessToken = "dummy-jellyfin-token",
+                    jellyfinUserId = "jellyfin-user-id",
+                    jellyfinDeviceId = "jellyfin-user-id",
+                    appVersion = "unknown",
+                ),
+                authenticator.lastQuickConnectRequest,
+            )
+            assertNull(authenticator.lastRequest)
+        }
+
+    @Test
+    fun manualPasswordlessJellyfinSeerrLoginUsesConnectedJellyfinSession() =
+        runTest {
+            val authenticator = RecordingAuthenticator()
+            val repository = repository()
+            val coordinator = ServerConnectionCoordinator(repository, authenticator)
+            coordinator.connectJellyfin(
+                JellyfinConnectionInput(
+                    name = "Media",
+                    baseUrl = "https://media.example",
                     username = "passwordless-user",
                     password = "",
                 ),
-                authenticator.lastRequest,
             )
-            assertNull(authenticator.lastQuickConnectRequest)
+
+            coordinator.connectSeerrManually(
+                input =
+                    SeerrServerInput(
+                        name = "Requests",
+                        baseUrl = "https://requests.example",
+                        appVersion = "0.15.0",
+                    ),
+                credentials = SeerrLoginCredentials.Jellyfin("passwordless-user", ""),
+            )
+
+            assertEquals(
+                JellyseerrQuickConnectAuthRequest(
+                    baseUrl = "https://requests.example",
+                    jellyfinBaseUrl = "https://media.example",
+                    jellyfinAccessToken = "dummy-jellyfin-token",
+                    jellyfinUserId = "jellyfin-user-id",
+                    jellyfinDeviceId = "jellyfin-user-id",
+                    appVersion = "0.15.0",
+                ),
+                authenticator.lastQuickConnectRequest,
+            )
+            assertNull(authenticator.lastRequest)
         }
 
     @Test

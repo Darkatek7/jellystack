@@ -23,6 +23,37 @@ import kotlin.test.assertTrue
 
 class JellyseerrApiTest {
     @Test
+    fun jellyfinLoginRejectsErrorResponseBeforeDecodingItAsAUser() =
+        runTest {
+            val engine =
+                MockEngine {
+                    respond(
+                        content = """{"message":"Authentication failed"}""",
+                        status = HttpStatusCode.InternalServerError,
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                    )
+                }
+            val client =
+                HttpClient(engine) {
+                    expectSuccess = false
+                    install(ContentNegotiation) { json(NetworkJson.default) }
+                }
+            val api = JellyseerrApi.create("https://requests.test", apiKey = null, client = client)
+
+            val error =
+                assertFailsWith<JellyseerrHttpException> {
+                    api.loginWithJellyfin(
+                        JellyseerrJellyfinLoginPayload(
+                            username = "passwordless-user",
+                            password = "",
+                        ),
+                    )
+                }
+
+            assertEquals(HttpStatusCode.InternalServerError, error.status)
+        }
+
+    @Test
     fun jellyfinQuickConnectUsesOfficialSeerrEndpoints() =
         runTest {
             val requests = mutableListOf<HttpRequestData>()
