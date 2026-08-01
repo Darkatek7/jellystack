@@ -119,6 +119,7 @@ import dev.jellystack.core.jellyseerr.JellyseerrMessageRecovery
 import dev.jellystack.core.jellyseerr.JellyseerrRecommendationRail
 import dev.jellystack.core.jellyseerr.JellyseerrRecommendationsCoordinator
 import dev.jellystack.core.jellyseerr.JellyseerrRepository
+import dev.jellystack.core.jellyseerr.JellyseerrRequestFilter
 import dev.jellystack.core.jellyseerr.JellyseerrRequestsCoordinator
 import dev.jellystack.core.jellyseerr.JellyseerrRequestsState
 import dev.jellystack.core.jellyseerr.JellyseerrSearchItem
@@ -162,6 +163,10 @@ import dev.jellystack.design.components.JellyfinSignInMethodSelector
 import dev.jellystack.design.components.ModalFocusScope
 import dev.jellystack.design.jellyfin.HomeSectionsScreen
 import dev.jellystack.design.jellyfin.ImmersiveMediaDetailContent
+import dev.jellystack.design.jellyfin.LibraryBackTarget
+import dev.jellystack.design.jellyfin.LibraryEntryOrigin
+import dev.jellystack.design.jellyfin.libraryBackTarget
+import dev.jellystack.design.jellyfin.homeLibraryNavigationState
 import dev.jellystack.design.jellyfin.JellyfinBrowseScreen
 import dev.jellystack.design.jellyfin.JellyfinDetailLoadingSkeleton
 import dev.jellystack.design.jellyfin.LibraryNavigationState
@@ -182,6 +187,7 @@ import dev.jellystack.design.jellyseerr.toSearchItemOrNull
 import dev.jellystack.design.layout.LocalResponsiveProfile
 import dev.jellystack.design.layout.ProvideResponsiveProfile
 import dev.jellystack.design.lifecycle.rememberAppForegroundActive
+import dev.jellystack.design.navigation.AdminDestination
 import dev.jellystack.design.navigation.BackStackSnapshot
 import dev.jellystack.design.navigation.DetailOrigin
 import dev.jellystack.design.navigation.DetailStackEntry
@@ -193,6 +199,7 @@ import dev.jellystack.design.navigation.ShellBackAction
 import dev.jellystack.design.navigation.ShellModal
 import dev.jellystack.design.navigation.ShellModalOwner
 import dev.jellystack.design.navigation.dismissActiveShellModal
+import dev.jellystack.design.navigation.destinationAfterClosingDiscoverSelection
 import dev.jellystack.design.navigation.nextBackAction
 import dev.jellystack.design.navigation.publishIfCurrentDetailRequest
 import dev.jellystack.design.navigation.rememberDestinationChangeDispatcher
@@ -237,8 +244,10 @@ import dev.jellystack.players.cast.CastConnectionState
 import dev.jellystack.players.cast.CastSessionManager
 import dev.jellystack.players.cast.NoopCastSessionManager
 import jellystack_mobile.design.generated.resources.Res
+import jellystack_mobile.design.generated.resources.admin_activity_log
 import jellystack_mobile.design.generated.resources.admin_request_action_failed
 import jellystack_mobile.design.generated.resources.admin_request_declined
+import jellystack_mobile.design.generated.resources.admin_user_management
 import jellystack_mobile.design.generated.resources.app_lock_authentication_unavailable
 import jellystack_mobile.design.generated.resources.app_lock_enroll_device
 import jellystack_mobile.design.generated.resources.app_lock_locked_heading
@@ -489,6 +498,7 @@ private fun shellTitle(
     primary: PrimaryDestination,
     discover: DiscoverDestination,
     library: LibraryDestination,
+    admin: AdminDestination,
 ): String =
     when (primary) {
         PrimaryDestination.Home -> stringResource(Res.string.app_title)
@@ -511,7 +521,12 @@ private fun shellTitle(
             } else {
                 stringResource(Res.string.nav_discover)
             }
-        PrimaryDestination.Admin -> stringResource(Res.string.nav_admin)
+        PrimaryDestination.Admin ->
+            when (admin) {
+                AdminDestination.Overview -> stringResource(Res.string.nav_admin)
+                AdminDestination.Users -> stringResource(Res.string.admin_user_management)
+                AdminDestination.Activity -> stringResource(Res.string.admin_activity_log)
+            }
     }
 
 @Suppress("FunctionName", "ktlint:standard:function-naming")
@@ -655,9 +670,13 @@ fun JellystackRoot(
     @Suppress("UnusedVariable")
     val remoteProgress by resolvedCastProgressFlow.collectAsState(initial = 0L)
     var primaryDestination by rememberSaveable { mutableStateOf(PrimaryDestination.Home) }
+    var discoverSelectionReturnDestination by
+        rememberSaveable { mutableStateOf<PrimaryDestination?>(null) }
     var discoverUiState by remember { mutableStateOf(DiscoverUiState()) }
     val discoverDestination = discoverUiState.destination
     var libraryNavigationState by remember { mutableStateOf(LibraryNavigationState()) }
+    var libraryEntryOrigin by rememberSaveable { mutableStateOf(LibraryEntryOrigin.LibraryTab) }
+    var adminDestination by rememberSaveable { mutableStateOf(AdminDestination.Overview) }
     val detailRouteBackStack = remember { mutableStateListOf<DetailStackEntry>() }
     val detailUiBackStack = remember { mutableStateListOf<JellyfinDetailUiState>() }
     var detailRequestGeneration by remember { mutableStateOf(0L) }
@@ -706,6 +725,20 @@ fun JellystackRoot(
         destinationDispatcher.dispatch {
             if (destination != primaryDestination) {
                 clearDetailStacks()
+            }
+            if (
+                primaryDestination == PrimaryDestination.Library &&
+                destination != PrimaryDestination.Library &&
+                libraryEntryOrigin == LibraryEntryOrigin.Home
+            ) {
+                libraryNavigationState = LibraryNavigationState()
+                libraryEntryOrigin = LibraryEntryOrigin.LibraryTab
+            }
+            if (destination == PrimaryDestination.Library && primaryDestination != PrimaryDestination.Library) {
+                libraryEntryOrigin = LibraryEntryOrigin.LibraryTab
+            }
+            if (destination == PrimaryDestination.Admin && primaryDestination != PrimaryDestination.Admin) {
+                adminDestination = AdminDestination.Overview
             }
             primaryDestination = destination
         }
@@ -865,6 +898,7 @@ fun JellystackRoot(
     }
     LaunchedEffect(sessionCapabilities?.isAdministrator) {
         if (primaryDestination == PrimaryDestination.Admin && sessionCapabilities?.isAdministrator != true) {
+            adminDestination = AdminDestination.Overview
             primaryDestination = PrimaryDestination.Home
         }
     }
@@ -2211,7 +2245,28 @@ fun JellystackRoot(
         dismissActiveShellModal(activeShellModal)
     }
 
+    fun closeDiscoverSelectionRoute() {
+        discoverUiState = discoverUiState.reduce(DiscoverAction.CloseSelection)
+        primaryDestination =
+            destinationAfterClosingDiscoverSelection(
+                current = primaryDestination,
+                returnDestination = discoverSelectionReturnDestination,
+            )
+        discoverSelectionReturnDestination = null
+    }
+
     fun popLibraryLevel() {
+        if (
+            libraryBackTarget(
+                state = libraryNavigationState,
+                origin = libraryEntryOrigin,
+            ) == LibraryBackTarget.ReturnHome
+        ) {
+            libraryNavigationState = LibraryNavigationState()
+            libraryEntryOrigin = LibraryEntryOrigin.LibraryTab
+            primaryDestination = PrimaryDestination.Home
+            return
+        }
         when {
             libraryNavigationState.destination ==
                 LibraryDestination.Section(LibrarySection.Favorites) -> {
@@ -2235,6 +2290,7 @@ fun JellystackRoot(
                 primary = primaryDestination,
                 discover = discoverDestination,
                 libraryDepth = libraryNavigationState.depth,
+                adminDepth = if (adminDestination == AdminDestination.Overview) 0 else 1,
                 detailDepth = detailRouteBackStack.size,
                 settingsOpen = isSettingsOpen,
                 onboardingStep = activeTutorialStep.takeIf { isTutorialVisible },
@@ -2257,10 +2313,10 @@ fun JellystackRoot(
                 ShellBackAction.CloseOnboarding -> closeTutorialToSettings()
                 ShellBackAction.CloseSettings -> closeSettings()
                 ShellBackAction.PopDetail -> onBackFromDetail()
-                ShellBackAction.CloseDiscoverSelection ->
-                    discoverUiState = discoverUiState.reduce(DiscoverAction.CloseSelection)
+                ShellBackAction.CloseDiscoverSelection -> closeDiscoverSelectionRoute()
                 ShellBackAction.CloseRequests -> discoverUiState = discoverUiState.reduce(DiscoverAction.BackToFeed)
                 ShellBackAction.PopLibrary -> popLibraryLevel()
+                ShellBackAction.PopAdmin -> adminDestination = AdminDestination.Overview
                 ShellBackAction.SelectHome -> primaryDestination = PrimaryDestination.Home
                 ShellBackAction.ExitPlatform -> Unit
             }
@@ -2276,6 +2332,7 @@ fun JellystackRoot(
             .distinctUntilChanged()
             .collect { serverId ->
                 libraryNavigationState = LibraryNavigationState()
+                libraryEntryOrigin = LibraryEntryOrigin.LibraryTab
                 if (serverId != null) {
                     browseCoordinator.bootstrap(forceRefresh = true)
                 } else {
@@ -2462,12 +2519,18 @@ fun JellystackRoot(
                                 is DiscoverAction.RequestQueryChanged -> jellyseerrCoordinator.search(action.query)
                                 is DiscoverAction.RequestFilterChanged -> jellyseerrCoordinator.selectFilter(action.filter)
                                 DiscoverAction.RefreshRequestStatus -> jellyseerrCoordinator.refresh()
-                                is DiscoverAction.SelectRecommendation ->
+                                is DiscoverAction.SelectRecommendation -> {
+                                    discoverSelectionReturnDestination = null
                                     recommendationsCoordinator.loadDetail(action.item)
-                                is DiscoverAction.SelectSearchResult ->
+                                }
+                                is DiscoverAction.SelectSearchResult -> {
+                                    discoverSelectionReturnDestination = null
                                     recommendationsCoordinator.loadDetail(action.item)
-                                is DiscoverAction.SelectExistingRequest ->
+                                }
+                                is DiscoverAction.SelectExistingRequest -> {
+                                    discoverSelectionReturnDestination = null
                                     action.summary.toSearchItemOrNull()?.let(recommendationsCoordinator::loadDetail)
+                                }
                                 is DiscoverAction.OpenRelatedDetail ->
                                     recommendationsCoordinator.loadDetail(action.item)
                                 else -> Unit
@@ -2482,7 +2545,7 @@ fun JellystackRoot(
                     }
                     val closeDiscoverSelection: () -> Unit = {
                         destinationDispatcher.dispatch {
-                            discoverUiState = discoverUiState.reduce(DiscoverAction.CloseSelection)
+                            closeDiscoverSelectionRoute()
                         }
                     }
                     val closeDiscoverRequestConfiguration: () -> Unit = {
@@ -2516,10 +2579,30 @@ fun JellystackRoot(
                                 )
                             destinationDispatcher.dispatch {
                                 clearDetailStacks()
+                                discoverSelectionReturnDestination = PrimaryDestination.Home
                                 primaryDestination = PrimaryDestination.Discover
                                 discoverUiState = discoverUiState.reduce(DiscoverAction.SelectSearchResult(item))
                                 recommendationsCoordinator.loadDetail(item)
                             }
+                        }
+                    }
+                    val onOpenHomeLibrary: (JellyfinItem) -> Unit = { item ->
+                        val library = browseState.libraries.firstOrNull { library -> library.id == item.id }
+                        val destination =
+                            when {
+                                library?.collectionType.equals("movies", ignoreCase = true) ->
+                                    LibraryDestination.Section(LibrarySection.Movies)
+                                library?.collectionType.equals("tvshows", ignoreCase = true) ||
+                                    library?.collectionType.equals("series", ignoreCase = true) ->
+                                    LibraryDestination.Section(LibrarySection.Series)
+                                else -> LibraryDestination.Library(item.id, item.name)
+                            }
+                        destinationDispatcher.dispatch {
+                            clearDetailStacks()
+                            primaryDestination = PrimaryDestination.Library
+                            browseCoordinator.selectLibrary(item.id)
+                            libraryEntryOrigin = LibraryEntryOrigin.Home
+                            libraryNavigationState = homeLibraryNavigationState(destination)
                         }
                     }
 
@@ -2534,6 +2617,7 @@ fun JellystackRoot(
                             onOpenItemDetail = onOpenItemDetail,
                             onPlayItem = onPlayItem,
                             onOpenSeerrItem = onOpenHomeSeerrItem,
+                            onOpenHomeLibrary = onOpenHomeLibrary,
                             onConnectJellyfin = openJellyfinSettings,
                             onConnectJellyseerr = openJellyseerrSettings,
                             learnMoreUrl = learnMoreUrl,
@@ -2728,6 +2812,7 @@ fun JellystackRoot(
                             PrimaryDestination.Admin -> { measuredPadding ->
                                 AdminScreen(
                                     state = adminState,
+                                    destination = adminDestination,
                                     pendingRequests = readyRequestsState?.requests.orEmpty(),
                                     canManageRequests = readyRequestsState?.capabilities?.canManageRequests == true,
                                     currentUserId = sessionCapabilities?.userId,
@@ -2736,6 +2821,17 @@ fun JellystackRoot(
                                             adminRepository.refresh()
                                             jellyseerrCoordinator.refresh()
                                         }
+                                    },
+                                    onOpenUsers = { adminDestination = AdminDestination.Users },
+                                    onOpenActivity = { adminDestination = AdminDestination.Activity },
+                                    onViewPendingRequests = {
+                                        clearDetailStacks()
+                                        primaryDestination = PrimaryDestination.Discover
+                                        discoverUiState =
+                                            discoverUiState
+                                                .reduce(DiscoverAction.OpenRequests)
+                                                .reduce(DiscoverAction.RequestFilterChanged(JellyseerrRequestFilter.PENDING))
+                                        jellyseerrCoordinator.selectFilter(JellyseerrRequestFilter.PENDING)
                                     },
                                     onLibraryScan = { coroutineScope.launch { adminRepository.startLibraryScan() } },
                                     onRestart = { coroutineScope.launch { adminRepository.restartServer() } },
@@ -3014,6 +3110,7 @@ fun JellystackRoot(
                                             primaryDestination,
                                             discoverDestination,
                                             libraryNavigationState.destination,
+                                            adminDestination,
                                         ),
                                     showNavigation =
                                         !isSettingsOpen &&
@@ -3033,6 +3130,7 @@ fun JellystackRoot(
                                                     primaryDestination,
                                                     discoverDestination,
                                                     libraryNavigationState.destination,
+                                                    adminDestination,
                                                 ),
                                             showBack =
                                                 primaryDestination != PrimaryDestination.Home ||
@@ -3517,6 +3615,7 @@ internal fun HomeContent(
     onOpenItemDetail: (JellyfinItem) -> Unit,
     onPlayItem: (JellyfinItem) -> Unit,
     onOpenSeerrItem: (HomeSectionItem) -> Unit = {},
+    onOpenHomeLibrary: (JellyfinItem) -> Unit = onOpenItemDetail,
     onConnectJellyfin: () -> Unit,
     onConnectJellyseerr: () -> Unit,
     learnMoreUrl: String,
@@ -3540,6 +3639,7 @@ internal fun HomeContent(
             spotlightAutoAdvanceIntervalMillis = spotlightAutoAdvanceIntervalMillis,
             contentPadding = contentPadding,
             onOpenJellyfinItem = onOpenItemDetail,
+            onOpenJellyfinLibrary = onOpenHomeLibrary,
             onOpenSeerrItem = onOpenSeerrItem,
             modifier = modifier,
         )

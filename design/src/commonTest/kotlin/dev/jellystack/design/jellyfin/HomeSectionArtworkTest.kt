@@ -56,6 +56,22 @@ class HomeSectionArtworkTest {
         )
     }
 
+    @Test
+    fun artworkTypeIsPassedToTheMatchingJellyfinImageEndpoint() {
+        assertEquals(
+            HomeSectionArtworkSlots(backdropTag = "backdrop", backdropItemId = "series-1"),
+            SpotlightArtwork("series-1", "backdrop", "Backdrop").toHomeSectionArtworkSlots(),
+        )
+        assertEquals(
+            HomeSectionArtworkSlots(thumbTag = "thumb", thumbItemId = "episode-1"),
+            SpotlightArtwork("episode-1", "thumb", "Thumb").toHomeSectionArtworkSlots(),
+        )
+        assertEquals(
+            HomeSectionArtworkSlots(primaryTag = "primary", primaryItemId = "movie-1"),
+            SpotlightArtwork("movie-1", "primary", "Primary").toHomeSectionArtworkSlots(),
+        )
+    }
+
     private fun item(): JellyfinItem =
         JellyfinItem(
             id = "item-1",

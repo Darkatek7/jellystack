@@ -7,6 +7,46 @@ import kotlin.test.assertEquals
 
 class LibraryNavigationStateTest {
     @Test
+    fun homeLibraryEntryReturnsHomeAtItsTopLevel() {
+        val destination = LibraryDestination.Section(LibrarySection.Movies)
+
+        val state = homeLibraryNavigationState(destination)
+
+        assertEquals(destination, state.destination)
+        assertEquals(1, state.depth)
+        assertEquals("section:movies", state.scrollKey)
+        assertEquals(
+            LibraryBackTarget.ReturnHome,
+            libraryBackTarget(state, LibraryEntryOrigin.Home),
+        )
+    }
+
+    @Test
+    fun libraryTabEntryReturnsToTheLibraryRoot() {
+        val state =
+            LibraryNavigationState().push(
+                LibraryDestination.Section(LibrarySection.Movies),
+            )
+
+        assertEquals(
+            LibraryBackTarget.PreviousLevel,
+            libraryBackTarget(state, LibraryEntryOrigin.LibraryTab),
+        )
+    }
+
+    @Test
+    fun nestedHomeLibraryEntryPopsBeforeReturningHome() {
+        val state =
+            homeLibraryNavigationState(LibraryDestination.Section(LibrarySection.Movies))
+                .push(LibraryDestination.Children("boxset", "Collection"))
+
+        assertEquals(
+            LibraryBackTarget.PreviousLevel,
+            libraryBackTarget(state, LibraryEntryOrigin.Home),
+        )
+    }
+
+    @Test
     fun libraryStatePopsOneLevelAtATime() {
         val state =
             LibraryNavigationState(

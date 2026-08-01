@@ -155,8 +155,10 @@ class HomeSectionsRepositoryTest {
 
             val episode =
                 assertIs<HomeSectionsState.Ready>(repository.state.value)
-                    .sections.single()
-                    .items.single()
+                    .sections
+                    .single()
+                    .items
+                    .single()
                     .jellyfinItem
             requireNotNull(episode)
             assertEquals("series-1", episode.seriesId)

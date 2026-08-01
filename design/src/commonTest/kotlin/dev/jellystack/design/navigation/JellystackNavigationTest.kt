@@ -10,6 +10,28 @@ import kotlin.test.assertTrue
 
 class JellystackNavigationTest {
     @Test
+    fun homeOwnedDiscoverSelectionReturnsToHomeWhenClosed() {
+        assertEquals(
+            PrimaryDestination.Home,
+            destinationAfterClosingDiscoverSelection(
+                current = PrimaryDestination.Discover,
+                returnDestination = PrimaryDestination.Home,
+            ),
+        )
+    }
+
+    @Test
+    fun discoverOwnedSelectionRemainsOnDiscoverWhenClosed() {
+        assertEquals(
+            PrimaryDestination.Discover,
+            destinationAfterClosingDiscoverSelection(
+                current = PrimaryDestination.Discover,
+                returnDestination = null,
+            ),
+        )
+    }
+
+    @Test
     fun detailCompletionRequiresTheExactRequestGeneration() {
         val original =
             DetailStackEntry(
@@ -154,6 +176,18 @@ class JellystackNavigationTest {
             ShellBackAction.CloseRequests,
             nextBackAction(snapshot.copy(discoverSelectionVisible = false)),
         )
+    }
+
+    @Test
+    fun adminSubpageClosesBeforeLeavingAdmin() {
+        val snapshot =
+            BackStackSnapshot(
+                primary = PrimaryDestination.Admin,
+                adminDepth = 1,
+            )
+
+        assertEquals(ShellBackAction.PopAdmin, nextBackAction(snapshot))
+        assertEquals(ShellBackAction.SelectHome, nextBackAction(snapshot.copy(adminDepth = 0)))
     }
 
     @Test

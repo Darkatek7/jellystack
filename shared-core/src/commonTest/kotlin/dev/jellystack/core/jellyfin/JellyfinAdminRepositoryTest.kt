@@ -31,7 +31,10 @@ class JellyfinAdminRepositoryTest {
                             json(
                                 """[{"Id":"u1","Name":"Admin","Policy":{"IsAdministrator":true}},{"Id":"u2","Name":"Viewer","Policy":{"IsDisabled":true}}]""",
                             )
-                        "/System/ActivityLog/Entries" -> json("""{"Items":[{"Id":9,"Name":"Library scan finished"}]}""")
+                        "/System/ActivityLog/Entries" ->
+                            json(
+                                """{"Items":[{"Id":8,"Name":"Older event","Date":"2026-07-30T09:00:00Z"},{"Id":9,"Name":"Library scan finished","Date":"2026-07-31T09:00:00Z"}]}""",
+                            )
                         "/Library/Refresh" -> {
                             scanRequested = true
                             respondOk()
@@ -69,11 +72,11 @@ class JellyfinAdminRepositoryTest {
                     .isDisabled,
             )
             assertEquals(
-                "Library scan finished",
+                listOf("Library scan finished", "Older event"),
                 repository.state.value.activity
-                    .single()
-                    .name,
+                    .map { it.name },
             )
+            assertTrue(repository.state.value.lastRefreshedAt != null)
             assertFalse(repository.state.value.isLoading)
 
             repository.startLibraryScan()

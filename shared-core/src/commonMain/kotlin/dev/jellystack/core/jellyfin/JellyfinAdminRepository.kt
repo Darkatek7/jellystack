@@ -6,6 +6,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.supervisorScope
+import kotlinx.datetime.Clock
+import kotlinx.datetime.Instant
 
 enum class JellyfinAdminOperation {
     REFRESH,
@@ -30,6 +32,7 @@ data class JellyfinAdminState(
     val overview: JellyfinAdminOverview? = null,
     val users: List<JellyfinAdminUser> = emptyList(),
     val activity: List<JellyfinActivityEntry> = emptyList(),
+    val lastRefreshedAt: Instant? = null,
     val operation: JellyfinAdminOperation? = null,
     val notice: JellyfinAdminNotice? = null,
     val error: String? = null,
@@ -76,7 +79,13 @@ class JellyfinAdminRepository(
                                 }
                             },
                         users = users.await().map { it.toAdminUser() }.sortedBy { it.name.lowercase() },
-                        activity = activity.await().items.map { it.toDomain() },
+                        activity =
+                            activity
+                                .await()
+                                .items
+                                .map { it.toDomain() }
+                                .sortedByDescending { it.date.orEmpty() },
+                        lastRefreshedAt = Clock.System.now(),
                     )
                 }
             mutableState.value = loaded.copy(notice = state.value.notice)
