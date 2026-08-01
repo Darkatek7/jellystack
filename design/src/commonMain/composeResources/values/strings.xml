@@ -43,7 +43,7 @@
     <string name="connect_seerr">Connect Seerr</string>
     <string name="try_jellyfin_account">Trying your Jellyfin account…</string>
     <string name="use_seerr_account">Use a Seerr account</string>
-    <string name="use_jellyfin_account">Use Jellyfin account</string>
+    <string name="use_jellyfin_account">Use Jellyfin password</string>
     <string name="onboarding_step">Step %1$d of %2$d</string>
     <string name="onboarding_jellyfin_body">Add the Jellyfin server that holds your media library.</string>
     <string name="onboarding_seerr_body">Add your Seerr URL. Jellystack will first try the connected Jellyfin account.</string>
@@ -399,7 +399,7 @@
     <string name="quick_connect_transport_error">The server could not be reached after several attempts. Check the URL and connection.</string>
     <string name="quick_connect_invalid_response">The Jellyfin server returned an invalid Quick Connect response.</string>
     <string name="quick_connect_authentication_failed">Jellyfin approved the code, but sign-in could not be completed. Create a new code and try again.</string>
-    <string name="quick_connect_seerr_manual">Automatic Seerr linking was not available. Sign in manually with your Jellyfin or Seerr account.</string>
+    <string name="quick_connect_seerr_manual">This Seerr server does not support passwordless Jellyfin sign-in. Use a Seerr account, use your Jellyfin password, or skip Seerr for now.</string>
     <string name="whats_new_0142_permissions">Significantly reduced Android permissions with clearer, contextual requests.</string>
     <string name="whats_new_0142_privacy">New permission and privacy explanations directly in Settings.</string>
     <string name="whats_new_0142_open_source">Jellystack is now fully open source under GPL-3.0.</string>

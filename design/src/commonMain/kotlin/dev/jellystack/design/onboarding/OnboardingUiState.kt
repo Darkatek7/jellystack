@@ -105,6 +105,9 @@ internal fun validateOnboarding(
                 if (manualSeerrCredentialsRequired) {
                     if (form.useJellyfinLogin) {
                         requireText(OnboardingField.Username, form.username)
+                        if (form.requiresSeerrPassword) {
+                            requireText(OnboardingField.Password, form.password)
+                        }
                     } else {
                         requireText(OnboardingField.Email, form.email)
                         requireText(OnboardingField.Password, form.password)

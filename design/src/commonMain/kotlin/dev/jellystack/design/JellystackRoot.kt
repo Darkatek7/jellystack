@@ -144,6 +144,7 @@ import dev.jellystack.core.server.JellyfinQuickConnectState
 import dev.jellystack.core.server.JellyfinSignInMethod
 import dev.jellystack.core.server.ManagedServer
 import dev.jellystack.core.server.SeerrConnectionResult
+import dev.jellystack.core.server.SeerrCredentialsRequirement
 import dev.jellystack.core.server.SeerrLoginCredentials
 import dev.jellystack.core.server.SeerrServerInput
 import dev.jellystack.core.server.ServerAddressValidation
@@ -159,9 +160,11 @@ import dev.jellystack.design.cast.CastRoutePickerButton
 import dev.jellystack.design.cast.rememberPlatformCastSessionManager
 import dev.jellystack.design.components.InsecureHttpWarning
 import dev.jellystack.design.components.JellyfinQuickConnectStatus
+import dev.jellystack.design.components.SeerrCompatibilityNotice
 import dev.jellystack.design.components.JellyfinSignInMethodSelector
 import dev.jellystack.design.components.ModalFocusScope
 import dev.jellystack.design.jellyfin.HomeSectionsScreen
+import dev.jellystack.design.jellyfin.HomeSkeleton
 import dev.jellystack.design.jellyfin.ImmersiveMediaDetailContent
 import dev.jellystack.design.jellyfin.LibraryBackTarget
 import dev.jellystack.design.jellyfin.LibraryEntryOrigin
@@ -434,6 +437,7 @@ internal data class ServerFormState(
     val jellyfinSignInMethod: JellyfinSignInMethod = JellyfinSignInMethod.QUICK_CONNECT,
     val useJellyfinLogin: Boolean = false,
     val automaticSeerrLogin: Boolean = false,
+    val requiresSeerrPassword: Boolean = false,
     val allowInsecureHttp: Boolean = false,
 ) {
     val serverAddressValidation: ServerAddressValidation
@@ -463,7 +467,11 @@ internal data class ServerFormState(
                             (
                                 automaticSeerrLogin ||
                                     (
-                                        (useJellyfinLogin && username.isNotBlank()) ||
+                                        (
+                                            useJellyfinLogin &&
+                                                username.isNotBlank() &&
+                                                (!requiresSeerrPassword || password.isNotBlank())
+                                        ) ||
                                             (!useJellyfinLogin && email.isNotBlank() && password.isNotBlank())
                                     )
                             )
@@ -1722,11 +1730,13 @@ fun JellystackRoot(
         if (activeShellModal?.modal == ShellModal.ServerEditor) activeShellModal = null
         serverFormState = ServerFormState()
         serverErrorMessage = null
+        showQuickConnectSeerrExplanation = false
     }
 
     val openAddServerDialog: (ServerFormType) -> Unit = { defaultType ->
         cancelJellyfinQuickConnect()
         serverErrorMessage = null
+        showQuickConnectSeerrExplanation = false
         serverFormState =
             when (defaultType) {
                 ServerFormType.JELLYFIN -> ServerFormState(type = ServerFormType.JELLYFIN)
@@ -2082,14 +2092,23 @@ fun JellystackRoot(
                                                 useJellyfinLogin = true,
                                                 username = result.suggestedUsername.orEmpty(),
                                                 password = "",
+                                                requiresSeerrPassword =
+                                                    result.requirement ==
+                                                        SeerrCredentialsRequirement.QUICK_CONNECT_UNAVAILABLE,
                                             )
                                         if (tutorialSubmission) {
                                             tutorialServerFormState = updatedForm
-                                            showQuickConnectSeerrExplanation = true
                                         } else {
                                             serverFormState = updatedForm
                                         }
-                                        serverErrorMessage = result.reason
+                                        showQuickConnectSeerrExplanation =
+                                            result.requirement ==
+                                                SeerrCredentialsRequirement.QUICK_CONNECT_UNAVAILABLE
+                                        serverErrorMessage =
+                                            result.reason.takeUnless {
+                                                result.requirement ==
+                                                    SeerrCredentialsRequirement.QUICK_CONNECT_UNAVAILABLE
+                                            }
                                         return@launch
                                     }
                                 }
@@ -3360,6 +3379,11 @@ fun JellystackRoot(
                                     isSaving = isSavingServer,
                                     quickConnectState = jellyfinQuickConnectState,
                                     errorMessage = serverErrorMessage,
+                                    seerrCompatibilityNotice =
+                                        quickConnectSeerrManualMessage.takeIf {
+                                            showQuickConnectSeerrExplanation &&
+                                                serverFormState.type == ServerFormType.SEERR
+                                        },
                                     availableJellyfinServers =
                                         managedServers.filter { it.type == ServerType.JELLYFIN },
                                     onValueChange = { updated ->
@@ -3627,7 +3651,17 @@ internal fun HomeContent(
     spotlightAutoAdvanceIntervalMillis: Long = 6_000L,
 ) {
     val configuredHome = homeSectionsState as? HomeSectionsState.Ready
-    if (hasServers && configuredHome != null) {
+    if (shouldShowHomeSectionsSkeleton(hasServers, homeSectionsState)) {
+        HomeSkeleton(
+            contentPadding =
+                PaddingValues(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = contentPadding.calculateTopPadding() + 12.dp,
+                    bottom = contentPadding.calculateBottomPadding() + 24.dp,
+                ),
+        )
+    } else if (hasServers && configuredHome != null) {
         HomeSectionsScreen(
             state = configuredHome,
             browseState = browseState,
@@ -3672,6 +3706,11 @@ internal fun HomeContent(
         )
     }
 }
+
+internal fun shouldShowHomeSectionsSkeleton(
+    hasServers: Boolean,
+    homeSectionsState: HomeSectionsState,
+): Boolean = hasServers && homeSectionsState is HomeSectionsState.Loading
 
 @Suppress("FunctionName")
 @Composable
@@ -4136,6 +4175,7 @@ private fun AddServerDialog(
     isSaving: Boolean,
     quickConnectState: JellyfinQuickConnectState?,
     errorMessage: String?,
+    seerrCompatibilityNotice: String?,
     availableJellyfinServers: List<ManagedServer>,
     onValueChange: (ServerFormState) -> Unit,
     onClearError: () -> Unit,
@@ -4360,6 +4400,9 @@ private fun AddServerDialog(
                                 Text(stringResource(Res.string.use_different_account))
                             }
                         } else {
+                            seerrCompatibilityNotice?.let { notice ->
+                                SeerrCompatibilityNotice(text = notice)
+                            }
                             Text(stringResource(Res.string.sign_in_with), style = MaterialTheme.typography.labelLarge)
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 FilterChip(
@@ -4432,7 +4475,11 @@ private fun AddServerDialog(
                                     Text(
                                         stringResource(
                                             if (state.useJellyfinLogin) {
-                                                Res.string.password_optional
+                                                if (state.requiresSeerrPassword) {
+                                                    Res.string.password
+                                                } else {
+                                                    Res.string.password_optional
+                                                }
                                             } else {
                                                 Res.string.password
                                             },

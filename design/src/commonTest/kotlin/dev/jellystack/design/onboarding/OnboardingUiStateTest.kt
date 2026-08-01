@@ -102,6 +102,26 @@ class OnboardingUiStateTest {
     }
 
     @Test
+    fun unsupportedPasswordlessSeerrLinkRequiresJellyfinPassword() {
+        val errors =
+            validateOnboarding(
+                step = TutorialStep.ConnectJellyseerr,
+                form =
+                    ServerFormState(
+                        name = "Seerr",
+                        baseUrl = "https://requests.example",
+                        username = "passwordless-user",
+                        password = "",
+                        useJellyfinLogin = true,
+                        requiresSeerrPassword = true,
+                    ),
+                manualSeerrCredentialsRequired = true,
+            )
+
+        assertEquals(OnboardingValidationError.Required, errors[OnboardingField.Password])
+    }
+
+    @Test
     fun manualSeerrLocalAccountStillRequiresPassword() {
         val errors =
             validateOnboarding(

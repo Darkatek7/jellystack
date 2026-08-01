@@ -25,8 +25,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,6 +48,7 @@ import dev.jellystack.core.jellyfin.HomeSectionsState
 import dev.jellystack.core.jellyfin.JellyfinHomeState
 import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.design.layout.LocalResponsiveProfile
+import dev.jellystack.design.components.ShimmerPlaceholder
 import kotlinx.datetime.Clock
 
 internal enum class HomeSectionJellyfinTarget { Detail, Library }
@@ -365,13 +369,25 @@ private fun HomeSectionArtwork(
 ) {
     val externalImageUrl = item.imageUrl?.takeIf(String::isNotBlank)
     when {
-        externalImageUrl != null ->
-            AsyncImage(
-                model = externalImageUrl,
-                contentDescription = item.name,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = contentScale,
-            )
+        externalImageUrl != null -> {
+            var imageLoading by remember(externalImageUrl) { mutableStateOf(true) }
+            Box(modifier = Modifier.fillMaxSize()) {
+                if (imageLoading) {
+                    ShimmerPlaceholder(
+                        modifier = Modifier.fillMaxSize(),
+                        shape = RoundedCornerShape(0.dp),
+                    )
+                }
+                AsyncImage(
+                    model = externalImageUrl,
+                    contentDescription = item.name,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = contentScale,
+                    onSuccess = { imageLoading = false },
+                    onError = { imageLoading = false },
+                )
+            }
+        }
         artwork != null ->
             artwork.toHomeSectionArtworkSlots().let { slots ->
                 PosterImage(

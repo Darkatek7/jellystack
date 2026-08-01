@@ -227,6 +227,10 @@ class ServerConnectionCoordinatorTest {
             val required = assertIs<SeerrConnectionResult.CredentialsRequired>(result)
             assertEquals("quick-user", required.suggestedUsername)
             assertEquals(
+                SeerrCredentialsRequirement.QUICK_CONNECT_UNAVAILABLE,
+                required.requirement,
+            )
+            assertEquals(
                 "Automatic Seerr sign-in is unavailable. Use your Jellyfin or Seerr password.",
                 required.reason,
             )

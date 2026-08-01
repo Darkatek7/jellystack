@@ -42,11 +42,17 @@ sealed interface SeerrConnectionResult {
     data class CredentialsRequired(
         val reason: String,
         val suggestedUsername: String?,
+        val requirement: SeerrCredentialsRequirement = SeerrCredentialsRequirement.GENERAL,
     ) : SeerrConnectionResult
 
     data class ConnectionFailed(
         val reason: String,
     ) : SeerrConnectionResult
+}
+
+enum class SeerrCredentialsRequirement {
+    GENERAL,
+    QUICK_CONNECT_UNAVAILABLE,
 }
 
 class ServerConnectionCoordinator(
@@ -102,6 +108,12 @@ class ServerConnectionCoordinator(
             SeerrConnectionResult.CredentialsRequired(
                 reason = error.message ?: "Jellyfin-linked Seerr login failed.",
                 suggestedUsername = credential.username,
+                requirement =
+                    if (error.reason == JellyseerrAuthenticationException.Reason.QUICK_CONNECT_UNAVAILABLE) {
+                        SeerrCredentialsRequirement.QUICK_CONNECT_UNAVAILABLE
+                    } else {
+                        SeerrCredentialsRequirement.GENERAL
+                    },
             )
         } catch (error: CancellationException) {
             throw error

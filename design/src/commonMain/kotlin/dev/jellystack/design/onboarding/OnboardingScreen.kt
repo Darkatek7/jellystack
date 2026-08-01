@@ -56,6 +56,7 @@ import dev.jellystack.core.server.JellyfinSignInMethod
 import dev.jellystack.design.ServerFormState
 import dev.jellystack.design.components.InsecureHttpWarning
 import dev.jellystack.design.components.JellyfinQuickConnectStatus
+import dev.jellystack.design.components.SeerrCompatibilityNotice
 import dev.jellystack.design.components.JellyfinSignInMethodSelector
 import dev.jellystack.design.components.JellystackMark
 import jellystack_mobile.design.generated.resources.Res
@@ -254,12 +255,7 @@ private fun OnboardingStageContent(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             state.seerrQuickConnectExplanation?.let { explanation ->
-                Text(
-                    text = explanation,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-                )
+                SeerrCompatibilityNotice(text = explanation)
             }
             ServerFields(
                 state = state,
@@ -377,7 +373,8 @@ private fun ServerFields(
                                 Res.string.password_optional
                             } else if (
                                 state.step == TutorialStep.ConnectJellyseerr &&
-                                state.form.useJellyfinLogin
+                                state.form.useJellyfinLogin &&
+                                !state.form.requiresSeerrPassword
                             ) {
                                 Res.string.password_optional
                             } else {
