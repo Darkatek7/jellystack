@@ -463,11 +463,8 @@ internal data class ServerFormState(
                             (
                                 automaticSeerrLogin ||
                                     (
-                                        password.isNotBlank() &&
-                                            (
-                                                (!useJellyfinLogin && email.isNotBlank()) ||
-                                                    (useJellyfinLogin && username.isNotBlank())
-                                            )
+                                        (useJellyfinLogin && username.isNotBlank()) ||
+                                            (!useJellyfinLogin && email.isNotBlank() && password.isNotBlank())
                                     )
                             )
                 }
@@ -4431,7 +4428,17 @@ private fun AddServerDialog(
                                     onValueChange(state.copy(password = it))
                                     onClearError()
                                 },
-                                label = { Text(stringResource(Res.string.password)) },
+                                label = {
+                                    Text(
+                                        stringResource(
+                                            if (state.useJellyfinLogin) {
+                                                Res.string.password_optional
+                                            } else {
+                                                Res.string.password
+                                            },
+                                        ),
+                                    )
+                                },
                                 singleLine = true,
                                 enabled = !isSaving,
                                 visualTransformation =

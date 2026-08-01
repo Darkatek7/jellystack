@@ -46,6 +46,21 @@ class ServerFormStateTest {
     }
 
     @Test
+    fun jellyseerrFormValidWithPasswordlessJellyfinLogin() {
+        val state =
+            ServerFormState(
+                type = ServerFormType.SEERR,
+                name = "Seerr",
+                baseUrl = "https://requests.example",
+                username = "passwordless-user",
+                password = "",
+                useJellyfinLogin = true,
+            )
+
+        assertTrue(state.isValid)
+    }
+
+    @Test
     fun jellyseerrFormInvalidWithoutUsernameForJellyfinLogin() {
         val state =
             ServerFormState(
