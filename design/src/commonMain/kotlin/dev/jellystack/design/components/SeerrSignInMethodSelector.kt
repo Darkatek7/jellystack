@@ -13,8 +13,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import jellystack_mobile.design.generated.resources.Res
-import jellystack_mobile.design.generated.resources.jellyfin_password
-import jellystack_mobile.design.generated.resources.seerr_account
+import jellystack_mobile.design.generated.resources.jellyfin
+import jellystack_mobile.design.generated.resources.seerr
 import org.jetbrains.compose.resources.stringResource
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -41,9 +41,9 @@ internal fun SeerrSignInMethodSelector(
                         text =
                             stringResource(
                                 if (jellyfinLogin) {
-                                    Res.string.jellyfin_password
+                                    Res.string.jellyfin
                                 } else {
-                                    Res.string.seerr_account
+                                    Res.string.seerr
                                 },
                             ),
                         textAlign = TextAlign.Center,
