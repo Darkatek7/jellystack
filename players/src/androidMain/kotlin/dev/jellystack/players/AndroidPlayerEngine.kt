@@ -8,6 +8,8 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.C.COLOR_TRANSFER_HLG
+import androidx.media3.common.C.COLOR_TRANSFER_ST2084
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaItem.SubtitleConfiguration
 import androidx.media3.common.MimeTypes
@@ -31,8 +33,11 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -46,6 +51,7 @@ class AndroidPlayerEngine(
     private var pendingAudioTrack: AudioTrack? = null
     private var pendingAudioSelectionConfirmationId: String? = null
     private var pendingSubtitleTrack: SubtitleTrack? = null
+    private var pendingSubtitleSelectionConfirmationId: String? = null
     private var videoSurface: PlayerView? = null
     private var subtitleTextSize: SubtitleTextSize = SubtitleTextSize.SYSTEM
     private var subtitleBackground: SubtitleBackground = SubtitleBackground.SYSTEM
@@ -78,11 +84,8 @@ class AndroidPlayerEngine(
                         }
 
                         override fun onTracksChanged(tracks: Tracks) {
-                            val audioResult =
-                                applyTrackPreferences(
-                                    audioTrack = pendingAudioTrack,
-                                    subtitleTrack = pendingSubtitleTrack,
-                                )
+                            val audioResult = applyAudioTrack(pendingAudioTrack)
+                            val subtitleResult = applySubtitleTrack(pendingSubtitleTrack)
                             val pendingTrackId = pendingAudioSelectionConfirmationId
                             if (pendingTrackId != null) {
                                 when (audioResult) {
@@ -97,6 +100,20 @@ class AndroidPlayerEngine(
                                     AudioTrackSelectionResult.PENDING -> Unit
                                 }
                             }
+                            val pendingSubtitleId = pendingSubtitleSelectionConfirmationId
+                            if (pendingSubtitleId != null) {
+                                when (subtitleResult) {
+                                    SubtitleTrackSelectionResult.APPLIED -> {
+                                        pendingSubtitleSelectionConfirmationId = null
+                                        eventFlow.tryEmit(PlayerEvent.SubtitleTrackSelectionApplied(pendingSubtitleId))
+                                    }
+                                    SubtitleTrackSelectionResult.UNAVAILABLE -> {
+                                        pendingSubtitleSelectionConfirmationId = null
+                                        eventFlow.tryEmit(PlayerEvent.SubtitleTrackSelectionUnavailable(pendingSubtitleId))
+                                    }
+                                    SubtitleTrackSelectionResult.PENDING -> Unit
+                                }
+                            }
                         }
                     },
                 )
@@ -104,16 +121,19 @@ class AndroidPlayerEngine(
 
     private val positionFlow = MutableSharedFlow<Long>(replay = 1)
     private val eventFlow = MutableSharedFlow<PlayerEvent>(extraBufferCapacity = 4)
+    private val runtimeStatsFlow = MutableStateFlow(PlaybackRuntimeStats())
     private var positionJob =
         scope.launch {
             while (isActive) {
                 positionFlow.emit(exoPlayer.currentPosition)
+                runtimeStatsFlow.value = currentRuntimeStats()
                 delay(POSITION_POLL_INTERVAL_MS)
             }
         }
 
     override val positionUpdates: SharedFlow<Long> = positionFlow.asSharedFlow()
     override val events: SharedFlow<PlayerEvent> = eventFlow.asSharedFlow()
+    override val runtimeStats: StateFlow<PlaybackRuntimeStats> = runtimeStatsFlow.asStateFlow()
 
     fun createVideoSurface(context: Context): View =
         PlayerView(context).apply {
@@ -254,10 +274,8 @@ class AndroidPlayerEngine(
             exoPlayer.setMediaSource(mediaSource)
             exoPlayer.prepare()
             exoPlayer.seekTo(startPositionMs)
-            applyTrackPreferences(
-                audioTrack = audioTrack,
-                subtitleTrack = subtitleTrack,
-            )
+            applyAudioTrack(audioTrack)
+            applySubtitleTrack(subtitleTrack)
         }
     }
 
@@ -289,9 +307,14 @@ class AndroidPlayerEngine(
         return result
     }
 
-    override fun setSubtitleTrack(track: SubtitleTrack?) {
+    override fun setSubtitleTrack(track: SubtitleTrack?): SubtitleTrackSelectionResult {
         pendingSubtitleTrack = track
-        applySubtitleTrack(track)
+        val result = applySubtitleTrack(track)
+        pendingSubtitleSelectionConfirmationId =
+            track
+                ?.id
+                ?.takeIf { result == SubtitleTrackSelectionResult.PENDING }
+        return result
     }
 
     override fun setVideoQuality(maxBitrate: Int?) {
@@ -310,10 +333,36 @@ class AndroidPlayerEngine(
         exoPlayer.trackSelectionParameters = builder.build()
     }
 
+    override fun setPlaybackSpeed(speed: Float) {
+        exoPlayer.setPlaybackSpeed(speed.coerceIn(0.5f, 2f))
+    }
+
     override fun release() {
         positionJob.cancel()
         exoPlayer.release()
         scope.cancel()
+    }
+
+    private fun currentRuntimeStats(): PlaybackRuntimeStats {
+        val video = exoPlayer.videoFormat
+        val audio = exoPlayer.audioFormat
+        val transfer = video?.colorInfo?.colorTransfer
+        return runtimeStatsFlow.value.copy(
+            videoCodec = video?.codecs ?: video?.sampleMimeType,
+            audioCodec = audio?.codecs ?: audio?.sampleMimeType,
+            width = video?.width?.takeIf { it > 0 },
+            height = video?.height?.takeIf { it > 0 },
+            videoBitrate = video?.bitrate?.takeIf { it > 0 },
+            frameRate = video?.frameRate?.takeIf { it > 0f },
+            hdr =
+                when (transfer) {
+                    COLOR_TRANSFER_ST2084 -> "HDR10/PQ"
+                    COLOR_TRANSFER_HLG -> "HLG"
+                    else -> null
+                },
+            bufferedDurationMs = exoPlayer.totalBufferedDuration.coerceAtLeast(0L),
+            droppedFrames = exoPlayer.videoDecoderCounters?.droppedBufferCount,
+        )
     }
 
     private fun applyAudioTrack(track: AudioTrack?): AudioTrackSelectionResult {
@@ -344,8 +393,9 @@ class AndroidPlayerEngine(
         }
     }
 
-    private fun applySubtitleTrack(track: SubtitleTrack?) {
+    private fun applySubtitleTrack(track: SubtitleTrack?): SubtitleTrackSelectionResult {
         val currentParameters = exoPlayer.trackSelectionParameters
+        val override = track?.let(::findSubtitleOverride)
         val builder =
             currentParameters
                 .buildUpon()
@@ -372,21 +422,19 @@ class AndroidPlayerEngine(
                 }
             builder.setPreferredTextRoleFlags(roleFlags)
             builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-            findSubtitleOverride(track)?.let { override ->
-                builder.addOverride(override)
+            override?.let { selectedOverride ->
+                builder.addOverride(selectedOverride)
             }
         }
 
         exoPlayer.trackSelectionParameters = builder.build()
-    }
-
-    private fun applyTrackPreferences(
-        audioTrack: AudioTrack?,
-        subtitleTrack: SubtitleTrack?,
-    ): AudioTrackSelectionResult {
-        val audioResult = applyAudioTrack(audioTrack)
-        applySubtitleTrack(subtitleTrack)
-        return audioResult
+        return when {
+            track == null -> SubtitleTrackSelectionResult.APPLIED
+            override != null -> SubtitleTrackSelectionResult.APPLIED
+            exoPlayer.currentTracks.groups.none { it.type == C.TRACK_TYPE_TEXT } ->
+                SubtitleTrackSelectionResult.PENDING
+            else -> SubtitleTrackSelectionResult.UNAVAILABLE
+        }
     }
 
     private fun findAudioOverride(track: AudioTrack?): TrackSelectionOverride? {
@@ -453,25 +501,64 @@ class AndroidPlayerEngine(
     }
 
     private fun findSubtitleOverride(track: SubtitleTrack): TrackSelectionOverride? {
-        val groups = exoPlayer.currentTracks.groups
-        groups.forEach { group ->
-            if (group.type != C.TRACK_TYPE_TEXT) return@forEach
-            for (index in 0 until group.length) {
-                if (!group.isTrackSupported(index)) continue
-                val format = group.getTrackFormat(index)
-                val idMatches =
-                    format.id?.equals(track.id, ignoreCase = true) == true ||
-                        (track.streamIndex != null && format.id?.equals(track.streamIndex.toString(), ignoreCase = true) == true)
-                val languageMatches =
-                    track.language != null &&
-                        format.language?.equals(track.language, ignoreCase = true) == true
-                val labelMatches = track.title != null && format.label == track.title
-                if (idMatches || labelMatches || languageMatches) {
-                    return TrackSelectionOverride(group.mediaTrackGroup, index)
-                }
+        val candidates =
+            exoPlayer.currentTracks.groups
+                .asSequence()
+                .filter { it.type == C.TRACK_TYPE_TEXT }
+                .flatMap { group ->
+                    (0 until group.length)
+                        .asSequence()
+                        .filter(group::isTrackSupported)
+                        .map { index -> SubtitleCandidate(group, index) }
+                }.toList()
+        val matched =
+            candidates.firstOrNull { candidate ->
+                candidate.formatId?.equals(track.id, ignoreCase = true) == true ||
+                    (
+                        track.streamIndex != null &&
+                            candidate.formatId?.equals(track.streamIndex.toString(), ignoreCase = true) == true
+                    )
+            } ?: candidates.firstOrNull { candidate ->
+                candidate.languageMatches(track.language) &&
+                    candidate.labelMatches(track.title) &&
+                    candidate.formatMatches(track.format) &&
+                    candidate.forcedMatches(track.isForced)
+            } ?: candidates
+                .filter { it.languageMatches(track.language) }
+                .singleOrNull()
+        return matched?.let { TrackSelectionOverride(it.group.mediaTrackGroup, it.trackIndex) }
+    }
+
+    private data class SubtitleCandidate(
+        val group: Tracks.Group,
+        val trackIndex: Int,
+    ) {
+        private val format
+            get() = group.getTrackFormat(trackIndex)
+
+        val formatId: String?
+            get() = format.id
+
+        fun languageMatches(language: String?): Boolean = language != null && format.language?.equals(language, ignoreCase = true) == true
+
+        fun labelMatches(label: String?): Boolean = label != null && format.label?.equals(label, ignoreCase = true) == true
+
+        fun forcedMatches(isForced: Boolean): Boolean = (format.selectionFlags and C.SELECTION_FLAG_FORCED != 0) == isForced
+
+        fun formatMatches(subtitleFormat: SubtitleFormat): Boolean {
+            val mime = format.sampleMimeType.orEmpty().lowercase()
+            return when (subtitleFormat) {
+                SubtitleFormat.SRT -> mime == MimeTypes.APPLICATION_SUBRIP
+                SubtitleFormat.VTT -> mime == MimeTypes.TEXT_VTT
+                SubtitleFormat.ASS,
+                SubtitleFormat.SSA,
+                -> mime == MimeTypes.TEXT_SSA
+                SubtitleFormat.PGS,
+                SubtitleFormat.SUP,
+                -> mime == MimeTypes.APPLICATION_PGS
+                SubtitleFormat.UNKNOWN -> true
             }
         }
-        return null
     }
 
     private companion object {

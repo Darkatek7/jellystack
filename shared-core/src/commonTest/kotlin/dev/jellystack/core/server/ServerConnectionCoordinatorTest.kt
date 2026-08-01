@@ -52,6 +52,80 @@ class ServerConnectionCoordinatorTest {
         }
 
     @Test
+    fun automaticSeerrConnectionUsesQuickConnectForStoredPasswordlessJellyfinCredentials() =
+        runTest {
+            val authenticator = RecordingAuthenticator()
+            val repository = repository()
+            val coordinator = ServerConnectionCoordinator(repository, authenticator)
+            coordinator.connectJellyfin(
+                JellyfinConnectionInput(
+                    name = "Media",
+                    baseUrl = "https://media.example",
+                    username = "passwordless-user",
+                    password = "",
+                ),
+            )
+
+            val result =
+                coordinator.connectSeerrAutomatically(
+                    SeerrServerInput(name = "Requests", baseUrl = "https://requests.example"),
+                )
+
+            assertIs<SeerrConnectionResult.Connected>(result)
+            assertEquals(
+                JellyseerrQuickConnectAuthRequest(
+                    baseUrl = "https://requests.example",
+                    jellyfinBaseUrl = "https://media.example",
+                    jellyfinAccessToken = "dummy-jellyfin-token",
+                    jellyfinUserId = "jellyfin-user-id",
+                    jellyfinDeviceId = "jellyfin-user-id",
+                    appVersion = "unknown",
+                ),
+                authenticator.lastQuickConnectRequest,
+            )
+            assertNull(authenticator.lastRequest)
+        }
+
+    @Test
+    fun manualPasswordlessJellyfinSeerrLoginUsesConnectedJellyfinSession() =
+        runTest {
+            val authenticator = RecordingAuthenticator()
+            val repository = repository()
+            val coordinator = ServerConnectionCoordinator(repository, authenticator)
+            coordinator.connectJellyfin(
+                JellyfinConnectionInput(
+                    name = "Media",
+                    baseUrl = "https://media.example",
+                    username = "passwordless-user",
+                    password = "",
+                ),
+            )
+
+            coordinator.connectSeerrManually(
+                input =
+                    SeerrServerInput(
+                        name = "Requests",
+                        baseUrl = "https://requests.example",
+                        appVersion = "0.15.0",
+                    ),
+                credentials = SeerrLoginCredentials.Jellyfin("passwordless-user", ""),
+            )
+
+            assertEquals(
+                JellyseerrQuickConnectAuthRequest(
+                    baseUrl = "https://requests.example",
+                    jellyfinBaseUrl = "https://media.example",
+                    jellyfinAccessToken = "dummy-jellyfin-token",
+                    jellyfinUserId = "jellyfin-user-id",
+                    jellyfinDeviceId = "jellyfin-user-id",
+                    appVersion = "0.15.0",
+                ),
+                authenticator.lastQuickConnectRequest,
+            )
+            assertNull(authenticator.lastRequest)
+        }
+
+    @Test
     fun authenticationFailureRequestsCredentialsAndSuggestsLinkedUsername() =
         runTest {
             val authenticator =
@@ -99,7 +173,7 @@ class ServerConnectionCoordinatorTest {
                     SeerrServerInput(
                         name = "Requests",
                         baseUrl = "https://requests.example/",
-                        appVersion = "0.14.3",
+                        appVersion = "0.15.0",
                     ),
                 )
 
@@ -111,7 +185,7 @@ class ServerConnectionCoordinatorTest {
                     jellyfinAccessToken = "dummy-quick-connect-token",
                     jellyfinUserId = "quick-user-id",
                     jellyfinDeviceId = "quick-device",
-                    appVersion = "0.14.3",
+                    appVersion = "0.15.0",
                 ),
                 authenticator.lastQuickConnectRequest,
             )
@@ -152,6 +226,10 @@ class ServerConnectionCoordinatorTest {
 
             val required = assertIs<SeerrConnectionResult.CredentialsRequired>(result)
             assertEquals("quick-user", required.suggestedUsername)
+            assertEquals(
+                SeerrCredentialsRequirement.QUICK_CONNECT_UNAVAILABLE,
+                required.requirement,
+            )
             assertEquals(
                 "Automatic Seerr sign-in is unavailable. Use your Jellyfin or Seerr password.",
                 required.reason,

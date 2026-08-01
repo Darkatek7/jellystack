@@ -16,6 +16,7 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -37,6 +38,7 @@ import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -72,6 +74,7 @@ internal fun PlaybackOptionsSheet(
     controller: PlaybackController,
     orientation: Int,
     onDismiss: () -> Unit,
+    syncPlayActive: Boolean = false,
 ) {
     if (orientation == Configuration.ORIENTATION_LANDSCAPE) {
         Dialog(
@@ -101,7 +104,7 @@ internal fun PlaybackOptionsSheet(
                     color = MaterialTheme.colorScheme.surface,
                     tonalElevation = 6.dp,
                 ) {
-                    OptionsContent(state, controller, onDismiss)
+                    OptionsContent(state, controller, onDismiss, syncPlayActive)
                 }
             }
         }
@@ -111,7 +114,7 @@ internal fun PlaybackOptionsSheet(
             modifier = Modifier.testTag(AndroidPlaybackTags.OPTIONS),
             containerColor = MaterialTheme.colorScheme.surface,
         ) {
-            OptionsContent(state, controller, onDismiss)
+            OptionsContent(state, controller, onDismiss, syncPlayActive)
         }
     }
 }
@@ -122,6 +125,7 @@ private fun OptionsContent(
     state: PlaybackState.Active,
     controller: PlaybackController,
     onDismiss: () -> Unit,
+    syncPlayActive: Boolean,
 ) {
     val initialFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { initialFocus.requestFocus() }
@@ -200,6 +204,48 @@ private fun OptionsContent(
             enabled = qualityOptions.isNotEmpty(),
             modifier = Modifier.testTag(AndroidPlaybackTags.QUALITY_SELECTOR),
         )
+        val speedOptions =
+            PlaybackController.PLAYBACK_SPEEDS.map { speed ->
+                PlaybackSelectorOption(
+                    value = speed,
+                    label = playbackSpeedLabel(speed),
+                    selected = speed == state.playbackSpeed,
+                )
+            }
+        PlaybackSelectorField<Float>(
+            label = stringResource(R.string.player_speed),
+            selectedSummary = playbackSpeedLabel(state.playbackSpeed),
+            options = speedOptions,
+            onSelect = controller::setPlaybackSpeed,
+            enabled =
+                !syncPlayActive &&
+                    state !is PlaybackState.CastConnecting &&
+                    state !is PlaybackState.CastPlayback,
+            modifier = Modifier.testTag(AndroidPlaybackTags.SPEED_SELECTOR),
+        )
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .clickable { controller.setStatsForNerdsEnabled(!state.statsForNerdsEnabled) }
+                    .testTag(AndroidPlaybackTags.STATS_TOGGLE),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(stringResource(R.string.player_stats_for_nerds), style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    stringResource(R.string.player_stats_for_nerds_summary),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(
+                checked = state.statsForNerdsEnabled,
+                onCheckedChange = controller::setStatsForNerdsEnabled,
+            )
+        }
         TextButton(
             onClick = onDismiss,
             modifier = Modifier.fillMaxWidth(),
@@ -208,6 +254,8 @@ private fun OptionsContent(
         }
     }
 }
+
+private fun playbackSpeedLabel(speed: Float): String = if (speed == speed.toInt().toFloat()) "${speed.toInt()}x" else "${speed}x"
 
 private data class PlaybackSelectorOption<T>(
     val value: T,

@@ -7,6 +7,7 @@ import io.ktor.client.engine.mock.respondError
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.content.OutgoingContent
 import io.ktor.http.headersOf
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -18,9 +19,11 @@ class ServerConnectivityCheckerTest {
     @Test
     fun jellyfinSuccessReturnsToken() =
         runTest {
+            var requestBody: String? = null
             val engine =
                 MockEngine { request ->
                     assertTrue(request.url.encodedPath.endsWith("/Users/AuthenticateByName"))
+                    requestBody = (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
                     respond(
                         content =
                             """{"AccessToken":"token123","User":{"Id":"user42","Name":"Demo"},"ServerId":"srv"}""",
@@ -42,6 +45,37 @@ class ServerConnectivityCheckerTest {
             val success = assertIs<ConnectivityResult.Success>(result)
             val credential = assertIs<StoredCredential.Jellyfin>(success.credentials)
             assertTrue(credential.accessToken.isNotBlank())
+            assertTrue(requestBody.orEmpty().contains("\"Pw\":\"dummy-credential\""))
+        }
+
+    @Test
+    fun passwordlessJellyfinLoginSendsExplicitEmptyPassword() =
+        runTest {
+            var requestBody: String? = null
+            val engine =
+                MockEngine { request ->
+                    requestBody = (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
+                    respond(
+                        content =
+                            """{"AccessToken":"token123","User":{"Id":"user42","Name":"Demo"},"ServerId":"srv"}""",
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                    )
+                }
+            val checker = checkerWithEngine(engine)
+
+            val result =
+                checker.test(
+                    ServerRegistration(
+                        type = ServerType.JELLYFIN,
+                        name = "Home Jellyfin",
+                        baseUrl = "https://media.example",
+                        credentials = CredentialInput.Jellyfin(username = "passwordless-user", password = ""),
+                    ),
+                )
+
+            assertIs<ConnectivityResult.Success>(result)
+            assertTrue(requestBody.orEmpty().contains("\"Username\":\"passwordless-user\""))
+            assertTrue(requestBody.orEmpty().contains("\"Pw\":\"\""))
         }
 
     @Test

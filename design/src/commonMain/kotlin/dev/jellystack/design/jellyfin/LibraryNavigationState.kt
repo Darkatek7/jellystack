@@ -69,6 +69,23 @@ internal data class LibraryNavigationState(
     }
 }
 
+internal enum class LibraryEntryOrigin { Home, LibraryTab }
+
+internal enum class LibraryBackTarget { PreviousLevel, ReturnHome }
+
+internal fun libraryBackTarget(
+    state: LibraryNavigationState,
+    origin: LibraryEntryOrigin,
+): LibraryBackTarget =
+    if (origin == LibraryEntryOrigin.Home && state.depth == 1) {
+        LibraryBackTarget.ReturnHome
+    } else {
+        LibraryBackTarget.PreviousLevel
+    }
+
+internal fun homeLibraryNavigationState(destination: LibraryDestination): LibraryNavigationState =
+    LibraryNavigationState().push(destination)
+
 internal fun destinationKey(destination: LibraryDestination): String =
     when (destination) {
         LibraryDestination.Root -> "library-root"

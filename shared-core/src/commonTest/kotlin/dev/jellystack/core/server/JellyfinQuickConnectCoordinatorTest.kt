@@ -47,7 +47,7 @@ class JellyfinQuickConnectCoordinatorTest {
                     remoteFactory =
                         JellyfinQuickConnectRemoteFactory { baseUrl, identity ->
                             assertEquals("https://media.example", baseUrl)
-                            assertEquals("0.14.3", identity.appVersion)
+                            assertEquals("0.15.0", identity.appVersion)
                             assertEquals("jellystack-generated-id", identity.deviceId)
                             remote
                         },
@@ -60,7 +60,7 @@ class JellyfinQuickConnectCoordinatorTest {
                         JellyfinQuickConnectInput(
                             name = "Media",
                             baseUrl = "https://media.example/",
-                            appVersion = "0.14.3",
+                            appVersion = "0.15.0",
                         ),
                     ).toList()
 
@@ -226,7 +226,7 @@ class JellyfinQuickConnectCoordinatorTest {
         JellyfinQuickConnectInput(
             name = "Media",
             baseUrl = "https://media.example",
-            appVersion = "0.14.3",
+            appVersion = "0.15.0",
         )
 
     private fun List<JellyfinQuickConnectState>.waitingSession(): JellyfinQuickConnectSession =

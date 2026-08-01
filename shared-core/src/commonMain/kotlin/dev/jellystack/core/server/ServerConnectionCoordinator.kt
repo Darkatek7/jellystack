@@ -42,11 +42,17 @@ sealed interface SeerrConnectionResult {
     data class CredentialsRequired(
         val reason: String,
         val suggestedUsername: String?,
+        val requirement: SeerrCredentialsRequirement = SeerrCredentialsRequirement.GENERAL,
     ) : SeerrConnectionResult
 
     data class ConnectionFailed(
         val reason: String,
     ) : SeerrConnectionResult
+}
+
+enum class SeerrCredentialsRequirement {
+    GENERAL,
+    QUICK_CONNECT_UNAVAILABLE,
 }
 
 class ServerConnectionCoordinator(
@@ -85,7 +91,7 @@ class ServerConnectionCoordinator(
         }
         return try {
             val auth =
-                if (!password.isNullOrBlank()) {
+                if (!password.isNullOrEmpty()) {
                     jellyseerrAuthenticator.authenticate(
                         JellyseerrAuthRequest(
                             baseUrl = normalizeBaseUrl(input.baseUrl),
@@ -95,22 +101,19 @@ class ServerConnectionCoordinator(
                         ),
                     )
                 } else {
-                    jellyseerrAuthenticator.authenticateWithQuickConnect(
-                        JellyseerrQuickConnectAuthRequest(
-                            baseUrl = normalizeBaseUrl(input.baseUrl),
-                            jellyfinBaseUrl = jellyfin.baseUrl,
-                            jellyfinAccessToken = credential.accessToken,
-                            jellyfinUserId = credential.userId,
-                            jellyfinDeviceId = credential.deviceId ?: credential.userId,
-                            appVersion = input.appVersion,
-                        ),
-                    )
+                    authenticateSeerrWithConnectedJellyfin(input, jellyfin, credential)
                 }
             SeerrConnectionResult.Connected(registerSeerr(input, auth))
         } catch (error: JellyseerrAuthenticationException) {
             SeerrConnectionResult.CredentialsRequired(
                 reason = error.message ?: "Jellyfin-linked Seerr login failed.",
                 suggestedUsername = credential.username,
+                requirement =
+                    if (error.reason == JellyseerrAuthenticationException.Reason.QUICK_CONNECT_UNAVAILABLE) {
+                        SeerrCredentialsRequirement.QUICK_CONNECT_UNAVAILABLE
+                    } else {
+                        SeerrCredentialsRequirement.GENERAL
+                    },
             )
         } catch (error: CancellationException) {
             throw error
@@ -128,13 +131,29 @@ class ServerConnectionCoordinator(
         val normalizedUrl = normalizeBaseUrl(input.baseUrl)
         val request =
             when (credentials) {
-                is SeerrLoginCredentials.Jellyfin ->
+                is SeerrLoginCredentials.Jellyfin -> {
+                    if (credentials.password.isEmpty()) {
+                        val jellyfin =
+                            serverRepository.activeServer(ServerType.JELLYFIN)
+                                ?: throw passwordlessJellyfinLinkingException()
+                        val credential =
+                            jellyfin.credentials as? StoredCredential.Jellyfin
+                                ?: throw passwordlessJellyfinLinkingException()
+                        if (!credential.username.equals(credentials.username.trim(), ignoreCase = true)) {
+                            throw passwordlessJellyfinLinkingException()
+                        }
+                        return registerSeerr(
+                            input,
+                            authenticateSeerrWithConnectedJellyfin(input, jellyfin, credential),
+                        )
+                    }
                     JellyseerrAuthRequest(
                         baseUrl = normalizedUrl,
                         method = JellyseerrAuthRequest.Method.JELLYFIN,
                         username = credentials.username.trim(),
                         password = credentials.password,
                     )
+                }
                 is SeerrLoginCredentials.Local ->
                     JellyseerrAuthRequest(
                         baseUrl = normalizedUrl,
@@ -145,6 +164,28 @@ class ServerConnectionCoordinator(
             }
         return registerSeerr(input, jellyseerrAuthenticator.authenticate(request))
     }
+
+    private suspend fun authenticateSeerrWithConnectedJellyfin(
+        input: SeerrServerInput,
+        jellyfin: ManagedServer,
+        credential: StoredCredential.Jellyfin,
+    ): JellyseerrAuthenticationResult =
+        jellyseerrAuthenticator.authenticateWithQuickConnect(
+            JellyseerrQuickConnectAuthRequest(
+                baseUrl = normalizeBaseUrl(input.baseUrl),
+                jellyfinBaseUrl = jellyfin.baseUrl,
+                jellyfinAccessToken = credential.accessToken,
+                jellyfinUserId = credential.userId,
+                jellyfinDeviceId = credential.deviceId ?: credential.userId,
+                appVersion = input.appVersion,
+            ),
+        )
+
+    private fun passwordlessJellyfinLinkingException(): JellyseerrAuthenticationException =
+        JellyseerrAuthenticationException(
+            message = "Connect the same Jellyfin account first to sign in without a password.",
+            reason = JellyseerrAuthenticationException.Reason.MISSING_JELLYFIN_PASSWORD,
+        )
 
     private suspend fun registerSeerr(
         input: SeerrServerInput,

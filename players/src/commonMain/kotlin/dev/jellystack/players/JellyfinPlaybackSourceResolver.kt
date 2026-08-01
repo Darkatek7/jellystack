@@ -41,12 +41,14 @@ class JellyfinPlaybackSourceResolver(
                 ) { "Selected manual quality is unavailable: ${selection.selectedQualityId}" }
             }
         val audioStreamIndex = options.audioStreamIndex ?: selection.defaultAudioTrack()?.streamIndex
+        val subtitleStreamIndex = options.subtitleStreamIndex ?: selection.defaultSubtitleTrack()?.streamIndex
         val playbackInfoRequest =
             JellyfinPlaybackInfoRequestDto(
                 userId = environment.userId,
                 deviceProfile = deviceProfileProvider.deviceProfile(),
                 mediaSourceId = selection.sourceId,
                 audioStreamIndex = audioStreamIndex,
+                subtitleStreamIndex = subtitleStreamIndex,
                 startTimeTicks = max(0, startPositionMs).toTicks(),
                 maxStreamingBitrate = manualOption?.maxBitrate,
                 enableDirectPlay = isAuto,
@@ -114,6 +116,7 @@ class JellyfinPlaybackSourceResolver(
                         mediaSourceId = mediaSourceId,
                         playSessionId = playSessionId,
                         audioStreamIndex = audioStreamIndex,
+                        subtitleStreamIndex = subtitleStreamIndex,
                     )
                 } else {
                     null
@@ -162,7 +165,7 @@ class JellyfinPlaybackSourceResolver(
                 ),
             playSessionId = playSessionId,
             audioStreamIndex = audioStreamIndex,
-            subtitleStreamIndex = selection.defaultSubtitleTrack()?.streamIndex,
+            subtitleStreamIndex = subtitleStreamIndex,
             mediaSourceId = mediaSourceId,
             supportsTranscoding = supportsTranscoding,
             isFallbackHls = isFallbackHls,
@@ -175,6 +178,7 @@ class JellyfinPlaybackSourceResolver(
         mediaSourceId: String,
         playSessionId: String,
         audioStreamIndex: Int?,
+        subtitleStreamIndex: Int?,
     ): String =
         buildString {
             append(environment.baseUrl.trimEnd('/'))
@@ -198,6 +202,10 @@ class JellyfinPlaybackSourceResolver(
             append("&StartTimeTicks=0")
             audioStreamIndex?.let { index ->
                 append("&AudioStreamIndex=")
+                append(index)
+            }
+            subtitleStreamIndex?.let { index ->
+                append("&SubtitleStreamIndex=")
                 append(index)
             }
         }

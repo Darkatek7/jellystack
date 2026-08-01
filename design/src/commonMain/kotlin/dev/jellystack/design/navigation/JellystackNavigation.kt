@@ -2,9 +2,16 @@ package dev.jellystack.design.navigation
 
 import dev.jellystack.core.preferences.TutorialStep
 
-internal enum class PrimaryDestination { Home, Library, Discover }
+internal enum class PrimaryDestination { Home, Library, Discover, Admin }
+
+internal fun destinationAfterClosingDiscoverSelection(
+    current: PrimaryDestination,
+    returnDestination: PrimaryDestination?,
+): PrimaryDestination = returnDestination ?: current
 
 internal enum class DiscoverDestination { Feed, Requests }
+
+internal enum class AdminDestination { Overview, Users, Activity }
 
 internal enum class LibrarySection { Downloads, Favorites, Libraries, Movies, Series }
 
@@ -87,6 +94,7 @@ internal data class BackStackSnapshot(
     val primary: PrimaryDestination = PrimaryDestination.Home,
     val discover: DiscoverDestination = DiscoverDestination.Feed,
     val libraryDepth: Int = 0,
+    val adminDepth: Int = 0,
     val detailDepth: Int = 0,
     val settingsOpen: Boolean = false,
     val onboardingStep: TutorialStep? = null,
@@ -105,6 +113,7 @@ internal enum class ShellBackAction {
     CloseDiscoverSelection,
     CloseRequests,
     PopLibrary,
+    PopAdmin,
     SelectHome,
     ExitPlatform,
 }
@@ -124,6 +133,7 @@ internal fun nextBackAction(state: BackStackSnapshot): ShellBackAction =
         state.primary == PrimaryDestination.Discover &&
             state.discover == DiscoverDestination.Requests -> ShellBackAction.CloseRequests
         state.primary == PrimaryDestination.Library && state.libraryDepth > 0 -> ShellBackAction.PopLibrary
+        state.primary == PrimaryDestination.Admin && state.adminDepth > 0 -> ShellBackAction.PopAdmin
         state.primary != PrimaryDestination.Home -> ShellBackAction.SelectHome
         else -> ShellBackAction.ExitPlatform
     }

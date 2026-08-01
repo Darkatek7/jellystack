@@ -22,8 +22,17 @@ internal data class JellystackShellState(
     val paneMode: ShellPaneMode = ShellPaneMode.Single,
     val dynamicTitle: String? = null,
     val showNavigation: Boolean = true,
+    val showAdminDestination: Boolean = false,
     val feedback: ShellFeedback? = null,
-)
+) {
+    val destinations: List<PrimaryDestination>
+        get() =
+            if (showAdminDestination) {
+                PrimaryDestination.entries
+            } else {
+                PrimaryDestination.entries.filterNot { it == PrimaryDestination.Admin }
+            }
+}
 
 internal sealed interface JellystackShellAction {
     data class SelectPrimary(

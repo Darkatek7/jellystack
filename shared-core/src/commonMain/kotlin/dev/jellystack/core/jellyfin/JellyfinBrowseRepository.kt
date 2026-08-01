@@ -63,6 +63,8 @@ class JellyfinBrowseRepository(
 ) : OfflinePlaybackProgressReporter {
     private val cachedApis = mutableMapOf<String, JellyfinBrowseApi>()
 
+    suspend fun cachedItem(itemId: String): JellyfinItem? = itemStore.get(itemId)?.toDomain()
+
     suspend fun refreshLibraries(): List<JellyfinLibrary> {
         val environment = environmentProvider.current() ?: return emptyList()
         val api = apiFor(environment)

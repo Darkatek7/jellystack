@@ -87,6 +87,10 @@ import dev.jellystack.core.downloads.OfflineMediaMetadata
 import dev.jellystack.core.jellyfin.DetailTrailerContext
 import dev.jellystack.core.jellyfin.DetailTrailerResolver
 import dev.jellystack.core.jellyfin.DetailTrailerSource
+import dev.jellystack.core.jellyfin.HomeSectionItem
+import dev.jellystack.core.jellyfin.HomeSectionsRepository
+import dev.jellystack.core.jellyfin.HomeSectionsState
+import dev.jellystack.core.jellyfin.JellyfinAdminRepository
 import dev.jellystack.core.jellyfin.JellyfinBrowseCoordinator
 import dev.jellystack.core.jellyfin.JellyfinBrowseRepository
 import dev.jellystack.core.jellyfin.JellyfinEnvironment
@@ -95,6 +99,8 @@ import dev.jellystack.core.jellyfin.JellyfinFavoritesStoreApi
 import dev.jellystack.core.jellyfin.JellyfinHomeState
 import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.JellyfinItemDetail
+import dev.jellystack.core.jellyfin.JellyfinSessionRepository
+import dev.jellystack.core.jellyfin.JellyfinSessionState
 import dev.jellystack.core.jellyfin.MediaDetailEnrichment
 import dev.jellystack.core.jellyfin.MediaDetailEnrichmentLoader
 import dev.jellystack.core.jellyfin.SeriesPlaybackReason
@@ -104,6 +110,7 @@ import dev.jellystack.core.jellyfin.isBrowseContainer
 import dev.jellystack.core.jellyseerr.JellyseerrAuthenticator
 import dev.jellystack.core.jellyseerr.JellyseerrEnvironmentProvider
 import dev.jellystack.core.jellyseerr.JellyseerrLanguageProfiles
+import dev.jellystack.core.jellyseerr.JellyseerrMediaAvailability
 import dev.jellystack.core.jellyseerr.JellyseerrMediaTrailer
 import dev.jellystack.core.jellyseerr.JellyseerrMediaType
 import dev.jellystack.core.jellyseerr.JellyseerrMessage
@@ -112,6 +119,7 @@ import dev.jellystack.core.jellyseerr.JellyseerrMessageRecovery
 import dev.jellystack.core.jellyseerr.JellyseerrRecommendationRail
 import dev.jellystack.core.jellyseerr.JellyseerrRecommendationsCoordinator
 import dev.jellystack.core.jellyseerr.JellyseerrRepository
+import dev.jellystack.core.jellyseerr.JellyseerrRequestFilter
 import dev.jellystack.core.jellyseerr.JellyseerrRequestsCoordinator
 import dev.jellystack.core.jellyseerr.JellyseerrRequestsState
 import dev.jellystack.core.jellyseerr.JellyseerrSearchItem
@@ -136,6 +144,7 @@ import dev.jellystack.core.server.JellyfinQuickConnectState
 import dev.jellystack.core.server.JellyfinSignInMethod
 import dev.jellystack.core.server.ManagedServer
 import dev.jellystack.core.server.SeerrConnectionResult
+import dev.jellystack.core.server.SeerrCredentialsRequirement
 import dev.jellystack.core.server.SeerrLoginCredentials
 import dev.jellystack.core.server.SeerrServerInput
 import dev.jellystack.core.server.ServerAddressValidation
@@ -144,6 +153,7 @@ import dev.jellystack.core.server.ServerRepository
 import dev.jellystack.core.server.ServerType
 import dev.jellystack.core.server.StoredCredential
 import dev.jellystack.core.server.validateServerAddress
+import dev.jellystack.design.admin.AdminScreen
 import dev.jellystack.design.biometric.rememberBiometricPlatformState
 import dev.jellystack.design.cast.BindCastSnapshotProvider
 import dev.jellystack.design.cast.CastRoutePickerButton
@@ -152,14 +162,22 @@ import dev.jellystack.design.components.InsecureHttpWarning
 import dev.jellystack.design.components.JellyfinQuickConnectStatus
 import dev.jellystack.design.components.JellyfinSignInMethodSelector
 import dev.jellystack.design.components.ModalFocusScope
+import dev.jellystack.design.components.SeerrCompatibilityNotice
+import dev.jellystack.design.components.SeerrSignInMethodSelector
+import dev.jellystack.design.jellyfin.HomeSectionsScreen
+import dev.jellystack.design.jellyfin.HomeSkeleton
 import dev.jellystack.design.jellyfin.ImmersiveMediaDetailContent
 import dev.jellystack.design.jellyfin.JellyfinBrowseScreen
 import dev.jellystack.design.jellyfin.JellyfinDetailLoadingSkeleton
+import dev.jellystack.design.jellyfin.LibraryBackTarget
+import dev.jellystack.design.jellyfin.LibraryEntryOrigin
 import dev.jellystack.design.jellyfin.LibraryNavigationState
 import dev.jellystack.design.jellyfin.LibraryRefreshTarget
 import dev.jellystack.design.jellyfin.SeasonEpisodes
 import dev.jellystack.design.jellyfin.buildSeasonEpisodes
 import dev.jellystack.design.jellyfin.hasLocalMedia
+import dev.jellystack.design.jellyfin.homeLibraryNavigationState
+import dev.jellystack.design.jellyfin.libraryBackTarget
 import dev.jellystack.design.jellyfin.refreshTarget
 import dev.jellystack.design.jellyfin.supportsPlayedStatus
 import dev.jellystack.design.jellyseerr.DiscoverAction
@@ -173,6 +191,7 @@ import dev.jellystack.design.jellyseerr.toSearchItemOrNull
 import dev.jellystack.design.layout.LocalResponsiveProfile
 import dev.jellystack.design.layout.ProvideResponsiveProfile
 import dev.jellystack.design.lifecycle.rememberAppForegroundActive
+import dev.jellystack.design.navigation.AdminDestination
 import dev.jellystack.design.navigation.BackStackSnapshot
 import dev.jellystack.design.navigation.DetailOrigin
 import dev.jellystack.design.navigation.DetailStackEntry
@@ -183,6 +202,7 @@ import dev.jellystack.design.navigation.PrimaryDestination
 import dev.jellystack.design.navigation.ShellBackAction
 import dev.jellystack.design.navigation.ShellModal
 import dev.jellystack.design.navigation.ShellModalOwner
+import dev.jellystack.design.navigation.destinationAfterClosingDiscoverSelection
 import dev.jellystack.design.navigation.dismissActiveShellModal
 import dev.jellystack.design.navigation.nextBackAction
 import dev.jellystack.design.navigation.publishIfCurrentDetailRequest
@@ -228,6 +248,10 @@ import dev.jellystack.players.cast.CastConnectionState
 import dev.jellystack.players.cast.CastSessionManager
 import dev.jellystack.players.cast.NoopCastSessionManager
 import jellystack_mobile.design.generated.resources.Res
+import jellystack_mobile.design.generated.resources.admin_activity_log
+import jellystack_mobile.design.generated.resources.admin_request_action_failed
+import jellystack_mobile.design.generated.resources.admin_request_declined
+import jellystack_mobile.design.generated.resources.admin_user_management
 import jellystack_mobile.design.generated.resources.app_lock_authentication_unavailable
 import jellystack_mobile.design.generated.resources.app_lock_enroll_device
 import jellystack_mobile.design.generated.resources.app_lock_locked_heading
@@ -264,17 +288,18 @@ import jellystack_mobile.design.generated.resources.favorite_update_failed
 import jellystack_mobile.design.generated.resources.favorites
 import jellystack_mobile.design.generated.resources.hide_password
 import jellystack_mobile.design.generated.resources.item_detail_unavailable
-import jellystack_mobile.design.generated.resources.jellyfin_account
 import jellystack_mobile.design.generated.resources.libraries
 import jellystack_mobile.design.generated.resources.library_connect_server_status
 import jellystack_mobile.design.generated.resources.loading_episodes
 import jellystack_mobile.design.generated.resources.movies
+import jellystack_mobile.design.generated.resources.nav_admin
 import jellystack_mobile.design.generated.resources.nav_discover
 import jellystack_mobile.design.generated.resources.nav_library
 import jellystack_mobile.design.generated.resources.no_playable_episode
 import jellystack_mobile.design.generated.resources.onboarding_saving
 import jellystack_mobile.design.generated.resources.onboarding_url_error
 import jellystack_mobile.design.generated.resources.password
+import jellystack_mobile.design.generated.resources.password_optional
 import jellystack_mobile.design.generated.resources.play
 import jellystack_mobile.design.generated.resources.play_episode
 import jellystack_mobile.design.generated.resources.playback_failed
@@ -300,7 +325,6 @@ import jellystack_mobile.design.generated.resources.request_search_failed
 import jellystack_mobile.design.generated.resources.request_submitted
 import jellystack_mobile.design.generated.resources.requests_title
 import jellystack_mobile.design.generated.resources.retry
-import jellystack_mobile.design.generated.resources.seerr_account
 import jellystack_mobile.design.generated.resources.seerr_automatic_login
 import jellystack_mobile.design.generated.resources.seerr_connect_jellyfin_first
 import jellystack_mobile.design.generated.resources.select_cast_device
@@ -309,15 +333,15 @@ import jellystack_mobile.design.generated.resources.server_url_missing_protocol
 import jellystack_mobile.design.generated.resources.show_password
 import jellystack_mobile.design.generated.resources.shows
 import jellystack_mobile.design.generated.resources.sign_in_with
+import jellystack_mobile.design.generated.resources.subtitle_track_switch_failed
 import jellystack_mobile.design.generated.resources.use_different_account
 import jellystack_mobile.design.generated.resources.username
 import jellystack_mobile.design.generated.resources.version_label
 import jellystack_mobile.design.generated.resources.view_changelog
-import jellystack_mobile.design.generated.resources.whats_new_0143_audio
-import jellystack_mobile.design.generated.resources.whats_new_0143_playback_sessions
-import jellystack_mobile.design.generated.resources.whats_new_0143_search
-import jellystack_mobile.design.generated.resources.whats_new_0143_seerr_permissions
-import jellystack_mobile.design.generated.resources.whats_new_0143_server_addresses
+import jellystack_mobile.design.generated.resources.whats_new_0150_admin
+import jellystack_mobile.design.generated.resources.whats_new_0150_home_sections
+import jellystack_mobile.design.generated.resources.whats_new_0150_playback
+import jellystack_mobile.design.generated.resources.whats_new_0150_syncplay
 import jellystack_mobile.design.generated.resources.whats_new_dialog_title
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -355,11 +379,10 @@ private const val OFF_SUBTITLE_TRACK_ID = "__off_subtitle__"
 @Composable
 private fun DefaultWhatsNewHighlights(): List<String> =
     listOf(
-        stringResource(Res.string.whats_new_0143_seerr_permissions),
-        stringResource(Res.string.whats_new_0143_server_addresses),
-        stringResource(Res.string.whats_new_0143_audio),
-        stringResource(Res.string.whats_new_0143_playback_sessions),
-        stringResource(Res.string.whats_new_0143_search),
+        stringResource(Res.string.whats_new_0150_home_sections),
+        stringResource(Res.string.whats_new_0150_syncplay),
+        stringResource(Res.string.whats_new_0150_playback),
+        stringResource(Res.string.whats_new_0150_admin),
     )
 
 internal enum class ServerFormType {
@@ -413,6 +436,7 @@ internal data class ServerFormState(
     val jellyfinSignInMethod: JellyfinSignInMethod = JellyfinSignInMethod.QUICK_CONNECT,
     val useJellyfinLogin: Boolean = false,
     val automaticSeerrLogin: Boolean = false,
+    val requiresSeerrPassword: Boolean = false,
     val allowInsecureHttp: Boolean = false,
 ) {
     val serverAddressValidation: ServerAddressValidation
@@ -434,8 +458,7 @@ internal data class ServerFormState(
                             (
                                 jellyfinSignInMethod == JellyfinSignInMethod.QUICK_CONNECT ||
                                     (
-                                        username.isNotBlank() &&
-                                            (password.isNotBlank() || serverId != null)
+                                        username.isNotBlank()
                                     )
                             )
                     ServerFormType.SEERR ->
@@ -443,11 +466,12 @@ internal data class ServerFormState(
                             (
                                 automaticSeerrLogin ||
                                     (
-                                        password.isNotBlank() &&
-                                            (
-                                                (!useJellyfinLogin && email.isNotBlank()) ||
-                                                    (useJellyfinLogin && username.isNotBlank())
-                                            )
+                                        (
+                                            useJellyfinLogin &&
+                                                username.isNotBlank() &&
+                                                (!requiresSeerrPassword || password.isNotBlank())
+                                        ) ||
+                                            (!useJellyfinLogin && email.isNotBlank() && password.isNotBlank())
                                     )
                             )
                 }
@@ -479,6 +503,7 @@ private fun shellTitle(
     primary: PrimaryDestination,
     discover: DiscoverDestination,
     library: LibraryDestination,
+    admin: AdminDestination,
 ): String =
     when (primary) {
         PrimaryDestination.Home -> stringResource(Res.string.app_title)
@@ -500,6 +525,12 @@ private fun shellTitle(
                 stringResource(Res.string.requests_title)
             } else {
                 stringResource(Res.string.nav_discover)
+            }
+        PrimaryDestination.Admin ->
+            when (admin) {
+                AdminDestination.Overview -> stringResource(Res.string.nav_admin)
+                AdminDestination.Users -> stringResource(Res.string.admin_user_management)
+                AdminDestination.Activity -> stringResource(Res.string.admin_activity_log)
             }
     }
 
@@ -566,7 +597,14 @@ fun JellystackRoot(
     val themePreferences = remember(koin) { koin.get<ThemePreferenceRepository>() }
     val appSettingsRepository = remember(koin) { koin.get<AppSettingsRepository>() }
     val appSettings by appSettingsRepository.settings.collectAsState()
+    val homeSectionsRepository = remember(koin) { koin.get<HomeSectionsRepository>() }
+    val homeSectionsState by homeSectionsRepository.state.collectAsState()
     val environmentProvider = remember(koin) { koin.get<JellyfinEnvironmentProvider>() }
+    val sessionRepository = remember(koin) { koin.get<JellyfinSessionRepository>() }
+    val sessionState by sessionRepository.state.collectAsState()
+    val sessionCapabilities = (sessionState as? JellyfinSessionState.Ready)?.capabilities
+    val adminRepository = remember(koin) { koin.get<JellyfinAdminRepository>() }
+    val adminState by adminRepository.state.collectAsState()
     val biometricGate = remember(koin) { koin.get<BiometricAuthGate>() }
     val biometricLockState by biometricGate.lockState.collectAsState()
     val biometricEnabled by biometricGate.isEnabled.collectAsState()
@@ -637,9 +675,13 @@ fun JellystackRoot(
     @Suppress("UnusedVariable")
     val remoteProgress by resolvedCastProgressFlow.collectAsState(initial = 0L)
     var primaryDestination by rememberSaveable { mutableStateOf(PrimaryDestination.Home) }
+    var discoverSelectionReturnDestination by
+        rememberSaveable { mutableStateOf<PrimaryDestination?>(null) }
     var discoverUiState by remember { mutableStateOf(DiscoverUiState()) }
     val discoverDestination = discoverUiState.destination
     var libraryNavigationState by remember { mutableStateOf(LibraryNavigationState()) }
+    var libraryEntryOrigin by rememberSaveable { mutableStateOf(LibraryEntryOrigin.LibraryTab) }
+    var adminDestination by rememberSaveable { mutableStateOf(AdminDestination.Overview) }
     val detailRouteBackStack = remember { mutableStateListOf<DetailStackEntry>() }
     val detailUiBackStack = remember { mutableStateListOf<JellyfinDetailUiState>() }
     var detailRequestGeneration by remember { mutableStateOf(0L) }
@@ -689,6 +731,20 @@ fun JellystackRoot(
             if (destination != primaryDestination) {
                 clearDetailStacks()
             }
+            if (
+                primaryDestination == PrimaryDestination.Library &&
+                destination != PrimaryDestination.Library &&
+                libraryEntryOrigin == LibraryEntryOrigin.Home
+            ) {
+                libraryNavigationState = LibraryNavigationState()
+                libraryEntryOrigin = LibraryEntryOrigin.LibraryTab
+            }
+            if (destination == PrimaryDestination.Library && primaryDestination != PrimaryDestination.Library) {
+                libraryEntryOrigin = LibraryEntryOrigin.LibraryTab
+            }
+            if (destination == PrimaryDestination.Admin && primaryDestination != PrimaryDestination.Admin) {
+                adminDestination = AdminDestination.Overview
+            }
             primaryDestination = destination
         }
     }
@@ -734,6 +790,8 @@ fun JellystackRoot(
             when (notice) {
                 PlaybackNotice.AudioTrackSelectionFailed ->
                     showShellFeedback(getString(Res.string.audio_track_switch_failed))
+                PlaybackNotice.SubtitleTrackSelectionFailed ->
+                    showShellFeedback(getString(Res.string.subtitle_track_switch_failed))
             }
         }
     }
@@ -832,6 +890,31 @@ fun JellystackRoot(
     val activeSeerrServer by
         remember(serverRepository) { serverRepository.observeActiveServer(ServerType.JELLYSEERR) }
             .collectAsState(initial = serverRepository.activeServer(ServerType.JELLYSEERR))
+    LaunchedEffect(activeJellyfinServer?.id) {
+        sessionRepository.refresh()
+    }
+    LaunchedEffect(
+        activeJellyfinServer?.id,
+        appSettings.useServerHomeSections,
+        appSettings.appLanguage,
+    ) {
+        homeSectionsRepository.refresh(
+            enabledByUser = appSettings.useServerHomeSections,
+            language = appSettings.appLanguage.languageTag,
+        )
+    }
+    LaunchedEffect(sessionCapabilities?.isAdministrator) {
+        if (primaryDestination == PrimaryDestination.Admin && sessionCapabilities?.isAdministrator != true) {
+            adminDestination = AdminDestination.Overview
+            primaryDestination = PrimaryDestination.Home
+        }
+    }
+    LaunchedEffect(primaryDestination, sessionCapabilities?.isAdministrator, activeJellyfinServer?.id) {
+        if (primaryDestination == PrimaryDestination.Admin && sessionCapabilities?.isAdministrator == true) {
+            adminRepository.refresh()
+            jellyseerrCoordinator.refresh()
+        }
+    }
     val onboardingPreferences = remember { koin.get<OnboardingPreferenceRepository>() }
     val tutorialSteps = remember { TutorialSequence }
     val tutorialState = remember { onboardingPreferences.tutorialState() }
@@ -1604,7 +1687,15 @@ fun JellystackRoot(
     val onSelectLibrary: (String) -> Unit = { libraryId ->
         destinationDispatcher.dispatch { browseCoordinator.selectLibrary(libraryId) }
     }
-    val onRefreshHome: () -> Unit = { browseCoordinator.bootstrap(forceRefresh = true) }
+    val onRefreshHome: () -> Unit = {
+        browseCoordinator.bootstrap(forceRefresh = true)
+        coroutineScope.launch {
+            homeSectionsRepository.refresh(
+                enabledByUser = appSettings.useServerHomeSections,
+                language = appSettings.appLanguage.languageTag,
+            )
+        }
+    }
     val onRefreshLibrary: () -> Unit = {
         when (libraryNavigationState.destination.refreshTarget()) {
             LibraryRefreshTarget.CurrentLevel -> browseCoordinator.refreshSelectedLibrary()
@@ -1638,11 +1729,13 @@ fun JellystackRoot(
         if (activeShellModal?.modal == ShellModal.ServerEditor) activeShellModal = null
         serverFormState = ServerFormState()
         serverErrorMessage = null
+        showQuickConnectSeerrExplanation = false
     }
 
     val openAddServerDialog: (ServerFormType) -> Unit = { defaultType ->
         cancelJellyfinQuickConnect()
         serverErrorMessage = null
+        showQuickConnectSeerrExplanation = false
         serverFormState =
             when (defaultType) {
                 ServerFormType.JELLYFIN -> ServerFormState(type = ServerFormType.JELLYFIN)
@@ -1674,6 +1767,7 @@ fun JellystackRoot(
                     } else {
                         DetailOrigin.Discover
                     }
+                PrimaryDestination.Admin -> DetailOrigin.Home
             }
 
     fun loadDetail(
@@ -1997,14 +2091,23 @@ fun JellystackRoot(
                                                 useJellyfinLogin = true,
                                                 username = result.suggestedUsername.orEmpty(),
                                                 password = "",
+                                                requiresSeerrPassword =
+                                                    result.requirement ==
+                                                        SeerrCredentialsRequirement.QUICK_CONNECT_UNAVAILABLE,
                                             )
                                         if (tutorialSubmission) {
                                             tutorialServerFormState = updatedForm
-                                            showQuickConnectSeerrExplanation = true
                                         } else {
                                             serverFormState = updatedForm
                                         }
-                                        serverErrorMessage = result.reason
+                                        showQuickConnectSeerrExplanation =
+                                            result.requirement ==
+                                            SeerrCredentialsRequirement.QUICK_CONNECT_UNAVAILABLE
+                                        serverErrorMessage =
+                                            result.reason.takeUnless {
+                                                result.requirement ==
+                                                    SeerrCredentialsRequirement.QUICK_CONNECT_UNAVAILABLE
+                                            }
                                         return@launch
                                     }
                                 }
@@ -2160,7 +2263,28 @@ fun JellystackRoot(
         dismissActiveShellModal(activeShellModal)
     }
 
+    fun closeDiscoverSelectionRoute() {
+        discoverUiState = discoverUiState.reduce(DiscoverAction.CloseSelection)
+        primaryDestination =
+            destinationAfterClosingDiscoverSelection(
+                current = primaryDestination,
+                returnDestination = discoverSelectionReturnDestination,
+            )
+        discoverSelectionReturnDestination = null
+    }
+
     fun popLibraryLevel() {
+        if (
+            libraryBackTarget(
+                state = libraryNavigationState,
+                origin = libraryEntryOrigin,
+            ) == LibraryBackTarget.ReturnHome
+        ) {
+            libraryNavigationState = LibraryNavigationState()
+            libraryEntryOrigin = LibraryEntryOrigin.LibraryTab
+            primaryDestination = PrimaryDestination.Home
+            return
+        }
         when {
             libraryNavigationState.destination ==
                 LibraryDestination.Section(LibrarySection.Favorites) -> {
@@ -2184,6 +2308,7 @@ fun JellystackRoot(
                 primary = primaryDestination,
                 discover = discoverDestination,
                 libraryDepth = libraryNavigationState.depth,
+                adminDepth = if (adminDestination == AdminDestination.Overview) 0 else 1,
                 detailDepth = detailRouteBackStack.size,
                 settingsOpen = isSettingsOpen,
                 onboardingStep = activeTutorialStep.takeIf { isTutorialVisible },
@@ -2206,10 +2331,10 @@ fun JellystackRoot(
                 ShellBackAction.CloseOnboarding -> closeTutorialToSettings()
                 ShellBackAction.CloseSettings -> closeSettings()
                 ShellBackAction.PopDetail -> onBackFromDetail()
-                ShellBackAction.CloseDiscoverSelection ->
-                    discoverUiState = discoverUiState.reduce(DiscoverAction.CloseSelection)
+                ShellBackAction.CloseDiscoverSelection -> closeDiscoverSelectionRoute()
                 ShellBackAction.CloseRequests -> discoverUiState = discoverUiState.reduce(DiscoverAction.BackToFeed)
                 ShellBackAction.PopLibrary -> popLibraryLevel()
+                ShellBackAction.PopAdmin -> adminDestination = AdminDestination.Overview
                 ShellBackAction.SelectHome -> primaryDestination = PrimaryDestination.Home
                 ShellBackAction.ExitPlatform -> Unit
             }
@@ -2225,6 +2350,7 @@ fun JellystackRoot(
             .distinctUntilChanged()
             .collect { serverId ->
                 libraryNavigationState = LibraryNavigationState()
+                libraryEntryOrigin = LibraryEntryOrigin.LibraryTab
                 if (serverId != null) {
                     browseCoordinator.bootstrap(forceRefresh = true)
                 } else {
@@ -2411,12 +2537,18 @@ fun JellystackRoot(
                                 is DiscoverAction.RequestQueryChanged -> jellyseerrCoordinator.search(action.query)
                                 is DiscoverAction.RequestFilterChanged -> jellyseerrCoordinator.selectFilter(action.filter)
                                 DiscoverAction.RefreshRequestStatus -> jellyseerrCoordinator.refresh()
-                                is DiscoverAction.SelectRecommendation ->
+                                is DiscoverAction.SelectRecommendation -> {
+                                    discoverSelectionReturnDestination = null
                                     recommendationsCoordinator.loadDetail(action.item)
-                                is DiscoverAction.SelectSearchResult ->
+                                }
+                                is DiscoverAction.SelectSearchResult -> {
+                                    discoverSelectionReturnDestination = null
                                     recommendationsCoordinator.loadDetail(action.item)
-                                is DiscoverAction.SelectExistingRequest ->
+                                }
+                                is DiscoverAction.SelectExistingRequest -> {
+                                    discoverSelectionReturnDestination = null
                                     action.summary.toSearchItemOrNull()?.let(recommendationsCoordinator::loadDetail)
+                                }
                                 is DiscoverAction.OpenRelatedDetail ->
                                     recommendationsCoordinator.loadDetail(action.item)
                                 else -> Unit
@@ -2431,7 +2563,7 @@ fun JellystackRoot(
                     }
                     val closeDiscoverSelection: () -> Unit = {
                         destinationDispatcher.dispatch {
-                            discoverUiState = discoverUiState.reduce(DiscoverAction.CloseSelection)
+                            closeDiscoverSelectionRoute()
                         }
                     }
                     val closeDiscoverRequestConfiguration: () -> Unit = {
@@ -2447,16 +2579,63 @@ fun JellystackRoot(
                             closeDiscoverSelection()
                         }
                     }
+                    val onOpenHomeSeerrItem: (HomeSectionItem) -> Unit = { homeItem ->
+                        homeItem.seerrTmdbId?.let { tmdbId ->
+                            val item =
+                                JellyseerrSearchItem(
+                                    tmdbId = tmdbId,
+                                    mediaType = JellyseerrMediaType.from(homeItem.seerrMediaType),
+                                    title = homeItem.name,
+                                    overview = homeItem.overview,
+                                    releaseYear = homeItem.productionYear?.toString(),
+                                    posterPath = homeItem.imageUrl,
+                                    backdropPath = null,
+                                    mediaInfoId = null,
+                                    tvdbId = null,
+                                    availability = JellyseerrMediaAvailability(standard = null, `4k` = null),
+                                    requests = emptyList(),
+                                )
+                            destinationDispatcher.dispatch {
+                                clearDetailStacks()
+                                discoverSelectionReturnDestination = PrimaryDestination.Home
+                                primaryDestination = PrimaryDestination.Discover
+                                discoverUiState = discoverUiState.reduce(DiscoverAction.SelectSearchResult(item))
+                                recommendationsCoordinator.loadDetail(item)
+                            }
+                        }
+                    }
+                    val onOpenHomeLibrary: (JellyfinItem) -> Unit = { item ->
+                        val library = browseState.libraries.firstOrNull { library -> library.id == item.id }
+                        val destination =
+                            when {
+                                library?.collectionType.equals("movies", ignoreCase = true) ->
+                                    LibraryDestination.Section(LibrarySection.Movies)
+                                library?.collectionType.equals("tvshows", ignoreCase = true) ||
+                                    library?.collectionType.equals("series", ignoreCase = true) ->
+                                    LibraryDestination.Section(LibrarySection.Series)
+                                else -> LibraryDestination.Library(item.id, item.name)
+                            }
+                        destinationDispatcher.dispatch {
+                            clearDetailStacks()
+                            primaryDestination = PrimaryDestination.Library
+                            browseCoordinator.selectLibrary(item.id)
+                            libraryEntryOrigin = LibraryEntryOrigin.Home
+                            libraryNavigationState = homeLibraryNavigationState(destination)
+                        }
+                    }
 
                     val homeContent: @Composable (PaddingValues) -> Unit = { measuredPadding ->
                         HomeContent(
                             hasServers = hasAnyServer,
                             browseState = browseState,
+                            homeSectionsState = homeSectionsState,
                             onSelectLibrary = onSelectLibrary,
                             onRefreshLibraries = onRefreshHome,
                             onLoadMore = onLoadMore,
                             onOpenItemDetail = onOpenItemDetail,
                             onPlayItem = onPlayItem,
+                            onOpenSeerrItem = onOpenHomeSeerrItem,
+                            onOpenHomeLibrary = onOpenHomeLibrary,
                             onConnectJellyfin = openJellyfinSettings,
                             onConnectJellyseerr = openJellyseerrSettings,
                             learnMoreUrl = learnMoreUrl,
@@ -2648,6 +2827,63 @@ fun JellystackRoot(
                             PrimaryDestination.Home -> homeContent
                             PrimaryDestination.Library -> libraryContent
                             PrimaryDestination.Discover -> discoverContent
+                            PrimaryDestination.Admin -> { measuredPadding ->
+                                AdminScreen(
+                                    state = adminState,
+                                    destination = adminDestination,
+                                    pendingRequests = readyRequestsState?.requests.orEmpty(),
+                                    canManageRequests = readyRequestsState?.capabilities?.canManageRequests == true,
+                                    currentUserId = sessionCapabilities?.userId,
+                                    onRefresh = {
+                                        coroutineScope.launch {
+                                            adminRepository.refresh()
+                                            jellyseerrCoordinator.refresh()
+                                        }
+                                    },
+                                    onOpenUsers = { adminDestination = AdminDestination.Users },
+                                    onOpenActivity = { adminDestination = AdminDestination.Activity },
+                                    onViewPendingRequests = {
+                                        clearDetailStacks()
+                                        primaryDestination = PrimaryDestination.Discover
+                                        discoverUiState =
+                                            discoverUiState
+                                                .reduce(DiscoverAction.OpenRequests)
+                                                .reduce(DiscoverAction.RequestFilterChanged(JellyseerrRequestFilter.PENDING))
+                                        jellyseerrCoordinator.selectFilter(JellyseerrRequestFilter.PENDING)
+                                    },
+                                    onLibraryScan = { coroutineScope.launch { adminRepository.startLibraryScan() } },
+                                    onRestart = { coroutineScope.launch { adminRepository.restartServer() } },
+                                    onCreateUser = { name, password ->
+                                        coroutineScope.launch { adminRepository.createUser(name, password) }
+                                    },
+                                    onSetUserDisabled = { userId, disabled ->
+                                        coroutineScope.launch { adminRepository.setUserDisabled(userId, disabled) }
+                                    },
+                                    onResetPassword = { userId, password ->
+                                        coroutineScope.launch { adminRepository.resetPassword(userId, password) }
+                                    },
+                                    onDeleteUser = { userId ->
+                                        coroutineScope.launch { adminRepository.deleteUser(userId) }
+                                    },
+                                    onApproveRequest = jellyseerrCoordinator::approveRequest,
+                                    onDeclineRequest = { request ->
+                                        coroutineScope.launch {
+                                            val environment = jellyseerrEnvironmentProvider.current()
+                                            val result =
+                                                environment?.let {
+                                                    jellyseerrRepository.updateRequestStatus(it, request.id, "decline")
+                                                }
+                                            if (result?.isSuccess == true) {
+                                                showShellFeedback(getString(Res.string.admin_request_declined))
+                                                jellyseerrCoordinator.refresh()
+                                            } else {
+                                                showShellFeedback(getString(Res.string.admin_request_action_failed))
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxSize().padding(measuredPadding),
+                                )
+                            }
                         }
                     val detailPane: (@Composable (PaddingValues) -> Unit)? =
                         if (detailState == JellyfinDetailUiState.Hidden) {
@@ -2892,12 +3128,14 @@ fun JellystackRoot(
                                             primaryDestination,
                                             discoverDestination,
                                             libraryNavigationState.destination,
+                                            adminDestination,
                                         ),
                                     showNavigation =
                                         !isSettingsOpen &&
                                             !isTutorialVisible &&
                                             !isAppLockActive &&
                                             !compactImmersiveDetail,
+                                    showAdminDestination = sessionCapabilities?.isAdministrator == true,
                                     feedback = activeShellFeedback,
                                 ),
                             onAction = ::handleShellAction,
@@ -2910,6 +3148,7 @@ fun JellystackRoot(
                                                     primaryDestination,
                                                     discoverDestination,
                                                     libraryNavigationState.destination,
+                                                    adminDestination,
                                                 ),
                                             showBack =
                                                 primaryDestination != PrimaryDestination.Home ||
@@ -3025,6 +3264,8 @@ fun JellystackRoot(
                                         appSettingsRepository.setSubtitleBackground(action.background)
                                     is SettingsAction.SetSpotlightAutoCycle ->
                                         appSettingsRepository.setSpotlightAutoCycle(action.enabled)
+                                    is SettingsAction.SetUseServerHomeSections ->
+                                        appSettingsRepository.setUseServerHomeSections(action.enabled)
                                     is SettingsAction.SetSpotlightIntervalSeconds ->
                                         appSettingsRepository.setSpotlightIntervalSeconds(action.seconds)
                                     is SettingsAction.SetDownloadsWifiOnly ->
@@ -3137,6 +3378,11 @@ fun JellystackRoot(
                                     isSaving = isSavingServer,
                                     quickConnectState = jellyfinQuickConnectState,
                                     errorMessage = serverErrorMessage,
+                                    seerrCompatibilityNotice =
+                                        quickConnectSeerrManualMessage.takeIf {
+                                            showQuickConnectSeerrExplanation &&
+                                                serverFormState.type == ServerFormType.SEERR
+                                        },
                                     availableJellyfinServers =
                                         managedServers.filter { it.type == ServerType.JELLYFIN },
                                     onValueChange = { updated ->
@@ -3383,6 +3629,7 @@ private fun LibraryContent(
 internal fun HomeContent(
     hasServers: Boolean,
     browseState: JellyfinHomeState,
+    homeSectionsState: HomeSectionsState = HomeSectionsState.Unavailable,
     selectedSpotlightId: String?,
     onSelectedSpotlightIdChange: (String?) -> Unit,
     onSelectLibrary: (String) -> Unit,
@@ -3390,6 +3637,8 @@ internal fun HomeContent(
     onLoadMore: () -> Unit,
     onOpenItemDetail: (JellyfinItem) -> Unit,
     onPlayItem: (JellyfinItem) -> Unit,
+    onOpenSeerrItem: (HomeSectionItem) -> Unit = {},
+    onOpenHomeLibrary: (JellyfinItem) -> Unit = onOpenItemDetail,
     onConnectJellyfin: () -> Unit,
     onConnectJellyseerr: () -> Unit,
     learnMoreUrl: String,
@@ -3400,7 +3649,34 @@ internal fun HomeContent(
     spotlightAutoAdvanceEnabled: Boolean = true,
     spotlightAutoAdvanceIntervalMillis: Long = 6_000L,
 ) {
-    if (hasServers) {
+    val configuredHome = homeSectionsState as? HomeSectionsState.Ready
+    if (shouldShowHomeSectionsSkeleton(hasServers, homeSectionsState)) {
+        HomeSkeleton(
+            contentPadding =
+                PaddingValues(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = contentPadding.calculateTopPadding() + 12.dp,
+                    bottom = contentPadding.calculateBottomPadding() + 24.dp,
+                ),
+        )
+    } else if (hasServers && configuredHome != null) {
+        HomeSectionsScreen(
+            state = configuredHome,
+            browseState = browseState,
+            selectedSpotlightId = selectedSpotlightId,
+            onSelectedSpotlightIdChange = onSelectedSpotlightIdChange,
+            onOpenSpotlightItem = onOpenItemDetail,
+            onPlaySpotlightItem = onPlayItem,
+            spotlightAutoAdvanceEnabled = spotlightAutoAdvanceEnabled,
+            spotlightAutoAdvanceIntervalMillis = spotlightAutoAdvanceIntervalMillis,
+            contentPadding = contentPadding,
+            onOpenJellyfinItem = onOpenItemDetail,
+            onOpenJellyfinLibrary = onOpenHomeLibrary,
+            onOpenSeerrItem = onOpenSeerrItem,
+            modifier = modifier,
+        )
+    } else if (hasServers) {
         LibraryContent(
             browseState = browseState,
             selectedSpotlightId = selectedSpotlightId,
@@ -3429,6 +3705,11 @@ internal fun HomeContent(
         )
     }
 }
+
+internal fun shouldShowHomeSectionsSkeleton(
+    hasServers: Boolean,
+    homeSectionsState: HomeSectionsState,
+): Boolean = hasServers && homeSectionsState is HomeSectionsState.Loading
 
 @Suppress("FunctionName")
 @Composable
@@ -3893,6 +4174,7 @@ private fun AddServerDialog(
     isSaving: Boolean,
     quickConnectState: JellyfinQuickConnectState?,
     errorMessage: String?,
+    seerrCompatibilityNotice: String?,
     availableJellyfinServers: List<ManagedServer>,
     onValueChange: (ServerFormState) -> Unit,
     onClearError: () -> Unit,
@@ -4058,7 +4340,7 @@ private fun AddServerDialog(
                                     onValueChange(state.copy(password = it))
                                     onClearError()
                                 },
-                                label = { Text(stringResource(Res.string.password)) },
+                                label = { Text(stringResource(Res.string.password_optional)) },
                                 singleLine = true,
                                 enabled = !isSaving,
                                 visualTransformation =
@@ -4117,41 +4399,24 @@ private fun AddServerDialog(
                                 Text(stringResource(Res.string.use_different_account))
                             }
                         } else {
-                            Text(stringResource(Res.string.sign_in_with), style = MaterialTheme.typography.labelLarge)
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                FilterChip(
-                                    selected = !state.useJellyfinLogin,
-                                    onClick = {
-                                        if (!isSaving) {
-                                            onValueChange(
-                                                state.copy(
-                                                    useJellyfinLogin = false,
-                                                    username = "",
-                                                ),
-                                            )
-                                            onClearError()
-                                        }
-                                    },
-                                    enabled = !isSaving,
-                                    label = { Text(stringResource(Res.string.seerr_account)) },
-                                )
-                                FilterChip(
-                                    selected = state.useJellyfinLogin,
-                                    onClick = {
-                                        if (!isSaving) {
-                                            onValueChange(
-                                                state.copy(
-                                                    useJellyfinLogin = true,
-                                                    email = "",
-                                                ),
-                                            )
-                                            onClearError()
-                                        }
-                                    },
-                                    enabled = !isSaving,
-                                    label = { Text(stringResource(Res.string.jellyfin_account)) },
-                                )
+                            seerrCompatibilityNotice?.let { notice ->
+                                SeerrCompatibilityNotice(text = notice)
                             }
+                            Text(stringResource(Res.string.sign_in_with), style = MaterialTheme.typography.labelLarge)
+                            SeerrSignInMethodSelector(
+                                useJellyfinLogin = state.useJellyfinLogin,
+                                onUseJellyfinLoginChange = { useJellyfinLogin ->
+                                    onValueChange(
+                                        state.copy(
+                                            useJellyfinLogin = useJellyfinLogin,
+                                            username = if (useJellyfinLogin) state.username else "",
+                                            email = if (useJellyfinLogin) "" else state.email,
+                                        ),
+                                    )
+                                    onClearError()
+                                },
+                                enabled = !isSaving,
+                            )
                             if (state.useJellyfinLogin) {
                                 OutlinedTextField(
                                     value = state.username,
@@ -4185,7 +4450,21 @@ private fun AddServerDialog(
                                     onValueChange(state.copy(password = it))
                                     onClearError()
                                 },
-                                label = { Text(stringResource(Res.string.password)) },
+                                label = {
+                                    Text(
+                                        stringResource(
+                                            if (state.useJellyfinLogin) {
+                                                if (state.requiresSeerrPassword) {
+                                                    Res.string.password
+                                                } else {
+                                                    Res.string.password_optional
+                                                }
+                                            } else {
+                                                Res.string.password
+                                            },
+                                        ),
+                                    )
+                                },
                                 singleLine = true,
                                 enabled = !isSaving,
                                 visualTransformation =

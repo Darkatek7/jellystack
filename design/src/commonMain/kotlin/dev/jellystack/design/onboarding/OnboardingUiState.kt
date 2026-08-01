@@ -94,7 +94,6 @@ internal fun validateOnboarding(
                 }
                 if (form.jellyfinSignInMethod == JellyfinSignInMethod.PASSWORD) {
                     requireText(OnboardingField.Username, form.username)
-                    if (form.serverId == null) requireText(OnboardingField.Password, form.password)
                 }
             }
             TutorialStep.ConnectJellyseerr -> {
@@ -106,10 +105,13 @@ internal fun validateOnboarding(
                 if (manualSeerrCredentialsRequired) {
                     if (form.useJellyfinLogin) {
                         requireText(OnboardingField.Username, form.username)
+                        if (form.requiresSeerrPassword) {
+                            requireText(OnboardingField.Password, form.password)
+                        }
                     } else {
                         requireText(OnboardingField.Email, form.email)
+                        requireText(OnboardingField.Password, form.password)
                     }
-                    requireText(OnboardingField.Password, form.password)
                 }
             }
         }

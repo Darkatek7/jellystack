@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Movie
@@ -47,6 +48,7 @@ import dev.jellystack.design.navigation.PrimaryDestination
 import dev.jellystack.design.theme.JellystackLayoutTokens
 import dev.jellystack.players.cast.CastConnectionState
 import jellystack_mobile.design.generated.resources.Res
+import jellystack_mobile.design.generated.resources.nav_admin
 import jellystack_mobile.design.generated.resources.nav_discover
 import jellystack_mobile.design.generated.resources.nav_home
 import jellystack_mobile.design.generated.resources.nav_library
@@ -133,6 +135,7 @@ internal fun JellystackTopBar(
 internal fun JellystackBottomDock(
     selected: PrimaryDestination,
     showLabels: Boolean,
+    destinations: List<PrimaryDestination> = PrimaryDestination.entries.filterNot { it == PrimaryDestination.Admin },
     onSelect: (PrimaryDestination) -> Unit,
 ) {
     NavigationBar(
@@ -145,7 +148,7 @@ internal fun JellystackBottomDock(
                 ).clip(RoundedCornerShape(JellystackLayoutTokens.dockRadius))
                 .testTag(ShellTestTags.BOTTOM_DOCK),
     ) {
-        PrimaryDestination.entries.forEach { destination ->
+        destinations.forEach { destination ->
             val label = destinationLabel(destination)
             NavigationBarItem(
                 selected = destination == selected,
@@ -172,6 +175,7 @@ internal fun JellystackBottomDock(
 @Composable
 internal fun JellystackNavigationRail(
     selected: PrimaryDestination,
+    destinations: List<PrimaryDestination> = PrimaryDestination.entries.filterNot { it == PrimaryDestination.Admin },
     onSelect: (PrimaryDestination) -> Unit,
 ) {
     NavigationRail(
@@ -181,7 +185,7 @@ internal fun JellystackNavigationRail(
                 .width(JellystackLayoutTokens.railWidth)
                 .testTag(ShellTestTags.NAVIGATION_RAIL),
     ) {
-        PrimaryDestination.entries.forEach { destination ->
+        destinations.forEach { destination ->
             val label = destinationLabel(destination)
             NavigationRailItem(
                 selected = destination == selected,
@@ -205,6 +209,7 @@ private fun destinationLabel(destination: PrimaryDestination): String =
             PrimaryDestination.Home -> Res.string.nav_home
             PrimaryDestination.Library -> Res.string.nav_library
             PrimaryDestination.Discover -> Res.string.nav_discover
+            PrimaryDestination.Admin -> Res.string.nav_admin
         },
     )
 
@@ -222,6 +227,7 @@ private val PrimaryDestination.icon: ImageVector
             PrimaryDestination.Home -> Icons.Filled.Home
             PrimaryDestination.Library -> Icons.Filled.Folder
             PrimaryDestination.Discover -> Icons.Filled.Movie
+            PrimaryDestination.Admin -> Icons.Filled.AdminPanelSettings
         }
 
 private val PrimaryDestination.testTag: String
@@ -230,4 +236,5 @@ private val PrimaryDestination.testTag: String
             PrimaryDestination.Home -> TestTags.PRIMARY_HOME
             PrimaryDestination.Library -> TestTags.PRIMARY_LIBRARY
             PrimaryDestination.Discover -> TestTags.PRIMARY_DISCOVER
+            PrimaryDestination.Admin -> TestTags.PRIMARY_ADMIN
         }

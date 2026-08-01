@@ -52,6 +52,11 @@ import androidx.test.platform.app.InstrumentationRegistry
 import dev.jellystack.core.downloads.OfflineMedia
 import dev.jellystack.core.downloads.OfflineMediaKind
 import dev.jellystack.core.downloads.OfflineMediaMetadata
+import dev.jellystack.core.jellyfin.HomeSection
+import dev.jellystack.core.jellyfin.HomeSectionAction
+import dev.jellystack.core.jellyfin.HomeSectionItem
+import dev.jellystack.core.jellyfin.HomeSectionViewMode
+import dev.jellystack.core.jellyfin.HomeSectionsState
 import dev.jellystack.core.jellyfin.JellyfinHomeState
 import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.JellyfinItemDetail
@@ -489,6 +494,106 @@ class LibraryAndMediaUiTest {
             composeRule.onNodeWithText("First movie").assertExists()
         } finally {
             composeRule.mainClock.autoAdvance = true
+        }
+    }
+
+    @Test
+    fun configuredHomeSectionsKeepSpotlightAtTop() {
+        composeRule.setContent {
+            var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
+            JellystackTheme(isDarkTheme = false) {
+                HomeContent(
+                    hasServers = true,
+                    browseState = spotlightHomeState(),
+                    homeSectionsState =
+                        HomeSectionsState.Ready(
+                            sections = emptyList(),
+                            imageBaseUrl = "https://example.com",
+                            imageAccessToken = "token",
+                        ),
+                    selectedSpotlightId = selectedId,
+                    onSelectedSpotlightIdChange = { selectedId = it },
+                    onSelectLibrary = {},
+                    onRefreshLibraries = {},
+                    onLoadMore = {},
+                    onOpenItemDetail = {},
+                    onPlayItem = {},
+                    onConnectJellyfin = {},
+                    onConnectJellyseerr = {},
+                    learnMoreUrl = "https://example.com",
+                    downloadStatuses = emptyMap(),
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag(SpotlightTestTags.PAGER).assertIsDisplayed()
+    }
+
+    @Test
+    fun configuredHomeLibraryCardUsesTheLibraryRoute() {
+        val libraryItem =
+            movieItem("lib-movies", "Movies", Clock.System.now().toString()).copy(
+                type = "CollectionFolder",
+                mediaType = null,
+                libraryId = null,
+                parentId = null,
+            )
+        var openedLibraryId: String? = null
+        var openedDetailId: String? = null
+
+        composeRule.setContent {
+            JellystackTheme(isDarkTheme = false) {
+                HomeContent(
+                    hasServers = true,
+                    browseState = spotlightHomeState(),
+                    homeSectionsState =
+                        HomeSectionsState.Ready(
+                            sections =
+                                listOf(
+                                    HomeSection(
+                                        id = "my-media",
+                                        title = "My Media",
+                                        viewMode = HomeSectionViewMode.LANDSCAPE,
+                                        displayTitle = true,
+                                        showDetailsMenu = false,
+                                        items =
+                                            listOf(
+                                                HomeSectionItem(
+                                                    id = libraryItem.id,
+                                                    name = libraryItem.name,
+                                                    overview = null,
+                                                    productionYear = null,
+                                                    communityRating = null,
+                                                    imageUrl = null,
+                                                    jellyfinItem = libraryItem,
+                                                    action = HomeSectionAction.JELLYFIN,
+                                                ),
+                                            ),
+                                    ),
+                                ),
+                            imageBaseUrl = "https://example.com",
+                            imageAccessToken = "token",
+                        ),
+                    selectedSpotlightId = null,
+                    onSelectedSpotlightIdChange = {},
+                    onSelectLibrary = {},
+                    onRefreshLibraries = {},
+                    onLoadMore = {},
+                    onOpenItemDetail = { openedDetailId = it.id },
+                    onOpenHomeLibrary = { openedLibraryId = it.id },
+                    onPlayItem = {},
+                    onConnectJellyfin = {},
+                    onConnectJellyseerr = {},
+                    learnMoreUrl = "https://example.com",
+                    downloadStatuses = emptyMap(),
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Movies").performClick()
+        composeRule.runOnIdle {
+            assertEquals("lib-movies", openedLibraryId)
+            assertEquals(null, openedDetailId)
         }
     }
 
@@ -2247,6 +2352,7 @@ private fun rootOwnedSpotlightHarness() {
                 }
             PrimaryDestination.Library,
             PrimaryDestination.Discover,
+            PrimaryDestination.Admin,
             ->
                 Column {
                     Text("Library surface")

@@ -79,6 +79,9 @@ import dev.jellystack.core.downloads.SettingsOfflineDownloadQueueStore
 import dev.jellystack.core.downloads.SettingsOfflineMediaStore
 import dev.jellystack.core.jellyfin.JellyfinBrowseRepository
 import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
+import dev.jellystack.core.jellyfin.JellyfinItem
+import dev.jellystack.core.jellyfin.JellyfinSessionRepository
+import dev.jellystack.core.jellyfin.JellyfinSessionState
 import dev.jellystack.core.playback.JellyfinOfflineProgressSyncer
 import dev.jellystack.core.playback.JellyfinStreamingProgressReporter
 import dev.jellystack.core.playback.SettingsOfflinePlaybackEventStore
@@ -105,6 +108,7 @@ import dev.jellystack.players.SettingsPlaybackProgressStore
 import dev.jellystack.players.SettingsSubtitlePreferenceStore
 import dev.jellystack.players.cast.CastConnectionState
 import dev.jellystack.players.cast.GoogleCastSessionManager
+import dev.jellystack.players.syncplay.SyncPlayCoordinator
 import io.github.aakira.napier.Napier
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -481,7 +485,7 @@ class MainActivity : AppCompatActivity() {
 }
 
 @OptIn(UnstableApi::class)
-@Suppress("FunctionName", "LongParameterList")
+@Suppress("CyclomaticComplexMethod", "FunctionName", "LongParameterList")
 @Composable
 private fun JellystackApp(
     appContext: Context,
@@ -507,6 +511,62 @@ private fun JellystackApp(
     val playbackState by environment.controller.state.collectAsStateWithLifecycle()
     val browseRepository = remember { JellystackDI.koin.get<JellyfinBrowseRepository>() }
     val environmentProvider = remember { JellystackDI.koin.get<JellyfinEnvironmentProvider>() }
+    val sessionRepository = remember { JellystackDI.koin.get<JellyfinSessionRepository>() }
+    val sessionState by sessionRepository.state.collectAsStateWithLifecycle()
+    val syncPlayCoordinator =
+        remember(environment.controller, environmentProvider, browseRepository) {
+            SyncPlayCoordinator(
+                environmentProvider = environmentProvider,
+                playbackController = environment.controller,
+                playItem = playItem@{ itemId, startPositionMs ->
+                    val detail = browseRepository.getItemDetail(itemId) ?: return@playItem
+                    val item =
+                        browseRepository.cachedItem(itemId)
+                            ?: JellyfinItem(
+                                id = itemId,
+                                libraryId = null,
+                                name = detail.name,
+                                sortName = detail.name,
+                                overview = detail.overview,
+                                type = "Video",
+                                mediaType = "Video",
+                                locationType = null,
+                                taglines = detail.taglines,
+                                parentId = null,
+                                primaryImageTag = detail.primaryImageTag,
+                                thumbImageTag = null,
+                                backdropImageTag = detail.backdropImageTags.firstOrNull(),
+                                seriesId = null,
+                                seriesPrimaryImageTag = null,
+                                seriesThumbImageTag = null,
+                                seriesBackdropImageTag = null,
+                                parentLogoImageTag = null,
+                                runTimeTicks = detail.runTimeTicks,
+                                positionTicks = startPositionMs * 10_000L,
+                                playedPercentage = null,
+                                productionYear = detail.productionYear,
+                                premiereDate = detail.premiereDate,
+                                communityRating = detail.communityRating,
+                                officialRating = detail.officialRating,
+                                indexNumber = null,
+                                parentIndexNumber = null,
+                                seriesName = null,
+                                seasonId = null,
+                                episodeTitle = null,
+                                lastPlayed = null,
+                            )
+                    val playbackEnvironment = environmentProvider.current() ?: return@playItem
+                    environment.controller.play(
+                        PlaybackRequest.from(item, detail, startPolicy = PlaybackStartPolicy.RESUME),
+                        playbackEnvironment,
+                    )
+                    if (startPositionMs > 0L) environment.controller.seekTo(startPositionMs)
+                },
+            )
+        }
+    DisposableEffect(syncPlayCoordinator) {
+        onDispose(syncPlayCoordinator::close)
+    }
     val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateFlow
         .collectAsStateWithLifecycle()
     val playbackScope = rememberCoroutineScope()
@@ -624,6 +684,11 @@ private fun JellystackApp(
                 seekForwardSeconds = appSettings.seekForwardSeconds,
                 subtitleTextSize = appSettings.subtitleTextSize,
                 subtitleBackground = appSettings.subtitleBackground,
+                syncPlayCoordinator = syncPlayCoordinator,
+                canCreateSyncPlay =
+                    (sessionState as? JellyfinSessionState.Ready)?.capabilities?.canCreateSyncPlay == true,
+                canJoinSyncPlay =
+                    (sessionState as? JellyfinSessionState.Ready)?.capabilities?.canJoinSyncPlay == true,
             )
         }
         (autoplayState as? AndroidAutoplayState.Countdown)?.let { countdown ->

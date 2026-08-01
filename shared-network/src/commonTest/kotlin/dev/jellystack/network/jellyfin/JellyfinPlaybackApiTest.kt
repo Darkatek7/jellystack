@@ -48,6 +48,7 @@ class JellyfinPlaybackApiTest {
                         ),
                     mediaSourceId = "source-1",
                     audioStreamIndex = 2,
+                    subtitleStreamIndex = 5,
                     startTimeTicks = 900_000,
                     maxStreamingBitrate = 420_000,
                     enableDirectPlay = false,
@@ -61,6 +62,7 @@ class JellyfinPlaybackApiTest {
 
             assertTrue(body.contains("\"MaxStreamingBitrate\":420000"))
             assertTrue(body.contains("\"AllowVideoStreamCopy\":false"))
+            assertTrue(body.contains("\"SubtitleStreamIndex\":5"))
             assertEquals("play-1", response.playSessionId)
             assertEquals(
                 "hevc",

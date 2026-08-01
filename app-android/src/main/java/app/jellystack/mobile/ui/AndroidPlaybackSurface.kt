@@ -82,6 +82,7 @@ import dev.jellystack.players.PlaybackMetadata
 import dev.jellystack.players.PlaybackState
 import dev.jellystack.players.cast.CastConnectionState
 import dev.jellystack.players.cast.CastSessionManager
+import dev.jellystack.players.syncplay.SyncPlayCoordinator
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -99,6 +100,9 @@ fun AndroidPlaybackSurface(
     seekForwardSeconds: Int = 30,
     subtitleTextSize: SubtitleTextSize = SubtitleTextSize.SYSTEM,
     subtitleBackground: SubtitleBackground = SubtitleBackground.SYSTEM,
+    syncPlayCoordinator: SyncPlayCoordinator? = null,
+    canCreateSyncPlay: Boolean = false,
+    canJoinSyncPlay: Boolean = false,
 ) {
     val playbackState by controller.state.collectAsState()
     SideEffect {
@@ -109,6 +113,15 @@ fun AndroidPlaybackSurface(
     val castState by castSessionManager.connectionState.collectAsState(initial = CastConnectionState.Idle)
     var controlsVisible by rememberSaveable { mutableStateOf(true) }
     var optionsVisible by rememberSaveable { mutableStateOf(false) }
+    var syncPlayVisible by rememberSaveable { mutableStateOf(false) }
+    val emptySyncPlayState =
+        remember {
+            kotlinx.coroutines.flow.MutableStateFlow(
+                dev.jellystack.players.syncplay
+                    .SyncPlayUiState(),
+            )
+        }
+    val syncPlayState by (syncPlayCoordinator?.state ?: emptySyncPlayState).collectAsState()
     var interactionToken by remember { mutableIntStateOf(0) }
     val controlFocusStates = remember { mutableStateMapOf<String, Boolean>() }
     val hasControlFocus = controlFocusStates.values.any { it }
@@ -159,7 +172,7 @@ fun AndroidPlaybackSurface(
                     phase = it.phase,
                     isPaused = it.isPaused,
                     hasControlFocus = hasControlFocus,
-                    modalOpen = optionsVisible,
+                    modalOpen = optionsVisible || syncPlayVisible,
                     touchActive = touchActive,
                     touchExplorationEnabled = touchExplorationEnabled,
                 ),
@@ -175,7 +188,11 @@ fun AndroidPlaybackSurface(
     BackHandler {
         when {
             optionsVisible -> optionsVisible = false
-            else -> controller.stop()
+            syncPlayVisible -> syncPlayVisible = false
+            else -> {
+                if (syncPlayState.currentGroup != null) syncPlayCoordinator?.leaveGroup()
+                controller.stop()
+            }
         }
     }
 
@@ -215,6 +232,10 @@ fun AndroidPlaybackSurface(
                             controlsVisible = true
                             optionsVisible = true
                         },
+                        syncPlayCoordinator = syncPlayCoordinator,
+                        syncPlayActive = syncPlayState.currentGroup != null,
+                        canUseSyncPlay = canJoinSyncPlay,
+                        onShowSyncPlay = { syncPlayVisible = true },
                         seekBackSeconds = seekBackSeconds,
                         seekForwardSeconds = seekForwardSeconds,
                     )
@@ -228,6 +249,16 @@ fun AndroidPlaybackSurface(
                 controller = controller,
                 orientation = orientation,
                 onDismiss = { optionsVisible = false },
+                syncPlayActive = syncPlayState.currentGroup != null,
+            )
+        }
+        if (syncPlayCoordinator != null && active != null && syncPlayVisible) {
+            SyncPlaySheet(
+                state = syncPlayState,
+                coordinator = syncPlayCoordinator,
+                canCreate = canCreateSyncPlay,
+                canJoin = canJoinSyncPlay,
+                onDismiss = { syncPlayVisible = false },
             )
         }
     }
@@ -313,6 +344,10 @@ private fun ActivePlayer(
     onControlFocusChanged: (String, Boolean) -> Unit,
     onTouchActiveChanged: (Boolean) -> Unit,
     onShowOptions: () -> Unit,
+    syncPlayCoordinator: SyncPlayCoordinator?,
+    syncPlayActive: Boolean,
+    canUseSyncPlay: Boolean,
+    onShowSyncPlay: () -> Unit,
     seekBackSeconds: Int,
     seekForwardSeconds: Int,
 ) {
@@ -373,6 +408,62 @@ private fun ActivePlayer(
                     onControlFocusChanged = onControlFocusChanged,
                     seekBackSeconds = seekBackSeconds,
                     seekForwardSeconds = seekForwardSeconds,
+                    syncPlayCoordinator = syncPlayCoordinator,
+                    syncPlayActive = syncPlayActive,
+                    canUseSyncPlay = canUseSyncPlay && !remote,
+                    onShowSyncPlay = onShowSyncPlay,
+                )
+                if (state.statsForNerdsEnabled) {
+                    PlaybackStatsPanel(state)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BoxScope.PlaybackStatsPanel(state: PlaybackState.Active) {
+    val stats = state.runtimeStats
+    val modeLabel = stringResource(R.string.player_stats_mode)
+    val videoLabel = stringResource(R.string.player_stats_video)
+    val audioLabel = stringResource(R.string.player_stats_audio)
+    val bufferLabel = stringResource(R.string.player_stats_buffer)
+    val droppedLabel = stringResource(R.string.player_stats_dropped)
+    val entries =
+        buildList {
+            stats.playbackMode?.let { add(modeLabel to it.name) }
+            val resolution =
+                if (stats.width != null && stats.height != null) "${stats.width}x${stats.height}" else null
+            listOfNotNull(resolution, stats.videoCodec, stats.hdr, stats.frameRate?.let { "${it.toInt()} fps" })
+                .takeIf { it.isNotEmpty() }
+                ?.let { add(videoLabel to it.joinToString(" · ")) }
+            stats.audioCodec?.let { add(audioLabel to it) }
+            stats.bufferedDurationMs?.let {
+                add(bufferLabel to "${it / 1_000}s")
+            }
+            stats.droppedFrames?.let {
+                add(droppedLabel to it.toString())
+            }
+        }
+    if (entries.isEmpty()) return
+    Surface(
+        modifier =
+            Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 72.dp, end = 16.dp)
+                .testTag(AndroidPlaybackTags.STATS_PANEL),
+        color = Color.Black.copy(alpha = 0.78f),
+        shape = MaterialTheme.shapes.medium,
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            entries.forEach { (label, value) ->
+                Text(
+                    text = "$label: $value",
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelMedium,
                 )
             }
         }

@@ -18,6 +18,7 @@ data class ResolvedPlaybackSource(
 
 data class PlaybackSourceOptions(
     val audioStreamIndex: Int? = null,
+    val subtitleStreamIndex: Int? = null,
     val playSessionId: String? = null,
 )
 

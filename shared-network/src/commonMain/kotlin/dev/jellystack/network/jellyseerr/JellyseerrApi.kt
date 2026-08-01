@@ -497,8 +497,12 @@ class JellyseerrApi internal constructor(
         return body()
     }
 
-    private suspend fun HttpResponse.toAuthResponse(): JellyseerrAuthResponse =
-        JellyseerrAuthResponse(
+    private suspend fun HttpResponse.toAuthResponse(): JellyseerrAuthResponse {
+        if (!status.isSuccess()) {
+            val responseText = runCatching { bodyAsText() }.getOrNull()
+            throw JellyseerrHttpException(status, responseText)
+        }
+        return JellyseerrAuthResponse(
             user = body(),
             sessionCookie =
                 headers
@@ -508,6 +512,7 @@ class JellyseerrApi internal constructor(
                     }?.joinToString(separator = "; ")
                     ?.takeIf { it.isNotBlank() },
         )
+    }
 }
 
 class JellyseerrHttpException(

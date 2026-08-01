@@ -49,6 +49,8 @@ class AppSettingsRepository(
 
     fun setSpotlightAutoCycle(value: Boolean) = update(KEY_SPOTLIGHT_AUTO_CYCLE, value) { copy(spotlightAutoCycle = value) }
 
+    fun setUseServerHomeSections(value: Boolean) = update(KEY_USE_SERVER_HOME_SECTIONS, value) { copy(useServerHomeSections = value) }
+
     fun setSpotlightIntervalSeconds(value: Int) {
         val normalized = value.takeIf(SPOTLIGHT_INTERVAL_SECONDS::contains) ?: 6
         storage.putInt(KEY_SPOTLIGHT_INTERVAL, normalized)
@@ -73,6 +75,7 @@ class AppSettingsRepository(
             subtitleTextSize = enumValue(KEY_SUBTITLE_TEXT_SIZE, SubtitleTextSize.SYSTEM),
             subtitleBackground = enumValue(KEY_SUBTITLE_BACKGROUND, SubtitleBackground.SYSTEM),
             spotlightAutoCycle = storage.getBoolean(KEY_SPOTLIGHT_AUTO_CYCLE, true),
+            useServerHomeSections = storage.getBoolean(KEY_USE_SERVER_HOME_SECTIONS, true),
             spotlightIntervalSeconds =
                 storage.getInt(KEY_SPOTLIGHT_INTERVAL, 6).takeIf(SPOTLIGHT_INTERVAL_SECONDS::contains) ?: 6,
             downloadsWifiOnly = storage.getBoolean(KEY_DOWNLOADS_WIFI_ONLY, false),
@@ -132,6 +135,7 @@ class AppSettingsRepository(
         const val KEY_SUBTITLE_TEXT_SIZE = "settings.subtitle_text_size"
         const val KEY_SUBTITLE_BACKGROUND = "settings.subtitle_background"
         const val KEY_SPOTLIGHT_AUTO_CYCLE = "settings.spotlight_auto_cycle"
+        const val KEY_USE_SERVER_HOME_SECTIONS = "settings.use_server_home_sections"
         const val KEY_SPOTLIGHT_INTERVAL = "settings.spotlight_interval_seconds"
         const val KEY_DOWNLOADS_WIFI_ONLY = "settings.downloads_wifi_only"
         val SEEK_SECONDS = setOf(5, 10, 15, 30, 60)

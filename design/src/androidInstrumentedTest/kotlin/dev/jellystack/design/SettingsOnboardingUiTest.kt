@@ -280,7 +280,7 @@ class SettingsOnboardingUiTest {
 
         composeRule.onNodeWithText("Username & password").performClick()
         composeRule
-            .onNodeWithText("Password")
+            .onNodeWithText("Password (optional)")
             .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Password))
     }
 
@@ -416,7 +416,7 @@ private fun settingsState(): SettingsUiState =
                     health = SettingsConnectionHealth.Ready,
                 ),
             ),
-        appVersion = "0.14.3",
+        appVersion = "0.15.0",
     )
 
 @Composable

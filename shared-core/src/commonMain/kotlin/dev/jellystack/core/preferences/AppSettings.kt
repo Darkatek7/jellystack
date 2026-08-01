@@ -79,6 +79,7 @@ data class AppSettings(
     val subtitleBackground: SubtitleBackground = SubtitleBackground.SYSTEM,
     val spotlightAutoCycle: Boolean = true,
     val spotlightIntervalSeconds: Int = 6,
+    val useServerHomeSections: Boolean = true,
     val downloadsWifiOnly: Boolean = false,
 )
 

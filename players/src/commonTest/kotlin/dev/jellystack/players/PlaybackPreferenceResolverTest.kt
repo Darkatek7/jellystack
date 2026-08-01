@@ -66,6 +66,30 @@ class PlaybackPreferenceResolverTest {
     }
 
     @Test
+    fun serverDefaultUsesOnlyTheTrackMarkedDefault() {
+        val resolver = PlaybackPreferenceResolver(AppSettings(subtitleMode = SubtitleMode.SERVER_DEFAULT))
+        val tracks =
+            listOf(
+                subtitle("first", "eng"),
+                subtitle("server-default", "deu", isDefault = true),
+            )
+
+        assertEquals("server-default", resolver.selectSubtitleTrack(tracks, audioLanguage = "eng")?.id)
+    }
+
+    @Test
+    fun serverDefaultLeavesSubtitlesOffWhenServerHasNoDefault() {
+        val resolver = PlaybackPreferenceResolver(AppSettings(subtitleMode = SubtitleMode.SERVER_DEFAULT))
+
+        assertNull(
+            resolver.selectSubtitleTrack(
+                tracks = listOf(subtitle("ordinary", "eng")),
+                audioLanguage = "eng",
+            ),
+        )
+    }
+
+    @Test
     fun qualityOptionChoosesMatchingPersistedBitrate() {
         val resolver =
             PlaybackPreferenceResolver(

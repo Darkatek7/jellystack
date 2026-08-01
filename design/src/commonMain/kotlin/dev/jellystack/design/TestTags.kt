@@ -10,6 +10,7 @@ object TestTags {
     const val PRIMARY_HOME: String = "primary_destination_home"
     const val PRIMARY_LIBRARY: String = "primary_destination_library"
     const val PRIMARY_DISCOVER: String = "primary_destination_discover"
+    const val PRIMARY_ADMIN: String = "primary_destination_admin"
 }
 
 internal object ShellTestTags {

@@ -90,7 +90,7 @@ class JellyfinQuickConnectApiTest {
                     identity =
                         JellyfinClientIdentity(
                             appName = "Jellystack",
-                            appVersion = "0.14.3",
+                            appVersion = "0.15.0",
                             deviceName = "Pixel",
                             deviceId = "device-123",
                         ),
@@ -192,7 +192,7 @@ class JellyfinQuickConnectApiTest {
     private fun identity() =
         JellyfinClientIdentity(
             appName = "Jellystack",
-            appVersion = "0.14.3",
+            appVersion = "0.15.0",
             deviceName = "Test device",
             deviceId = "device-123",
         )
@@ -206,6 +206,6 @@ class JellyfinQuickConnectApiTest {
 
     private companion object {
         const val EXPECTED_AUTH_HEADER =
-            "MediaBrowser Client=\"Jellystack\", Device=\"Pixel\", DeviceId=\"device-123\", Version=\"0.14.3\""
+            "MediaBrowser Client=\"Jellystack\", Device=\"Pixel\", DeviceId=\"device-123\", Version=\"0.15.0\""
     }
 }

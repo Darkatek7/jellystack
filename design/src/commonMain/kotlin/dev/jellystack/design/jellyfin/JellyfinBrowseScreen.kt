@@ -2790,7 +2790,7 @@ private fun SpotlightTitleText(title: String) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun HomeSpotlightCard(
+internal fun HomeSpotlightCard(
     item: JellyfinItem,
     actionItem: JellyfinItem = item,
     baseUrl: String?,
@@ -3084,20 +3084,34 @@ private fun LibraryEmptyState(
 }
 
 @Composable
-private fun HomeSkeleton(contentPadding: PaddingValues) {
+internal fun HomeSkeleton(contentPadding: PaddingValues) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = contentPadding,
         verticalArrangement = Arrangement.spacedBy(24.dp),
     ) {
-        item {
-            ShimmerPlaceholder(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(32.dp),
-                shape = RoundedCornerShape(16.dp),
-            )
+        item(key = "spotlightSkeleton") {
+            Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                ShimmerPlaceholder(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(1.28f),
+                    shape = RoundedCornerShape(20.dp),
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    repeat(6) {
+                        ShimmerPlaceholder(
+                            modifier = Modifier.size(8.dp),
+                            shape = RoundedCornerShape(4.dp),
+                        )
+                    }
+                }
+            }
         }
         items(4) { index ->
             val widthFraction =
@@ -3782,6 +3796,7 @@ internal fun PosterImage(
             }
         }
     val context = LocalPlatformContext.current
+    var imageLoading by remember(imageUrl) { mutableStateOf(imageUrl != null) }
     Box(
         modifier =
             modifier
@@ -3790,6 +3805,12 @@ internal fun PosterImage(
         contentAlignment = Alignment.Center,
     ) {
         if (imageUrl != null) {
+            if (imageLoading) {
+                ShimmerPlaceholder(
+                    modifier = Modifier.fillMaxSize(),
+                    shape = shape,
+                )
+            }
             AsyncImage(
                 modifier = Modifier.fillMaxSize(),
                 model =
@@ -3800,6 +3821,8 @@ internal fun PosterImage(
                         .build(),
                 contentDescription = contentDescription,
                 contentScale = contentScale,
+                onSuccess = { imageLoading = false },
+                onError = { imageLoading = false },
             )
         } else if (!placeholder.isNullOrBlank()) {
             Text(

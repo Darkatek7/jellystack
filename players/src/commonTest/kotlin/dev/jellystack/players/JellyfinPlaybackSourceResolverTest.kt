@@ -230,6 +230,106 @@ class JellyfinPlaybackSourceResolverTest {
         }
 
     @Test
+    fun selectedSubtitleIndexIsSentToPlaybackInfoAndFallbackHls() =
+        runTest {
+            val service =
+                RecordingPlaybackInfoService(
+                    JellyfinPlaybackInfoResponseDto(
+                        playSessionId = "play-subtitle",
+                        mediaSources =
+                            listOf(
+                                JellyfinPlaybackMediaSourceDto(
+                                    id = "source-1",
+                                    container = "mkv",
+                                    supportsDirectPlay = false,
+                                    supportsDirectStream = false,
+                                    supportsTranscoding = false,
+                                ),
+                            ),
+                    ),
+                )
+            val resolver = JellyfinPlaybackSourceResolver(service, FixedPlaybackDeviceProfileProvider)
+            val request = videoRequest()
+            val option =
+                PlaybackQualityOption(
+                    id = "manual",
+                    label = "Manual",
+                    mode = PlaybackMode.HLS,
+                    sourceId = "source-1",
+                    maxBitrate = 420_000,
+                    maxHeight = 360,
+                    isAuto = false,
+                )
+            val selection =
+                PlaybackStreamSelector()
+                    .select(request.mediaSources)
+                    .copy(qualityOptions = listOf(option), selectedQualityId = option.id)
+
+            val source =
+                resolver.resolve(
+                    request,
+                    selection,
+                    environment(),
+                    0,
+                    PlaybackSourceOptions(subtitleStreamIndex = 5),
+                )
+
+            assertEquals(5, service.lastRequest?.subtitleStreamIndex)
+            assertEquals("5", source.url.queryParameter("SubtitleStreamIndex"))
+            assertEquals(5, source.subtitleStreamIndex)
+        }
+
+    @Test
+    fun disabledSubtitlesAreSentAsMinusOne() =
+        runTest {
+            val service =
+                RecordingPlaybackInfoService(
+                    JellyfinPlaybackInfoResponseDto(
+                        playSessionId = "play-subtitle-off",
+                        mediaSources =
+                            listOf(
+                                JellyfinPlaybackMediaSourceDto(
+                                    id = "source-1",
+                                    container = "mkv",
+                                    supportsDirectPlay = false,
+                                    supportsDirectStream = false,
+                                    supportsTranscoding = false,
+                                ),
+                            ),
+                    ),
+                )
+            val resolver = JellyfinPlaybackSourceResolver(service, FixedPlaybackDeviceProfileProvider)
+            val request = videoRequest()
+            val option =
+                PlaybackQualityOption(
+                    id = "manual-off",
+                    label = "Manual",
+                    mode = PlaybackMode.HLS,
+                    sourceId = "source-1",
+                    maxBitrate = 420_000,
+                    maxHeight = 360,
+                    isAuto = false,
+                )
+            val selection =
+                PlaybackStreamSelector()
+                    .select(request.mediaSources)
+                    .copy(qualityOptions = listOf(option), selectedQualityId = option.id)
+
+            val source =
+                resolver.resolve(
+                    request,
+                    selection,
+                    environment(),
+                    0,
+                    PlaybackSourceOptions(subtitleStreamIndex = -1),
+                )
+
+            assertEquals(-1, service.lastRequest?.subtitleStreamIndex)
+            assertEquals("-1", source.url.queryParameter("SubtitleStreamIndex"))
+            assertEquals(-1, source.subtitleStreamIndex)
+        }
+
+    @Test
     fun omittedTranscodingFlagWithUsableUrlKeepsManualPlaybackAvailable() =
         runTest {
             val service =

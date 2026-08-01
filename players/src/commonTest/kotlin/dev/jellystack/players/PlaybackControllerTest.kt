@@ -15,6 +15,7 @@ import dev.jellystack.core.playback.StreamingProgressReporter
 import dev.jellystack.core.preferences.AppSettings
 import dev.jellystack.core.preferences.ResumeMode
 import dev.jellystack.core.preferences.StreamingQualityPreference
+import dev.jellystack.core.preferences.SubtitleMode
 import dev.jellystack.network.jellyfin.JellyfinPlaybackInfoResponseDto
 import dev.jellystack.network.jellyfin.JellyfinPlaybackMediaSourceDto
 import dev.jellystack.players.cast.CastConnectionState
@@ -40,6 +41,49 @@ import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class PlaybackControllerTest {
+    @Test
+    fun playbackSpeedIsSessionOnlyAndResetsForNewPlayback() =
+        runTest {
+            val engine = RecordingPlayerEngine()
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = TestPlaybackSourceResolver(),
+                    playerEngine = engine,
+                    scope = TestScope(UnconfinedTestDispatcher(testScheduler)),
+                )
+
+            controller.play(PlaybackRequest.from(sampleItem(), sampleDetail(withDirect = true)), testEnvironment())
+            controller.setPlaybackSpeed(1.5f)
+
+            assertEquals(1.5f, (controller.state.value as PlaybackState.Active).playbackSpeed)
+            assertEquals(1.5f, engine.lastSpeed)
+
+            controller.play(PlaybackRequest.from(sampleItem(id = "next"), sampleDetail(withDirect = true)), testEnvironment())
+
+            assertEquals(1f, (controller.state.value as PlaybackState.Active).playbackSpeed)
+            assertEquals(1f, engine.lastSpeed)
+            controller.release()
+        }
+
+    @Test
+    fun statsForNerdsIsSessionOnly() =
+        runTest {
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = TestPlaybackSourceResolver(),
+                    playerEngine = RecordingPlayerEngine(),
+                    scope = TestScope(UnconfinedTestDispatcher(testScheduler)),
+                )
+            controller.play(PlaybackRequest.from(sampleItem(), sampleDetail(withDirect = true)), testEnvironment())
+
+            controller.setStatsForNerdsEnabled(true)
+
+            assertTrue((controller.state.value as PlaybackState.Active).statsForNerdsEnabled)
+            controller.stop()
+            assertEquals(PlaybackState.Stopped, controller.state.value)
+            controller.release()
+        }
+
     @Test
     fun stopInvalidatesInitialResolveBeforeItCanPreparePlayback() =
         runTest {
@@ -534,6 +578,90 @@ class PlaybackControllerTest {
                 controller.selectSubtitle(srt.id)
                 val updated = controller.state.value as PlaybackState.Active
                 assertEquals(srt.id, updated.subtitleTrack?.id)
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
+    fun failedDirectSubtitleSelectionKeepsActuallyPlayingTrackSelected() =
+        runTest {
+            val engine = RecordingPlayerEngine().apply { failSubtitleSelection = true }
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = TestPlaybackSourceResolver(),
+                    playerEngine = engine,
+                    playbackPreferencesProvider =
+                        PlaybackPreferencesProvider {
+                            AppSettings(subtitleMode = SubtitleMode.OFF)
+                        },
+                    scope = TestScope(UnconfinedTestDispatcher(testScheduler)),
+                )
+            val baseDetail = sampleDetail(withDirect = true)
+            val detail =
+                baseDetail.copy(
+                    mediaSources =
+                        baseDetail.mediaSources.map { source ->
+                            if (source.id == "direct-source") {
+                                source.copy(
+                                    streams = source.streams + subtitleStream(3, "webvtt", "English VTT"),
+                                )
+                            } else {
+                                source
+                            }
+                        },
+                )
+
+            try {
+                controller.play(
+                    PlaybackRequest.from(sampleItem(), detail).copy(preferredSubtitleTrackId = "disabled"),
+                    testEnvironment(),
+                )
+                assertNull(controller.currentSession()?.subtitleTrack)
+
+                runCatching { controller.selectSubtitle("3") }
+
+                assertNull(controller.currentSession()?.subtitleTrack)
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
+    fun pendingDirectSubtitleSelectionUpdatesStateOnlyAfterEngineConfirmation() =
+        runTest {
+            val controllerScope = TestScope(UnconfinedTestDispatcher(testScheduler))
+            val engine = RecordingPlayerEngine()
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = TestPlaybackSourceResolver(),
+                    playerEngine = engine,
+                    playbackPreferencesProvider = PlaybackPreferencesProvider { AppSettings(subtitleMode = SubtitleMode.OFF) },
+                    scope = controllerScope,
+                )
+            val baseDetail = sampleDetail(withDirect = true)
+            val detail =
+                baseDetail.copy(
+                    mediaSources =
+                        baseDetail.mediaSources.map { source ->
+                            if (source.id == "direct-source") {
+                                source.copy(streams = source.streams + subtitleStream(3, "webvtt", "English VTT"))
+                            } else {
+                                source
+                            }
+                        },
+                )
+
+            try {
+                controller.play(PlaybackRequest.from(sampleItem(), detail), testEnvironment())
+                engine.subtitleSelectionResult = SubtitleTrackSelectionResult.PENDING
+
+                controller.selectSubtitle("3")
+                assertNull(controller.currentSession()?.subtitleTrack)
+
+                engine.emitEvent(PlayerEvent.SubtitleTrackSelectionApplied("3"))
+                controllerScope.advanceUntilIdle()
+                assertEquals("3", controller.currentSession()?.subtitleTrack?.id)
             } finally {
                 controller.release()
             }
@@ -1536,9 +1664,10 @@ class PlaybackControllerTest {
                 controllerScope.advanceUntilIdle()
 
                 val session = assertNotNull(controller.currentSession())
-                assertEquals(2, resolver.requests.size)
+                assertEquals(3, resolver.requests.size)
                 assertEquals(8, resolver.requests.last().audioStreamIndex)
-                assertEquals(2, engine.prepareCount)
+                assertEquals(3, resolver.requests.last().subtitleStreamIndex)
+                assertEquals(3, engine.prepareCount)
                 assertEquals("8", session.audioTrack?.id)
                 assertEquals(8, session.source.audioStreamIndex)
                 assertEquals(23_456L, session.positionMs)
@@ -1580,6 +1709,154 @@ class PlaybackControllerTest {
                 val session = assertNotNull(controller.currentSession())
                 assertEquals(original?.id, session.audioTrack?.id)
                 assertEquals(1, engine.prepareCount)
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
+    fun selectingSubtitleOnHlsReResolvesTheSourceAndPreservesPlaybackState() =
+        runTest {
+            val controllerScope = TestScope(UnconfinedTestDispatcher(testScheduler))
+            val engine = RecordingPlayerEngine()
+            val resolver = RecordingSubtitleSwitchResolver()
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = resolver,
+                    playerEngine = engine,
+                    playbackPreferencesProvider = PlaybackPreferencesProvider { AppSettings(subtitleMode = SubtitleMode.OFF) },
+                    scope = controllerScope,
+                )
+
+            try {
+                controller.play(
+                    PlaybackRequest.from(sampleItem(), sampleDetail(includeVtt = true)),
+                    testEnvironment(),
+                )
+                assertEquals(-1, resolver.requests.single().subtitleStreamIndex)
+                controller.updateProgress(23_456L)
+                controller.pause()
+
+                controller.selectSubtitle("3")
+                controllerScope.advanceUntilIdle()
+
+                val session = assertNotNull(controller.currentSession())
+                assertEquals(2, resolver.requests.size)
+                assertEquals(3, resolver.requests.last().subtitleStreamIndex)
+                assertEquals(2, engine.prepareCount)
+                assertEquals("3", session.subtitleTrack?.id)
+                assertEquals(3, session.source.subtitleStreamIndex)
+                assertEquals(23_456L, session.positionMs)
+                assertTrue(session.isPaused)
+                assertEquals(23_456L, engine.lastStartPositionMs)
+                assertEquals("3", engine.lastSubtitleTrack?.id)
+
+                controller.selectSubtitle(null)
+                controllerScope.advanceUntilIdle()
+
+                assertEquals(-1, resolver.requests.last().subtitleStreamIndex)
+                assertNull(controller.currentSession()?.subtitleTrack)
+                assertEquals(-1, controller.currentSession()?.source?.subtitleStreamIndex)
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
+    fun newerHlsSubtitleSelectionCancelsAnOlderPendingSwitch() =
+        runTest {
+            val firstSwitchStarted = CompletableDeferred<Unit>()
+            val releaseFirstSwitch = CompletableDeferred<Unit>()
+            val resolver = DelayingSubtitleSwitchResolver(firstSwitchStarted, releaseFirstSwitch)
+            val controllerScope = TestScope(StandardTestDispatcher(testScheduler))
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = resolver,
+                    playerEngine = RecordingPlayerEngine(),
+                    playbackPreferencesProvider = PlaybackPreferencesProvider { AppSettings(subtitleMode = SubtitleMode.OFF) },
+                    scope = controllerScope,
+                )
+
+            try {
+                controller.play(
+                    PlaybackRequest.from(
+                        sampleItem(),
+                        sampleDetail(includeSrt = true, includeVtt = true),
+                    ),
+                    testEnvironment(),
+                )
+                controller.selectSubtitle("2")
+                controllerScope.runCurrent()
+                firstSwitchStarted.await()
+
+                controller.selectSubtitle("3")
+                releaseFirstSwitch.complete(Unit)
+                controllerScope.advanceUntilIdle()
+
+                assertEquals("3", controller.currentSession()?.subtitleTrack?.id)
+                assertEquals(3, controller.currentSession()?.source?.subtitleStreamIndex)
+                assertEquals(listOf<Int?>(-1, 2, 3), resolver.requestedSubtitleIndices)
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
+    fun failedHlsSubtitleSwitchKeepsTheActuallyPlayingTrackSelected() =
+        runTest {
+            val controllerScope = TestScope(UnconfinedTestDispatcher(testScheduler))
+            val engine = RecordingPlayerEngine()
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = FailingSubtitleSwitchResolver(),
+                    playerEngine = engine,
+                    playbackPreferencesProvider = PlaybackPreferencesProvider { AppSettings(subtitleMode = SubtitleMode.OFF) },
+                    scope = controllerScope,
+                )
+
+            try {
+                controller.play(
+                    PlaybackRequest.from(sampleItem(), sampleDetail(includeVtt = true)),
+                    testEnvironment(),
+                )
+                assertNull(controller.currentSession()?.subtitleTrack)
+
+                controller.selectSubtitle("3")
+                controllerScope.advanceUntilIdle()
+
+                assertNull(controller.currentSession()?.subtitleTrack)
+                assertEquals(1, engine.prepareCount)
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
+    fun preferredSubtitleIsSentInTheInitialPlaybackInfoRequest() =
+        runTest {
+            val resolver = RecordingSubtitleSwitchResolver()
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = resolver,
+                    playerEngine = RecordingPlayerEngine(),
+                    playbackPreferencesProvider =
+                        PlaybackPreferencesProvider {
+                            AppSettings(
+                                preferredSubtitleLanguage = "eng",
+                                subtitleMode = SubtitleMode.PREFERRED_ALWAYS,
+                            )
+                        },
+                    scope = TestScope(UnconfinedTestDispatcher(testScheduler)),
+                )
+
+            try {
+                controller.play(
+                    PlaybackRequest.from(sampleItem(), sampleDetail(includeVtt = true)),
+                    testEnvironment(),
+                )
+
+                assertEquals(3, resolver.requests.single().subtitleStreamIndex)
+                assertEquals("3", controller.currentSession()?.subtitleTrack?.id)
             } finally {
                 controller.release()
             }
@@ -2349,6 +2626,83 @@ private class RecordingAudioSwitchResolver : PlaybackSourceResolver {
     }
 }
 
+private class RecordingSubtitleSwitchResolver : PlaybackSourceResolver {
+    val requests = mutableListOf<PlaybackSourceOptions>()
+
+    override suspend fun resolve(
+        request: PlaybackRequest,
+        selection: PlaybackStreamSelection,
+        environment: JellyfinEnvironment,
+        startPositionMs: Long,
+        options: PlaybackSourceOptions,
+    ): ResolvedPlaybackSource {
+        requests += options
+        return resolvedSource(
+            url = "https://example.test/${request.mediaId}-${options.subtitleStreamIndex}.m3u8",
+            mode = PlaybackMode.HLS,
+            playSessionId = options.playSessionId ?: "play-subtitle",
+            mediaSourceId = selection.sourceId,
+        ).copy(
+            audioStreamIndex = options.audioStreamIndex,
+            subtitleStreamIndex = options.subtitleStreamIndex,
+        )
+    }
+}
+
+private class FailingSubtitleSwitchResolver : PlaybackSourceResolver {
+    private var calls = 0
+
+    override suspend fun resolve(
+        request: PlaybackRequest,
+        selection: PlaybackStreamSelection,
+        environment: JellyfinEnvironment,
+        startPositionMs: Long,
+        options: PlaybackSourceOptions,
+    ): ResolvedPlaybackSource {
+        calls += 1
+        if (calls > 1) error("Subtitle switch failed")
+        return resolvedSource(
+            url = "https://example.test/${request.mediaId}.m3u8",
+            mode = PlaybackMode.HLS,
+            playSessionId = "play-subtitle",
+            mediaSourceId = selection.sourceId,
+        ).copy(
+            audioStreamIndex = options.audioStreamIndex,
+            subtitleStreamIndex = options.subtitleStreamIndex,
+        )
+    }
+}
+
+private class DelayingSubtitleSwitchResolver(
+    private val firstSwitchStarted: CompletableDeferred<Unit>,
+    private val releaseFirstSwitch: CompletableDeferred<Unit>,
+) : PlaybackSourceResolver {
+    val requestedSubtitleIndices = mutableListOf<Int?>()
+
+    override suspend fun resolve(
+        request: PlaybackRequest,
+        selection: PlaybackStreamSelection,
+        environment: JellyfinEnvironment,
+        startPositionMs: Long,
+        options: PlaybackSourceOptions,
+    ): ResolvedPlaybackSource {
+        requestedSubtitleIndices += options.subtitleStreamIndex
+        if (requestedSubtitleIndices.size == 2) {
+            firstSwitchStarted.complete(Unit)
+            releaseFirstSwitch.await()
+        }
+        return resolvedSource(
+            url = "https://example.test/${request.mediaId}-${options.subtitleStreamIndex}.m3u8",
+            mode = PlaybackMode.HLS,
+            playSessionId = options.playSessionId ?: "play-subtitle",
+            mediaSourceId = selection.sourceId,
+        ).copy(
+            audioStreamIndex = options.audioStreamIndex,
+            subtitleStreamIndex = options.subtitleStreamIndex,
+        )
+    }
+}
+
 private class FailingAudioSwitchResolver : PlaybackSourceResolver {
     private var calls = 0
 
@@ -2736,9 +3090,12 @@ private class RecordingPlayerEngine : PlayerEngine {
     var lastAudioTrack: AudioTrack? = null
     var lastSubtitleTrack: SubtitleTrack? = null
     var lastQuality: Int? = null
+    var lastSpeed: Float? = null
     var released = false
     var prepareCount = 0
     var audioSelectionResult = AudioTrackSelectionResult.APPLIED
+    var subtitleSelectionResult = SubtitleTrackSelectionResult.APPLIED
+    var failSubtitleSelection = false
 
     override suspend fun prepare(
         source: ResolvedPlaybackSource,
@@ -2774,12 +3131,18 @@ private class RecordingPlayerEngine : PlayerEngine {
         return audioSelectionResult
     }
 
-    override fun setSubtitleTrack(track: SubtitleTrack?) {
+    override fun setSubtitleTrack(track: SubtitleTrack?): SubtitleTrackSelectionResult {
+        if (failSubtitleSelection) error("Subtitle track is unavailable")
         lastSubtitleTrack = track
+        return subtitleSelectionResult
     }
 
     override fun setVideoQuality(maxBitrate: Int?) {
         lastQuality = maxBitrate
+    }
+
+    override fun setPlaybackSpeed(speed: Float) {
+        lastSpeed = speed
     }
 
     override fun release() {
@@ -2819,7 +3182,7 @@ private class BlockingPlayerEngine : PlayerEngine {
 
     override fun setAudioTrack(track: AudioTrack?): AudioTrackSelectionResult = AudioTrackSelectionResult.PENDING
 
-    override fun setSubtitleTrack(track: SubtitleTrack?) = Unit
+    override fun setSubtitleTrack(track: SubtitleTrack?): SubtitleTrackSelectionResult = SubtitleTrackSelectionResult.PENDING
 
     override fun setVideoQuality(maxBitrate: Int?) = Unit
 
