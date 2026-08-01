@@ -256,6 +256,7 @@ import jellystack_mobile.design.generated.resources.app_lock_unlock_before_disab
 import jellystack_mobile.design.generated.resources.app_lock_waiting
 import jellystack_mobile.design.generated.resources.app_title
 import jellystack_mobile.design.generated.resources.audio_track_switch_failed
+import jellystack_mobile.design.generated.resources.subtitle_track_switch_failed
 import jellystack_mobile.design.generated.resources.base_url
 import jellystack_mobile.design.generated.resources.cancel
 import jellystack_mobile.design.generated.resources.cast_connection_failed
@@ -296,6 +297,7 @@ import jellystack_mobile.design.generated.resources.no_playable_episode
 import jellystack_mobile.design.generated.resources.onboarding_saving
 import jellystack_mobile.design.generated.resources.onboarding_url_error
 import jellystack_mobile.design.generated.resources.password
+import jellystack_mobile.design.generated.resources.password_optional
 import jellystack_mobile.design.generated.resources.play
 import jellystack_mobile.design.generated.resources.play_episode
 import jellystack_mobile.design.generated.resources.playback_failed
@@ -453,8 +455,7 @@ internal data class ServerFormState(
                             (
                                 jellyfinSignInMethod == JellyfinSignInMethod.QUICK_CONNECT ||
                                     (
-                                        username.isNotBlank() &&
-                                            (password.isNotBlank() || serverId != null)
+                                        username.isNotBlank()
                                     )
                             )
                     ServerFormType.SEERR ->
@@ -785,6 +786,8 @@ fun JellystackRoot(
             when (notice) {
                 PlaybackNotice.AudioTrackSelectionFailed ->
                     showShellFeedback(getString(Res.string.audio_track_switch_failed))
+                PlaybackNotice.SubtitleTrackSelectionFailed ->
+                    showShellFeedback(getString(Res.string.subtitle_track_switch_failed))
             }
         }
     }
@@ -4301,7 +4304,7 @@ private fun AddServerDialog(
                                     onValueChange(state.copy(password = it))
                                     onClearError()
                                 },
-                                label = { Text(stringResource(Res.string.password)) },
+                                label = { Text(stringResource(Res.string.password_optional)) },
                                 singleLine = true,
                                 enabled = !isSaving,
                                 visualTransformation =

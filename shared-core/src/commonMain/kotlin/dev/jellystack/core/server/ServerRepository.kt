@@ -204,9 +204,6 @@ class ServerRepository(
                 if (creds.username.isBlank()) {
                     throw InvalidServerConfiguration("Jellyfin username cannot be blank")
                 }
-                if (creds.password.isBlank()) {
-                    throw InvalidServerConfiguration("Jellyfin password cannot be blank")
-                }
             }
             is CredentialInput.ApiKey -> {
                 val hasApiKey = !creds.apiKey.isNullOrBlank()

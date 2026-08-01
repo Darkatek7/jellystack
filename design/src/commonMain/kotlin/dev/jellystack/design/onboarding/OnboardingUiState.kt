@@ -94,7 +94,6 @@ internal fun validateOnboarding(
                 }
                 if (form.jellyfinSignInMethod == JellyfinSignInMethod.PASSWORD) {
                     requireText(OnboardingField.Username, form.username)
-                    if (form.serverId == null) requireText(OnboardingField.Password, form.password)
                 }
             }
             TutorialStep.ConnectJellyseerr -> {

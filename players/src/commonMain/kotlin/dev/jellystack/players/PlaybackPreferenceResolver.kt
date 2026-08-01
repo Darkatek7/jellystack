@@ -65,7 +65,7 @@ class PlaybackPreferenceResolver(
             preferred?.let { language -> tracks.firstOrNull { it.isForced && it.language.languageMatches(language) } }
         val forced = forcedPreferred ?: tracks.firstOrNull { it.isForced }
         return when (settings.subtitleMode) {
-            SubtitleMode.SERVER_DEFAULT -> tracks.firstOrNull { it.isDefault } ?: tracks.firstOrNull { !it.isForced }
+            SubtitleMode.SERVER_DEFAULT -> tracks.firstOrNull { it.isDefault }
             SubtitleMode.OFF -> null
             SubtitleMode.FORCED_ONLY -> forced
             SubtitleMode.PREFERRED_ALWAYS -> preferredTrack ?: forced

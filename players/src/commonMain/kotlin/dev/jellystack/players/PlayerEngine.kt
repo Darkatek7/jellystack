@@ -32,12 +32,26 @@ sealed interface PlayerEvent {
         val trackId: String,
     ) : PlayerEvent
 
+    data class SubtitleTrackSelectionApplied(
+        val trackId: String?,
+    ) : PlayerEvent
+
+    data class SubtitleTrackSelectionUnavailable(
+        val trackId: String?,
+    ) : PlayerEvent
+
     data class Error(
         val throwable: Throwable,
     ) : PlayerEvent
 }
 
 enum class AudioTrackSelectionResult {
+    APPLIED,
+    PENDING,
+    UNAVAILABLE,
+}
+
+enum class SubtitleTrackSelectionResult {
     APPLIED,
     PENDING,
     UNAVAILABLE,
@@ -66,7 +80,7 @@ interface PlayerEngine {
 
     fun setAudioTrack(track: AudioTrack?): AudioTrackSelectionResult
 
-    fun setSubtitleTrack(track: SubtitleTrack?)
+    fun setSubtitleTrack(track: SubtitleTrack?): SubtitleTrackSelectionResult
 
     fun setVideoQuality(maxBitrate: Int?)
 
@@ -97,7 +111,8 @@ class NoopPlayerEngine : PlayerEngine {
 
     override fun setAudioTrack(track: AudioTrack?): AudioTrackSelectionResult = AudioTrackSelectionResult.PENDING
 
-    override fun setSubtitleTrack(track: SubtitleTrack?) = Unit
+    override fun setSubtitleTrack(track: SubtitleTrack?): SubtitleTrackSelectionResult =
+        SubtitleTrackSelectionResult.APPLIED
 
     override fun setVideoQuality(maxBitrate: Int?) = Unit
 

@@ -77,6 +77,8 @@ class PlaybackController(
     private var qualitySwitchGeneration = 0L
     private var audioSwitchJob: Job? = null
     private var audioSwitchGeneration = 0L
+    private var subtitleSwitchJob: Job? = null
+    private var subtitleSwitchGeneration = 0L
     private var playGeneration = 0L
     private val streamingReportMutex = Mutex()
     private var finalStreamingReportJob: Job? = null
@@ -158,6 +160,7 @@ class PlaybackController(
             val selection: PlaybackStreamSelection
             val source: ResolvedPlaybackSource
             val initialAudioTrack: AudioTrack?
+            val requestedSubtitleTrack: SubtitleTrack?
             val durationMs = ticksToMillis(request.durationTicks)
             val startingPosition: Long
 
@@ -178,6 +181,13 @@ class PlaybackController(
                         subtitleTracks = offlineTracks.subtitleTracks,
                     )
                 initialAudioTrack = preferredAudioTrackFor(request, selection, preferenceResolver)
+                requestedSubtitleTrack =
+                    preferredSubtitleTrackFor(
+                        request = request,
+                        selection = selection,
+                        preferenceResolver = preferenceResolver,
+                        rememberSeriesTracks = appSettings.rememberSeriesTracks,
+                    )
                 source = offlineSource
                 startingPosition = request.validPlaybackPosition(savedStartingPosition, selection.sourceId)
             } else {
@@ -189,6 +199,13 @@ class PlaybackController(
                         ?.let { streamSelector.select(request.mediaSources, preferred = it, mediaKind = request.mediaKind) }
                         ?: automaticSelection
                 initialAudioTrack = preferredAudioTrackFor(request, selection, preferenceResolver)
+                requestedSubtitleTrack =
+                    preferredSubtitleTrackFor(
+                        request = request,
+                        selection = selection,
+                        preferenceResolver = preferenceResolver,
+                        rememberSeriesTracks = appSettings.rememberSeriesTracks,
+                    )
                 startingPosition = request.validPlaybackPosition(savedStartingPosition, selection.sourceId)
                 source =
                     playbackSourceResolver.resolve(
@@ -196,23 +213,22 @@ class PlaybackController(
                         selection = selection,
                         environment = environment,
                         startPositionMs = startingPosition,
-                        options = PlaybackSourceOptions(audioStreamIndex = initialAudioTrack?.streamIndex),
+                        options =
+                            PlaybackSourceOptions(
+                                audioStreamIndex = initialAudioTrack?.streamIndex,
+                                subtitleStreamIndex = requestedSubtitleTrack?.streamIndex ?: SUBTITLES_DISABLED_INDEX,
+                            ),
                     )
             }
             ensureCurrentPlayAttempt(attemptGeneration)
 
             val negotiatedSelection = selection.withResolvedSource(source)
             val initialSubtitleTrack =
-                preferredSubtitleTrackFor(
-                    request = request,
-                    selection = negotiatedSelection,
-                    preferenceResolver = preferenceResolver,
-                    rememberSeriesTracks = appSettings.rememberSeriesTracks,
-                )
+                requestedSubtitleTrack.reconciledWith(negotiatedSelection)
             val sourceWithPreferences =
                 source.copy(
                     audioStreamIndex = initialAudioTrack?.streamIndex,
-                    subtitleStreamIndex = initialSubtitleTrack?.streamIndex,
+                    subtitleStreamIndex = initialSubtitleTrack?.streamIndex ?: SUBTITLES_DISABLED_INDEX,
                 )
 
             val newSession =
@@ -367,6 +383,7 @@ class PlaybackController(
         playGeneration += 1
         cancelQualitySwitch()
         cancelAudioSwitch()
+        cancelSubtitleSwitch()
         cancelRecoveryPromotion()
         cancelCollectors()
         playerEngine.stop()
@@ -584,6 +601,7 @@ class PlaybackController(
             applyPlaybackIndicesToUrl(
                 url = session.source.url,
                 audioStreamIndex = session.audioTrack?.streamIndex,
+                subtitleStreamIndex = session.subtitleTrack?.streamIndex ?: SUBTITLES_DISABLED_INDEX,
             )
         val subtitles =
             session.source.subtitles.map { subtitle ->
@@ -658,21 +676,137 @@ class PlaybackController(
     }
 
     fun selectSubtitle(trackId: String?) {
-        session?.let { current ->
-            val subtitle = trackId?.let { id -> current.stream.subtitleTracks.find { it.id == id } }
-            saveSubtitlePreference(current, subtitle)
-            val updated =
-                current.copy(
-                    subtitleTrack = subtitle,
-                    source = current.source.copy(subtitleStreamIndex = subtitle?.streamIndex),
-                )
-            session = updated
-            publishCurrentState(updated)
-            playerEngine.setSubtitleTrack(subtitle)
-            if (isRemoteConnected()) {
-                scope.launch { castSessionManager.selectSubtitleTrack(subtitle?.id) }
-            }
+        val current = session ?: return
+        val subtitle = trackId?.let { id -> current.stream.subtitleTracks.find { it.id == id } } ?: run {
+            if (trackId != null) return
+            null
         }
+        if (current.subtitleTrack?.id == subtitle?.id) return
+        if (isRemoteConnected()) {
+            confirmPendingSubtitleSelection(subtitle?.id)
+            scope.launch { castSessionManager.selectSubtitleTrack(subtitle?.id) }
+            return
+        }
+        if (qualitySwitchJob?.isActive == true) {
+            applySubtitleTrackLocally(subtitle)
+            return
+        }
+        if (current.source.mode == PlaybackMode.HLS) {
+            switchHlsSubtitleTrack(current, subtitle)
+            return
+        }
+        applySubtitleTrackLocally(subtitle)
+    }
+
+    private fun applySubtitleTrackLocally(subtitle: SubtitleTrack?) {
+        val result =
+            runCatching { playerEngine.setSubtitleTrack(subtitle) }
+                .getOrDefault(SubtitleTrackSelectionResult.UNAVAILABLE)
+        when (result) {
+            SubtitleTrackSelectionResult.APPLIED -> confirmPendingSubtitleSelection(subtitle?.id)
+            SubtitleTrackSelectionResult.PENDING -> Unit
+            SubtitleTrackSelectionResult.UNAVAILABLE ->
+                _notices.tryEmit(PlaybackNotice.SubtitleTrackSelectionFailed)
+        }
+    }
+
+    private fun switchHlsSubtitleTrack(
+        current: PlaybackSession,
+        subtitle: SubtitleTrack?,
+    ) {
+        val environment = lastEnvironment ?: return
+        cancelAudioSwitch()
+        cancelSubtitleSwitch()
+        val switchGeneration = subtitleSwitchGeneration
+        val switchPlayGeneration = playGeneration
+        subtitleSwitchJob =
+            scope.launch {
+                var prepareStarted = false
+                try {
+                    val resolved =
+                        playbackSourceResolver.resolve(
+                            request = current.request,
+                            selection = current.stream,
+                            environment = environment,
+                            startPositionMs = current.positionMs,
+                            options =
+                                PlaybackSourceOptions(
+                                    audioStreamIndex = current.audioTrack?.streamIndex,
+                                    subtitleStreamIndex = subtitle?.streamIndex ?: SUBTITLES_DISABLED_INDEX,
+                                    playSessionId = current.source.playSessionId,
+                                ),
+                        )
+                    currentCoroutineContext().ensureActive()
+                    val latest =
+                        currentSessionForSubtitleSwitch(
+                            switchGeneration = switchGeneration,
+                            switchPlayGeneration = switchPlayGeneration,
+                            mediaId = current.mediaId,
+                        ) ?: return@launch
+                    val selectedSubtitle = subtitle?.let { target -> latest.stream.subtitleTracks.firstOrNull { it.id == target.id } }
+                    if (subtitle != null && selectedSubtitle == null) return@launch
+                    val selectedAudio = latest.audioTrack.reconciledWith(latest.stream)
+                    val position = latest.request.validPlaybackPosition(latest.positionMs, latest.stream.sourceId)
+                    val preparedSource =
+                        resolved.forQualitySwitch(
+                            positionMs = position,
+                            audioTrack = selectedAudio,
+                            subtitleTrack = selectedSubtitle,
+                        )
+                    prepareStarted = true
+                    playerEngine.prepare(
+                        source = preparedSource,
+                        startPositionMs = position,
+                        audioTrack = selectedAudio,
+                        subtitleTrack = selectedSubtitle,
+                    )
+                    currentCoroutineContext().ensureActive()
+                    val confirmed =
+                        currentSessionForSubtitleSwitch(
+                            switchGeneration = switchGeneration,
+                            switchPlayGeneration = switchPlayGeneration,
+                            mediaId = current.mediaId,
+                        ) ?: return@launch
+                    playerEngine.setVideoQuality(confirmed.stream.maxBitrate)
+                    playerEngine.setAudioTrack(selectedAudio)
+                    if (confirmed.isPaused) playerEngine.pause() else playerEngine.play()
+                    val updated =
+                        confirmed.copy(
+                            positionMs = position,
+                            audioTrack = selectedAudio,
+                            subtitleTrack = selectedSubtitle,
+                            source = preparedSource,
+                        )
+                    session = updated
+                    publishCurrentState(updated)
+                    saveSubtitlePreference(updated, selectedSubtitle)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Throwable) {
+                    if (
+                        switchGeneration == subtitleSwitchGeneration &&
+                        switchPlayGeneration == playGeneration
+                    ) {
+                        if (prepareStarted) restorePlaybackAfterTrackSwitchFailure(current)
+                        _notices.emit(PlaybackNotice.SubtitleTrackSelectionFailed)
+                    }
+                }
+            }
+    }
+
+    private fun currentSessionForSubtitleSwitch(
+        switchGeneration: Long,
+        switchPlayGeneration: Long,
+        mediaId: String,
+    ): PlaybackSession? {
+        if (switchGeneration != subtitleSwitchGeneration || switchPlayGeneration != playGeneration || released) return null
+        return session?.takeIf { it.mediaId == mediaId }
+    }
+
+    private fun cancelSubtitleSwitch() {
+        subtitleSwitchGeneration += 1
+        subtitleSwitchJob?.cancel()
+        subtitleSwitchJob = null
     }
 
     fun resolveAudioPreference(
@@ -714,6 +848,7 @@ class PlaybackController(
         }
 
         if (current.source.mode == PlaybackMode.HLS && !isRemoteConnected()) {
+            cancelSubtitleSwitch()
             switchHlsAudioTrack(current, audio)
             return
         }
@@ -748,6 +883,7 @@ class PlaybackController(
                             options =
                                 PlaybackSourceOptions(
                                     audioStreamIndex = audio.streamIndex,
+                                    subtitleStreamIndex = current.subtitleTrack?.streamIndex ?: SUBTITLES_DISABLED_INDEX,
                                     playSessionId = current.source.playSessionId,
                                 ),
                         )
@@ -812,14 +948,14 @@ class PlaybackController(
                         switchGeneration == audioSwitchGeneration &&
                         switchPlayGeneration == playGeneration
                     ) {
-                        if (prepareStarted) restorePlaybackAfterAudioSwitchFailure(current)
+                        if (prepareStarted) restorePlaybackAfterTrackSwitchFailure(current)
                         _notices.emit(PlaybackNotice.AudioTrackSelectionFailed)
                     }
                 }
             }
     }
 
-    private suspend fun restorePlaybackAfterAudioSwitchFailure(previous: PlaybackSession) {
+    private suspend fun restorePlaybackAfterTrackSwitchFailure(previous: PlaybackSession) {
         val latest = session ?: return
         if (latest.mediaId != previous.mediaId) return
         runCatching {
@@ -858,6 +994,7 @@ class PlaybackController(
         val option = options.firstOrNull { it.id == optionId } ?: return
         cancelQualitySwitch()
         cancelAudioSwitch()
+        cancelSubtitleSwitch()
         if (option.id == current.stream.selectedQualityId) return
 
         val preferred = option.takeUnless { it.isAuto }
@@ -901,7 +1038,7 @@ class PlaybackController(
                     source =
                         current.source.copy(
                             audioStreamIndex = audioForPlayer?.streamIndex,
-                            subtitleStreamIndex = subtitleForPlayer?.streamIndex,
+                            subtitleStreamIndex = subtitleForPlayer?.streamIndex ?: SUBTITLES_DISABLED_INDEX,
                         ),
                     qualityOptions = selection.qualityOptions,
                     selectedQualityId = selection.selectedQualityId,
@@ -926,6 +1063,7 @@ class PlaybackController(
                             options =
                                 PlaybackSourceOptions(
                                     audioStreamIndex = audioForPlayer?.streamIndex,
+                                    subtitleStreamIndex = subtitleForPlayer?.streamIndex ?: SUBTITLES_DISABLED_INDEX,
                                     playSessionId =
                                         current.source.playSessionId.takeIf {
                                             current.stream.mode == selection.mode
@@ -1041,17 +1179,22 @@ class PlaybackController(
         audioTrack: AudioTrack?,
         subtitleTrack: SubtitleTrack?,
     ): ResolvedPlaybackSource {
-        val withAudio = applyPlaybackIndicesToUrl(url, audioTrack?.streamIndex)
+        val withTracks =
+            applyPlaybackIndicesToUrl(
+                url = url,
+                audioStreamIndex = audioTrack?.streamIndex,
+                subtitleStreamIndex = subtitleTrack?.streamIndex ?: SUBTITLES_DISABLED_INDEX,
+            )
         val reconciledUrl =
             if (mode == PlaybackMode.HLS && !isFallbackHls) {
-                withQueryParameter(withAudio, "StartTimeTicks", positionMs.coerceAtLeast(0L).toTicks().toString())
+                withQueryParameter(withTracks, "StartTimeTicks", positionMs.coerceAtLeast(0L).toTicks().toString())
             } else {
-                withAudio
+                withTracks
             }
         return copy(
             url = reconciledUrl,
             audioStreamIndex = audioTrack?.streamIndex,
-            subtitleStreamIndex = subtitleTrack?.streamIndex,
+            subtitleStreamIndex = subtitleTrack?.streamIndex ?: SUBTITLES_DISABLED_INDEX,
         )
     }
 
@@ -1358,7 +1501,7 @@ class PlaybackController(
                 preferenceResolver?.selectSubtitleTrack(
                     tracks = selection.subtitleTracks,
                     audioLanguage = preferredAudioTrackFor(request, selection, preferenceResolver)?.language,
-                ) ?: selection.defaultSubtitleTrack()
+                )
             else -> selection.subtitleTracks.firstOrNull { it.id == preferredId }
         }
     }
@@ -1432,7 +1575,13 @@ class PlaybackController(
     private fun applyPlaybackIndicesToUrl(
         url: String,
         audioStreamIndex: Int?,
-    ): String = withQueryParameter(url, "AudioStreamIndex", audioStreamIndex?.toString())
+        subtitleStreamIndex: Int? = null,
+    ): String =
+        withQueryParameter(
+            withQueryParameter(url, "AudioStreamIndex", audioStreamIndex?.toString()),
+            "SubtitleStreamIndex",
+            subtitleStreamIndex?.toString(),
+        )
 
     private fun withQueryParameter(
         url: String,
@@ -1492,6 +1641,10 @@ class PlaybackController(
                             confirmPendingAudioSelection(event.trackId)
                         is PlayerEvent.AudioTrackSelectionUnavailable ->
                             _notices.tryEmit(PlaybackNotice.AudioTrackSelectionFailed)
+                        is PlayerEvent.SubtitleTrackSelectionApplied ->
+                            confirmPendingSubtitleSelection(event.trackId)
+                        is PlayerEvent.SubtitleTrackSelectionUnavailable ->
+                            _notices.tryEmit(PlaybackNotice.SubtitleTrackSelectionFailed)
                         PlayerEvent.Completed ->
                             session?.takeUnless { it.phase == PlaybackPhase.Ended }?.let {
                                 progressStore.clear(it.mediaId)
@@ -1582,6 +1735,21 @@ class PlaybackController(
         saveAudioPreference(updated, audio)
     }
 
+    private fun confirmPendingSubtitleSelection(trackId: String?) {
+        val current = session ?: return
+        val subtitle = trackId?.let { id -> current.stream.subtitleTracks.firstOrNull { it.id == id } }
+        if (trackId != null && subtitle == null) return
+        if (current.subtitleTrack?.id == subtitle?.id) return
+        val updated =
+            current.copy(
+                subtitleTrack = subtitle,
+                source = current.source.copy(subtitleStreamIndex = subtitle?.streamIndex ?: SUBTITLES_DISABLED_INDEX),
+            )
+        session = updated
+        publishCurrentState(updated)
+        saveSubtitlePreference(updated, subtitle)
+    }
+
     private fun cancelCollectors() {
         progressJob?.cancel()
         eventsJob?.cancel()
@@ -1618,6 +1786,7 @@ class PlaybackController(
         val PLAYBACK_SPEEDS: List<Float> = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
         private const val PROGRESS_WRITE_INTERVAL_MS = 5_000L
         private const val COMPLETION_THRESHOLD_PERCENT = 0.97
+        private const val SUBTITLES_DISABLED_INDEX = -1
     }
 }
 

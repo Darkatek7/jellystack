@@ -71,13 +71,27 @@ class ServerFormStateTest {
     }
 
     @Test
-    fun passwordFallbackStillRequiresCredentials() {
+    fun passwordFallbackAcceptsPasswordlessJellyfinAccount() {
         val state =
             ServerFormState(
                 type = ServerFormType.JELLYFIN,
                 name = "Media",
                 baseUrl = "https://media.example",
                 username = "dummy-user",
+                jellyfinSignInMethod = JellyfinSignInMethod.PASSWORD,
+            )
+
+        assertTrue(state.isValid)
+    }
+
+    @Test
+    fun passwordFallbackStillRequiresUsername() {
+        val state =
+            ServerFormState(
+                type = ServerFormType.JELLYFIN,
+                name = "Media",
+                baseUrl = "https://media.example",
+                password = "dummy-credential",
                 jellyfinSignInMethod = JellyfinSignInMethod.PASSWORD,
             )
 

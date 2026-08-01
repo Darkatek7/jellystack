@@ -323,6 +323,8 @@ sealed interface PlaybackState {
 
 sealed interface PlaybackNotice {
     data object AudioTrackSelectionFailed : PlaybackNotice
+
+    data object SubtitleTrackSelectionFailed : PlaybackNotice
 }
 
 internal fun JellyfinMediaStream.toAudioTrack(audioIndex: Int? = null): AudioTrack? =
@@ -371,4 +373,4 @@ internal fun PlaybackStreamSelection.defaultAudioTrack(): AudioTrack? =
     audioTracks.firstOrNull { it.isDefault } ?: audioTracks.firstOrNull()
 
 internal fun PlaybackStreamSelection.defaultSubtitleTrack(): SubtitleTrack? =
-    subtitleTracks.firstOrNull { it.isDefault } ?: subtitleTracks.firstOrNull { !it.isForced }
+    subtitleTracks.firstOrNull { it.isDefault }

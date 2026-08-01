@@ -42,6 +42,7 @@ data class JellyfinPlaybackInfoRequestDto(
     @SerialName("DeviceProfile") val deviceProfile: JellyfinDeviceProfileDto,
     @SerialName("MediaSourceId") val mediaSourceId: String? = null,
     @SerialName("AudioStreamIndex") val audioStreamIndex: Int? = null,
+    @SerialName("SubtitleStreamIndex") val subtitleStreamIndex: Int? = null,
     @SerialName("StartTimeTicks") val startTimeTicks: Long = 0,
     @SerialName("MaxStreamingBitrate") val maxStreamingBitrate: Int? = null,
     @SerialName("EnableDirectPlay") val enableDirectPlay: Boolean,

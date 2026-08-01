@@ -85,7 +85,7 @@ class ServerConnectionCoordinator(
         }
         return try {
             val auth =
-                if (!password.isNullOrBlank()) {
+                if (password != null) {
                     jellyseerrAuthenticator.authenticate(
                         JellyseerrAuthRequest(
                             baseUrl = normalizeBaseUrl(input.baseUrl),

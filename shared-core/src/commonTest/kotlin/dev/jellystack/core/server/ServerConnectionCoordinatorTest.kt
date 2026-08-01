@@ -52,6 +52,39 @@ class ServerConnectionCoordinatorTest {
         }
 
     @Test
+    fun automaticSeerrConnectionUsesStoredPasswordlessJellyfinCredentials() =
+        runTest {
+            val authenticator = RecordingAuthenticator()
+            val repository = repository()
+            val coordinator = ServerConnectionCoordinator(repository, authenticator)
+            coordinator.connectJellyfin(
+                JellyfinConnectionInput(
+                    name = "Media",
+                    baseUrl = "https://media.example",
+                    username = "passwordless-user",
+                    password = "",
+                ),
+            )
+
+            val result =
+                coordinator.connectSeerrAutomatically(
+                    SeerrServerInput(name = "Requests", baseUrl = "https://requests.example"),
+                )
+
+            assertIs<SeerrConnectionResult.Connected>(result)
+            assertEquals(
+                JellyseerrAuthRequest(
+                    baseUrl = "https://requests.example",
+                    method = JellyseerrAuthRequest.Method.JELLYFIN,
+                    username = "passwordless-user",
+                    password = "",
+                ),
+                authenticator.lastRequest,
+            )
+            assertNull(authenticator.lastQuickConnectRequest)
+        }
+
+    @Test
     fun authenticationFailureRequestsCredentialsAndSuggestsLinkedUsername() =
         runTest {
             val authenticator =

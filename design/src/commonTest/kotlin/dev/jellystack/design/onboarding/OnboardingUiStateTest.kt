@@ -35,7 +35,7 @@ class OnboardingUiStateTest {
     }
 
     @Test
-    fun jellyfinErrorsAreLinkedToIndividualFields() {
+    fun jellyfinErrorsAreLinkedToRequiredFieldsWhilePasswordRemainsOptional() {
         val errors =
             validateOnboarding(
                 step = TutorialStep.ConnectJellyfin,
@@ -53,7 +53,7 @@ class OnboardingUiStateTest {
         assertEquals(OnboardingValidationError.Required, errors[OnboardingField.Name])
         assertEquals(OnboardingValidationError.InvalidUrl, errors[OnboardingField.Url])
         assertEquals(OnboardingValidationError.Required, errors[OnboardingField.Username])
-        assertEquals(OnboardingValidationError.Required, errors[OnboardingField.Password])
+        assertFalse(errors.containsKey(OnboardingField.Password))
     }
 
     @Test

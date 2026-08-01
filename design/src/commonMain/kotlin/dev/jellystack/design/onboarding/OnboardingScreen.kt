@@ -81,6 +81,7 @@ import jellystack_mobile.design.generated.resources.onboarding_url_error
 import jellystack_mobile.design.generated.resources.onboarding_welcome_body
 import jellystack_mobile.design.generated.resources.onboarding_welcome_title
 import jellystack_mobile.design.generated.resources.password
+import jellystack_mobile.design.generated.resources.password_optional
 import jellystack_mobile.design.generated.resources.quick_connect_description
 import jellystack_mobile.design.generated.resources.server_name
 import jellystack_mobile.design.generated.resources.server_url
@@ -369,7 +370,17 @@ private fun ServerFields(
             OutlinedTextField(
                 value = form.password,
                 onValueChange = { onChange(form.copy(password = it)) },
-                label = { Text(stringResource(Res.string.password)) },
+                label = {
+                    Text(
+                        stringResource(
+                            if (state.step == TutorialStep.ConnectJellyfin) {
+                                Res.string.password_optional
+                            } else {
+                                Res.string.password
+                            },
+                        ),
+                    )
+                },
                 singleLine = true,
                 isError = error != null,
                 supportingText = error?.let { { FieldErrorText(it) } },

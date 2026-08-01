@@ -118,6 +118,33 @@ class ServerRepositoryTest {
         }
 
     @Test
+    fun registersPasswordlessJellyfinServerAndPreservesEmptyPasswordCredential() =
+        runTest {
+            val storedCredential =
+                StoredCredential.Jellyfin(
+                    username = "passwordless-user",
+                    deviceId = "device-1",
+                    accessToken = "dummy-token",
+                    userId = "user42",
+                )
+            val secureStore = FakeSecureStore()
+            val repo = repository(secureStore) { ConnectivityResult.Success("ok", storedCredential) }
+
+            val managed =
+                repo.register(
+                    ServerRegistration(
+                        type = ServerType.JELLYFIN,
+                        name = "Media",
+                        baseUrl = "https://media.example",
+                        credentials = CredentialInput.Jellyfin(username = "passwordless-user", password = ""),
+                    ),
+                )
+
+            assertEquals("", repo.jellyfinPassword(managed.id)?.reveal())
+            assertEquals("", secureStore.peek("servers.${managed.id}.jellyfin.password")?.reveal())
+        }
+
+    @Test
     fun duplicateBaseUrlRejected() =
         runTest {
             val repo = repository { successApiKey() }

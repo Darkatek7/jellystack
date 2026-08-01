@@ -38,6 +38,7 @@
     <string name="username">Benutzername</string>
     <string name="email">E-Mail</string>
     <string name="password">Passwort</string>
+    <string name="password_optional">Passwort (optional)</string>
     <string name="connect_jellyfin">Jellyfin verbinden</string>
     <string name="connect_seerr">Seerr verbinden</string>
     <string name="try_jellyfin_account">Jellyfin-Konto wird verwendet…</string>
@@ -160,6 +161,7 @@
     <string name="request_variant_4k">4K</string>
     <string name="request_permission_denied">Dein Seerr-Konto darf diesen Titel nicht anfragen.</string>
     <string name="audio_track_switch_failed">Die Audiospur konnte nicht gewechselt werden. Die Wiedergabe läuft mit der vorherigen Spur weiter.</string>
+    <string name="subtitle_track_switch_failed">Die Untertitelspur konnte nicht gewechselt werden. Die Wiedergabe läuft mit der vorherigen Auswahl weiter.</string>
     <string name="server_default">Serverstandard</string>
     <string name="server_default_supporting">Verwendet das im Seerr-Server konfigurierte Profil.</string>
     <string name="request_seasons_title">Staffeln</string>
