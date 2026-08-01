@@ -310,6 +310,7 @@
     <string name="sign_in_with">Sign in with</string>
     <string name="seerr_account">Seerr account</string>
     <string name="jellyfin_account">Jellyfin account</string>
+    <string name="jellyfin_password">Jellyfin password</string>
     <string name="whats_new_dialog_title">What's new in Jellystack</string>
     <string name="version_label">Version %1$s</string>
     <string name="view_changelog">View changelog</string>

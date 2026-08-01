@@ -26,7 +26,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -56,9 +55,10 @@ import dev.jellystack.core.server.JellyfinSignInMethod
 import dev.jellystack.design.ServerFormState
 import dev.jellystack.design.components.InsecureHttpWarning
 import dev.jellystack.design.components.JellyfinQuickConnectStatus
-import dev.jellystack.design.components.SeerrCompatibilityNotice
 import dev.jellystack.design.components.JellyfinSignInMethodSelector
 import dev.jellystack.design.components.JellystackMark
+import dev.jellystack.design.components.SeerrCompatibilityNotice
+import dev.jellystack.design.components.SeerrSignInMethodSelector
 import jellystack_mobile.design.generated.resources.Res
 import jellystack_mobile.design.generated.resources.app_title
 import jellystack_mobile.design.generated.resources.back
@@ -90,8 +90,6 @@ import jellystack_mobile.design.generated.resources.server_url_missing_protocol
 import jellystack_mobile.design.generated.resources.show_password
 import jellystack_mobile.design.generated.resources.skip_for_now
 import jellystack_mobile.design.generated.resources.start_exploring
-import jellystack_mobile.design.generated.resources.use_jellyfin_account
-import jellystack_mobile.design.generated.resources.use_seerr_account
 import jellystack_mobile.design.generated.resources.username
 import org.jetbrains.compose.resources.stringResource
 import androidx.compose.ui.semantics.password as passwordSemantics
@@ -267,30 +265,21 @@ private fun OnboardingStageContent(
                 onChange = { onAction(OnboardingAction.FormChanged(it)) },
             )
             AnimatedVisibility(state.manualSeerrCredentialsRequired) {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(
-                        selected = state.form.useJellyfinLogin,
-                        onClick = {
-                            onAction(
-                                OnboardingAction.FormChanged(
-                                    state.form.copy(useJellyfinLogin = true, email = ""),
+                SeerrSignInMethodSelector(
+                    useJellyfinLogin = state.form.useJellyfinLogin,
+                    onUseJellyfinLoginChange = { useJellyfinLogin ->
+                        onAction(
+                            OnboardingAction.FormChanged(
+                                state.form.copy(
+                                    useJellyfinLogin = useJellyfinLogin,
+                                    username = if (useJellyfinLogin) state.form.username else "",
+                                    email = if (useJellyfinLogin) "" else state.form.email,
                                 ),
-                            )
-                        },
-                        label = { Text(stringResource(Res.string.use_jellyfin_account)) },
-                    )
-                    FilterChip(
-                        selected = !state.form.useJellyfinLogin,
-                        onClick = {
-                            onAction(
-                                OnboardingAction.FormChanged(
-                                    state.form.copy(useJellyfinLogin = false, username = ""),
-                                ),
-                            )
-                        },
-                        label = { Text(stringResource(Res.string.use_seerr_account)) },
-                    )
-                }
+                            ),
+                        )
+                    },
+                    enabled = !state.isSaving,
+                )
             }
         }
         TutorialStep.Explore -> {

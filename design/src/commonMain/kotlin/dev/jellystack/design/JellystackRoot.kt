@@ -162,6 +162,7 @@ import dev.jellystack.design.components.InsecureHttpWarning
 import dev.jellystack.design.components.JellyfinQuickConnectStatus
 import dev.jellystack.design.components.SeerrCompatibilityNotice
 import dev.jellystack.design.components.JellyfinSignInMethodSelector
+import dev.jellystack.design.components.SeerrSignInMethodSelector
 import dev.jellystack.design.components.ModalFocusScope
 import dev.jellystack.design.jellyfin.HomeSectionsScreen
 import dev.jellystack.design.jellyfin.HomeSkeleton
@@ -288,7 +289,6 @@ import jellystack_mobile.design.generated.resources.favorite_update_failed
 import jellystack_mobile.design.generated.resources.favorites
 import jellystack_mobile.design.generated.resources.hide_password
 import jellystack_mobile.design.generated.resources.item_detail_unavailable
-import jellystack_mobile.design.generated.resources.jellyfin_account
 import jellystack_mobile.design.generated.resources.libraries
 import jellystack_mobile.design.generated.resources.library_connect_server_status
 import jellystack_mobile.design.generated.resources.loading_episodes
@@ -326,7 +326,6 @@ import jellystack_mobile.design.generated.resources.request_search_failed
 import jellystack_mobile.design.generated.resources.request_submitted
 import jellystack_mobile.design.generated.resources.requests_title
 import jellystack_mobile.design.generated.resources.retry
-import jellystack_mobile.design.generated.resources.seerr_account
 import jellystack_mobile.design.generated.resources.seerr_automatic_login
 import jellystack_mobile.design.generated.resources.seerr_connect_jellyfin_first
 import jellystack_mobile.design.generated.resources.select_cast_device
@@ -4404,40 +4403,20 @@ private fun AddServerDialog(
                                 SeerrCompatibilityNotice(text = notice)
                             }
                             Text(stringResource(Res.string.sign_in_with), style = MaterialTheme.typography.labelLarge)
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                FilterChip(
-                                    selected = !state.useJellyfinLogin,
-                                    onClick = {
-                                        if (!isSaving) {
-                                            onValueChange(
-                                                state.copy(
-                                                    useJellyfinLogin = false,
-                                                    username = "",
-                                                ),
-                                            )
-                                            onClearError()
-                                        }
-                                    },
-                                    enabled = !isSaving,
-                                    label = { Text(stringResource(Res.string.seerr_account)) },
-                                )
-                                FilterChip(
-                                    selected = state.useJellyfinLogin,
-                                    onClick = {
-                                        if (!isSaving) {
-                                            onValueChange(
-                                                state.copy(
-                                                    useJellyfinLogin = true,
-                                                    email = "",
-                                                ),
-                                            )
-                                            onClearError()
-                                        }
-                                    },
-                                    enabled = !isSaving,
-                                    label = { Text(stringResource(Res.string.jellyfin_account)) },
-                                )
-                            }
+                            SeerrSignInMethodSelector(
+                                useJellyfinLogin = state.useJellyfinLogin,
+                                onUseJellyfinLoginChange = { useJellyfinLogin ->
+                                    onValueChange(
+                                        state.copy(
+                                            useJellyfinLogin = useJellyfinLogin,
+                                            username = if (useJellyfinLogin) state.username else "",
+                                            email = if (useJellyfinLogin) "" else state.email,
+                                        ),
+                                    )
+                                    onClearError()
+                                },
+                                enabled = !isSaving,
+                            )
                             if (state.useJellyfinLogin) {
                                 OutlinedTextField(
                                     value = state.username,
