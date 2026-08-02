@@ -716,7 +716,7 @@ private fun JellyfinLibraryDto.toRecord(
         serverId = environment.serverKey,
         name = name,
         collectionType = collectionType,
-        primaryImageTag = primaryImageTag,
+        primaryImageTag = imageTags?.get("Primary") ?: primaryImageTag,
         itemCount = itemCount,
         createdAt = now,
         updatedAt = now,

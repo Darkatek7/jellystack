@@ -154,13 +154,7 @@ private fun TvSpotlight(
     strings: TvStrings,
     onClick: () -> Unit,
 ) {
-    val imageId = item.seriesId ?: item.id
-    val imageTag =
-        item.seriesBackdropImageTag
-            ?: item.backdropImageTag
-            ?: item.seriesThumbImageTag
-            ?: item.thumbImageTag
-            ?: item.primaryImageTag
+    val artwork = resolveTvJellyfinArtwork(item)
     Box(
         modifier =
             Modifier
@@ -174,9 +168,7 @@ private fun TvSpotlight(
                 jellyfinImageUrl(
                     state.imageBaseUrl,
                     state.imageAccessToken,
-                    imageId,
-                    imageTag,
-                    if (imageTag == item.primaryImageTag) "Primary" else "Backdrop",
+                    artwork,
                     1600,
                 ),
             contentDescription = item.name,
@@ -247,13 +239,7 @@ private fun TvJellyfinRow(
                     .PaddingValues(6.dp),
         ) {
             itemsIndexed(items, key = { _, item -> item.id }) { index, item ->
-                val imageId = item.seriesId ?: item.id
-                val tag =
-                    item.seriesThumbImageTag
-                        ?: item.thumbImageTag
-                        ?: item.seriesBackdropImageTag
-                        ?: item.backdropImageTag
-                        ?: item.primaryImageTag
+                val artwork = resolveTvJellyfinArtwork(item)
                 TvMediaCard(
                     title = item.episodeTitle ?: item.name,
                     subtitle = item.subtitleText(),
@@ -261,9 +247,7 @@ private fun TvJellyfinRow(
                         jellyfinImageUrl(
                             state.imageBaseUrl,
                             state.imageAccessToken,
-                            imageId,
-                            tag,
-                            if (tag == item.primaryImageTag) "Primary" else "Thumb",
+                            artwork,
                         ),
                     onClick = { onItem(item) },
                     onFocused = { focusMemory.remember(routeKey, title, item.id, horizontalIndex = index) },
@@ -434,6 +418,7 @@ internal fun TvLibraryScreen(
             itemsIndexed(state.libraryItems.chunked(5), key = { _, row -> row.joinToString { it.id } }) { rowIndex, row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                     row.forEachIndexed { columnIndex, item ->
+                        val artwork = resolveTvJellyfinArtwork(item)
                         TvMediaCard(
                             title = item.name,
                             subtitle = item.subtitleText(),
@@ -441,13 +426,7 @@ internal fun TvLibraryScreen(
                                 jellyfinImageUrl(
                                     state.imageBaseUrl,
                                     state.imageAccessToken,
-                                    item.seriesId ?: item.id,
-                                    item.seriesThumbImageTag ?: item.thumbImageTag ?: item.primaryImageTag,
-                                    if (item.thumbImageTag != null || item.seriesThumbImageTag != null) {
-                                        "Thumb"
-                                    } else {
-                                        "Primary"
-                                    },
+                                    artwork,
                                 ),
                             onClick = { if (item.isBrowseContainer()) onOpenContainer(item) else onOpenItem(item) },
                             onFocused = { focusMemory.remember(routeKey, "items", item.id, rowIndex + 1, columnIndex) },

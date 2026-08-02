@@ -387,6 +387,8 @@ data class JellyfinLibraryDto(
     val collectionType: String? = null,
     @SerialName("PrimaryImageTag")
     val primaryImageTag: String? = null,
+    @SerialName("ImageTags")
+    val imageTags: Map<String, String>? = null,
     @SerialName("ItemCount")
     val itemCount: Long? = null,
 )

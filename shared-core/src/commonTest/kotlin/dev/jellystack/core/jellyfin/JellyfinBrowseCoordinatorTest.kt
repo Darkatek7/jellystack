@@ -44,6 +44,7 @@ class JellyfinBrowseCoordinatorTest {
             deviceName = "Test Device",
         )
     private val environmentProvider = JellyfinEnvironmentProvider { environment }
+    private val viewsCallCount = MutableStateFlow(0)
     private val itemPageCallCount = MutableStateFlow(0)
     private val itemPageResponseWithTotal = MutableStateFlow<String?>(null)
     private val engine =
@@ -51,7 +52,10 @@ class JellyfinBrowseCoordinatorTest {
             val path = request.url.encodedPath
             val body =
                 when {
-                    path.endsWith("/Views") -> LIBRARIES_JSON
+                    path.endsWith("/Views") -> {
+                        viewsCallCount.update { it + 1 }
+                        LIBRARIES_JSON
+                    }
                     path.endsWith("/Items/Resume") -> RESUME_JSON
                     path.endsWith("/Items/NextUp") -> NEXT_UP_JSON
                     path.endsWith("/Items/Latest") ->
@@ -110,6 +114,45 @@ class JellyfinBrowseCoordinatorTest {
             assertFalse(state.endReached, "state=$state")
             assertEquals("resume-1", state.continueWatching.first().id, "state=$state")
             assertEquals("next-1", state.nextUp.first().id, "state=$state")
+        }
+
+    @Test
+    fun bootstrapRefreshesLegacyCachedLibrariesWithoutImageTags() =
+        runTest {
+            viewsCallCount.value = 0
+            itemPageCallCount.value = 0
+            val libraryStore = InMemoryLibraryStore()
+            val timestamp = Instant.parse("2026-01-01T00:00:00Z")
+            libraryStore.replaceAll(
+                environment.serverKey,
+                listOf(
+                    JellyfinLibraryRecord(
+                        id = "legacy-lib",
+                        serverId = environment.serverKey,
+                        name = "Legacy",
+                        collectionType = "movies",
+                        primaryImageTag = null,
+                        itemCount = null,
+                        createdAt = timestamp,
+                        updatedAt = timestamp,
+                    ),
+                ),
+            )
+            val repository =
+                JellyfinBrowseRepository(
+                    environmentProvider,
+                    libraryStore,
+                    InMemoryItemStore(),
+                    InMemoryDetailStore(),
+                    apiFactory,
+                )
+            val coordinator =
+                JellyfinBrowseCoordinator(repository, backgroundScope, favoritesStore = FakeJellyfinFavoritesStore(), pageSize = 2)
+
+            val state = awaitInitialLoad(coordinator)
+
+            assertEquals(1, viewsCallCount.value)
+            assertEquals("movies-primary", state.libraries.first().primaryImageTag)
         }
 
     @Test
@@ -1029,7 +1072,7 @@ class JellyfinBrowseCoordinatorTest {
         private const val LIBRARIES_JSON = """
             {
               "Items": [
-                {"Id": "lib-1", "Name": "Movies", "CollectionType": "movies"},
+                {"Id": "lib-1", "Name": "Movies", "CollectionType": "movies", "ImageTags": {"Primary": "movies-primary"}},
                 {"Id": "lib-2", "Name": "Shows", "CollectionType": "tvshows"}
               ]
             }

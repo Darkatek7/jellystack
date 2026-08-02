@@ -121,8 +121,13 @@ class JellyfinBrowseCoordinator(
         refreshJob =
             scope.launch {
                 loadMutex.withLock {
+                    val cachedLibraries = repository.listLibraries()
+                    val shouldRefreshLibraries =
+                        forceRefresh ||
+                            cachedLibraries.isEmpty() ||
+                            cachedLibraries.all { it.primaryImageTag.isNullOrBlank() }
                     val cachedState = loadCachedState()
-                    val shouldRefresh = forceRefresh || cachedState == null
+                    val shouldRefresh = forceRefresh || cachedState == null || shouldRefreshLibraries
                     if (cachedState != null) {
                         mutableState.value =
                             cachedState.copy(
@@ -133,9 +138,8 @@ class JellyfinBrowseCoordinator(
                         mutableState.value = mutableState.value.copy(isInitialLoading = true, errorMessage = null)
                     }
                     try {
-                        val cachedLibraries = repository.listLibraries()
                         val libraries =
-                            if (forceRefresh || cachedLibraries.isEmpty()) {
+                            if (shouldRefreshLibraries) {
                                 repository.refreshLibraries()
                             } else {
                                 cachedLibraries
