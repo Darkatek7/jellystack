@@ -1,3 +1,5 @@
+@file:Suppress("CyclomaticComplexMethod", "MaxLineLength", "ReturnCount", "TooManyFunctions")
+
 package dev.jellystack.players.cast
 
 import android.net.Uri
@@ -216,7 +218,8 @@ internal class CastPlayer(
                 selectedSubtitleTrackId = fallbackTrack.id,
                 activeTrackIds = longArrayOf(castTrackIdFor(fallbackTrack.id)),
                 userMessage =
-                    "Cast subtitle fallback: Selected subtitle is unsupported; using ${fallbackTrack.label ?: fallbackTrack.language ?: "WebVTT"}.",
+                    "Cast subtitle fallback: Selected subtitle is unsupported; using " +
+                        "${fallbackTrack.label ?: fallbackTrack.language ?: "WebVTT"}.",
             )
         } else {
             SubtitleSelection(

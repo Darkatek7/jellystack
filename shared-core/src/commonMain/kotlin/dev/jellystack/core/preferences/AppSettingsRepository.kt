@@ -59,6 +59,14 @@ class AppSettingsRepository(
 
     fun setDownloadsWifiOnly(value: Boolean) = update(KEY_DOWNLOADS_WIFI_ONLY, value) { copy(downloadsWifiOnly = value) }
 
+    fun setDefaultPlaybackSpeed(value: Float) {
+        val normalized = value.takeIf(PLAYBACK_SPEEDS::contains) ?: 1f
+        storage.putFloat(KEY_DEFAULT_PLAYBACK_SPEED, normalized)
+        publish { copy(defaultPlaybackSpeed = normalized) }
+    }
+
+    fun setStatsForNerdsEnabled(value: Boolean) = update(KEY_STATS_FOR_NERDS, value) { copy(statsForNerdsEnabled = value) }
+
     private fun readSettings(): AppSettings =
         AppSettings(
             appLanguage = enumValue(KEY_APP_LANGUAGE, AppLanguage.SYSTEM),
@@ -79,6 +87,8 @@ class AppSettingsRepository(
             spotlightIntervalSeconds =
                 storage.getInt(KEY_SPOTLIGHT_INTERVAL, 6).takeIf(SPOTLIGHT_INTERVAL_SECONDS::contains) ?: 6,
             downloadsWifiOnly = storage.getBoolean(KEY_DOWNLOADS_WIFI_ONLY, false),
+            defaultPlaybackSpeed = storage.getFloat(KEY_DEFAULT_PLAYBACK_SPEED, 1f).takeIf(PLAYBACK_SPEEDS::contains) ?: 1f,
+            statsForNerdsEnabled = storage.getBoolean(KEY_STATS_FOR_NERDS, false),
         )
 
     private inline fun <reified T : Enum<T>> enumValue(
@@ -138,7 +148,10 @@ class AppSettingsRepository(
         const val KEY_USE_SERVER_HOME_SECTIONS = "settings.use_server_home_sections"
         const val KEY_SPOTLIGHT_INTERVAL = "settings.spotlight_interval_seconds"
         const val KEY_DOWNLOADS_WIFI_ONLY = "settings.downloads_wifi_only"
+        const val KEY_DEFAULT_PLAYBACK_SPEED = "settings.default_playback_speed"
+        const val KEY_STATS_FOR_NERDS = "settings.stats_for_nerds"
         val SEEK_SECONDS = setOf(5, 10, 15, 30, 60)
         val SPOTLIGHT_INTERVAL_SECONDS = setOf(6, 8, 10, 15)
+        val PLAYBACK_SPEEDS = setOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
     }
 }

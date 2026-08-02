@@ -69,6 +69,7 @@ class AndroidPlayerEngine(
                         .build(),
                     true,
                 )
+                setHandleAudioBecomingNoisy(true)
                 addListener(
                     object : Player.Listener {
                         override fun onPlaybackStateChanged(playbackState: Int) {
@@ -143,6 +144,8 @@ class AndroidPlayerEngine(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                 )
             keepScreenOn = true
+            isFocusable = true
+            isFocusableInTouchMode = true
             setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
             updateVideoSurface(
                 view = this,
@@ -342,6 +345,8 @@ class AndroidPlayerEngine(
         exoPlayer.release()
         scope.cancel()
     }
+
+    internal fun media3Player(): Player = exoPlayer
 
     private fun currentRuntimeStats(): PlaybackRuntimeStats {
         val video = exoPlayer.videoFormat

@@ -50,12 +50,15 @@ enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
 
 iInclude(
     ":app-android",
+    ":app-tv",
     ":app-ios",
     ":shared-core",
     ":shared-network",
     ":shared-database",
     ":players",
+    ":players-cast-google",
     ":design",
+    ":design-tv",
     ":design-screenshots",
     ":testing",
     ":tools",

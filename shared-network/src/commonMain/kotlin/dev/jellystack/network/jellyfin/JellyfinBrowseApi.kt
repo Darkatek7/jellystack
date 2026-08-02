@@ -81,6 +81,7 @@ class JellyfinBrowseApi(
         includeItemTypes: String? = DEFAULT_INCLUDE_ITEM_TYPES,
         recursive: Boolean = true,
         filters: String? = null,
+        searchTerm: String? = null,
     ): JellyfinItemsResponse =
         client
             .request {
@@ -97,6 +98,7 @@ class JellyfinBrowseApi(
                 parameter("ImageTypeLimit", 1)
                 parameter("EnableImageTypes", "Primary,Backdrop,Thumb,Logo")
                 filters?.let { parameter("Filters", it) }
+                searchTerm?.takeIf { it.isNotBlank() }?.let { parameter("SearchTerm", it) }
             }.body()
 
     suspend fun fetchLatestItems(

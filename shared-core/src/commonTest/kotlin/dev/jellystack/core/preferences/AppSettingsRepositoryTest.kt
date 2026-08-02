@@ -29,6 +29,8 @@ class AppSettingsRepositoryTest {
         assertEquals(6, value.spotlightIntervalSeconds)
         assertTrue(value.useServerHomeSections)
         assertFalse(value.downloadsWifiOnly)
+        assertEquals(1f, value.defaultPlaybackSpeed)
+        assertFalse(value.statsForNerdsEnabled)
     }
 
     @Test
@@ -53,6 +55,8 @@ class AppSettingsRepositoryTest {
         repository.setSpotlightIntervalSeconds(15)
         repository.setUseServerHomeSections(false)
         repository.setDownloadsWifiOnly(true)
+        repository.setDefaultPlaybackSpeed(1.5f)
+        repository.setStatsForNerdsEnabled(true)
 
         assertEquals(
             repository.settings.value,
@@ -62,6 +66,8 @@ class AppSettingsRepositoryTest {
         assertEquals("deu", repository.settings.value.preferredAudioLanguage)
         assertTrue(repository.settings.value.downloadsWifiOnly)
         assertFalse(repository.settings.value.useServerHomeSections)
+        assertEquals(1.5f, repository.settings.value.defaultPlaybackSpeed)
+        assertTrue(repository.settings.value.statsForNerdsEnabled)
     }
 
     @Test
@@ -74,6 +80,7 @@ class AppSettingsRepositoryTest {
                     "settings.seek_back_seconds" to 999,
                     "settings.spotlight_interval_seconds" to 7,
                     "settings.audio_language" to "  ",
+                    "settings.default_playback_speed" to 3f,
                 ),
             )
 
@@ -84,5 +91,20 @@ class AppSettingsRepositoryTest {
         assertEquals(10, value.seekBackSeconds)
         assertEquals(6, value.spotlightIntervalSeconds)
         assertNull(value.preferredAudioLanguage)
+        assertEquals(1f, value.defaultPlaybackSpeed)
+    }
+
+    @Test
+    fun televisionCapabilitiesExcludeMobileOnlyFeatures() {
+        val capabilities = AppPlatformCapabilities.Television
+
+        assertTrue(capabilities.isTelevision)
+        assertTrue(capabilities.appLanguageSelection)
+        assertTrue(capabilities.autoplayNextEpisode)
+        assertTrue(capabilities.subtitleAppearance)
+        assertFalse(capabilities.supportsCast)
+        assertFalse(capabilities.supportsDownloads)
+        assertFalse(capabilities.supportsBiometricLock)
+        assertFalse(capabilities.supportsAdmin)
     }
 }

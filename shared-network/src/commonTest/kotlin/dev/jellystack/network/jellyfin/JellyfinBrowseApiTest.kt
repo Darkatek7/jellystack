@@ -16,6 +16,37 @@ import kotlin.test.assertTrue
 
 class JellyfinBrowseApiTest {
     @Test
+    fun searchTermIsForwardedToLibraryItemsEndpoint() =
+        runTest {
+            var searchTerm: String? = null
+            var parentId: String? = "not-set"
+            val engine =
+                MockEngine { request ->
+                    searchTerm = request.url.parameters["SearchTerm"]
+                    parentId = request.url.parameters["ParentId"]
+                    respond(
+                        """{"Items":[],"TotalRecordCount":0}""",
+                        HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                    )
+                }
+            val client = NetworkClientFactory.create(ClientConfig(engine = engine, installLogging = false))
+            val api = JellyfinBrowseApi(client, baseUrl = "https://example.test", accessToken = "dummy-access-token")
+
+            api.fetchLibraryItems(
+                userId = "u-1",
+                libraryId = "",
+                startIndex = 0,
+                limit = 40,
+                searchTerm = "Arrival",
+            )
+
+            assertEquals("Arrival", searchTerm)
+            assertEquals(null, parentId)
+            client.close()
+        }
+
+    @Test
     fun fetchItemDetailRequestsRichMetadataFields() =
         runTest {
             var requestedFields = ""
