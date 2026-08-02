@@ -9,6 +9,7 @@ import androidx.annotation.OptIn
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.util.UnstableApi
+import androidx.navigationevent.setViewTreeNavigationEventDispatcherOwner
 import com.russhwolf.settings.SharedPreferencesSettings
 import dev.jellystack.core.di.JellystackDI
 import dev.jellystack.core.jellyfin.JellyfinBrowseRepository
@@ -35,6 +36,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.decorView.setViewTreeNavigationEventDispatcherOwner(this)
         playerEngine = AndroidPlayerEngine(applicationContext)
         val koin = JellystackDI.koin
         val settingsRepository = koin.get<AppSettingsRepository>()

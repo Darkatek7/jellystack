@@ -67,6 +67,11 @@ internal fun TvConnectionScreen(
     var state by remember { mutableStateOf<JellyfinQuickConnectState?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var connectJob by remember { mutableStateOf<Job?>(null) }
+    val quickConnectInProgress =
+        state is JellyfinQuickConnectState.Starting ||
+            state is JellyfinQuickConnectState.Waiting ||
+            state is JellyfinQuickConnectState.Registering
+    val contentMode = connectionContentMode(quickConnectInProgress)
 
     fun beginQuickConnect() {
         connectJob?.cancel()
@@ -122,23 +127,25 @@ internal fun TvConnectionScreen(
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 Text(strings.connectJellyfin, color = TvText, fontSize = 30.sp, fontWeight = FontWeight.Bold)
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    TvActionButton(
-                        strings.quickConnect,
-                        { method = JellyfinSignInMethod.QUICK_CONNECT },
-                        primary = method == JellyfinSignInMethod.QUICK_CONNECT,
-                    )
-                    TvActionButton(
-                        strings.password,
-                        { method = JellyfinSignInMethod.PASSWORD },
-                        primary = method == JellyfinSignInMethod.PASSWORD,
-                    )
-                }
-                TvTextField(displayName, { displayName = it }, strings.displayName)
-                TvTextField(baseUrl, { baseUrl = it }, strings.serverUrl)
-                if (method == JellyfinSignInMethod.PASSWORD) {
-                    TvTextField(username, { username = it }, strings.username)
-                    TvTextField(password, { password = it }, strings.password, password = true)
+                if (contentMode.showEditableFields) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        TvActionButton(
+                            strings.quickConnect,
+                            { method = JellyfinSignInMethod.QUICK_CONNECT },
+                            primary = method == JellyfinSignInMethod.QUICK_CONNECT,
+                        )
+                        TvActionButton(
+                            strings.password,
+                            { method = JellyfinSignInMethod.PASSWORD },
+                            primary = method == JellyfinSignInMethod.PASSWORD,
+                        )
+                    }
+                    TvTextField(displayName, { displayName = it }, strings.displayName)
+                    TvTextField(baseUrl, { baseUrl = it }, strings.serverUrl)
+                    if (method == JellyfinSignInMethod.PASSWORD) {
+                        TvTextField(username, { username = it }, strings.username)
+                        TvTextField(password, { password = it }, strings.password, password = true)
+                    }
                 }
                 when (val quickState = state) {
                     is JellyfinQuickConnectState.Waiting -> {
@@ -160,31 +167,35 @@ internal fun TvConnectionScreen(
                     )
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    TvActionButton(
-                        label = strings.connect,
-                        primary = true,
-                        onClick = {
-                            if (baseUrl.isBlank()) {
-                                error = "Enter a complete http:// or https:// server URL."
-                            } else if (method == JellyfinSignInMethod.QUICK_CONNECT) {
-                                beginQuickConnect()
-                            } else {
-                                connectJob?.cancel()
-                                connectJob =
-                                    scope.launch {
-                                        runCatching {
-                                            coordinator.connectJellyfin(
-                                                JellyfinConnectionInput(displayName, baseUrl, username, password),
-                                            )
-                                        }.onSuccess { onConnected() }
-                                            .onFailure { error = it.message ?: "Could not connect to Jellyfin." }
-                                        password = ""
-                                    }
-                            }
-                        },
-                    )
+                    if (contentMode.showConnectAction) {
+                        TvActionButton(
+                            label = strings.connect,
+                            primary = true,
+                            onClick = {
+                                if (baseUrl.isBlank()) {
+                                    error = "Enter a complete http:// or https:// server URL."
+                                } else if (method == JellyfinSignInMethod.QUICK_CONNECT) {
+                                    beginQuickConnect()
+                                } else {
+                                    connectJob?.cancel()
+                                    connectJob =
+                                        scope.launch {
+                                            runCatching {
+                                                coordinator.connectJellyfin(
+                                                    JellyfinConnectionInput(displayName, baseUrl, username, password),
+                                                )
+                                            }.onSuccess { onConnected() }
+                                                .onFailure { error = it.message ?: "Could not connect to Jellyfin." }
+                                            password = ""
+                                        }
+                                }
+                            },
+                        )
+                    }
                     if (state is JellyfinQuickConnectState.Waiting) {
                         TvActionButton(strings.newCode, ::beginQuickConnect)
+                    }
+                    if (contentMode.showWaitingInstructions) {
                         TvActionButton(
                             strings.cancel,
                             {
