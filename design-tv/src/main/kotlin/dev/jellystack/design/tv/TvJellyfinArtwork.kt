@@ -1,5 +1,6 @@
 package dev.jellystack.design.tv
 
+import dev.jellystack.core.jellyfin.HomeSectionItem
 import dev.jellystack.core.jellyfin.JellyfinItem
 
 internal data class TvJellyfinArtwork(
@@ -66,3 +67,24 @@ internal fun jellyfinImageUrl(
             maxWidth = maxWidth,
         )
     }
+
+internal fun resolveTvHomeSectionImageUrl(
+    item: HomeSectionItem,
+    baseUrl: String?,
+    token: String?,
+): String? {
+    item.imageUrl?.takeIf(String::isNotBlank)?.let { return it }
+    val jellyfinItem = item.jellyfinItem ?: return null
+    val artwork = resolveTvJellyfinArtwork(jellyfinItem)
+    return if (artwork != null) {
+        jellyfinImageUrl(baseUrl, token, artwork)
+    } else {
+        jellyfinImageUrl(
+            baseUrl = baseUrl,
+            token = token,
+            itemId = jellyfinItem.id,
+            tag = null,
+            type = "Primary",
+        )
+    }
+}

@@ -36,6 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.jellystack.core.server.JellyfinConnectionInput
@@ -72,6 +73,7 @@ internal fun TvConnectionScreen(
             state is JellyfinQuickConnectState.Waiting ||
             state is JellyfinQuickConnectState.Registering
     val contentMode = connectionContentMode(quickConnectInProgress)
+    val layout = connectionFormLayout(method)
 
     fun beginQuickConnect() {
         connectJob?.cancel()
@@ -106,7 +108,7 @@ internal fun TvConnectionScreen(
 
     Box(modifier.fillMaxSize().background(TvBackground), contentAlignment = Alignment.Center) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 86.dp, vertical = 54.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 86.dp, vertical = layout.screenVerticalPadding),
             horizontalArrangement = Arrangement.spacedBy(72.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -123,8 +125,8 @@ internal fun TvConnectionScreen(
                 Modifier
                     .weight(1.15f)
                     .background(TvSurface, RoundedCornerShape(28.dp))
-                    .padding(34.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
+                    .padding(horizontal = 34.dp, vertical = layout.cardVerticalPadding),
+                verticalArrangement = Arrangement.spacedBy(layout.itemSpacing),
             ) {
                 Text(strings.connectJellyfin, color = TvText, fontSize = 30.sp, fontWeight = FontWeight.Bold)
                 if (contentMode.showEditableFields) {
@@ -140,11 +142,17 @@ internal fun TvConnectionScreen(
                             primary = method == JellyfinSignInMethod.PASSWORD,
                         )
                     }
-                    TvTextField(displayName, { displayName = it }, strings.displayName)
-                    TvTextField(baseUrl, { baseUrl = it }, strings.serverUrl)
+                    TvTextField(displayName, { displayName = it }, strings.displayName, height = layout.textFieldHeight)
+                    TvTextField(baseUrl, { baseUrl = it }, strings.serverUrl, height = layout.textFieldHeight)
                     if (method == JellyfinSignInMethod.PASSWORD) {
-                        TvTextField(username, { username = it }, strings.username)
-                        TvTextField(password, { password = it }, strings.password, password = true)
+                        TvTextField(username, { username = it }, strings.username, height = layout.textFieldHeight)
+                        TvTextField(
+                            password,
+                            { password = it },
+                            strings.password,
+                            password = true,
+                            height = layout.textFieldHeight,
+                        )
                     }
                 }
                 when (val quickState = state) {
@@ -232,6 +240,7 @@ private fun TvTextField(
     onValueChange: (String) -> Unit,
     label: String,
     password: Boolean = false,
+    height: Dp = 64.dp,
 ) {
     OutlinedTextField(
         value = value,
@@ -240,6 +249,30 @@ private fun TvTextField(
         singleLine = true,
         visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
         keyboardOptions = KeyboardOptions(keyboardType = if (password) KeyboardType.Password else KeyboardType.Uri),
-        modifier = Modifier.fillMaxWidth().height(64.dp),
+        modifier = Modifier.fillMaxWidth().height(height),
     )
 }
+
+internal data class TvConnectionFormLayout(
+    val screenVerticalPadding: Dp,
+    val cardVerticalPadding: Dp,
+    val itemSpacing: Dp,
+    val textFieldHeight: Dp,
+)
+
+internal fun connectionFormLayout(method: JellyfinSignInMethod): TvConnectionFormLayout =
+    if (method == JellyfinSignInMethod.PASSWORD) {
+        TvConnectionFormLayout(
+            screenVerticalPadding = 28.dp,
+            cardVerticalPadding = 24.dp,
+            itemSpacing = 10.dp,
+            textFieldHeight = 56.dp,
+        )
+    } else {
+        TvConnectionFormLayout(
+            screenVerticalPadding = 54.dp,
+            cardVerticalPadding = 34.dp,
+            itemSpacing = 14.dp,
+            textFieldHeight = 64.dp,
+        )
+    }

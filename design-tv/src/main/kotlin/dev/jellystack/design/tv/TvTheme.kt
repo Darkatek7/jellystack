@@ -2,7 +2,9 @@
 
 package dev.jellystack.design.tv
 
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.darkColorScheme
@@ -41,6 +43,8 @@ fun JellystackTvTheme(content: @Composable () -> Unit) {
                 onSurfaceVariant = TvTextMuted,
             ),
     ) {
-        MaterialTheme(colorScheme = tvColors, content = content)
+        MaterialTheme(colorScheme = tvColors) {
+            CompositionLocalProvider(LocalContentColor provides TvText, content = content)
+        }
     }
 }

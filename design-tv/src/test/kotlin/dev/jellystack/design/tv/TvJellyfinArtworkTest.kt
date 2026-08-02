@@ -1,6 +1,8 @@
 package dev.jellystack.design.tv
 
 import dev.jellystack.core.jellyfin.JellyfinItem
+import dev.jellystack.core.jellyfin.HomeSectionAction
+import dev.jellystack.core.jellyfin.HomeSectionItem
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -32,6 +34,48 @@ class TvJellyfinArtworkTest {
         assertEquals(
             TvJellyfinArtwork(itemId = "series-1", imageTag = "series-primary", imageType = "Primary"),
             resolveTvJellyfinArtwork(episode),
+        )
+    }
+
+    @Test
+    fun localHomeSectionItemBuildsAuthenticatedJellyfinArtworkUrl() {
+        val localItem = item(type = "Movie", seriesId = null, primaryImageTag = "primary-tag")
+        val sectionItem =
+            HomeSectionItem(
+                id = localItem.id,
+                name = localItem.name,
+                overview = null,
+                productionYear = null,
+                communityRating = null,
+                imageUrl = null,
+                jellyfinItem = localItem,
+                action = HomeSectionAction.JELLYFIN,
+            )
+
+        assertEquals(
+            "https://media.example/Items/item-1/Images/Primary?tag=primary-tag&maxWidth=1000&quality=90&api_key=dummy-token",
+            resolveTvHomeSectionImageUrl(sectionItem, "https://media.example/", "dummy-token"),
+        )
+    }
+
+    @Test
+    fun localHomeSectionItemStillRequestsPrimaryArtworkWhenPluginOmitsTags() {
+        val localItem = item(type = "CollectionFolder", seriesId = null)
+        val sectionItem =
+            HomeSectionItem(
+                id = localItem.id,
+                name = localItem.name,
+                overview = null,
+                productionYear = null,
+                communityRating = null,
+                imageUrl = null,
+                jellyfinItem = localItem,
+                action = HomeSectionAction.JELLYFIN,
+            )
+
+        assertEquals(
+            "https://media.example/Items/item-1/Images/Primary?maxWidth=1000&quality=90&api_key=dummy-token",
+            resolveTvHomeSectionImageUrl(sectionItem, "https://media.example", "dummy-token"),
         )
     }
 

@@ -120,7 +120,14 @@ internal fun TvHomeScreen(
         when (homeSections) {
             is HomeSectionsState.Ready -> {
                 items(homeSections.sections, key = { "plugin:${it.id}" }) { section ->
-                    TvHomeSectionRow(section, focusMemory, onItem, onSeerrItem)
+                    TvHomeSectionRow(
+                        section = section,
+                        imageBaseUrl = homeSections.imageBaseUrl,
+                        imageAccessToken = homeSections.imageAccessToken,
+                        focusMemory = focusMemory,
+                        onItem = onItem,
+                        onSeerrItem = onSeerrItem,
+                    )
                 }
             }
             else -> {
@@ -304,6 +311,8 @@ private fun TvLibraryRow(
 @Composable
 private fun TvHomeSectionRow(
     section: HomeSection,
+    imageBaseUrl: String?,
+    imageAccessToken: String?,
     focusMemory: TvFocusMemory,
     onItem: (JellyfinItem) -> Unit,
     onSeerrItem: (TvRoute.SeerrDetail) -> Unit,
@@ -335,7 +344,7 @@ private fun TvHomeSectionRow(
                             item.productionYear?.toString(),
                             item.communityRating?.let { "★ %.1f".format(it) },
                         ).joinToString("  •  ").ifBlank { null },
-                    imageUrl = item.imageUrl,
+                    imageUrl = resolveTvHomeSectionImageUrl(item, imageBaseUrl, imageAccessToken),
                     landscape = section.viewMode != HomeSectionViewMode.PORTRAIT,
                     onFocused = { focusMemory.remember("home", section.id, item.id, horizontalIndex = index) },
                     modifier = if (item.id == restoreId) Modifier.focusRequester(focusRequester) else Modifier,

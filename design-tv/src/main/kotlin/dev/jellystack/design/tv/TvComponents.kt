@@ -178,6 +178,7 @@ internal fun TvMediaCard(
             ) {
                 Text(
                     title,
+                    color = TvText,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     fontWeight = FontWeight.SemiBold,
@@ -213,6 +214,7 @@ internal fun TvSectionTitle(
     Text(
         title,
         modifier = modifier.padding(horizontal = 6.dp),
+        color = TvText,
         style = MaterialTheme.typography.headlineSmall,
         fontWeight = FontWeight.Bold,
     )
@@ -228,8 +230,9 @@ internal fun jellyfinImageUrl(
     type: String = "Primary",
     maxWidth: Int = 1000,
 ): String? {
-    if (baseUrl.isNullOrBlank() || tag.isNullOrBlank()) return null
-    return "${baseUrl.trimEnd('/')}/Items/$itemId/Images/$type?tag=$tag&maxWidth=$maxWidth&quality=90" +
+    if (baseUrl.isNullOrBlank() || itemId.isBlank()) return null
+    val tagQuery = tag?.takeIf(String::isNotBlank)?.let { "tag=$it&" }.orEmpty()
+    return "${baseUrl.trimEnd('/')}/Items/$itemId/Images/$type?${tagQuery}maxWidth=$maxWidth&quality=90" +
         token?.takeIf { it.isNotBlank() }?.let { "&api_key=$it" }.orEmpty()
 }
 
