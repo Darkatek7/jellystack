@@ -46,6 +46,7 @@ import kotlinx.coroutines.withContext
 @UnstableApi
 class AndroidPlayerEngine(
     context: Context,
+    preferHighestSupportedBitrate: Boolean = false,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
 ) : PlayerEngine {
     private val appContext = context.applicationContext
@@ -64,6 +65,13 @@ class AndroidPlayerEngine(
             .Builder(context)
             .build()
             .apply {
+                if (preferHighestSupportedBitrate) {
+                    trackSelectionParameters =
+                        trackSelectionParameters
+                            .buildUpon()
+                            .setForceHighestSupportedBitrate(true)
+                            .build()
+                }
                 setAudioAttributes(
                     AudioAttributes
                         .Builder()

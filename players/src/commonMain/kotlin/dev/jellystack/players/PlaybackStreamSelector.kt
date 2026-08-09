@@ -165,18 +165,21 @@ class PlaybackStreamSelector {
             source.streams
                 .firstOrNull { it.type == JellyfinMediaStreamType.VIDEO }
                 ?.codec
+        val videoStream = source.streams.firstOrNull { it.type == JellyfinMediaStreamType.VIDEO }
         return PlaybackStreamSelection(
             sourceId = source.id,
             mode = mode,
             container = source.container,
             videoCodec = videoCodec,
             audioCodec = defaultAudioCodec,
-            videoBitrate = source.videoBitrate,
+            videoBitrate = source.videoBitrate?.takeIf { it > 0 } ?: videoStream?.bitrate?.takeIf { it > 0 },
             audioTracks = audioTracks,
             subtitleTracks = subtitleTracks,
             maxBitrate = maxBitrate,
             qualityOptions = qualityOptions,
             selectedQualityId = selectedQualityId,
+            videoWidth = videoStream?.width,
+            videoHeight = videoStream?.height,
         )
     }
 

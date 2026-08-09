@@ -37,7 +37,10 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.decorView.setViewTreeNavigationEventDispatcherOwner(this)
-        playerEngine = AndroidPlayerEngine(applicationContext)
+        playerEngine = AndroidPlayerEngine(
+            context = applicationContext,
+            preferHighestSupportedBitrate = true,
+        )
         val koin = JellystackDI.koin
         val settingsRepository = koin.get<AppSettingsRepository>()
         val browseRepository = koin.get<JellyfinBrowseRepository>()

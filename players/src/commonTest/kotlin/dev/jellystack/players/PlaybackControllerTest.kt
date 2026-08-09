@@ -35,6 +35,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -2544,6 +2545,39 @@ class PlaybackControllerTest {
         }
 
     @Test
+    fun directAudioDecoderFailureFirstUsesAudioOnlyFallbackWithoutReencodingVideo() =
+        runTest {
+            val engine = RecordingPlayerEngine()
+            val resolver = DirectFallbackPlaybackSourceResolver()
+            val controllerScope = TestScope(UnconfinedTestDispatcher(testScheduler))
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = resolver,
+                    playerEngine = engine,
+                    scope = controllerScope,
+                )
+            val request = PlaybackRequest.from(sampleItem(), sampleDetail(withDirect = true))
+
+            try {
+                controller.play(request, testEnvironment())
+                engine.emitPosition(31_000L)
+                engine.emitEvent(
+                    PlayerEvent.Error(
+                        IllegalStateException("MediaCodecAudioRenderer error: decoder failed"),
+                    ),
+                )
+                controllerScope.advanceUntilIdle()
+
+                val options = resolver.requests.last()
+                assertTrue(options.forceAudioTranscoding)
+                assertFalse(options.forceTranscoding)
+                assertEquals(31_000L, controller.currentSession()?.positionMs)
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
     fun tsHlsFailureForcesEncodingBeforeTryingFmp4WithoutLosingSessionState() =
         runTest {
             val engine = RecordingPlayerEngine()
@@ -2698,16 +2732,16 @@ private class DirectFallbackPlaybackSourceResolver : PlaybackSourceResolver {
         requests += options
         return resolvedSource(
             url =
-                if (options.forceTranscoding) {
+                if (options.forceTranscoding || options.forceAudioTranscoding) {
                     "${environment.baseUrl}/videos/${request.mediaId}/master.m3u8"
                 } else {
                     "${environment.baseUrl}/videos/${request.mediaId}/stream.mkv"
                 },
-            mode = if (options.forceTranscoding) PlaybackMode.HLS else PlaybackMode.DIRECT,
+            mode = if (options.forceTranscoding || options.forceAudioTranscoding) PlaybackMode.HLS else PlaybackMode.DIRECT,
             playSessionId = options.playSessionId ?: "fallback-session",
             mediaSourceId = selection.sourceId,
             supportsTranscoding = true,
-        ).copy(segmentContainer = if (options.forceTranscoding) "mp4" else null)
+        ).copy(segmentContainer = if (options.forceTranscoding || options.forceAudioTranscoding) "mp4" else null)
     }
 }
 

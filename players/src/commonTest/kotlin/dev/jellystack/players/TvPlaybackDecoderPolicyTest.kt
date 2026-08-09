@@ -23,6 +23,7 @@ class TvPlaybackDecoderPolicyTest {
         assertFalse(PlaybackVideoCodec.HEVC in capabilities.videoCodecs)
         assertFalse(PlaybackVideoCodec.VP9 in capabilities.videoCodecs)
         assertTrue(PlaybackAudioCodec.AAC in capabilities.audioCodecs)
+        assertTrue(capabilities.maxAacChannelCount == 2)
     }
 
     @Test

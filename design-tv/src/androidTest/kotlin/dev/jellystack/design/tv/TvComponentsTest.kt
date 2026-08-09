@@ -1,6 +1,9 @@
 package dev.jellystack.design.tv
 
 import androidx.compose.material3.LocalContentColor
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toPixelMap
@@ -10,6 +13,10 @@ import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.pressKey
@@ -66,6 +73,64 @@ class TvComponentsTest {
         }
 
         assertHasBrightPixels(composeRule.onNodeWithText("Section").captureToImage(), "TV section title")
+    }
+
+    @Test
+    fun playerIconButtonIsDpadClickableAndUsesAnAccessibleDescription() {
+        var clicks = 0
+        composeRule.setContent {
+            JellystackTvTheme {
+                TvPlayerIconButton(
+                    icon = Icons.Default.PlayArrow,
+                    description = "Play",
+                    onClick = { clicks += 1 },
+                )
+            }
+        }
+
+        composeRule
+            .onNodeWithContentDescription("Play")
+            .assertHeightIsAtLeast(48.dp)
+            .performSemanticsAction(SemanticsActions.RequestFocus)
+            .performKeyInput { pressKey(Key.DirectionCenter) }
+
+        composeRule.runOnIdle { assertEquals(1, clicks) }
+    }
+
+    @Test
+    fun playerHeaderDoesNotExposeADuplicateMoreAction() {
+        composeRule.setContent {
+            JellystackTvTheme {
+                TvPlayerHeader(
+                    primaryTitle = "Fena: Pirate Princess",
+                    secondaryTitle = "S1 · E1 · Memories",
+                    backDescription = "Back",
+                    onBack = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Back").assertExists()
+        composeRule.onAllNodesWithContentDescription("More").assertCountEquals(0)
+    }
+
+    @Test
+    fun playerOptionRowShowsCurrentValueAndSelectedState() {
+        composeRule.setContent {
+            JellystackTvTheme {
+                TvPlayerOptionRow(
+                    icon = Icons.Default.HighQuality,
+                    title = "Streaming quality",
+                    summary = "Automatic · Adaptive",
+                    selected = true,
+                    onClick = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Streaming quality").assertExists()
+        composeRule.onNodeWithText("Automatic · Adaptive").assertExists()
+        composeRule.onNodeWithContentDescription("Streaming quality, Automatic · Adaptive").assertIsSelected()
     }
 }
 

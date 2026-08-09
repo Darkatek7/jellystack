@@ -2,6 +2,8 @@ package dev.jellystack.players
 
 import dev.jellystack.network.jellyfin.JellyfinDeviceProfileDto
 import dev.jellystack.network.jellyfin.JellyfinDirectPlayProfileDto
+import dev.jellystack.network.jellyfin.JellyfinCodecProfileDto
+import dev.jellystack.network.jellyfin.JellyfinProfileConditionDto
 import dev.jellystack.network.jellyfin.JellyfinSubtitleProfileDto
 import dev.jellystack.network.jellyfin.JellyfinTranscodingProfileDto
 
@@ -33,6 +35,8 @@ data class PlaybackDecoderCapabilities(
             PlaybackAudioCodec.AAC,
             PlaybackAudioCodec.MP3,
         ),
+    val maxAacChannelCount: Int? = null,
+    val maxStreamingBitrate: Int? = null,
 )
 
 fun interface PlaybackDeviceProfileProvider {
@@ -52,8 +56,19 @@ object PlaybackDeviceProfileFactory {
                 PlaybackVideoCodec.H264,
             ).filter(capabilities.videoCodecs::contains)
         val transcodeCodecs =
-            listOf(PlaybackVideoCodec.HEVC, PlaybackVideoCodec.H264)
-                .filter(capabilities.videoCodecs::contains)
+            listOf(
+                PlaybackVideoCodec.AV1,
+                PlaybackVideoCodec.HEVC,
+                PlaybackVideoCodec.VP9,
+                PlaybackVideoCodec.H264,
+            ).filter(capabilities.videoCodecs::contains)
+        val transcodeAudioCodecs =
+            listOf(
+                PlaybackAudioCodec.EAC3,
+                PlaybackAudioCodec.AC3,
+                PlaybackAudioCodec.AAC,
+                PlaybackAudioCodec.MP3,
+            ).filter(capabilities.audioCodecs::contains)
 
         fun directProfile(
             container: String,
@@ -78,6 +93,7 @@ object PlaybackDeviceProfileFactory {
 
         return JellyfinDeviceProfileDto(
             name = name,
+            maxStreamingBitrate = capabilities.maxStreamingBitrate,
             directPlayProfiles =
                 listOfNotNull(
                     directProfile(
@@ -124,8 +140,16 @@ object PlaybackDeviceProfileFactory {
                     ),
                 ),
             transcodingProfiles =
-                transcodeCodecs.map {
-                    JellyfinTranscodingProfileDto(videoCodec = it.jellyfinName)
+                if (transcodeAudioCodecs.isEmpty()) {
+                    emptyList()
+                } else {
+                    transcodeCodecs.map {
+                    JellyfinTranscodingProfileDto(
+                        videoCodec = it.jellyfinName,
+                        audioCodec = transcodeAudioCodecs.joinToString(",") { codec -> codec.jellyfinName },
+                        maxAudioChannels = capabilities.maxAacChannelCount?.toString(),
+                    )
+                    }
                 },
             subtitleProfiles =
                 listOf(
@@ -134,6 +158,24 @@ object PlaybackDeviceProfileFactory {
                     JellyfinSubtitleProfileDto("ass"),
                     JellyfinSubtitleProfileDto("ssa"),
                 ),
+            codecProfiles =
+                capabilities.maxAacChannelCount
+                    ?.takeIf { PlaybackAudioCodec.AAC in capabilities.audioCodecs }
+                    ?.let { maxChannels ->
+                        listOf(
+                            JellyfinCodecProfileDto(
+                                codec = PlaybackAudioCodec.AAC.jellyfinName,
+                                conditions =
+                                    listOf(
+                                        JellyfinProfileConditionDto(
+                                            condition = "LessThanEqual",
+                                            property = "AudioChannels",
+                                            value = maxChannels.toString(),
+                                        ),
+                                    ),
+                            ),
+                        )
+                    }.orEmpty(),
         )
     }
 }

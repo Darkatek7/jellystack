@@ -1744,12 +1744,14 @@ class PlaybackController(
                 PlaybackMode.DIRECT -> {
                     if (directFallbackAttempted) return false
                     directFallbackAttempted = true
-                    hlsForcedTranscodeFallbackAttempted = true
+                    val audioOnlyFallback = originalError.isAudioDecoderFailure()
+                    hlsForcedTranscodeFallbackAttempted = !audioOnlyFallback
                     PlaybackSourceOptions(
                         audioStreamIndex = current.audioTrack?.streamIndex,
                         subtitleStreamIndex = current.subtitleTrack?.streamIndex ?: SUBTITLES_DISABLED_INDEX,
                         playSessionId = current.source.playSessionId,
-                        forceTranscoding = true,
+                        forceTranscoding = !audioOnlyFallback,
+                        forceAudioTranscoding = audioOnlyFallback,
                     )
                 }
 
@@ -1828,6 +1830,22 @@ class PlaybackController(
             }
         }
         return true
+    }
+
+    private fun Throwable?.isAudioDecoderFailure(): Boolean {
+        var current = this
+        while (current != null) {
+            val description = "${current::class.simpleName.orEmpty()} ${current.message.orEmpty()}".lowercase()
+            if (
+                "mediacodecaudiorenderer" in description ||
+                "audio renderer" in description ||
+                "audio decoder" in description
+            ) {
+                return true
+            }
+            current = current.cause
+        }
+        return false
     }
 
     private fun confirmPendingAudioSelection(trackId: String) {

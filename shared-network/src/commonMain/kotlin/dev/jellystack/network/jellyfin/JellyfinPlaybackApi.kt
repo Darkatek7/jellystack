@@ -59,6 +59,7 @@ data class JellyfinDeviceProfileDto(
     @SerialName("DirectPlayProfiles") val directPlayProfiles: List<JellyfinDirectPlayProfileDto>,
     @SerialName("TranscodingProfiles") val transcodingProfiles: List<JellyfinTranscodingProfileDto>,
     @SerialName("SubtitleProfiles") val subtitleProfiles: List<JellyfinSubtitleProfileDto> = emptyList(),
+    @SerialName("CodecProfiles") val codecProfiles: List<JellyfinCodecProfileDto> = emptyList(),
 )
 
 @Serializable
@@ -79,6 +80,23 @@ data class JellyfinTranscodingProfileDto(
     @SerialName("Context") val context: String = "Streaming",
     @SerialName("MinSegments") val minSegments: Int = 1,
     @SerialName("BreakOnNonKeyFrames") val breakOnNonKeyFrames: Boolean = true,
+    @SerialName("MaxAudioChannels") val maxAudioChannels: String? = null,
+)
+
+@Serializable
+data class JellyfinCodecProfileDto(
+    @SerialName("Type") val type: String = "VideoAudio",
+    @SerialName("Codec") val codec: String? = null,
+    @SerialName("Conditions") val conditions: List<JellyfinProfileConditionDto> = emptyList(),
+    @SerialName("ApplyConditions") val applyConditions: List<JellyfinProfileConditionDto> = emptyList(),
+)
+
+@Serializable
+data class JellyfinProfileConditionDto(
+    @SerialName("Condition") val condition: String,
+    @SerialName("Property") val property: String,
+    @SerialName("Value") val value: String,
+    @SerialName("IsRequired") val isRequired: Boolean = true,
 )
 
 @Serializable
@@ -100,6 +118,7 @@ data class JellyfinPlaybackMediaSourceDto(
     @SerialName("SupportsDirectPlay") val supportsDirectPlay: Boolean = false,
     @SerialName("SupportsDirectStream") val supportsDirectStream: Boolean = false,
     @SerialName("SupportsTranscoding") val supportsTranscoding: Boolean? = null,
+    @SerialName("TranscodingReasons") val transcodingReasons: List<String> = emptyList(),
     @SerialName("TranscodingUrl") val transcodingUrl: String? = null,
     @SerialName("TranscodingContainer") val transcodingContainer: String? = null,
     @SerialName("TranscodingSubProtocol") val transcodingSubProtocol: String? = null,

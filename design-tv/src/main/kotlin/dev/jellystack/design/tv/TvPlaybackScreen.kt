@@ -1,11 +1,4 @@
-@file:Suppress(
-    "CyclomaticComplexMethod",
-    "FunctionName",
-    "FunctionNaming",
-    "LongMethod",
-    "LongParameterList",
-    "MaxLineLength",
-)
+@file:Suppress("CyclomaticComplexMethod", "FunctionName", "FunctionNaming", "LongMethod", "LongParameterList", "MaxLineLength")
 
 package dev.jellystack.design.tv
 
@@ -23,8 +16,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.Forward30
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Replay10
+import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -39,6 +39,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -49,10 +50,7 @@ import dev.jellystack.players.AndroidPlayerEngine
 import dev.jellystack.players.PlaybackController
 import dev.jellystack.players.PlaybackState
 import dev.jellystack.players.syncplay.SyncPlayCoordinator
-import dev.jellystack.players.syncplay.SyncPlayUiState
 import kotlinx.coroutines.delay
-
-private enum class TvPlayerPanel { NONE, AUDIO, SUBTITLES, QUALITY, SPEED, STATS, SYNCPLAY }
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -68,32 +66,25 @@ internal fun TvPlaybackScreen(
     val state by controller.state.collectAsStateWithLifecycle()
     val syncState by syncPlay.state.collectAsStateWithLifecycle()
     var controlsVisible by remember { mutableStateOf(true) }
-    var panel by remember { mutableStateOf(TvPlayerPanel.NONE) }
+    var navigation by remember { mutableStateOf(TvPlayerPanelNavigation.closed()) }
     var interactionGeneration by remember { mutableStateOf(0) }
     val playerFocusRequester = remember { FocusRequester() }
     val controlsFocusRequester = remember { FocusRequester() }
-    val panelFocusRequester = remember { FocusRequester() }
     val active = state as? PlaybackState.Active
-    LaunchedEffect(controlsVisible, panel, interactionGeneration) {
-        if (controlsVisible && panel == TvPlayerPanel.NONE) {
+
+    LaunchedEffect(controlsVisible, navigation.current, interactionGeneration) {
+        if (controlsVisible && navigation.current == TvPlayerPanel.NONE) {
             delay(5_000)
             controlsVisible = false
         }
     }
-    LaunchedEffect(active != null, controlsVisible, panel) {
-        if (active != null) {
-            if (panel != TvPlayerPanel.NONE) {
-                panelFocusRequester.requestFocus()
-            } else if (controlsVisible) {
-                controlsFocusRequester.requestFocus()
-            } else {
-                playerFocusRequester.requestFocus()
-            }
+    LaunchedEffect(active != null, controlsVisible, navigation.current) {
+        if (active != null && navigation.current == TvPlayerPanel.NONE) {
+            if (controlsVisible) controlsFocusRequester.requestFocus() else playerFocusRequester.requestFocus()
         }
     }
-    DisposableEffect(engine) {
-        onDispose(stopPlayback)
-    }
+    DisposableEffect(engine) { onDispose(stopPlayback) }
+
     Box(
         modifier =
             modifier
@@ -107,38 +98,41 @@ internal fun TvPlaybackScreen(
                     when (event.nativeKeyEvent.keyCode) {
                         KeyEvent.KEYCODE_DPAD_UP,
                         KeyEvent.KEYCODE_DPAD_DOWN,
-                        KeyEvent.KEYCODE_MENU,
-                        -> {
-                            controlsVisible = true
-                            true
-                        }
-                        KeyEvent.KEYCODE_DPAD_CENTER,
-                        KeyEvent.KEYCODE_ENTER,
-                        -> {
-                            if (panel == TvPlayerPanel.NONE && !controlsVisible) {
-                                if (active?.isPaused == false) controller.pause() else controller.resume()
+                        ->
+                            if (navigation.current == TvPlayerPanel.NONE && !controlsVisible) {
                                 controlsVisible = true
                                 true
                             } else {
                                 false
                             }
+                        KeyEvent.KEYCODE_MENU -> {
+                            controlsVisible = true
+                            navigation = navigation.openMore()
+                            true
                         }
-                        KeyEvent.KEYCODE_DPAD_LEFT,
-                        KeyEvent.KEYCODE_DPAD_RIGHT,
-                        -> {
-                            if (panel == TvPlayerPanel.NONE && !controlsVisible && active != null) {
-                                val baseStep = if (event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) -10_000L else 30_000L
-                                val repeatMultiplier = (event.nativeKeyEvent.repeatCount + 1).coerceAtMost(6)
-                                val destination = active.positionMs + (baseStep * repeatMultiplier)
-                                controller.seekTo(destination.coerceIn(0L, active.durationMs ?: Long.MAX_VALUE))
+                        KeyEvent.KEYCODE_DPAD_CENTER,
+                        KeyEvent.KEYCODE_ENTER,
+                        ->
+                            if (navigation.current == TvPlayerPanel.NONE && !controlsVisible) {
+                                controlsVisible = true
                                 true
                             } else {
                                 false
                             }
-                        }
+                        KeyEvent.KEYCODE_DPAD_LEFT,
+                        KeyEvent.KEYCODE_DPAD_RIGHT,
+                        ->
+                            if (navigation.current == TvPlayerPanel.NONE && !controlsVisible && active != null) {
+                                val step = if (event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) -10_000L else 30_000L
+                                val multiplier = (event.nativeKeyEvent.repeatCount + 1).coerceAtMost(6)
+                                controller.seekTo((active.positionMs + step * multiplier).coerceIn(0L, active.durationMs ?: Long.MAX_VALUE))
+                                true
+                            } else {
+                                false
+                            }
                         KeyEvent.KEYCODE_BACK -> {
                             when {
-                                panel != TvPlayerPanel.NONE -> panel = TvPlayerPanel.NONE
+                                navigation.current != TvPlayerPanel.NONE -> navigation = navigation.back()
                                 controlsVisible -> controlsVisible = false
                                 else -> onClose()
                             }
@@ -154,65 +148,62 @@ internal fun TvPlaybackScreen(
             onRelease = engine::releaseVideoSurface,
             modifier = Modifier.fillMaxSize(),
         )
-        when (state) {
+        when (val playbackState = state) {
             is PlaybackState.Preparing -> TvLoading(strings.preparingPlayback)
-            is PlaybackState.PlaybackError -> {
-                Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text((state as PlaybackState.PlaybackError).message, color = Color.White, fontSize = 24.sp)
-                    Spacer(Modifier.height(18.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        TvActionButton(strings.retry, controller::retry, primary = true)
-                        TvActionButton(strings.close, onClose)
-                    }
-                }
-            }
+            is PlaybackState.PlaybackError ->
+                TvPlaybackError(
+                    playbackState,
+                    controller,
+                    strings,
+                    onClose,
+                    Modifier.align(Alignment.Center),
+                )
             else -> Unit
         }
         if (active != null && controlsVisible) {
-            Box(
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.95f))))
-                    .padding(horizontal = 48.dp, vertical = 34.dp),
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                    Text(active.metadata?.title ?: strings.playback, color = Color.White, fontSize = 28.sp)
-                    TvProgress(active.positionMs, active.durationMs)
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        item {
-                            TvActionButton(
-                                if (active.isPaused) strings.play else strings.pause,
-                                { if (active.isPaused) controller.resume() else controller.pause() },
-                                modifier = Modifier.focusRequester(controlsFocusRequester),
-                            )
-                        }
-                        item { TvActionButton(strings.audio, { panel = TvPlayerPanel.AUDIO }) }
-                        item { TvActionButton(strings.subtitles, { panel = TvPlayerPanel.SUBTITLES }) }
-                        item { TvActionButton(strings.quality, { panel = TvPlayerPanel.QUALITY }) }
-                        item { TvActionButton(strings.speed, { panel = TvPlayerPanel.SPEED }) }
-                        item { TvActionButton(strings.stats, { panel = TvPlayerPanel.STATS }) }
-                        item {
-                            TvActionButton(strings.syncPlay, {
-                                syncPlay.refresh()
-                                panel = TvPlayerPanel.SYNCPLAY
-                            })
-                        }
-                        item { TvActionButton(strings.close, onClose) }
-                    }
-                }
+            TvPlayerHeader(
+                primaryTitle = active.metadata.playerPrimaryTitle(strings),
+                secondaryTitle = active.metadata.playerSecondaryTitle(),
+                backDescription = strings.back,
+                onBack = onClose,
+                modifier =
+                    Modifier
+                        .align(Alignment.TopCenter)
+                        .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.86f), Color.Black.copy(alpha = 0.42f), Color.Transparent)))
+                        .padding(start = 36.dp, end = 36.dp, top = 24.dp, bottom = 54.dp),
+            )
+            if (active.statsForNerdsEnabled && navigation.current == TvPlayerPanel.NONE) {
+                TvStatsForNerdsOverlay(
+                    active,
+                    strings,
+                    Modifier.align(Alignment.TopEnd).padding(top = 128.dp, end = 36.dp).width(330.dp),
+                )
             }
+            TvPlayerControls(
+                active = active,
+                strings = strings,
+                controller = controller,
+                controlsFocusRequester = controlsFocusRequester,
+                onAudio = { navigation = TvPlayerPanelNavigation.closed().openQuick(TvPlayerPanel.AUDIO) },
+                onSubtitles = { navigation = TvPlayerPanelNavigation.closed().openQuick(TvPlayerPanel.SUBTITLES) },
+                onMore = { navigation = navigation.openMore() },
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
         }
-        if (active != null && panel != TvPlayerPanel.NONE) {
-            TvPlayerPanel(
-                panel = panel,
+        if (active != null && navigation.current != TvPlayerPanel.NONE) {
+            TvPlayerOptionsPanel(
+                navigation = navigation,
                 state = active,
                 syncState = syncState,
-                controller = controller,
-                syncPlay = syncPlay,
                 strings = strings,
-                initialFocusRequester = panelFocusRequester,
-                onClose = { panel = TvPlayerPanel.NONE },
+                onBack = { navigation = navigation.back() },
+                onOpenFromMore = { navigation = navigation.openFromMore(it) },
+                onAudioSelected = controller::selectAudioTrack,
+                onSubtitleSelected = controller::selectSubtitle,
+                onQualitySelected = controller::selectQuality,
+                onSpeedSelected = controller::setPlaybackSpeed,
+                onStatsToggled = controller::setStatsForNerdsEnabled,
+                syncPlay = syncPlay,
                 modifier = Modifier.align(Alignment.CenterEnd),
             )
         }
@@ -220,132 +211,76 @@ internal fun TvPlaybackScreen(
 }
 
 @Composable
-private fun TvProgress(
-    position: Long,
-    duration: Long?,
+private fun TvPlaybackError(
+    error: PlaybackState.PlaybackError,
+    controller: PlaybackController,
+    strings: TvStrings,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
+    Column(
+        modifier.width(720.dp).background(TvSurface.copy(alpha = 0.98f), RoundedCornerShape(28.dp)).padding(horizontal = 48.dp, vertical = 38.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(18.dp),
+    ) {
+        Text(strings.playbackFailedTitle, color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold)
+        Text(tvPlaybackErrorMessage(error.message, strings), color = TvTextMuted, fontSize = 21.sp)
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            TvActionButton(strings.retry, controller::retry, modifier = Modifier.width(230.dp), primary = true)
+            TvActionButton(strings.close, onClose, modifier = Modifier.width(170.dp))
+        }
+    }
+}
+
+@Composable
+private fun TvPlayerControls(
+    active: PlaybackState.Active,
+    strings: TvStrings,
+    controller: PlaybackController,
+    controlsFocusRequester: FocusRequester,
+    onAudio: () -> Unit,
+    onSubtitles: () -> Unit,
+    onMore: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.95f)))).padding(start = 42.dp, end = 42.dp, top = 86.dp, bottom = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        TvProgress(active.positionMs, active.durationMs)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.weight(1f), horizontalArrangement = Arrangement.Start) {
+                TvPlayerIconButton(Icons.AutoMirrored.Filled.VolumeUp, strings.audio, onAudio)
+                Spacer(Modifier.width(12.dp))
+                TvPlayerIconButton(Icons.Default.Subtitles, strings.subtitles, onSubtitles)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(22.dp), verticalAlignment = Alignment.CenterVertically) {
+                TvPlayerIconButton(Icons.Default.Replay10, "${strings.seekBack} 10", { controller.seekTo((active.positionMs - 10_000L).coerceAtLeast(0L)) }, size = 64.dp, iconSize = 34.dp)
+                TvPlayerIconButton(
+                    if (active.isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
+                    if (active.isPaused) strings.play else strings.pause,
+                    { if (active.isPaused) controller.resume() else controller.pause() },
+                    Modifier.focusRequester(controlsFocusRequester),
+                    size = 78.dp,
+                    iconSize = 42.dp,
+                )
+                TvPlayerIconButton(Icons.Default.Forward30, "${strings.seekForward} 30", { controller.seekTo((active.positionMs + 30_000L).coerceAtMost(active.durationMs ?: Long.MAX_VALUE)) }, size = 64.dp, iconSize = 34.dp)
+            }
+            Row(Modifier.weight(1f), horizontalArrangement = Arrangement.End) {
+                TvPlayerIconButton(Icons.Default.MoreVert, strings.more, onMore)
+            }
+        }
+    }
+}
+
+@Composable
+private fun TvProgress(position: Long, duration: Long?) {
     val fraction = if (duration != null && duration > 0) (position.toFloat() / duration).coerceIn(0f, 1f) else 0f
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Box(Modifier.fillMaxWidth().height(5.dp).background(Color.White.copy(alpha = 0.25f), RoundedCornerShape(50))) {
             Box(Modifier.fillMaxWidth(fraction).height(5.dp).background(TvPurple, RoundedCornerShape(50)))
         }
         Text("${position.formatDuration()}  /  ${duration?.formatDuration() ?: "--:--"}", color = TvTextMuted)
-    }
-}
-
-@Composable
-private fun TvPlayerPanel(
-    panel: TvPlayerPanel,
-    state: PlaybackState.Active,
-    syncState: SyncPlayUiState,
-    controller: PlaybackController,
-    syncPlay: SyncPlayCoordinator,
-    strings: TvStrings,
-    initialFocusRequester: FocusRequester,
-    onClose: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier =
-            modifier
-                .width(520.dp)
-                .fillMaxSize()
-                .background(TvBackground.copy(alpha = 0.98f))
-                .padding(38.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Text(panel.title(strings), color = TvText, fontSize = 32.sp)
-        when (panel) {
-            TvPlayerPanel.AUDIO -> {
-                state.stream.audioTracks.forEachIndexed { index, track ->
-                    TvActionButton(
-                        track.title ?: track.language ?: strings.audioTrack.format(track.streamIndex),
-                        { controller.selectAudioTrack(track.id) },
-                        modifier = if (index == 0) Modifier.focusRequester(initialFocusRequester) else Modifier,
-                        primary = state.audioTrack?.id == track.id,
-                    )
-                }
-            }
-            TvPlayerPanel.SUBTITLES -> {
-                TvActionButton(
-                    strings.off,
-                    { controller.selectSubtitle(null) },
-                    modifier = Modifier.focusRequester(initialFocusRequester),
-                    primary = state.subtitleTrack == null,
-                )
-                state.stream.subtitleTracks.forEach { track ->
-                    TvActionButton(
-                        track.title ?: track.language ?: strings.subtitleTrack.format(track.streamIndex),
-                        { controller.selectSubtitle(track.id) },
-                        primary = state.subtitleTrack?.id == track.id,
-                    )
-                }
-            }
-            TvPlayerPanel.QUALITY ->
-                state.qualityOptions.forEachIndexed { index, option ->
-                    TvActionButton(
-                        option.label,
-                        { controller.selectQuality(option.id) },
-                        modifier = if (index == 0) Modifier.focusRequester(initialFocusRequester) else Modifier,
-                        primary = state.selectedQualityId == option.id,
-                    )
-                }
-            TvPlayerPanel.SPEED ->
-                listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f).forEachIndexed { index, speed ->
-                    TvActionButton(
-                        "${speed}x",
-                        { controller.setPlaybackSpeed(speed) },
-                        modifier = if (index == 0) Modifier.focusRequester(initialFocusRequester) else Modifier,
-                        primary = state.playbackSpeed == speed,
-                    )
-                }
-            TvPlayerPanel.STATS -> {
-                TvActionButton(
-                    if (state.statsForNerdsEnabled) strings.hideStats else strings.showStats,
-                    { controller.setStatsForNerdsEnabled(!state.statsForNerdsEnabled) },
-                    modifier = Modifier.focusRequester(initialFocusRequester),
-                    primary = state.statsForNerdsEnabled,
-                )
-                if (state.statsForNerdsEnabled) {
-                    val stats = state.runtimeStats
-                    listOfNotNull(
-                        stats.playbackMode?.let { "${strings.mode}: $it" },
-                        stats.container?.let { "${strings.container}: $it" },
-                        stats.videoCodec?.let { "${strings.video}: $it" },
-                        stats.audioCodec?.let { "${strings.audio}: $it" },
-                        stats.width?.let { width -> stats.height?.let { "${strings.resolution}: $width × $it" } },
-                        stats.videoBitrate?.let { "${strings.bitrate}: ${it / 1_000_000f} Mbps" },
-                        stats.hdr?.let { "${strings.range}: $it" },
-                        stats.droppedFrames?.let { "${strings.droppedFrames}: $it" },
-                    ).forEach { Text(it, color = TvTextMuted, fontSize = 18.sp) }
-                }
-            }
-            TvPlayerPanel.SYNCPLAY -> {
-                syncState.error?.let { Text(it, color = Color(0xFFFFA59E)) }
-                syncState.currentGroup?.let { group ->
-                    Text(strings.joinedGroup.format(group.name), color = TvPurple, fontSize = 20.sp)
-                    TvActionButton(
-                        strings.useCurrentItemAsQueue,
-                        syncPlay::setCurrentPlaybackAsQueue,
-                        modifier = Modifier.focusRequester(initialFocusRequester),
-                    )
-                    TvActionButton(strings.leaveGroup, syncPlay::leaveGroup)
-                } ?: run {
-                    TvActionButton(
-                        strings.createGroup,
-                        { syncPlay.createGroup("Jellystack TV") },
-                        modifier = Modifier.focusRequester(initialFocusRequester),
-                        primary = true,
-                    )
-                    syncState.groups.forEach { group ->
-                        TvActionButton(strings.joinGroup.format(group.name), { syncPlay.joinGroup(group) })
-                    }
-                }
-            }
-            TvPlayerPanel.NONE -> Unit
-        }
-        Spacer(Modifier.weight(1f))
-        TvActionButton(strings.back, onClose)
     }
 }
 
@@ -357,13 +292,15 @@ private fun Long.formatDuration(): String {
     return if (hours > 0) "%d:%02d:%02d".format(hours, minutes, seconds) else "%d:%02d".format(minutes, seconds)
 }
 
-private fun TvPlayerPanel.title(strings: TvStrings): String =
-    when (this) {
-        TvPlayerPanel.AUDIO -> strings.audio
-        TvPlayerPanel.SUBTITLES -> strings.subtitles
-        TvPlayerPanel.QUALITY -> strings.quality
-        TvPlayerPanel.SPEED -> strings.speed
-        TvPlayerPanel.STATS -> strings.stats
-        TvPlayerPanel.SYNCPLAY -> strings.syncPlay
-        TvPlayerPanel.NONE -> ""
-    }
+private fun dev.jellystack.players.PlaybackMetadata?.playerPrimaryTitle(strings: TvStrings): String =
+    this?.seriesName?.takeIf(String::isNotBlank) ?: this?.title?.takeIf(String::isNotBlank) ?: strings.playback
+
+private fun dev.jellystack.players.PlaybackMetadata?.playerSecondaryTitle(): String? {
+    val metadata = this ?: return null
+    if (metadata.seriesName.isNullOrBlank()) return null
+    val episodePrefix = if (metadata.seasonNumber != null && metadata.episodeNumber != null) "S${metadata.seasonNumber} · E${metadata.episodeNumber}" else null
+    return listOfNotNull(episodePrefix, (metadata.episodeName ?: metadata.title)?.takeIf(String::isNotBlank)).joinToString(" · ").ifBlank { null }
+}
+
+@Suppress("UNUSED_PARAMETER")
+internal fun tvPlaybackErrorMessage(rawMessage: String, strings: TvStrings): String = strings.playbackFailedMessage

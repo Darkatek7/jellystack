@@ -288,30 +288,23 @@ private fun TvAuthenticatedApp(
             currentRoute is TvRoute.Settings
     val railFocusRequester = remember { FocusRequester() }
     val contentFocusRequester = remember { FocusRequester() }
-    var railHasFocus by remember { mutableStateOf(false) }
-    BackHandler(enabled = showRail && !railHasFocus) {
-        railFocusRequester.requestFocus()
+    val railState = remember { TvNavigationRailState(initiallyVisible = true) }
+    BackHandler(enabled = showRail && !railState.isVisible) {
+        railState.onContentLeftEdge()
+    }
+    LaunchedEffect(showRail, railState.isVisible, currentRoute) {
+        if (!showRail) return@LaunchedEffect
+        if (railState.isVisible) railFocusRequester.requestFocus() else contentFocusRequester.requestFocus()
     }
     Box(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxSize()) {
-            if (showRail) {
-                TvNavigationRail(
-                    selected = currentRoute,
-                    strings = strings,
-                    onSelected = ::selectTopLevel,
-                    selectedItemFocusRequester = railFocusRequester,
-                    contentFocusRequester = contentFocusRequester,
-                    onFocusChanged = { railHasFocus = it },
-                )
-            }
-            CompositionLocalProvider(
-                LocalTvNavigationRailFocusRequester provides railFocusRequester,
-                LocalTvScreenEntryFocusRequester provides contentFocusRequester,
-            ) {
-                NavDisplay(
+        CompositionLocalProvider(
+            LocalTvNavigationRailOpener provides railState::onContentLeftEdge,
+            LocalTvScreenEntryFocusRequester provides contentFocusRequester,
+        ) {
+            NavDisplay(
                 backStack = backStack,
                 onBack = { if (backStack.size > 1) backStack.removeLastOrNull() },
-                modifier = Modifier.weight(1f).fillMaxHeight(),
+                modifier = Modifier.fillMaxSize(),
                 entryProvider = { route ->
                     NavEntry(route) {
                         when (route) {
@@ -434,8 +427,29 @@ private fun TvAuthenticatedApp(
                         }
                     }
                 },
-                )
-            }
+            )
+        }
+        if (showRail && railState.isVisible) {
+            Box(
+                Modifier
+                    .width(280.dp)
+                    .fillMaxHeight()
+                    .background(
+                        androidx.compose.ui.graphics.Brush.horizontalGradient(
+                            listOf(Color(0xFF080910), Color(0xF20E0F18), Color.Transparent),
+                        ),
+                    ),
+            )
+            TvNavigationRail(
+                selected = currentRoute,
+                strings = strings,
+                onSelected = { route ->
+                    selectTopLevel(route)
+                    railState.onDestinationSelected()
+                },
+                selectedItemFocusRequester = railFocusRequester,
+                onDismiss = railState::onDestinationSelected,
+            )
         }
         (autoplayState as? TvAutoplayState.Countdown)?.let { countdown ->
             TvAutoplayPrompt(
@@ -454,8 +468,7 @@ private fun TvNavigationRail(
     strings: TvStrings,
     onSelected: (TvRoute) -> Unit,
     selectedItemFocusRequester: FocusRequester,
-    contentFocusRequester: FocusRequester,
-    onFocusChanged: (Boolean) -> Unit,
+    onDismiss: () -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
     val width by animateDpAsState(if (focused) 214.dp else 82.dp, label = "tv-rail-width")
@@ -475,7 +488,6 @@ private fun TvNavigationRail(
                 .background(Color(0xFF0E0F18))
                 .onFocusChanged {
                     focused = it.hasFocus
-                    onFocusChanged(it.hasFocus)
                 }.padding(horizontal = 12.dp, vertical = 34.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
@@ -491,7 +503,7 @@ private fun TvNavigationRail(
                             event.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
                             event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_RIGHT
                         ) {
-                            contentFocusRequester.requestFocus()
+                            onDismiss()
                             true
                         } else {
                             false

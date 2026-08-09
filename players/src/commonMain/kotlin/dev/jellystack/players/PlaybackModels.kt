@@ -164,6 +164,8 @@ data class PlaybackStreamSelection(
     val maxBitrate: Int?,
     val qualityOptions: List<PlaybackQualityOption>,
     val selectedQualityId: String,
+    val videoWidth: Int? = null,
+    val videoHeight: Int? = null,
 )
 
 data class PlaybackSession(

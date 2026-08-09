@@ -7,7 +7,7 @@ import kotlin.test.assertTrue
 
 class PlaybackDeviceProfileProviderTest {
     @Test
-    fun modernDirectCodecsIncludeAv1AndVp9WhileTranscodingPrefersHevcThenH264() {
+    fun modernDeviceAdvertisesBestSupportedTranscodeCodecsInQualityOrder() {
         val profile =
             PlaybackDeviceProfileFactory.create(
                 name = "Test Android",
@@ -33,7 +33,8 @@ class PlaybackDeviceProfileProviderTest {
         assertEquals("av1,vp9", profile.directPlayProfiles[2].videoCodec)
         assertEquals("hevc,h264", profile.directPlayProfiles[3].videoCodec)
         assertEquals("opus,vorbis", profile.directPlayProfiles[2].audioCodec)
-        assertEquals(listOf("hevc", "h264"), profile.transcodingProfiles.map { it.videoCodec })
+        assertEquals(listOf("av1", "hevc", "vp9", "h264"), profile.transcodingProfiles.map { it.videoCodec })
+        assertTrue(profile.transcodingProfiles.all { it.audioCodec == "eac3,ac3,aac,mp3" })
     }
 
     @Test
@@ -99,5 +100,28 @@ class PlaybackDeviceProfileProviderTest {
         assertFalse(profile.directPlayProfiles.any { it.audioCodec.contains("ac3") })
         assertFalse(profile.directPlayProfiles.any { it.audioCodec.contains("eac3") })
         assertFalse(profile.directPlayProfiles.any { it.audioCodec.contains("opus") })
+    }
+
+    @Test
+    fun tvAacProfileCapsDirectAndTranscodedAudioAtStereo() {
+        val profile =
+            PlaybackDeviceProfileFactory.create(
+                name = "Test TV",
+                capabilities =
+                    PlaybackDecoderCapabilities(
+                        videoCodecs = setOf(PlaybackVideoCodec.H264),
+                        audioCodecs = setOf(PlaybackAudioCodec.AAC),
+                        maxAacChannelCount = 2,
+                        maxStreamingBitrate = 120_000_000,
+                    ),
+            )
+
+        assertEquals(120_000_000, profile.maxStreamingBitrate)
+        assertEquals("2", profile.transcodingProfiles.single().maxAudioChannels)
+        val aacProfile = profile.codecProfiles.single { it.codec == "aac" }
+        assertEquals("VideoAudio", aacProfile.type)
+        assertEquals("LessThanEqual", aacProfile.conditions.single().condition)
+        assertEquals("AudioChannels", aacProfile.conditions.single().property)
+        assertEquals("2", aacProfile.conditions.single().value)
     }
 }

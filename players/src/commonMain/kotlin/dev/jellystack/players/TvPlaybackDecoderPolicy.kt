@@ -28,6 +28,17 @@ fun selectTvDecoderCapabilities(
     fun supportsAudio(vararg mimeTypes: String): Boolean =
         usable.any { decoder -> mimeTypes.any { decoder.mimeType.equals(it, ignoreCase = true) } }
 
+    val audioCodecs =
+        buildSet {
+            if (supportsAudio("audio/mp4a-latm", "audio/aac")) add(PlaybackAudioCodec.AAC)
+            if (supportsAudio("audio/mpeg")) add(PlaybackAudioCodec.MP3)
+            if (supportsAudio("audio/ac3")) add(PlaybackAudioCodec.AC3)
+            if (supportsAudio("audio/eac3", "audio/eac3-joc")) add(PlaybackAudioCodec.EAC3)
+            if (supportsAudio("audio/opus")) add(PlaybackAudioCodec.OPUS)
+            if (supportsAudio("audio/vorbis")) add(PlaybackAudioCodec.VORBIS)
+            if (supportsAudio("audio/flac")) add(PlaybackAudioCodec.FLAC)
+        }
+
     return PlaybackDecoderCapabilities(
         videoCodecs =
             buildSet {
@@ -38,15 +49,12 @@ fun selectTvDecoderCapabilities(
                 }
                 if (supportsVideo("video/avc", requireHardware = false)) add(PlaybackVideoCodec.H264)
             },
-        audioCodecs =
-            buildSet {
-                if (supportsAudio("audio/mp4a-latm", "audio/aac")) add(PlaybackAudioCodec.AAC)
-                if (supportsAudio("audio/mpeg")) add(PlaybackAudioCodec.MP3)
-                if (supportsAudio("audio/ac3")) add(PlaybackAudioCodec.AC3)
-                if (supportsAudio("audio/eac3", "audio/eac3-joc")) add(PlaybackAudioCodec.EAC3)
-                if (supportsAudio("audio/opus")) add(PlaybackAudioCodec.OPUS)
-                if (supportsAudio("audio/vorbis")) add(PlaybackAudioCodec.VORBIS)
-                if (supportsAudio("audio/flac")) add(PlaybackAudioCodec.FLAC)
-            },
+        audioCodecs = audioCodecs,
+        // TV codec registries often claim multichannel AAC support even when their platform
+        // decoder crashes at runtime. Stereo AAC is the interoperable HLS fallback baseline.
+        maxAacChannelCount = if (PlaybackAudioCodec.AAC in audioCodecs) 2 else null,
+        // Keep Auto quality visually lossless on the big screen. Manual quality selections still
+        // override this ceiling for an individual playback session.
+        maxStreamingBitrate = 120_000_000,
     )
 }

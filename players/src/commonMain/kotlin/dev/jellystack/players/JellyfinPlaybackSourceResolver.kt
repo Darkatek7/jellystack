@@ -32,7 +32,9 @@ class JellyfinPlaybackSourceResolver(
         options: PlaybackSourceOptions,
     ): ResolvedPlaybackSource {
         val isAuto = selection.selectedQualityId == PlaybackQualityOption.AUTO_ID
-        val allowDirectPlayback = isAuto && !options.forceTranscoding
+        val forceAudioTranscoding = !options.forceTranscoding && options.forceAudioTranscoding
+        val forceAnyTranscoding = options.forceTranscoding || forceAudioTranscoding
+        val allowDirectPlayback = isAuto && !forceAnyTranscoding
         val manualOption =
             if (isAuto) {
                 null
@@ -61,6 +63,30 @@ class JellyfinPlaybackSourceResolver(
                         profile
                     }
                 }
+        val maxAacChannelCount =
+            deviceProfile.transcodingProfiles
+                .firstNotNullOfOrNull { it.maxAudioChannels?.toIntOrNull() }
+        val preferredTranscodeProfile = deviceProfile.transcodingProfiles.firstOrNull()
+        val preferredTranscodeCodec =
+            preferredTranscodeProfile
+                ?.videoCodec
+                ?.substringBefore(',')
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+                ?: "h264"
+        val preferredTranscodeAudioCodec =
+            preferredTranscodeProfile
+                ?.audioCodec
+                ?.substringBefore(',')
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+                ?: "aac"
+        val fallbackVideoBitrate =
+            autoTranscodeVideoBitrate(
+                sourceVideoBitrate = selection.videoBitrate,
+                sourceVideoHeight = selection.videoHeight,
+                maxStreamingBitrate = manualOption?.maxBitrate ?: deviceProfile.maxStreamingBitrate,
+            )
         val playbackInfoRequest =
             JellyfinPlaybackInfoRequestDto(
                 userId = environment.userId,
@@ -69,12 +95,12 @@ class JellyfinPlaybackSourceResolver(
                 audioStreamIndex = audioStreamIndex,
                 subtitleStreamIndex = subtitleStreamIndex,
                 startTimeTicks = max(0, startPositionMs).toTicks(),
-                maxStreamingBitrate = manualOption?.maxBitrate,
+                maxStreamingBitrate = manualOption?.maxBitrate ?: deviceProfile.maxStreamingBitrate,
                 enableDirectPlay = allowDirectPlayback,
-                enableDirectStream = allowDirectPlayback,
+                enableDirectStream = allowDirectPlayback || forceAudioTranscoding,
                 enableTranscoding = true,
-                allowVideoStreamCopy = allowDirectPlayback,
-                allowAudioStreamCopy = !options.forceTranscoding,
+                allowVideoStreamCopy = allowDirectPlayback || forceAudioTranscoding,
+                allowAudioStreamCopy = !forceAnyTranscoding,
             )
         val response =
             playbackInfoService.fetch(
@@ -132,6 +158,23 @@ class JellyfinPlaybackSourceResolver(
                         playSessionId = playSessionId,
                         audioStreamIndex = audioStreamIndex,
                         subtitleStreamIndex = subtitleStreamIndex,
+                        maxAudioChannels = maxAacChannelCount,
+                        maxStreamingBitrate = manualOption?.maxBitrate ?: deviceProfile.maxStreamingBitrate,
+                        copyVideo = forceAudioTranscoding,
+                        videoCodec = preferredTranscodeCodec,
+                        audioCodec = preferredTranscodeAudioCodec,
+                        videoBitrate = fallbackVideoBitrate,
+                        maxWidth = selection.videoWidth,
+                        maxHeight = selection.videoHeight,
+                        segmentContainer =
+                            if (
+                                forceAudioTranscoding &&
+                                selection.videoCodec.equals(PlaybackVideoCodec.AV1.jellyfinName, ignoreCase = true)
+                            ) {
+                                "mp4"
+                            } else {
+                                "ts"
+                            },
                     )
                 } else {
                     null
@@ -140,31 +183,45 @@ class JellyfinPlaybackSourceResolver(
                 usableTranscodingUrl
                     ?: fallbackHlsUrl
                     ?: error("Jellyfin PlaybackInfo returned no usable playback URL for ${request.mediaId}")
-            val preferredTranscodeCodec =
-                deviceProfile.transcodingProfiles
-                    .firstOrNull()
-                    ?.videoCodec
-                    ?.substringBefore(',')
-                    ?.trim()
-                    ?.takeIf { it.isNotEmpty() }
-                    ?: "h264"
+            val negotiatedVideoCodec =
+                serverTranscodeUrl.queryParameter("VideoCodec")
+                    ?.takeIf { it.isNotBlank() }
+                    ?: preferredTranscodeCodec
+            val negotiatedAudioCodec =
+                serverTranscodeUrl.queryParameter("AudioCodec")
+                    ?.takeIf { it.isNotBlank() }
+                    ?: preferredTranscodeAudioCodec
+            val audioOnlySegmentContainer =
+                if (selection.videoCodec.equals(PlaybackVideoCodec.AV1.jellyfinName, ignoreCase = true)) {
+                    "mp4"
+                } else {
+                    "ts"
+                }
             val forcedTranscodeUrl =
-                if (options.forceTranscoding) {
+                if (forceAnyTranscoding) {
                     replaceQueryParameters(
                         serverTranscodeUrl,
-                        mapOf(
-                            "EnableAutoStreamCopy" to "false",
-                            "AllowVideoStreamCopy" to "false",
-                            "AllowAudioStreamCopy" to "false",
-                            "VideoCodec" to preferredTranscodeCodec,
-                            "AudioCodec" to "aac",
-                            "RequireAvc" to (preferredTranscodeCodec == "h264").toString(),
-                            "Profile" to if (preferredTranscodeCodec == "h264") "baseline" else "",
-                            "Level" to if (preferredTranscodeCodec == "h264") "41" else "",
-                            "h264-profile" to if (preferredTranscodeCodec == "h264") "baseline" else "",
-                            "h264-level" to if (preferredTranscodeCodec == "h264") "41" else "",
-                            "MaxVideoBitDepth" to "8",
-                        ),
+                        buildMap {
+                            put("EnableAutoStreamCopy", forceAudioTranscoding.toString())
+                            put("AllowVideoStreamCopy", forceAudioTranscoding.toString())
+                            put("AllowAudioStreamCopy", "false")
+                            put("VideoCodec", if (forceAudioTranscoding) "copy" else negotiatedVideoCodec)
+                            put("AudioCodec", if (forceAudioTranscoding) "aac" else negotiatedAudioCodec)
+                            if (forceAudioTranscoding) {
+                                put("SegmentContainer", audioOnlySegmentContainer)
+                                put("BreakOnNonKeyFrames", (audioOnlySegmentContainer == "ts").toString())
+                                put("RequireAvc", "false")
+                            }
+                            (manualOption?.maxBitrate ?: deviceProfile.maxStreamingBitrate)?.let { maxBitrate ->
+                                put("MaxStreamingBitrate", maxBitrate.toString())
+                            }
+                            maxAacChannelCount?.let { maxChannels ->
+                                put("TranscodingMaxAudioChannels", maxChannels.toString())
+                                put("MaxAudioChannels", maxChannels.toString())
+                                put("aac-audiochannels", maxChannels.toString())
+                                put("AudioBitrate", TV_FALLBACK_AUDIO_BITRATE.toString())
+                            }
+                        },
                     )
                 } else {
                     serverTranscodeUrl
@@ -230,8 +287,8 @@ class JellyfinPlaybackSourceResolver(
                     if (options.preferFmp4Hls) {
                         "mp4"
                     } else {
-                        negotiatedSource.transcodingContainer
-                            ?: resolvedUrl.queryParameter("SegmentContainer")
+                        resolvedUrl.queryParameter("SegmentContainer")
+                            ?: negotiatedSource.transcodingContainer
                     }
                 } else {
                     null
@@ -246,6 +303,15 @@ class JellyfinPlaybackSourceResolver(
         playSessionId: String,
         audioStreamIndex: Int?,
         subtitleStreamIndex: Int?,
+        maxAudioChannels: Int?,
+        maxStreamingBitrate: Int?,
+        copyVideo: Boolean,
+        videoCodec: String,
+        audioCodec: String,
+        videoBitrate: Int?,
+        maxWidth: Int?,
+        maxHeight: Int?,
+        segmentContainer: String,
     ): String =
         buildString {
             append(environment.baseUrl.trimEnd('/'))
@@ -262,11 +328,47 @@ class JellyfinPlaybackSourceResolver(
             append(environment.userId)
             append("&PlaySessionId=")
             append(playSessionId)
-            append("&VideoCodec=h264")
-            append("&AudioCodec=aac")
-            append("&SegmentContainer=ts")
+            append("&VideoCodec=")
+            append(if (copyVideo) "copy" else videoCodec)
+            append("&AudioCodec=")
+            append(if (copyVideo) "aac" else audioCodec)
+            append("&SegmentContainer=")
+            append(segmentContainer)
+            append("&BreakOnNonKeyFrames=")
+            append(segmentContainer == "ts")
             append("&MinSegments=1")
             append("&StartTimeTicks=0")
+            append("&EnableAutoStreamCopy=")
+            append(copyVideo)
+            append("&AllowVideoStreamCopy=")
+            append(copyVideo)
+            append("&AllowAudioStreamCopy=false")
+            videoBitrate?.let { bitrate ->
+                append("&VideoBitRate=")
+                append(bitrate)
+            }
+            maxWidth?.let { width ->
+                append("&MaxWidth=")
+                append(width)
+            }
+            maxHeight?.let { height ->
+                append("&MaxHeight=")
+                append(height)
+            }
+            maxStreamingBitrate?.let { bitrate ->
+                append("&MaxStreamingBitrate=")
+                append(bitrate)
+            }
+            maxAudioChannels?.let { maxChannels ->
+                append("&TranscodingMaxAudioChannels=")
+                append(maxChannels)
+                append("&MaxAudioChannels=")
+                append(maxChannels)
+                append("&aac-audiochannels=")
+                append(maxChannels)
+                append("&AudioBitrate=")
+                append(TV_FALLBACK_AUDIO_BITRATE)
+            }
             audioStreamIndex?.let { index ->
                 append("&AudioStreamIndex=")
                 append(index)
@@ -537,6 +639,35 @@ class JellyfinPlaybackSourceResolver(
     )
 
     private companion object {
+        private const val TV_FALLBACK_AUDIO_BITRATE = 256_000
+        private const val UNKNOWN_SOURCE_VIDEO_BITRATE = 40_000_000
         private const val HLS_MIME_TYPE = "application/vnd.apple.mpegurl"
+    }
+
+    private fun autoTranscodeVideoBitrate(
+        sourceVideoBitrate: Int?,
+        sourceVideoHeight: Int?,
+        maxStreamingBitrate: Int?,
+    ): Int? {
+        val ceiling = maxStreamingBitrate?.minus(TV_FALLBACK_AUDIO_BITRATE)?.coerceAtLeast(1)
+        val resolutionFloor =
+            when {
+                sourceVideoHeight == null -> UNKNOWN_SOURCE_VIDEO_BITRATE
+                sourceVideoHeight >= 2_160 -> 60_000_000
+                sourceVideoHeight >= 1_440 -> 30_000_000
+                sourceVideoHeight >= 1_080 -> 16_000_000
+                sourceVideoHeight >= 720 -> 8_000_000
+                else -> 4_000_000
+            }
+        val qualityTarget =
+            sourceVideoBitrate
+                ?.takeIf { it > 0 }
+                ?.toLong()
+                ?.times(2L)
+                ?.coerceAtMost(Int.MAX_VALUE.toLong())
+                ?.toInt()
+                ?.coerceAtLeast(resolutionFloor)
+                ?: resolutionFloor
+        return ceiling?.let { qualityTarget.coerceAtMost(it) } ?: qualityTarget
     }
 }

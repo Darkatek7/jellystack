@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ImageNotSupported
@@ -43,6 +44,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.Role
@@ -149,6 +151,46 @@ internal fun TvActionButton(
             color = if (primary) Color(0xFF251450) else TvText,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+internal fun TvPlayerIconButton(
+    icon: ImageVector,
+    description: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    size: androidx.compose.ui.unit.Dp = 60.dp,
+    iconSize: androidx.compose.ui.unit.Dp = 30.dp,
+) {
+    val shape = RoundedCornerShape(50)
+    var focused by remember { mutableStateOf(false) }
+    Box(
+        modifier =
+            modifier
+                .size(size)
+                .graphicsLayer {
+                    scaleX = if (focused) 1.08f else 1f
+                    scaleY = if (focused) 1.08f else 1f
+                }
+                .background(Color.Black.copy(alpha = 0.68f), shape)
+                .border(if (focused) 3.dp else 1.dp, if (focused) TvPurple else Color.White.copy(alpha = 0.18f), shape)
+                .clip(shape)
+                .onFocusChanged { focused = it.isFocused }
+                .semantics {
+                    role = Role.Button
+                    contentDescription = description
+                }
+                .clickable(onClick = onClick)
+                .focusable(),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = Color.White,
+            modifier = Modifier.size(iconSize),
         )
     }
 }
@@ -274,7 +316,7 @@ internal fun tvOutlinedTextFieldColors() =
         unfocusedPlaceholderColor = TvTextMuted,
     )
 
-internal val LocalTvNavigationRailFocusRequester = staticCompositionLocalOf<FocusRequester?> { null }
+internal val LocalTvNavigationRailOpener = staticCompositionLocalOf<(() -> Unit)?> { null }
 internal val LocalTvScreenEntryFocusRequester = staticCompositionLocalOf<FocusRequester?> { null }
 
 @Composable
@@ -285,8 +327,8 @@ internal fun Modifier.tvScreenEntryFocus(enabled: Boolean = true): Modifier {
 
 @Composable
 internal fun Modifier.tvReturnToNavigationRailOnLeft(enabled: Boolean = true): Modifier {
-    val requester = LocalTvNavigationRailFocusRequester.current
-    return if (!enabled || requester == null) {
+    val openNavigationRail = LocalTvNavigationRailOpener.current
+    return if (!enabled || openNavigationRail == null) {
         this
     } else {
         onPreviewKeyEvent { event ->
@@ -294,7 +336,7 @@ internal fun Modifier.tvReturnToNavigationRailOnLeft(enabled: Boolean = true): M
                 event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
                 event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT
             ) {
-                requester.requestFocus()
+                openNavigationRail()
                 true
             } else {
                 false
