@@ -2,6 +2,8 @@
 
 package dev.jellystack.design.tv
 
+import android.view.KeyEvent
+
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
@@ -24,23 +26,30 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ImageNotSupported
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -58,10 +67,12 @@ internal fun Modifier.tvFocusable(
     shape: RoundedCornerShape = RoundedCornerShape(16.dp),
     scale: Float = 1.045f,
     onFocused: (() -> Unit)? = null,
+    focusToNavigationRailOnLeft: Boolean = false,
 ): Modifier =
     this.then(
         Modifier
             .tvFocusDecoration(shape, scale, onFocused)
+            .tvReturnToNavigationRailOnLeft(focusToNavigationRailOnLeft)
             .semantics {
                 role = Role.Button
                 if (!enabled) disabled()
@@ -107,6 +118,7 @@ internal fun TvActionButton(
     leading: (@Composable () -> Unit)? = null,
     primary: Boolean = false,
     enabled: Boolean = true,
+    focusToNavigationRailOnLeft: Boolean = false,
 ) {
     val shape = RoundedCornerShape(50)
     Row(
@@ -115,14 +127,29 @@ internal fun TvActionButton(
                 .height(58.dp)
                 .graphicsLayer { alpha = if (enabled) 1f else 0.5f }
                 .background(if (primary) TvPurple else TvSurfaceRaised, shape)
-                .tvFocusable(onClick = onClick, enabled = enabled, shape = shape)
+                .semantics(mergeDescendants = true) {
+                    contentDescription = label
+                    selected = primary
+                }
+                .tvFocusable(
+                    onClick = onClick,
+                    enabled = enabled,
+                    shape = shape,
+                    focusToNavigationRailOnLeft = focusToNavigationRailOnLeft,
+                )
                 .padding(horizontal = 24.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
     ) {
         leading?.invoke()
         if (leading != null) Spacer(Modifier.width(10.dp))
-        Text(label, fontWeight = FontWeight.SemiBold, color = if (primary) Color(0xFF251450) else TvText)
+        Text(
+            label,
+            fontWeight = FontWeight.SemiBold,
+            color = if (primary) Color(0xFF251450) else TvText,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -134,14 +161,24 @@ internal fun TvMediaCard(
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     landscape: Boolean = true,
+    fillWidth: Boolean = false,
     onFocused: (() -> Unit)? = null,
+    focusToNavigationRailOnLeft: Boolean = false,
 ) {
     val shape = RoundedCornerShape(18.dp)
     Column(
         modifier =
             modifier
-                .width(if (landscape) 276.dp else 166.dp)
-                .tvFocusable(onClick = onClick, shape = shape, onFocused = onFocused)
+                .then(if (fillWidth) Modifier.fillMaxWidth() else Modifier.width(if (landscape) 276.dp else 166.dp))
+                .semantics(mergeDescendants = true) {
+                    contentDescription = listOfNotNull(title, subtitle).joinToString(", ")
+                }
+                .tvFocusable(
+                    onClick = onClick,
+                    shape = shape,
+                    onFocused = onFocused,
+                    focusToNavigationRailOnLeft = focusToNavigationRailOnLeft,
+                )
                 .background(TvSurface, shape),
     ) {
         Box(
@@ -221,6 +258,50 @@ internal fun TvSectionTitle(
 }
 
 internal val TvScreenPadding = PaddingValues(start = 42.dp, end = 42.dp, top = 32.dp, bottom = 54.dp)
+
+@Composable
+internal fun tvOutlinedTextFieldColors() =
+    OutlinedTextFieldDefaults.colors(
+        focusedTextColor = TvText,
+        unfocusedTextColor = TvText,
+        disabledTextColor = TvTextMuted,
+        cursorColor = TvPurple,
+        focusedBorderColor = TvPurple,
+        unfocusedBorderColor = TvTextMuted,
+        focusedLabelColor = TvPurple,
+        unfocusedLabelColor = TvTextMuted,
+        focusedPlaceholderColor = TvTextMuted,
+        unfocusedPlaceholderColor = TvTextMuted,
+    )
+
+internal val LocalTvNavigationRailFocusRequester = staticCompositionLocalOf<FocusRequester?> { null }
+internal val LocalTvScreenEntryFocusRequester = staticCompositionLocalOf<FocusRequester?> { null }
+
+@Composable
+internal fun Modifier.tvScreenEntryFocus(enabled: Boolean = true): Modifier {
+    val requester = LocalTvScreenEntryFocusRequester.current
+    return if (enabled && requester != null) focusRequester(requester) else this
+}
+
+@Composable
+internal fun Modifier.tvReturnToNavigationRailOnLeft(enabled: Boolean = true): Modifier {
+    val requester = LocalTvNavigationRailFocusRequester.current
+    return if (!enabled || requester == null) {
+        this
+    } else {
+        onPreviewKeyEvent { event ->
+            if (
+                event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
+                event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT
+            ) {
+                requester.requestFocus()
+                true
+            } else {
+                false
+            }
+        }
+    }
+}
 
 internal fun jellyfinImageUrl(
     baseUrl: String?,

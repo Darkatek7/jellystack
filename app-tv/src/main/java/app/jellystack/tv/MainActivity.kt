@@ -16,7 +16,7 @@ import dev.jellystack.core.jellyfin.JellyfinBrowseRepository
 import dev.jellystack.core.playback.JellyfinStreamingProgressReporter
 import dev.jellystack.core.preferences.AppSettingsRepository
 import dev.jellystack.design.tv.TvJellystackRoot
-import dev.jellystack.players.AndroidPlaybackDeviceProfileProvider
+import dev.jellystack.players.AndroidTvPlaybackDeviceProfileProvider
 import dev.jellystack.players.AndroidPlaybackSessionBridge
 import dev.jellystack.players.AndroidPlayerEngine
 import dev.jellystack.players.JellyfinPlaybackSourceResolver
@@ -51,7 +51,7 @@ class MainActivity : AppCompatActivity() {
                 playbackSourceResolver =
                     JellyfinPlaybackSourceResolver(
                         playbackInfoService = NetworkJellyfinPlaybackInfoService(),
-                        deviceProfileProvider = AndroidPlaybackDeviceProfileProvider(),
+                        deviceProfileProvider = AndroidTvPlaybackDeviceProfileProvider(),
                         clientVersion = BuildConfig.VERSION_NAME,
                     ),
                 playerEngine = playerEngine,

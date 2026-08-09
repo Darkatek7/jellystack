@@ -19,27 +19,35 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import dev.jellystack.core.preferences.AppLanguage
 import dev.jellystack.core.preferences.AppSettings
 import dev.jellystack.core.preferences.AppSettingsRepository
@@ -70,8 +78,19 @@ internal fun TvSettingsScreen(
     modifier: Modifier = Modifier,
 ) {
     val scope = rememberCoroutineScope()
+    val servers by serverRepository.observeServers().collectAsStateWithLifecycle()
+    val jellyfinServer = servers.firstOrNull { it.type == dev.jellystack.core.server.ServerType.JELLYFIN }
+    val seerrServer = servers.firstOrNull { it.type == dev.jellystack.core.server.ServerType.JELLYSEERR }
     var showJellyfinConnect by remember { mutableStateOf(false) }
     var showSeerrConnect by remember { mutableStateOf(false) }
+    var choiceDialog by remember { mutableStateOf<TvChoiceDialogState?>(null) }
+
+    fun showChoices(
+        title: String,
+        options: List<TvChoiceOption>,
+    ) {
+        choiceDialog = TvChoiceDialogState(title, options)
+    }
     if (showJellyfinConnect) {
         TvConnectionScreen(
             coordinator = connectionCoordinator,
@@ -83,6 +102,9 @@ internal fun TvSettingsScreen(
                 onServersChanged()
             },
             onDismiss = { showJellyfinConnect = false },
+            existingServerId = jellyfinServer?.id,
+            initialDisplayName = jellyfinServer?.name ?: "Jellyfin",
+            initialBaseUrl = jellyfinServer?.baseUrl.orEmpty(),
         )
         return
     }
@@ -98,37 +120,115 @@ internal fun TvSettingsScreen(
                 TvSettingTile(
                     strings.language,
                     settings.appLanguage.label(strings),
-                ) { repository.setAppLanguage(settings.appLanguage.next()) }
+                    focusToNavigationRailOnLeft = true,
+                    screenEntry = true,
+                ) {
+                    showChoices(
+                        strings.language,
+                        AppLanguage.entries.map { value ->
+                            TvChoiceOption(value.label(strings), value == settings.appLanguage) {
+                                repository.setAppLanguage(value)
+                            }
+                        },
+                    )
+                }
                 TvSettingTile(strings.quality, settings.wifiStreamingQuality.label(strings)) {
-                    repository.setWifiStreamingQuality(settings.wifiStreamingQuality.nextTvQuality())
+                    showChoices(
+                        strings.quality,
+                        tvQualityOptions().map { value ->
+                            TvChoiceOption(value.label(strings), value == settings.wifiStreamingQuality) {
+                                repository.setWifiStreamingQuality(value)
+                            }
+                        },
+                    )
                 }
                 TvSettingTile(strings.audioLanguage, settings.preferredAudioLanguage ?: strings.serverDefault) {
-                    repository.setPreferredAudioLanguage(settings.preferredAudioLanguage.nextPreferredLanguage())
+                    showChoices(
+                        strings.audioLanguage,
+                        preferredLanguageOptions(strings, settings.preferredAudioLanguage) {
+                            repository.setPreferredAudioLanguage(it)
+                        },
+                    )
                 }
                 TvSettingTile(strings.subtitleLanguage, settings.preferredSubtitleLanguage ?: strings.serverDefault) {
-                    repository.setPreferredSubtitleLanguage(settings.preferredSubtitleLanguage.nextPreferredLanguage())
+                    showChoices(
+                        strings.subtitleLanguage,
+                        preferredLanguageOptions(strings, settings.preferredSubtitleLanguage) {
+                            repository.setPreferredSubtitleLanguage(it)
+                        },
+                    )
                 }
                 TvSettingTile(strings.subtitleMode, settings.subtitleMode.label(strings)) {
-                    repository.setSubtitleMode(settings.subtitleMode.next())
+                    showChoices(
+                        strings.subtitleMode,
+                        SubtitleMode.entries.map { value ->
+                            TvChoiceOption(value.label(strings), value == settings.subtitleMode) { repository.setSubtitleMode(value) }
+                        },
+                    )
                 }
                 TvSettingTile(strings.subtitleSize, settings.subtitleTextSize.label(strings)) {
-                    repository.setSubtitleTextSize(settings.subtitleTextSize.next())
+                    showChoices(
+                        strings.subtitleSize,
+                        SubtitleTextSize.entries.map { value ->
+                            TvChoiceOption(value.label(strings), value == settings.subtitleTextSize) {
+                                repository.setSubtitleTextSize(value)
+                            }
+                        },
+                    )
                 }
                 TvSettingTile(strings.subtitleBackground, settings.subtitleBackground.label(strings)) {
-                    repository.setSubtitleBackground(settings.subtitleBackground.next())
+                    showChoices(
+                        strings.subtitleBackground,
+                        SubtitleBackground.entries.map { value ->
+                            TvChoiceOption(value.label(strings), value == settings.subtitleBackground) {
+                                repository.setSubtitleBackground(value)
+                            }
+                        },
+                    )
                 }
                 TvSettingTile(strings.autoplay, settings.autoplayNextMode.label(strings)) {
-                    repository.setAutoplayNextMode(settings.autoplayNextMode.next())
+                    showChoices(
+                        strings.autoplay,
+                        AutoplayNextMode.entries.map { value ->
+                            TvChoiceOption(value.label(strings), value == settings.autoplayNextMode) {
+                                repository.setAutoplayNextMode(value)
+                            }
+                        },
+                    )
                 }
-                TvSettingTile(strings.resume, settings.resumeMode.label(strings)) { repository.setResumeMode(settings.resumeMode.next()) }
+                TvSettingTile(strings.resume, settings.resumeMode.label(strings)) {
+                    showChoices(
+                        strings.resume,
+                        ResumeMode.entries.map { value ->
+                            TvChoiceOption(value.label(strings), value == settings.resumeMode) { repository.setResumeMode(value) }
+                        },
+                    )
+                }
                 TvSettingTile(strings.seekBack, "${settings.seekBackSeconds}s") {
-                    repository.setSeekBackSeconds(settings.seekBackSeconds.nextSeek())
+                    showChoices(
+                        strings.seekBack,
+                        tvSeekOptions().map { value ->
+                            TvChoiceOption("${value}s", value == settings.seekBackSeconds) { repository.setSeekBackSeconds(value) }
+                        },
+                    )
                 }
                 TvSettingTile(strings.seekForward, "${settings.seekForwardSeconds}s") {
-                    repository.setSeekForwardSeconds(settings.seekForwardSeconds.nextSeek())
+                    showChoices(
+                        strings.seekForward,
+                        tvSeekOptions().map { value ->
+                            TvChoiceOption("${value}s", value == settings.seekForwardSeconds) { repository.setSeekForwardSeconds(value) }
+                        },
+                    )
                 }
                 TvSettingTile(strings.playbackSpeed, "${settings.defaultPlaybackSpeed}x") {
-                    repository.setDefaultPlaybackSpeed(settings.defaultPlaybackSpeed.nextSpeed())
+                    showChoices(
+                        strings.playbackSpeed,
+                        tvSpeedOptions().map { value ->
+                            TvChoiceOption("${value}x", value == settings.defaultPlaybackSpeed) {
+                                repository.setDefaultPlaybackSpeed(value)
+                            }
+                        },
+                    )
                 }
                 TvSettingTile(
                     strings.statsForNerds,
@@ -150,7 +250,7 @@ internal fun TvSettingsScreen(
                 Modifier.fillMaxWidth().background(TvSurface, RoundedCornerShape(22.dp)).padding(22.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                serverRepository.currentServers().forEach { server ->
+                servers.forEach { server ->
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(server.name, color = TvText, fontSize = 21.sp, fontWeight = FontWeight.SemiBold)
@@ -165,8 +265,16 @@ internal fun TvSettingsScreen(
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    TvActionButton(strings.addJellyfin, { showJellyfinConnect = true }, primary = true)
-                    TvActionButton(strings.addSeerr, { showSeerrConnect = true })
+                    TvActionButton(
+                        if (jellyfinServer == null) strings.addJellyfin else strings.manageJellyfin,
+                        { showJellyfinConnect = true },
+                        primary = jellyfinServer == null,
+                    )
+                    TvActionButton(
+                        if (seerrServer == null) strings.addSeerr else strings.manageSeerr,
+                        { showSeerrConnect = true },
+                        primary = seerrServer == null,
+                    )
                 }
             }
         }
@@ -178,12 +286,66 @@ internal fun TvSettingsScreen(
             coordinator = connectionCoordinator,
             appVersion = appVersion,
             strings = strings,
+            existingServerId = seerrServer?.id,
+            initialUrl = seerrServer?.baseUrl.orEmpty(),
             onDismiss = { showSeerrConnect = false },
             onConnected = {
                 showSeerrConnect = false
                 onServersChanged()
             },
         )
+    }
+    choiceDialog?.let { dialog ->
+        TvChoiceDialog(dialog, cancelLabel = strings.cancel, onDismiss = { choiceDialog = null }) { option ->
+            option.onSelect()
+            choiceDialog = null
+        }
+    }
+}
+
+private data class TvChoiceOption(
+    val label: String,
+    val selected: Boolean,
+    val onSelect: () -> Unit,
+)
+
+private data class TvChoiceDialogState(
+    val title: String,
+    val options: List<TvChoiceOption>,
+)
+
+@Composable
+private fun TvChoiceDialog(
+    state: TvChoiceDialogState,
+    cancelLabel: String,
+    onDismiss: () -> Unit,
+    onSelect: (TvChoiceOption) -> Unit,
+) {
+    val initialFocus = remember(state.title) { FocusRequester() }
+    val initialIndex = state.options.indexOfFirst { it.selected }.coerceAtLeast(0)
+    LaunchedEffect(state) { initialFocus.requestFocus() }
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            Modifier
+                .width(620.dp)
+                .heightIn(max = 650.dp)
+                .background(TvSurfaceRaised, RoundedCornerShape(26.dp))
+                .padding(28.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(state.title, color = TvText, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.weight(1f, fill = false)) {
+                itemsIndexed(state.options) { index, option ->
+                    TvActionButton(
+                        option.label,
+                        { onSelect(option) },
+                        modifier = if (index == initialIndex) Modifier.focusRequester(initialFocus) else Modifier,
+                        primary = option.selected,
+                    )
+                }
+            }
+            TvActionButton(cancelLabel, onDismiss)
+        }
     }
 }
 
@@ -203,14 +365,21 @@ private fun TvSettingsGrid(content: @Composable androidx.compose.foundation.layo
 private fun TvSettingTile(
     title: String,
     value: String,
+    focusToNavigationRailOnLeft: Boolean = false,
+    screenEntry: Boolean = false,
     onClick: () -> Unit,
 ) {
     Column(
         Modifier
+            .tvScreenEntryFocus(screenEntry)
             .width(330.dp)
             .height(112.dp)
             .background(TvSurface, RoundedCornerShape(20.dp))
-            .tvFocusable(onClick = onClick, shape = RoundedCornerShape(20.dp))
+            .tvFocusable(
+                onClick = onClick,
+                shape = RoundedCornerShape(20.dp),
+                focusToNavigationRailOnLeft = focusToNavigationRailOnLeft,
+            )
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
@@ -224,34 +393,85 @@ private fun TvSeerrConnectDialog(
     coordinator: ServerConnectionCoordinator,
     appVersion: String,
     strings: TvStrings,
+    existingServerId: String?,
+    initialUrl: String,
     onDismiss: () -> Unit,
     onConnected: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    var url by remember { mutableStateOf("") }
+    var url by remember(existingServerId, initialUrl) { mutableStateOf(initialUrl) }
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var useJellyfin by remember { mutableStateOf(true) }
     var needsCredentials by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    val urlFocus = remember { FocusRequester() }
+    val jellyfinMethodFocus = remember { FocusRequester() }
+    val seerrMethodFocus = remember { FocusRequester() }
+    val usernameFocus = remember { FocusRequester() }
+    val passwordFocus = remember { FocusRequester() }
+    val connectFocus = remember { FocusRequester() }
     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.84f)), contentAlignment = Alignment.Center) {
         Column(
             Modifier.width(620.dp).background(TvSurfaceRaised, RoundedCornerShape(26.dp)).padding(30.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text(strings.connectSeerr, color = TvText, fontSize = 30.sp, fontWeight = FontWeight.Bold)
-            OutlinedTextField(url, { url = it }, label = { Text(strings.serverUrl) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(
+                url,
+                { url = it },
+                label = { Text(strings.serverUrl) },
+                singleLine = true,
+                colors = tvOutlinedTextFieldColors(),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .focusRequester(urlFocus)
+                        .focusProperties {
+                            down = if (needsCredentials) jellyfinMethodFocus else connectFocus
+                        },
+            )
             if (needsCredentials) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    TvActionButton(strings.jellyfinAccount, { useJellyfin = true }, primary = useJellyfin)
-                    TvActionButton(strings.seerrAccount, { useJellyfin = false }, primary = !useJellyfin)
+                    TvActionButton(
+                        strings.jellyfinAccount,
+                        { useJellyfin = true },
+                        modifier =
+                            Modifier
+                                .focusRequester(jellyfinMethodFocus)
+                                .focusProperties {
+                                    right = seerrMethodFocus
+                                    down = usernameFocus
+                                },
+                        primary = useJellyfin,
+                    )
+                    TvActionButton(
+                        strings.seerrAccount,
+                        { useJellyfin = false },
+                        modifier =
+                            Modifier
+                                .focusRequester(seerrMethodFocus)
+                                .focusProperties {
+                                    left = jellyfinMethodFocus
+                                    down = usernameFocus
+                                },
+                        primary = !useJellyfin,
+                    )
                 }
                 OutlinedTextField(
                     username,
                     { username = it },
                     label = { Text(if (useJellyfin) strings.username else strings.email) },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                    colors = tvOutlinedTextFieldColors(),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .focusRequester(usernameFocus)
+                            .focusProperties {
+                                up = if (useJellyfin) jellyfinMethodFocus else seerrMethodFocus
+                                down = passwordFocus
+                            },
                 )
                 OutlinedTextField(
                     password,
@@ -260,7 +480,15 @@ private fun TvSeerrConnectDialog(
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    modifier = Modifier.fillMaxWidth(),
+                    colors = tvOutlinedTextFieldColors(),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .focusRequester(passwordFocus)
+                            .focusProperties {
+                                up = usernameFocus
+                                down = connectFocus
+                            },
                 )
             }
             error?.let { Text(it, color = Color(0xFFFFA59E)) }
@@ -268,9 +496,16 @@ private fun TvSeerrConnectDialog(
                 TvActionButton(
                     strings.connect,
                     primary = true,
+                    modifier = Modifier.focusRequester(connectFocus),
                     onClick = {
                         scope.launch {
-                            val input = SeerrServerInput("Seerr", url, appVersion = appVersion)
+                            val input =
+                                SeerrServerInput(
+                                    name = "Seerr",
+                                    baseUrl = url,
+                                    serverId = existingServerId,
+                                    appVersion = appVersion,
+                                )
                             if (!needsCredentials) {
                                 when (val result = coordinator.connectSeerrAutomatically(input)) {
                                     is SeerrConnectionResult.Connected -> onConnected()
@@ -300,6 +535,9 @@ private fun TvSeerrConnectDialog(
                 TvActionButton(strings.cancel, onDismiss)
             }
         }
+    }
+    LaunchedEffect(needsCredentials) {
+        if (needsCredentials) jellyfinMethodFocus.requestFocus() else urlFocus.requestFocus()
     }
 }
 
@@ -351,40 +589,30 @@ private fun ResumeMode.label(strings: TvStrings): String =
 
 private fun String.label() = lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() }
 
-private inline fun <reified T : Enum<T>> T.next(): T {
-    val values = enumValues<T>()
-    return values[(ordinal + 1) % values.size]
-}
-
 private fun StreamingQualityPreference.label(strings: TvStrings): String =
     maxHeight?.let { "${it}p  •  ${(maxBitrate ?: 0) / 1_000_000f} Mbps" } ?: strings.automatic
 
-private fun StreamingQualityPreference.nextTvQuality(): StreamingQualityPreference {
-    val options =
-        listOf(
-            StreamingQualityPreference.AUTO,
-            StreamingQualityPreference.MBPS_120_2160P,
-            StreamingQualityPreference.MBPS_40_2160P,
-            StreamingQualityPreference.MBPS_20_2160P,
-            StreamingQualityPreference.MBPS_8_1080P,
-            StreamingQualityPreference.MBPS_4_720P,
-        )
-    return options[(options.indexOf(this).takeIf { it >= 0 } ?: 0).plus(1) % options.size]
-}
+private fun tvQualityOptions(): List<StreamingQualityPreference> =
+    listOf(
+        StreamingQualityPreference.AUTO,
+        StreamingQualityPreference.MBPS_120_2160P,
+        StreamingQualityPreference.MBPS_40_2160P,
+        StreamingQualityPreference.MBPS_20_2160P,
+        StreamingQualityPreference.MBPS_8_1080P,
+        StreamingQualityPreference.MBPS_4_720P,
+    )
 
-private fun Int.nextSeek(): Int {
-    val values = listOf(5, 10, 15, 30, 60)
-    return values[(values.indexOf(this).takeIf { it >= 0 } ?: 0).plus(1) % values.size]
-}
+private fun tvSeekOptions() = listOf(5, 10, 15, 30, 60)
 
-private fun Float.nextSpeed(): Float {
-    val values = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
-    return values[(values.indexOf(this).takeIf { it >= 0 } ?: 2).plus(1) % values.size]
-}
+private fun tvSpeedOptions() = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
 
-private fun String?.nextPreferredLanguage(): String? =
-    when (this) {
-        null -> "en"
-        "en" -> "de"
-        else -> null
-    }
+private fun preferredLanguageOptions(
+    strings: TvStrings,
+    selected: String?,
+    onSelect: (String?) -> Unit,
+): List<TvChoiceOption> =
+    listOf(
+        TvChoiceOption(strings.serverDefault, selected == null) { onSelect(null) },
+        TvChoiceOption(strings.english, selected == "en") { onSelect("en") },
+        TvChoiceOption(strings.german, selected == "de") { onSelect("de") },
+    )

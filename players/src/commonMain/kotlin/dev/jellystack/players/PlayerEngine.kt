@@ -22,6 +22,9 @@ sealed interface PlayerEvent {
 
     data object Ready : PlayerEvent
 
+    /** The player became ready but no video frame reached the surface in time. */
+    data object VideoOutputStalled : PlayerEvent
+
     data object Completed : PlayerEvent
 
     data class AudioTrackSelectionApplied(

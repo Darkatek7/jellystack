@@ -32,6 +32,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -58,11 +61,14 @@ internal fun TvConnectionScreen(
     onConnected: () -> Unit,
     modifier: Modifier = Modifier,
     onDismiss: (() -> Unit)? = null,
+    existingServerId: String? = null,
+    initialDisplayName: String = "Jellyfin",
+    initialBaseUrl: String = "",
 ) {
     val scope = rememberCoroutineScope()
     var method by remember { mutableStateOf(JellyfinSignInMethod.QUICK_CONNECT) }
-    var displayName by remember { mutableStateOf("Jellyfin") }
-    var baseUrl by remember { mutableStateOf("") }
+    var displayName by remember(existingServerId, initialDisplayName) { mutableStateOf(initialDisplayName) }
+    var baseUrl by remember(existingServerId, initialBaseUrl) { mutableStateOf(initialBaseUrl) }
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var state by remember { mutableStateOf<JellyfinQuickConnectState?>(null) }
@@ -74,6 +80,14 @@ internal fun TvConnectionScreen(
             state is JellyfinQuickConnectState.Registering
     val contentMode = connectionContentMode(quickConnectInProgress)
     val layout = connectionFormLayout(method)
+    val quickMethodFocus = remember { FocusRequester() }
+    val passwordMethodFocus = remember { FocusRequester() }
+    val displayNameFocus = remember { FocusRequester() }
+    val urlFocus = remember { FocusRequester() }
+    val usernameFocus = remember { FocusRequester() }
+    val passwordFocus = remember { FocusRequester() }
+    val connectFocus = remember { FocusRequester() }
+    val waitingActionFocus = remember { FocusRequester() }
 
     fun beginQuickConnect() {
         connectJob?.cancel()
@@ -85,6 +99,7 @@ internal fun TvConnectionScreen(
                         JellyfinQuickConnectInput(
                             name = displayName,
                             baseUrl = baseUrl,
+                            serverId = existingServerId,
                             appVersion = appVersion,
                             deviceName = "Jellystack TV",
                         ),
@@ -95,10 +110,10 @@ internal fun TvConnectionScreen(
                             is JellyfinQuickConnectState.Failed ->
                                 error =
                                     when (next.error) {
-                                        JellyfinQuickConnectError.DISABLED -> "Quick Connect is disabled on this server."
-                                        JellyfinQuickConnectError.EXPIRED -> "The code expired. Create a new one."
-                                        JellyfinQuickConnectError.TRANSPORT -> "The server could not be reached."
-                                        else -> "Quick Connect failed. Check the server address."
+                                        JellyfinQuickConnectError.DISABLED -> strings.quickConnectDisabled
+                                        JellyfinQuickConnectError.EXPIRED -> strings.quickConnectExpired
+                                        JellyfinQuickConnectError.TRANSPORT -> strings.serverUnreachable
+                                        else -> strings.quickConnectFailed
                                     }
                             else -> Unit
                         }
@@ -134,24 +149,81 @@ internal fun TvConnectionScreen(
                         TvActionButton(
                             strings.quickConnect,
                             { method = JellyfinSignInMethod.QUICK_CONNECT },
+                            modifier =
+                                Modifier
+                                    .focusRequester(quickMethodFocus)
+                                    .focusProperties {
+                                        right = passwordMethodFocus
+                                        down = displayNameFocus
+                                    },
                             primary = method == JellyfinSignInMethod.QUICK_CONNECT,
                         )
                         TvActionButton(
                             strings.password,
                             { method = JellyfinSignInMethod.PASSWORD },
+                            modifier =
+                                Modifier
+                                    .focusRequester(passwordMethodFocus)
+                                    .focusProperties {
+                                        left = quickMethodFocus
+                                        down = displayNameFocus
+                                    },
                             primary = method == JellyfinSignInMethod.PASSWORD,
                         )
                     }
-                    TvTextField(displayName, { displayName = it }, strings.displayName, height = layout.textFieldHeight)
-                    TvTextField(baseUrl, { baseUrl = it }, strings.serverUrl, height = layout.textFieldHeight)
+                    TvTextField(
+                        displayName,
+                        { displayName = it },
+                        strings.displayName,
+                        height = layout.textFieldHeight,
+                        modifier =
+                            Modifier
+                                .focusRequester(displayNameFocus)
+                                .focusProperties {
+                                    up = if (method == JellyfinSignInMethod.QUICK_CONNECT) quickMethodFocus else passwordMethodFocus
+                                    down = urlFocus
+                                },
+                    )
+                    TvTextField(
+                        baseUrl,
+                        { baseUrl = it },
+                        strings.serverUrl,
+                        height = layout.textFieldHeight,
+                        modifier =
+                            Modifier
+                                .focusRequester(urlFocus)
+                                .focusProperties {
+                                    up = displayNameFocus
+                                    down = if (method == JellyfinSignInMethod.PASSWORD) usernameFocus else connectFocus
+                                },
+                    )
                     if (method == JellyfinSignInMethod.PASSWORD) {
-                        TvTextField(username, { username = it }, strings.username, height = layout.textFieldHeight)
+                        TvTextField(
+                            username,
+                            { username = it },
+                            strings.username,
+                            height = layout.textFieldHeight,
+                            modifier =
+                                Modifier
+                                    .focusRequester(usernameFocus)
+                                    .focusProperties {
+                                        up = urlFocus
+                                        down = passwordFocus
+                                    },
+                        )
                         TvTextField(
                             password,
                             { password = it },
                             strings.password,
                             password = true,
                             height = layout.textFieldHeight,
+                            modifier =
+                                Modifier
+                                    .focusRequester(passwordFocus)
+                                    .focusProperties {
+                                        up = usernameFocus
+                                        down = connectFocus
+                                    },
                         )
                     }
                 }
@@ -179,9 +251,10 @@ internal fun TvConnectionScreen(
                         TvActionButton(
                             label = strings.connect,
                             primary = true,
+                            modifier = Modifier.focusRequester(connectFocus),
                             onClick = {
                                 if (baseUrl.isBlank()) {
-                                    error = "Enter a complete http:// or https:// server URL."
+                                    error = strings.enterServerUrl
                                 } else if (method == JellyfinSignInMethod.QUICK_CONNECT) {
                                     beginQuickConnect()
                                 } else {
@@ -190,10 +263,16 @@ internal fun TvConnectionScreen(
                                         scope.launch {
                                             runCatching {
                                                 coordinator.connectJellyfin(
-                                                    JellyfinConnectionInput(displayName, baseUrl, username, password),
+                                                    JellyfinConnectionInput(
+                                                        displayName,
+                                                        baseUrl,
+                                                        username,
+                                                        password,
+                                                        serverId = existingServerId,
+                                                    ),
                                                 )
                                             }.onSuccess { onConnected() }
-                                                .onFailure { error = it.message ?: "Could not connect to Jellyfin." }
+                                                .onFailure { error = it.message ?: strings.jellyfinConnectionFailed }
                                             password = ""
                                         }
                                 }
@@ -201,7 +280,11 @@ internal fun TvConnectionScreen(
                         )
                     }
                     if (state is JellyfinQuickConnectState.Waiting) {
-                        TvActionButton(strings.newCode, ::beginQuickConnect)
+                        TvActionButton(
+                            strings.newCode,
+                            ::beginQuickConnect,
+                            modifier = Modifier.focusRequester(waitingActionFocus),
+                        )
                     }
                     if (contentMode.showWaitingInstructions) {
                         TvActionButton(
@@ -226,6 +309,13 @@ internal fun TvConnectionScreen(
             state = null
         }
     }
+    LaunchedEffect(contentMode, method) {
+        if (contentMode.showWaitingInstructions) {
+            waitingActionFocus.requestFocus()
+        } else if (contentMode.showEditableFields) {
+            quickMethodFocus.requestFocus()
+        }
+    }
     DisposableEffect(Unit) {
         onDispose {
             connectJob?.cancel()
@@ -241,6 +331,7 @@ private fun TvTextField(
     label: String,
     password: Boolean = false,
     height: Dp = 64.dp,
+    modifier: Modifier = Modifier,
 ) {
     OutlinedTextField(
         value = value,
@@ -249,7 +340,8 @@ private fun TvTextField(
         singleLine = true,
         visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
         keyboardOptions = KeyboardOptions(keyboardType = if (password) KeyboardType.Password else KeyboardType.Uri),
-        modifier = Modifier.fillMaxWidth().height(height),
+        colors = tvOutlinedTextFieldColors(),
+        modifier = modifier.fillMaxWidth().height(height),
     )
 }
 

@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -42,6 +43,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -285,6 +287,7 @@ private fun TvAuthenticatedApp(
             currentRoute is TvRoute.Discover ||
             currentRoute is TvRoute.Settings
     val railFocusRequester = remember { FocusRequester() }
+    val contentFocusRequester = remember { FocusRequester() }
     var railHasFocus by remember { mutableStateOf(false) }
     BackHandler(enabled = showRail && !railHasFocus) {
         railFocusRequester.requestFocus()
@@ -296,11 +299,16 @@ private fun TvAuthenticatedApp(
                     selected = currentRoute,
                     strings = strings,
                     onSelected = ::selectTopLevel,
-                    firstItemFocusRequester = railFocusRequester,
+                    selectedItemFocusRequester = railFocusRequester,
+                    contentFocusRequester = contentFocusRequester,
                     onFocusChanged = { railHasFocus = it },
                 )
             }
-            NavDisplay(
+            CompositionLocalProvider(
+                LocalTvNavigationRailFocusRequester provides railFocusRequester,
+                LocalTvScreenEntryFocusRequester provides contentFocusRequester,
+            ) {
+                NavDisplay(
                 backStack = backStack,
                 onBack = { if (backStack.size > 1) backStack.removeLastOrNull() },
                 modifier = Modifier.weight(1f).fillMaxHeight(),
@@ -363,7 +371,15 @@ private fun TvAuthenticatedApp(
                                     onJellyfinItem = { push(TvRoute.JellyfinDetail(it.id)) },
                                     onSeerrItem = ::openSeerr,
                                 )
-                            TvRoute.Discover -> TvDiscoverScreen(recommendations, requests, strings, focusMemory, ::openSeerr)
+                            TvRoute.Discover ->
+                                TvDiscoverScreen(
+                                    recommendations,
+                                    requests,
+                                    strings,
+                                    focusMemory,
+                                    ::openSeerr,
+                                    onConnectSeerr = { selectTopLevel(TvRoute.Settings()) },
+                                )
                             is TvRoute.Settings ->
                                 TvSettingsScreen(
                                     settings = settings,
@@ -418,7 +434,8 @@ private fun TvAuthenticatedApp(
                         }
                     }
                 },
-            )
+                )
+            }
         }
         (autoplayState as? TvAutoplayState.Countdown)?.let { countdown ->
             TvAutoplayPrompt(
@@ -436,7 +453,8 @@ private fun TvNavigationRail(
     selected: TvRoute,
     strings: TvStrings,
     onSelected: (TvRoute) -> Unit,
-    firstItemFocusRequester: FocusRequester,
+    selectedItemFocusRequester: FocusRequester,
+    contentFocusRequester: FocusRequester,
     onFocusChanged: (Boolean) -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -466,7 +484,19 @@ private fun TvNavigationRail(
             Row(
                 Modifier
                     .width(width - 24.dp)
-                    .then(if (index == 0) Modifier.focusRequester(firstItemFocusRequester) else Modifier)
+                    .then(if (isSelected) Modifier.focusRequester(selectedItemFocusRequester) else Modifier)
+                    .onPreviewKeyEvent { event ->
+                        if (
+                            isSelected &&
+                            event.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
+                            event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_RIGHT
+                        ) {
+                            contentFocusRequester.requestFocus()
+                            true
+                        } else {
+                            false
+                        }
+                    }
                     .background(
                         if (isSelected) TvPurpleStrong.copy(alpha = 0.48f) else Color.Transparent,
                         androidx.compose.foundation.shape

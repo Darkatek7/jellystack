@@ -32,6 +32,7 @@ class JellyfinPlaybackSourceResolver(
         options: PlaybackSourceOptions,
     ): ResolvedPlaybackSource {
         val isAuto = selection.selectedQualityId == PlaybackQualityOption.AUTO_ID
+        val allowDirectPlayback = isAuto && !options.forceTranscoding
         val manualOption =
             if (isAuto) {
                 null
@@ -42,20 +43,38 @@ class JellyfinPlaybackSourceResolver(
             }
         val audioStreamIndex = options.audioStreamIndex ?: selection.defaultAudioTrack()?.streamIndex
         val subtitleStreamIndex = options.subtitleStreamIndex ?: selection.defaultSubtitleTrack()?.streamIndex
+        val deviceProfile =
+            deviceProfileProvider
+                .deviceProfile()
+                .let { profile ->
+                    if (options.preferFmp4Hls) {
+                        profile.copy(
+                            transcodingProfiles =
+                                profile.transcodingProfiles.map { transcodingProfile ->
+                                    transcodingProfile.copy(
+                                        container = "mp4",
+                                        breakOnNonKeyFrames = false,
+                                    )
+                                },
+                        )
+                    } else {
+                        profile
+                    }
+                }
         val playbackInfoRequest =
             JellyfinPlaybackInfoRequestDto(
                 userId = environment.userId,
-                deviceProfile = deviceProfileProvider.deviceProfile(),
+                deviceProfile = deviceProfile,
                 mediaSourceId = selection.sourceId,
                 audioStreamIndex = audioStreamIndex,
                 subtitleStreamIndex = subtitleStreamIndex,
                 startTimeTicks = max(0, startPositionMs).toTicks(),
                 maxStreamingBitrate = manualOption?.maxBitrate,
-                enableDirectPlay = isAuto,
-                enableDirectStream = isAuto,
+                enableDirectPlay = allowDirectPlayback,
+                enableDirectStream = allowDirectPlayback,
                 enableTranscoding = true,
-                allowVideoStreamCopy = isAuto,
-                allowAudioStreamCopy = true,
+                allowVideoStreamCopy = allowDirectPlayback,
+                allowAudioStreamCopy = !options.forceTranscoding,
             )
         val response =
             playbackInfoService.fetch(
@@ -89,12 +108,8 @@ class JellyfinPlaybackSourceResolver(
         val isFallbackHls: Boolean
 
         val canUseDirectSource =
-            isAuto &&
-                (
-                    negotiatedSource.supportsDirectPlay ||
-                        negotiatedSource.supportsDirectStream ||
-                        (selection.mode == PlaybackMode.DIRECT && isRequestedSource)
-                )
+            allowDirectPlayback &&
+                (negotiatedSource.supportsDirectPlay || negotiatedSource.supportsDirectStream)
         if (canUseDirectSource) {
             resolvedMode = PlaybackMode.DIRECT
             resolvedUrl =
@@ -125,14 +140,55 @@ class JellyfinPlaybackSourceResolver(
                 usableTranscodingUrl
                     ?: fallbackHlsUrl
                     ?: error("Jellyfin PlaybackInfo returned no usable playback URL for ${request.mediaId}")
+            val preferredTranscodeCodec =
+                deviceProfile.transcodingProfiles
+                    .firstOrNull()
+                    ?.videoCodec
+                    ?.substringBefore(',')
+                    ?.trim()
+                    ?.takeIf { it.isNotEmpty() }
+                    ?: "h264"
+            val forcedTranscodeUrl =
+                if (options.forceTranscoding) {
+                    replaceQueryParameters(
+                        serverTranscodeUrl,
+                        mapOf(
+                            "EnableAutoStreamCopy" to "false",
+                            "AllowVideoStreamCopy" to "false",
+                            "AllowAudioStreamCopy" to "false",
+                            "VideoCodec" to preferredTranscodeCodec,
+                            "AudioCodec" to "aac",
+                            "RequireAvc" to (preferredTranscodeCodec == "h264").toString(),
+                            "Profile" to if (preferredTranscodeCodec == "h264") "baseline" else "",
+                            "Level" to if (preferredTranscodeCodec == "h264") "41" else "",
+                            "h264-profile" to if (preferredTranscodeCodec == "h264") "baseline" else "",
+                            "h264-level" to if (preferredTranscodeCodec == "h264") "41" else "",
+                            "MaxVideoBitDepth" to "8",
+                        ),
+                    )
+                } else {
+                    serverTranscodeUrl
+                }
+            val preferredTranscodeUrl =
+                if (options.preferFmp4Hls) {
+                    replaceQueryParameters(
+                        forcedTranscodeUrl,
+                        mapOf(
+                            "SegmentContainer" to "mp4",
+                            "BreakOnNonKeyFrames" to "false",
+                        ),
+                    )
+                } else {
+                    forcedTranscodeUrl
+                }
             resolvedMode = PlaybackMode.HLS
             resolvedUrl =
                 absoluteServerUrl(
                     environment.baseUrl,
                     if (manualOption == null) {
-                        serverTranscodeUrl
+                        preferredTranscodeUrl
                     } else {
-                        constrainManualTranscodeUrl(serverTranscodeUrl, manualOption)
+                        constrainManualTranscodeUrl(preferredTranscodeUrl, manualOption)
                     },
                 )
             resolvedMimeType =
@@ -169,6 +225,17 @@ class JellyfinPlaybackSourceResolver(
             mediaSourceId = mediaSourceId,
             supportsTranscoding = supportsTranscoding,
             isFallbackHls = isFallbackHls,
+            segmentContainer =
+                if (resolvedMode == PlaybackMode.HLS) {
+                    if (options.preferFmp4Hls) {
+                        "mp4"
+                    } else {
+                        negotiatedSource.transcodingContainer
+                            ?: resolvedUrl.queryParameter("SegmentContainer")
+                    }
+                } else {
+                    null
+                },
         )
     }
 

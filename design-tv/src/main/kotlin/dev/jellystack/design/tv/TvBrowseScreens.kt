@@ -28,6 +28,11 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
@@ -45,6 +50,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -102,6 +108,16 @@ internal fun TvHomeScreen(
             }
         }
     }
+    val needsRowEntry = spotlightItems.isEmpty()
+    val firstDefaultRowKey =
+        when {
+            state.libraries.isNotEmpty() -> "libraries"
+            state.continueWatching.isNotEmpty() -> "continue"
+            state.nextUp.isNotEmpty() -> "next"
+            state.recentShows.isNotEmpty() -> "shows"
+            state.recentMovies.isNotEmpty() -> "movies"
+            else -> null
+        }
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = TvScreenPadding,
@@ -127,22 +143,68 @@ internal fun TvHomeScreen(
                         focusMemory = focusMemory,
                         onItem = onItem,
                         onSeerrItem = onSeerrItem,
+                        screenEntry = needsRowEntry && section.id == homeSections.sections.firstOrNull()?.id,
                     )
                 }
             }
             else -> {
-                item("libraries") { TvLibraryRow(state.libraries, state, strings.library, focusMemory, onLibrary) }
+                item("libraries") {
+                    TvLibraryRow(
+                        state.libraries,
+                        state,
+                        strings.library,
+                        focusMemory,
+                        onLibrary,
+                        screenEntry = needsRowEntry && firstDefaultRowKey == "libraries",
+                    )
+                }
                 if (state.continueWatching.isNotEmpty()) {
-                    item("continue") { TvJellyfinRow(strings.continueWatching, state.continueWatching, state, focusMemory, onItem) }
+                    item("continue") {
+                        TvJellyfinRow(
+                            strings.continueWatching,
+                            state.continueWatching,
+                            state,
+                            focusMemory,
+                            onItem,
+                            screenEntry = needsRowEntry && firstDefaultRowKey == "continue",
+                        )
+                    }
                 }
                 if (state.nextUp.isNotEmpty()) {
-                    item("next") { TvJellyfinRow(strings.nextUp, state.nextUp, state, focusMemory, onItem) }
+                    item("next") {
+                        TvJellyfinRow(
+                            strings.nextUp,
+                            state.nextUp,
+                            state,
+                            focusMemory,
+                            onItem,
+                            screenEntry = needsRowEntry && firstDefaultRowKey == "next",
+                        )
+                    }
                 }
                 if (state.recentShows.isNotEmpty()) {
-                    item("shows") { TvJellyfinRow(strings.recentShows, state.recentShows, state, focusMemory, onItem) }
+                    item("shows") {
+                        TvJellyfinRow(
+                            strings.recentShows,
+                            state.recentShows,
+                            state,
+                            focusMemory,
+                            onItem,
+                            screenEntry = needsRowEntry && firstDefaultRowKey == "shows",
+                        )
+                    }
                 }
                 if (state.recentMovies.isNotEmpty()) {
-                    item("movies") { TvJellyfinRow(strings.recentMovies, state.recentMovies, state, focusMemory, onItem) }
+                    item("movies") {
+                        TvJellyfinRow(
+                            strings.recentMovies,
+                            state.recentMovies,
+                            state,
+                            focusMemory,
+                            onItem,
+                            screenEntry = needsRowEntry && firstDefaultRowKey == "movies",
+                        )
+                    }
                 }
             }
         }
@@ -165,10 +227,15 @@ private fun TvSpotlight(
     Box(
         modifier =
             Modifier
+                .tvScreenEntryFocus()
                 .fillMaxWidth()
                 .height(390.dp)
                 .background(TvSurface, RoundedCornerShape(26.dp))
-                .tvFocusable(onClick = onClick, shape = RoundedCornerShape(26.dp)),
+                .tvFocusable(
+                    onClick = onClick,
+                    shape = RoundedCornerShape(26.dp),
+                    focusToNavigationRailOnLeft = true,
+                ),
     ) {
         AsyncImage(
             model =
@@ -225,6 +292,7 @@ private fun TvJellyfinRow(
     focusMemory: TvFocusMemory,
     onItem: (JellyfinItem) -> Unit,
     routeKey: String = "home",
+    screenEntry: Boolean = false,
 ) {
     val snapshot = focusMemory.restore(routeKey)?.takeIf { it.rowKey == title }
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = snapshot?.horizontalIndex ?: 0)
@@ -258,7 +326,11 @@ private fun TvJellyfinRow(
                         ),
                     onClick = { onItem(item) },
                     onFocused = { focusMemory.remember(routeKey, title, item.id, horizontalIndex = index) },
-                    modifier = if (item.id == restoreId) Modifier.focusRequester(focusRequester) else Modifier,
+                    modifier =
+                        Modifier
+                            .tvScreenEntryFocus(screenEntry && index == 0)
+                            .then(if (item.id == restoreId) Modifier.focusRequester(focusRequester) else Modifier),
+                    focusToNavigationRailOnLeft = index == 0,
                 )
             }
         }
@@ -272,6 +344,7 @@ private fun TvLibraryRow(
     title: String,
     focusMemory: TvFocusMemory,
     onLibrary: (JellyfinLibrary) -> Unit,
+    screenEntry: Boolean = false,
 ) {
     if (libraries.isEmpty()) return
     val rowKey = "libraries"
@@ -301,7 +374,11 @@ private fun TvLibraryRow(
                     imageUrl = jellyfinImageUrl(state.imageBaseUrl, state.imageAccessToken, library.id, library.primaryImageTag),
                     onClick = { onLibrary(library) },
                     onFocused = { focusMemory.remember("home", "libraries", library.id, horizontalIndex = index) },
-                    modifier = if (library.id == restoreId) Modifier.focusRequester(focusRequester) else Modifier,
+                    modifier =
+                        Modifier
+                            .tvScreenEntryFocus(screenEntry && index == 0)
+                            .then(if (library.id == restoreId) Modifier.focusRequester(focusRequester) else Modifier),
+                    focusToNavigationRailOnLeft = index == 0,
                 )
             }
         }
@@ -316,6 +393,7 @@ private fun TvHomeSectionRow(
     focusMemory: TvFocusMemory,
     onItem: (JellyfinItem) -> Unit,
     onSeerrItem: (TvRoute.SeerrDetail) -> Unit,
+    screenEntry: Boolean = false,
 ) {
     val snapshot = focusMemory.restore("home")?.takeIf { it.rowKey == section.id }
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = snapshot?.horizontalIndex ?: 0)
@@ -347,7 +425,11 @@ private fun TvHomeSectionRow(
                     imageUrl = resolveTvHomeSectionImageUrl(item, imageBaseUrl, imageAccessToken),
                     landscape = section.viewMode != HomeSectionViewMode.PORTRAIT,
                     onFocused = { focusMemory.remember("home", section.id, item.id, horizontalIndex = index) },
-                    modifier = if (item.id == restoreId) Modifier.focusRequester(focusRequester) else Modifier,
+                    modifier =
+                        Modifier
+                            .tvScreenEntryFocus(screenEntry && index == 0)
+                            .then(if (item.id == restoreId) Modifier.focusRequester(focusRequester) else Modifier),
+                    focusToNavigationRailOnLeft = index == 0,
                     onClick = {
                         when (item.action) {
                             HomeSectionAction.JELLYFIN -> item.jellyfinItem?.let(onItem)
@@ -392,59 +474,65 @@ internal fun TvLibraryScreen(
     val snapshot = focusMemory.restore(routeKey)
     val restoreId = focusMemory.resolveItem(routeKey, visibleIds).takeIf { snapshot != null }
     val focusRequester = remember(routeKey) { FocusRequester() }
-    val listState = rememberLazyListState(initialFirstVisibleItemIndex = snapshot?.verticalIndex ?: 0)
+    val gridState = rememberLazyGridState(initialFirstVisibleItemIndex = snapshot?.verticalIndex ?: 0)
     LaunchedEffect(restoreId, visibleIds) {
         if (restoreId != null) {
-            listState.scrollToItem((snapshot?.verticalIndex ?: 0).coerceAtLeast(0))
+            gridState.scrollToItem((snapshot?.verticalIndex ?: 0).coerceAtLeast(0))
             focusRequester.requestFocus()
         }
     }
-    LazyColumn(
-        state = listState,
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(4),
+        state = gridState,
         modifier = modifier.fillMaxSize(),
         contentPadding = TvScreenPadding,
-        verticalArrangement = Arrangement.spacedBy(22.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
+        horizontalArrangement = Arrangement.spacedBy(18.dp),
     ) {
-        item {
+        item(span = { GridItemSpan(maxLineSpan) }) {
             Text(route.title ?: strings.library, color = TvText, fontSize = 38.sp, fontWeight = FontWeight.Bold)
         }
         if (route.libraryId == null) {
-            itemsIndexed(state.libraries.chunked(5), key = { _, row -> row.joinToString { it.id } }) { rowIndex, row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                    row.forEachIndexed { columnIndex, library ->
-                        TvMediaCard(
-                            title = library.name,
-                            subtitle = library.itemCount?.let { "$it items" },
-                            imageUrl = jellyfinImageUrl(state.imageBaseUrl, state.imageAccessToken, library.id, library.primaryImageTag),
-                            onClick = { onSelectLibrary(library.id) },
-                            onFocused = { focusMemory.remember(routeKey, "libraries", library.id, rowIndex + 1, columnIndex) },
-                            modifier = if (library.id == restoreId) Modifier.focusRequester(focusRequester) else Modifier,
-                        )
-                    }
-                }
+            gridItemsIndexed(state.libraries, key = { _, library -> library.id }) { index, library ->
+                TvMediaCard(
+                    title = library.name,
+                    subtitle = library.itemCount?.let { "$it items" },
+                    imageUrl = jellyfinImageUrl(state.imageBaseUrl, state.imageAccessToken, library.id, library.primaryImageTag),
+                    onClick = { onSelectLibrary(library.id) },
+                    onFocused = { focusMemory.remember(routeKey, "libraries", library.id, index + 1, index) },
+                    modifier =
+                        Modifier
+                            .tvScreenEntryFocus(index == 0)
+                            .then(if (library.id == restoreId) Modifier.focusRequester(focusRequester) else Modifier),
+                    fillWidth = true,
+                    focusToNavigationRailOnLeft = index % 4 == 0,
+                )
             }
         } else {
-            itemsIndexed(state.libraryItems.chunked(5), key = { _, row -> row.joinToString { it.id } }) { rowIndex, row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                    row.forEachIndexed { columnIndex, item ->
-                        val artwork = resolveTvJellyfinArtwork(item)
-                        TvMediaCard(
-                            title = item.name,
-                            subtitle = item.subtitleText(),
-                            imageUrl =
-                                jellyfinImageUrl(
-                                    state.imageBaseUrl,
-                                    state.imageAccessToken,
-                                    artwork,
-                                ),
-                            onClick = { if (item.isBrowseContainer()) onOpenContainer(item) else onOpenItem(item) },
-                            onFocused = { focusMemory.remember(routeKey, "items", item.id, rowIndex + 1, columnIndex) },
-                            modifier = if (item.id == restoreId) Modifier.focusRequester(focusRequester) else Modifier,
-                        )
-                    }
-                }
+            gridItemsIndexed(state.libraryItems, key = { _, item -> item.id }) { index, item ->
+                val artwork = resolveTvJellyfinArtwork(item)
+                TvMediaCard(
+                    title = item.name,
+                    subtitle = item.subtitleText(),
+                    imageUrl =
+                        jellyfinImageUrl(
+                            state.imageBaseUrl,
+                            state.imageAccessToken,
+                            artwork,
+                        ),
+                    onClick = { if (item.isBrowseContainer()) onOpenContainer(item) else onOpenItem(item) },
+                    onFocused = { focusMemory.remember(routeKey, "items", item.id, index + 1, index) },
+                    modifier =
+                        Modifier
+                            .tvScreenEntryFocus(index == 0)
+                            .then(if (item.id == restoreId) Modifier.focusRequester(focusRequester) else Modifier),
+                    fillWidth = true,
+                    focusToNavigationRailOnLeft = index % 4 == 0,
+                )
             }
-            item { if (!state.endReached) TvActionButton(strings.loadMore, onLoadMore, modifier = Modifier.width(220.dp)) }
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                if (!state.endReached) TvActionButton(strings.loadMore, onLoadMore, modifier = Modifier.width(220.dp))
+            }
         }
     }
 }
@@ -463,6 +551,7 @@ internal fun TvSearchScreen(
 ) {
     var query by remember { mutableStateOf("") }
     var source by remember { mutableStateOf(TvSearchSource.ALL) }
+    val sourceFocusRequester = remember { FocusRequester() }
     val seerrResults = (requestsState as? JellyseerrRequestsState.Ready)?.searchResults.orEmpty()
     LazyColumn(modifier.fillMaxSize(), contentPadding = TvScreenPadding, verticalArrangement = Arrangement.spacedBy(24.dp)) {
         item {
@@ -476,11 +565,27 @@ internal fun TvSearchScreen(
                 },
                 placeholder = { Text(strings.searchHint) },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth(0.66f).height(64.dp),
+                colors = tvOutlinedTextFieldColors(),
+                modifier =
+                    Modifier
+                        .tvScreenEntryFocus()
+                        .fillMaxWidth(0.66f)
+                        .height(64.dp)
+                        .tvReturnToNavigationRailOnLeft()
+                        .focusProperties {
+                            down = sourceFocusRequester
+                            right = sourceFocusRequester
+                        },
             )
             Spacer(Modifier.height(14.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                TvActionButton(strings.all, { source = TvSearchSource.ALL }, primary = source == TvSearchSource.ALL)
+                TvActionButton(
+                    strings.all,
+                    { source = TvSearchSource.ALL },
+                    modifier = Modifier.focusRequester(sourceFocusRequester),
+                    primary = source == TvSearchSource.ALL,
+                    focusToNavigationRailOnLeft = true,
+                )
                 TvActionButton("Jellyfin", { source = TvSearchSource.JELLYFIN }, primary = source == TvSearchSource.JELLYFIN)
                 TvActionButton("Seerr", { source = TvSearchSource.SEERR }, primary = source == TvSearchSource.SEERR)
             }
@@ -500,18 +605,42 @@ internal fun TvDiscoverScreen(
     strings: TvStrings,
     focusMemory: TvFocusMemory,
     onItem: (JellyseerrSearchItem) -> Unit,
+    onConnectSeerr: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val ready = recommendations as? JellyseerrRecommendationsState.Ready
+    val firstPopulatedRail =
+        ready?.let { state ->
+            JellyseerrRecommendationRail.entries.firstOrNull { rail -> state.rails[rail]?.items?.isNotEmpty() == true }
+        }
     LazyColumn(modifier.fillMaxSize(), contentPadding = TvScreenPadding, verticalArrangement = Arrangement.spacedBy(28.dp)) {
         item { Text(strings.discover, color = TvText, fontSize = 38.sp, fontWeight = FontWeight.Bold) }
         if (ready == null) {
-            item { Text(strings.connectSeerrPrompt, color = TvTextMuted) }
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Text(strings.connectSeerrPrompt, color = TvTextMuted)
+                    TvActionButton(
+                        "${strings.settings}: Seerr",
+                        onConnectSeerr,
+                        modifier = Modifier.tvScreenEntryFocus(),
+                        primary = true,
+                    )
+                }
+            }
         } else {
             JellyseerrRecommendationRail.entries.forEach { rail ->
                 val railState = ready.rails[rail]
                 if (railState != null && railState.items.isNotEmpty()) {
-                    item(rail.name) { TvSeerrRow(rail.label(), railState.items, focusMemory, "discover", onItem) }
+                    item(rail.name) {
+                        TvSeerrRow(
+                            rail.label(),
+                            railState.items,
+                            focusMemory,
+                            "discover",
+                            onItem,
+                            screenEntry = rail == firstPopulatedRail,
+                        )
+                    }
                 }
             }
         }
@@ -521,7 +650,7 @@ internal fun TvDiscoverScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     TvSectionTitle(strings.requests)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                        items(requestItems, key = { it.id }) { request ->
+                        itemsIndexed(requestItems, key = { _, request -> request.id }) { index, request ->
                             val item = request.toSearchItem()
                             TvMediaCard(
                                 title = request.title ?: request.originalTitle ?: "Request ${request.id}",
@@ -532,6 +661,7 @@ internal fun TvDiscoverScreen(
                                     ).joinToString(" - "),
                                 imageUrl = tmdbImageUrl(request.backdropPath ?: request.posterPath, request.backdropPath != null),
                                 onClick = { item?.let(onItem) },
+                                modifier = Modifier.tvScreenEntryFocus(firstPopulatedRail == null && index == 0),
                             )
                         }
                     }
@@ -548,6 +678,7 @@ private fun TvSeerrRow(
     focusMemory: TvFocusMemory,
     routeKey: String,
     onItem: (JellyseerrSearchItem) -> Unit,
+    screenEntry: Boolean = false,
 ) {
     val ids = items.map { "${it.mediaType}:${it.tmdbId}" }
     val snapshot = focusMemory.restore(routeKey)?.takeIf { it.rowKey == title }
@@ -577,7 +708,11 @@ private fun TvSeerrRow(
                     imageUrl = tmdbImageUrl(item.backdropPath ?: item.posterPath, backdrop = item.backdropPath != null),
                     onClick = { onItem(item) },
                     onFocused = { focusMemory.remember(routeKey, title, id, horizontalIndex = index) },
-                    modifier = if (id == restoreId) Modifier.focusRequester(focusRequester) else Modifier,
+                    modifier =
+                        Modifier
+                            .tvScreenEntryFocus(screenEntry && index == 0)
+                            .then(if (id == restoreId) Modifier.focusRequester(focusRequester) else Modifier),
+                    focusToNavigationRailOnLeft = index == 0,
                 )
             }
         }

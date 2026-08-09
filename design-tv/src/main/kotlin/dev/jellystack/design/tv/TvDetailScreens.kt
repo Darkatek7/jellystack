@@ -10,6 +10,8 @@
 package dev.jellystack.design.tv
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,8 +20,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -43,6 +47,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -161,7 +166,7 @@ internal fun TvJellyfinDetailScreen(
                         AsyncImage(
                             model = jellyfinImageUrl(homeState.imageBaseUrl, homeState.imageAccessToken, logoId, logoTag, "Logo", 700),
                             contentDescription = currentDetail.name,
-                            modifier = Modifier.width(440.dp).height(150.dp),
+                            modifier = Modifier.widthIn(max = 380.dp).heightIn(max = 120.dp),
                             contentScale = ContentScale.Fit,
                         )
                     } else {
@@ -392,7 +397,14 @@ internal fun TvSeerrDetailScreen(
                         Modifier.align(Alignment.BottomStart).padding(start = 58.dp, bottom = 38.dp).fillMaxWidth(0.62f),
                         verticalArrangement = Arrangement.spacedBy(13.dp),
                     ) {
-                        Text(detail?.title ?: route.title, fontSize = 46.sp, lineHeight = 49.sp, fontWeight = FontWeight.Bold, maxLines = 2)
+                        Text(
+                            detail?.title ?: route.title,
+                            color = TvText,
+                            fontSize = 46.sp,
+                            lineHeight = 49.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 2,
+                        )
                         Text((detail?.genres.orEmpty()).take(4).joinToString("  •  "), color = TvTextMuted, fontSize = 19.sp)
                         Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                             when {
@@ -423,7 +435,12 @@ internal fun TvSeerrDetailScreen(
                 Column(Modifier.padding(horizontal = 58.dp).fillMaxWidth(0.72f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     TvSectionTitle(strings.overview)
                     detail?.tagline?.let { Text(it, color = TvPurple, fontSize = 20.sp, fontWeight = FontWeight.SemiBold) }
-                    Text(detail?.overview ?: route.overview ?: strings.noOverview, fontSize = 20.sp, lineHeight = 29.sp)
+                    Text(
+                        detail?.overview ?: route.overview ?: strings.noOverview,
+                        color = TvText,
+                        fontSize = 20.sp,
+                        lineHeight = 29.sp,
+                    )
                 }
             }
             detail?.ratings?.let { ratings ->
@@ -545,12 +562,22 @@ private fun TvRequestDialog(
     Dialog(onDismissRequest = onDismiss) {
         Column(
             Modifier
-                .width(760.dp)
+                .fillMaxWidth(0.78f)
+                .heightIn(max = 470.dp)
                 .background(TvSurfaceRaised, RoundedCornerShape(28.dp))
+                .verticalScroll(rememberScrollState())
                 .padding(34.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            Text("${strings.request} $title", color = TvText, fontSize = 30.sp, fontWeight = FontWeight.Bold, maxLines = 2)
+            Text(
+                "${strings.request} $title",
+                color = TvText,
+                fontSize = 28.sp,
+                lineHeight = 31.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
             if (canStandard && can4k) {
                 TvSectionTitle(strings.version)
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -568,7 +595,10 @@ private fun TvRequestDialog(
             }
             if (mediaType == JellyseerrMediaType.TV && seasons.isNotEmpty()) {
                 TvSectionTitle(strings.seasons)
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                ) {
                     item { TvActionButton(strings.all, { allSeasons = true }, primary = allSeasons) }
                     items(seasons) { season ->
                         val selected = allSeasons || season in selectedSeasons
@@ -590,7 +620,10 @@ private fun TvRequestDialog(
             }
             if (capabilities.canUseAdvancedRequests && profiles.isNotEmpty()) {
                 TvSectionTitle(strings.requestProfile)
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                ) {
                     item {
                         TvActionButton(
                             strings.serverDefault,
@@ -613,6 +646,7 @@ private fun TvRequestDialog(
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 TvActionButton(
                     if (requestsState.isPerformingAction) strings.requesting else strings.sendRequest,
+                    modifier = Modifier.width(230.dp),
                     primary = true,
                     enabled =
                         !requestsState.isPerformingAction &&
@@ -629,7 +663,7 @@ private fun TvRequestDialog(
                         )
                     },
                 )
-                TvActionButton(strings.cancel, onDismiss)
+                TvActionButton(strings.cancel, onDismiss, modifier = Modifier.width(150.dp))
             }
         }
     }

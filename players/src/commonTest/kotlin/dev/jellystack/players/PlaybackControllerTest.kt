@@ -2504,6 +2504,99 @@ class PlaybackControllerTest {
         }
 
     @Test
+    fun directPlaybackFailureFallsBackToTranscodingOnceWithoutLosingSessionState() =
+        runTest {
+            val engine = RecordingPlayerEngine()
+            val resolver = DirectFallbackPlaybackSourceResolver()
+            val controllerScope = TestScope(UnconfinedTestDispatcher(testScheduler))
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = resolver,
+                    playerEngine = engine,
+                    scope = controllerScope,
+                )
+            val request = PlaybackRequest.from(sampleItem(), sampleDetail(withDirect = true))
+
+            try {
+                controller.play(request, testEnvironment())
+                engine.emitPosition(31_000L)
+                controller.setPlaybackSpeed(1.5f)
+                controller.pause()
+
+                engine.emitEvent(PlayerEvent.VideoOutputStalled)
+                controllerScope.advanceUntilIdle()
+
+                val active = controller.state.value as PlaybackState.Active
+                assertEquals(PlaybackMode.HLS, active.stream.mode)
+                assertEquals(31_000L, active.positionMs)
+                assertTrue(active.isPaused)
+                assertEquals(1.5f, active.playbackSpeed)
+                assertEquals(2, engine.prepareCount)
+                assertTrue(resolver.requests.last().forceTranscoding)
+
+                engine.emitEvent(PlayerEvent.Error(IllegalStateException("HLS failed")))
+                controllerScope.advanceUntilIdle()
+                assertTrue(controller.state.value is PlaybackState.PlaybackError)
+                assertEquals(2, engine.prepareCount)
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
+    fun tsHlsFailureForcesEncodingBeforeTryingFmp4WithoutLosingSessionState() =
+        runTest {
+            val engine = RecordingPlayerEngine()
+            val resolver = HlsContainerFallbackPlaybackSourceResolver()
+            val controllerScope = TestScope(UnconfinedTestDispatcher(testScheduler))
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = resolver,
+                    playerEngine = engine,
+                    scope = controllerScope,
+                )
+            val request = PlaybackRequest.from(sampleItem(), sampleDetail(withDirect = true))
+
+            try {
+                controller.play(request, testEnvironment())
+                engine.emitPosition(44_000L)
+                controller.setPlaybackSpeed(1.25f)
+                controller.pause()
+
+                engine.emitEvent(PlayerEvent.Error(IllegalStateException("Malformed MPEG-TS SPS")))
+                controllerScope.advanceUntilIdle()
+
+                val active = controller.state.value as PlaybackState.Active
+                assertEquals(PlaybackMode.HLS, active.stream.mode)
+                assertEquals("ts", active.source.segmentContainer)
+                assertEquals(44_000L, active.positionMs)
+                assertTrue(active.isPaused)
+                assertEquals(1.25f, active.playbackSpeed)
+                assertEquals(2, engine.prepareCount)
+                assertTrue(resolver.requests.last().forceTranscoding)
+                assertTrue(!resolver.requests.last().preferFmp4Hls)
+
+                engine.emitEvent(PlayerEvent.Error(IllegalStateException("Forced MPEG-TS failed")))
+                controllerScope.advanceUntilIdle()
+
+                val fmp4 = controller.state.value as PlaybackState.Active
+                assertEquals("mp4", fmp4.source.segmentContainer)
+                assertEquals(44_000L, fmp4.positionMs)
+                assertTrue(fmp4.isPaused)
+                assertEquals(1.25f, fmp4.playbackSpeed)
+                assertEquals(3, engine.prepareCount)
+                assertTrue(resolver.requests.last().preferFmp4Hls)
+
+                engine.emitEvent(PlayerEvent.Error(IllegalStateException("fMP4 failed")))
+                controllerScope.advanceUntilIdle()
+                assertTrue(controller.state.value is PlaybackState.PlaybackError)
+                assertEquals(3, engine.prepareCount)
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
     fun mediaKindAndPhaseSurvivePrepareBufferAndCompletion() =
         runTest {
             val engine = RecordingPlayerEngine()
@@ -2590,6 +2683,54 @@ private class TestPlaybackSourceResolver : PlaybackSourceResolver {
             audioStreamIndex = options.audioStreamIndex ?: selection.defaultAudioTrack()?.streamIndex,
             subtitleStreamIndex = selection.defaultSubtitleTrack()?.streamIndex,
         )
+}
+
+private class DirectFallbackPlaybackSourceResolver : PlaybackSourceResolver {
+    val requests = mutableListOf<PlaybackSourceOptions>()
+
+    override suspend fun resolve(
+        request: PlaybackRequest,
+        selection: PlaybackStreamSelection,
+        environment: JellyfinEnvironment,
+        startPositionMs: Long,
+        options: PlaybackSourceOptions,
+    ): ResolvedPlaybackSource {
+        requests += options
+        return resolvedSource(
+            url =
+                if (options.forceTranscoding) {
+                    "${environment.baseUrl}/videos/${request.mediaId}/master.m3u8"
+                } else {
+                    "${environment.baseUrl}/videos/${request.mediaId}/stream.mkv"
+                },
+            mode = if (options.forceTranscoding) PlaybackMode.HLS else PlaybackMode.DIRECT,
+            playSessionId = options.playSessionId ?: "fallback-session",
+            mediaSourceId = selection.sourceId,
+            supportsTranscoding = true,
+        ).copy(segmentContainer = if (options.forceTranscoding) "mp4" else null)
+    }
+}
+
+private class HlsContainerFallbackPlaybackSourceResolver : PlaybackSourceResolver {
+    val requests = mutableListOf<PlaybackSourceOptions>()
+
+    override suspend fun resolve(
+        request: PlaybackRequest,
+        selection: PlaybackStreamSelection,
+        environment: JellyfinEnvironment,
+        startPositionMs: Long,
+        options: PlaybackSourceOptions,
+    ): ResolvedPlaybackSource {
+        requests += options
+        val container = if (options.preferFmp4Hls) "mp4" else "ts"
+        return resolvedSource(
+            url = "${environment.baseUrl}/videos/${request.mediaId}/master.m3u8?SegmentContainer=$container",
+            mode = PlaybackMode.HLS,
+            playSessionId = options.playSessionId ?: "hls-fallback-session",
+            mediaSourceId = selection.sourceId,
+            supportsTranscoding = true,
+        ).copy(segmentContainer = container)
+    }
 }
 
 private class QueuePlaybackSourceResolver(

@@ -129,6 +129,14 @@ internal data class TvStrings(
     val immediate: String,
     val ask: String,
     val restart: String,
+    val quickConnectDisabled: String,
+    val quickConnectExpired: String,
+    val serverUnreachable: String,
+    val quickConnectFailed: String,
+    val enterServerUrl: String,
+    val jellyfinConnectionFailed: String,
+    val manageJellyfin: String,
+    val manageSeerr: String,
 ) {
     companion object {
         fun current(language: AppLanguage): TvStrings {
@@ -267,6 +275,14 @@ internal data class TvStrings(
                 immediate = "Immediately",
                 ask = "Always ask",
                 restart = "Restart",
+                quickConnectDisabled = "Quick Connect is disabled on this server.",
+                quickConnectExpired = "The code expired. Create a new one.",
+                serverUnreachable = "The server could not be reached.",
+                quickConnectFailed = "Quick Connect failed. Check the server address.",
+                enterServerUrl = "Enter a complete http:// or https:// server URL.",
+                jellyfinConnectionFailed = "Could not connect to Jellyfin.",
+                manageJellyfin = "Manage Jellyfin",
+                manageSeerr = "Manage Seerr",
             )
 
         private val German =
@@ -398,6 +414,14 @@ internal data class TvStrings(
                 immediate = "Sofort",
                 ask = "Immer fragen",
                 restart = "Neu starten",
+                quickConnectDisabled = "Quick Connect ist auf diesem Server deaktiviert.",
+                quickConnectExpired = "Der Code ist abgelaufen. Erstelle einen neuen.",
+                serverUnreachable = "Der Server konnte nicht erreicht werden.",
+                quickConnectFailed = "Quick Connect ist fehlgeschlagen. Prüfe die Serveradresse.",
+                enterServerUrl = "Gib eine vollständige Server-URL mit http:// oder https:// ein.",
+                jellyfinConnectionFailed = "Die Verbindung zu Jellyfin ist fehlgeschlagen.",
+                manageJellyfin = "Jellyfin verwalten",
+                manageSeerr = "Seerr verwalten",
             )
     }
 }

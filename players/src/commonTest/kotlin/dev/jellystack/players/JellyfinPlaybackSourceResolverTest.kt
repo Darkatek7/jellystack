@@ -143,7 +143,7 @@ class JellyfinPlaybackSourceResolverTest {
         }
 
     @Test
-    fun autoFallsBackToKnownDirectSourceWhenPlaybackInfoOffersNoMethod() =
+    fun autoFallsBackToHlsWhenServerRejectsDirectPlayback() =
         runTest {
             val service =
                 RecordingPlaybackInfoService(
@@ -171,11 +171,147 @@ class JellyfinPlaybackSourceResolverTest {
 
             val source = resolver.resolve(request, selection, environment(), 0, PlaybackSourceOptions())
 
-            assertEquals(PlaybackMode.DIRECT, source.mode)
+            assertEquals(PlaybackMode.HLS, source.mode)
             assertEquals("source-1", source.mediaSourceId)
             assertEquals("play-fallback", source.playSessionId)
-            assertTrue(source.url.contains("/Videos/item-1/stream.mkv"))
-            assertEquals("true", source.url.queryParameter("Static"))
+            assertTrue(source.url.contains("/Videos/item-1/master.m3u8"))
+            assertEquals("h264", source.url.queryParameter("VideoCodec"))
+            assertEquals("aac", source.url.queryParameter("AudioCodec"))
+            assertTrue(source.isFallbackHls)
+        }
+
+    @Test
+    fun forcedTranscodingDisablesAllStreamCopyFlags() =
+        runTest {
+            val service =
+                RecordingPlaybackInfoService(
+                    JellyfinPlaybackInfoResponseDto(
+                        playSessionId = "play-forced",
+                        mediaSources =
+                            listOf(
+                                JellyfinPlaybackMediaSourceDto(
+                                    id = "source-1",
+                                    container = "mkv",
+                                    supportsDirectPlay = true,
+                                    supportsDirectStream = true,
+                                    supportsTranscoding = true,
+                                    transcodingUrl = "/Videos/item-1/master.m3u8?VideoCodec=h264&AudioCodec=aac",
+                                    transcodingContainer = "ts",
+                                    transcodingSubProtocol = "hls",
+                                ),
+                            ),
+                    ),
+                )
+            val resolver = JellyfinPlaybackSourceResolver(service, FixedPlaybackDeviceProfileProvider)
+            val request = videoRequest()
+            val selection = PlaybackStreamSelector().select(request.mediaSources)
+
+            val source =
+                resolver.resolve(
+                    request,
+                    selection,
+                    environment(),
+                    23_000,
+                    PlaybackSourceOptions(forceTranscoding = true),
+                )
+
+            assertEquals(PlaybackMode.HLS, source.mode)
+            assertEquals(false, service.lastRequest?.enableDirectPlay)
+            assertEquals(false, service.lastRequest?.enableDirectStream)
+            assertEquals(false, service.lastRequest?.allowVideoStreamCopy)
+            assertEquals(false, service.lastRequest?.allowAudioStreamCopy)
+            assertEquals("false", source.url.queryParameter("EnableAutoStreamCopy"))
+            assertEquals("false", source.url.queryParameter("AllowVideoStreamCopy"))
+            assertEquals("false", source.url.queryParameter("AllowAudioStreamCopy"))
+        }
+
+    @Test
+    fun forcedTranscodingPrefersTheBestCodecAdvertisedByTheDevice() =
+        runTest {
+            val service =
+                RecordingPlaybackInfoService(
+                    JellyfinPlaybackInfoResponseDto(
+                        playSessionId = "play-forced-hevc",
+                        mediaSources =
+                            listOf(
+                                JellyfinPlaybackMediaSourceDto(
+                                    id = "source-1",
+                                    supportsTranscoding = true,
+                                    transcodingUrl =
+                                        "/Videos/item-1/master.m3u8?VideoCodec=h264&RequireAvc=true&Profile=baseline",
+                                    transcodingContainer = "ts",
+                                    transcodingSubProtocol = "hls",
+                                ),
+                            ),
+                    ),
+                )
+            val resolver = JellyfinPlaybackSourceResolver(service, FixedPlaybackDeviceProfileProvider)
+            val request = videoRequest()
+            val selection = PlaybackStreamSelector().select(request.mediaSources)
+
+            val source =
+                resolver.resolve(
+                    request,
+                    selection,
+                    environment(),
+                    0,
+                    PlaybackSourceOptions(forceTranscoding = true),
+                )
+
+            assertEquals("hevc", source.url.queryParameter("VideoCodec"))
+            assertEquals("false", source.url.queryParameter("RequireAvc"))
+            assertEquals("", source.url.queryParameter("Profile"))
+        }
+
+    @Test
+    fun fmp4FallbackAdvertisesMp4HlsAndReturnsTheNegotiatedSegmentContainer() =
+        runTest {
+            val service =
+                RecordingPlaybackInfoService(
+                    JellyfinPlaybackInfoResponseDto(
+                        playSessionId = "fmp4-session",
+                        mediaSources =
+                            listOf(
+                                JellyfinPlaybackMediaSourceDto(
+                                    id = "source-1",
+                                    supportsTranscoding = true,
+                                    transcodingUrl =
+                                        "/Videos/item-1/master.m3u8?SegmentContainer=mp4&VideoCodec=h264",
+                                    transcodingContainer = "mp4",
+                                    transcodingSubProtocol = "hls",
+                                ),
+                            ),
+                    ),
+                )
+            val resolver = JellyfinPlaybackSourceResolver(service, FixedPlaybackDeviceProfileProvider)
+            val request = videoRequest()
+            val selection = PlaybackStreamSelector().select(request.mediaSources)
+
+            val source =
+                resolver.resolve(
+                    request,
+                    selection,
+                    environment(),
+                    12_000L,
+                    PlaybackSourceOptions(
+                        forceTranscoding = true,
+                        preferFmp4Hls = true,
+                    ),
+                )
+
+            assertEquals(
+                setOf("mp4"),
+                service.lastRequest
+                    ?.deviceProfile
+                    ?.transcodingProfiles
+                    ?.map { it.container }
+                    ?.toSet(),
+            )
+            assertEquals(false, service.lastRequest?.enableDirectPlay)
+            assertEquals(false, service.lastRequest?.enableDirectStream)
+            assertEquals(PlaybackMode.HLS, source.mode)
+            assertEquals("mp4", source.segmentContainer)
+            assertTrue(source.url.contains("SegmentContainer=mp4"))
         }
 
     @Test

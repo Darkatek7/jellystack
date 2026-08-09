@@ -12,6 +12,7 @@ package dev.jellystack.design.tv
 import android.view.KeyEvent
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,6 +34,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -66,11 +69,26 @@ internal fun TvPlaybackScreen(
     val syncState by syncPlay.state.collectAsStateWithLifecycle()
     var controlsVisible by remember { mutableStateOf(true) }
     var panel by remember { mutableStateOf(TvPlayerPanel.NONE) }
+    var interactionGeneration by remember { mutableStateOf(0) }
+    val playerFocusRequester = remember { FocusRequester() }
+    val controlsFocusRequester = remember { FocusRequester() }
+    val panelFocusRequester = remember { FocusRequester() }
     val active = state as? PlaybackState.Active
-    LaunchedEffect(active?.positionMs, panel) {
-        if (panel == TvPlayerPanel.NONE) {
+    LaunchedEffect(controlsVisible, panel, interactionGeneration) {
+        if (controlsVisible && panel == TvPlayerPanel.NONE) {
             delay(5_000)
             controlsVisible = false
+        }
+    }
+    LaunchedEffect(active != null, controlsVisible, panel) {
+        if (active != null) {
+            if (panel != TvPlayerPanel.NONE) {
+                panelFocusRequester.requestFocus()
+            } else if (controlsVisible) {
+                controlsFocusRequester.requestFocus()
+            } else {
+                playerFocusRequester.requestFocus()
+            }
         }
     }
     DisposableEffect(engine) {
@@ -81,8 +99,11 @@ internal fun TvPlaybackScreen(
             modifier
                 .fillMaxSize()
                 .background(Color.Black)
+                .focusRequester(playerFocusRequester)
+                .focusable()
                 .onPreviewKeyEvent { event ->
                     if (event.nativeKeyEvent.action != KeyEvent.ACTION_DOWN) return@onPreviewKeyEvent false
+                    interactionGeneration += 1
                     when (event.nativeKeyEvent.keyCode) {
                         KeyEvent.KEYCODE_DPAD_UP,
                         KeyEvent.KEYCODE_DPAD_DOWN,
@@ -163,6 +184,7 @@ internal fun TvPlaybackScreen(
                             TvActionButton(
                                 if (active.isPaused) strings.play else strings.pause,
                                 { if (active.isPaused) controller.resume() else controller.pause() },
+                                modifier = Modifier.focusRequester(controlsFocusRequester),
                             )
                         }
                         item { TvActionButton(strings.audio, { panel = TvPlayerPanel.AUDIO }) }
@@ -189,6 +211,7 @@ internal fun TvPlaybackScreen(
                 controller = controller,
                 syncPlay = syncPlay,
                 strings = strings,
+                initialFocusRequester = panelFocusRequester,
                 onClose = { panel = TvPlayerPanel.NONE },
                 modifier = Modifier.align(Alignment.CenterEnd),
             )
@@ -218,6 +241,7 @@ private fun TvPlayerPanel(
     controller: PlaybackController,
     syncPlay: SyncPlayCoordinator,
     strings: TvStrings,
+    initialFocusRequester: FocusRequester,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -233,16 +257,22 @@ private fun TvPlayerPanel(
         Text(panel.title(strings), color = TvText, fontSize = 32.sp)
         when (panel) {
             TvPlayerPanel.AUDIO -> {
-                state.stream.audioTracks.forEach { track ->
+                state.stream.audioTracks.forEachIndexed { index, track ->
                     TvActionButton(
                         track.title ?: track.language ?: strings.audioTrack.format(track.streamIndex),
                         { controller.selectAudioTrack(track.id) },
+                        modifier = if (index == 0) Modifier.focusRequester(initialFocusRequester) else Modifier,
                         primary = state.audioTrack?.id == track.id,
                     )
                 }
             }
             TvPlayerPanel.SUBTITLES -> {
-                TvActionButton(strings.off, { controller.selectSubtitle(null) }, primary = state.subtitleTrack == null)
+                TvActionButton(
+                    strings.off,
+                    { controller.selectSubtitle(null) },
+                    modifier = Modifier.focusRequester(initialFocusRequester),
+                    primary = state.subtitleTrack == null,
+                )
                 state.stream.subtitleTracks.forEach { track ->
                     TvActionButton(
                         track.title ?: track.language ?: strings.subtitleTrack.format(track.streamIndex),
@@ -252,17 +282,28 @@ private fun TvPlayerPanel(
                 }
             }
             TvPlayerPanel.QUALITY ->
-                state.qualityOptions.forEach { option ->
-                    TvActionButton(option.label, { controller.selectQuality(option.id) }, primary = state.selectedQualityId == option.id)
+                state.qualityOptions.forEachIndexed { index, option ->
+                    TvActionButton(
+                        option.label,
+                        { controller.selectQuality(option.id) },
+                        modifier = if (index == 0) Modifier.focusRequester(initialFocusRequester) else Modifier,
+                        primary = state.selectedQualityId == option.id,
+                    )
                 }
             TvPlayerPanel.SPEED ->
-                listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f).forEach { speed ->
-                    TvActionButton("${speed}x", { controller.setPlaybackSpeed(speed) }, primary = state.playbackSpeed == speed)
+                listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f).forEachIndexed { index, speed ->
+                    TvActionButton(
+                        "${speed}x",
+                        { controller.setPlaybackSpeed(speed) },
+                        modifier = if (index == 0) Modifier.focusRequester(initialFocusRequester) else Modifier,
+                        primary = state.playbackSpeed == speed,
+                    )
                 }
             TvPlayerPanel.STATS -> {
                 TvActionButton(
                     if (state.statsForNerdsEnabled) strings.hideStats else strings.showStats,
                     { controller.setStatsForNerdsEnabled(!state.statsForNerdsEnabled) },
+                    modifier = Modifier.focusRequester(initialFocusRequester),
                     primary = state.statsForNerdsEnabled,
                 )
                 if (state.statsForNerdsEnabled) {
@@ -283,10 +324,19 @@ private fun TvPlayerPanel(
                 syncState.error?.let { Text(it, color = Color(0xFFFFA59E)) }
                 syncState.currentGroup?.let { group ->
                     Text(strings.joinedGroup.format(group.name), color = TvPurple, fontSize = 20.sp)
-                    TvActionButton(strings.useCurrentItemAsQueue, syncPlay::setCurrentPlaybackAsQueue)
+                    TvActionButton(
+                        strings.useCurrentItemAsQueue,
+                        syncPlay::setCurrentPlaybackAsQueue,
+                        modifier = Modifier.focusRequester(initialFocusRequester),
+                    )
                     TvActionButton(strings.leaveGroup, syncPlay::leaveGroup)
                 } ?: run {
-                    TvActionButton(strings.createGroup, { syncPlay.createGroup("Jellystack TV") }, primary = true)
+                    TvActionButton(
+                        strings.createGroup,
+                        { syncPlay.createGroup("Jellystack TV") },
+                        modifier = Modifier.focusRequester(initialFocusRequester),
+                        primary = true,
+                    )
                     syncState.groups.forEach { group ->
                         TvActionButton(strings.joinGroup.format(group.name), { syncPlay.joinGroup(group) })
                     }
