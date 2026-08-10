@@ -75,14 +75,26 @@ jobs:
           - name: design-0
             command: >-
               ./gradlew :design:connectedDebugAndroidTest
-              -Pandroid.testInstrumentationRunnerArguments.numShards=2
+              -Pandroid.testInstrumentationRunnerArguments.numShards=4
               -Pandroid.testInstrumentationRunnerArguments.shardIndex=0
               --max-workers=1 --stacktrace
           - name: design-1
             command: >-
               ./gradlew :design:connectedDebugAndroidTest
-              -Pandroid.testInstrumentationRunnerArguments.numShards=2
+              -Pandroid.testInstrumentationRunnerArguments.numShards=4
               -Pandroid.testInstrumentationRunnerArguments.shardIndex=1
+              --max-workers=1 --stacktrace
+          - name: design-2
+            command: >-
+              ./gradlew :design:connectedDebugAndroidTest
+              -Pandroid.testInstrumentationRunnerArguments.numShards=4
+              -Pandroid.testInstrumentationRunnerArguments.shardIndex=2
+              --max-workers=1 --stacktrace
+          - name: design-3
+            command: >-
+              ./gradlew :design:connectedDebugAndroidTest
+              -Pandroid.testInstrumentationRunnerArguments.numShards=4
+              -Pandroid.testInstrumentationRunnerArguments.shardIndex=3
               --max-workers=1 --stacktrace
           - name: app
             command: >-
