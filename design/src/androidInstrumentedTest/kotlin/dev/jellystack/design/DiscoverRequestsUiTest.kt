@@ -475,7 +475,10 @@ class DiscoverRequestsUiTest {
             .onNodeWithTag(RequestConfigurationTestTags.CONTENT)
             .performScrollToNode(hasText("Submit request"))
         composeRule.waitUntil(timeoutMillis = 5_000L) {
-            composeRule.onAllNodes(hasText("Submit request")).fetchSemanticsNodes().size == 1
+            runCatching {
+                composeRule.onNodeWithText("Submit request").assertIsEnabled()
+                true
+            }.getOrDefault(false)
         }
         composeRule.onNodeWithText("Submit request").assertIsEnabled()
     }
