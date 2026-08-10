@@ -17,9 +17,9 @@ import io.ktor.http.path
 import io.ktor.http.takeFrom
 import io.ktor.websocket.Frame
 import io.ktor.websocket.readText
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -44,22 +44,22 @@ class JellyfinSyncPlayApi(
     suspend fun groups(): List<JellyfinSyncPlayGroupDto> {
         val response =
             client
-            .request {
-                method = HttpMethod.Get
-                configure("/SyncPlay/List")
-            }.requireSyncPlaySuccess()
+                .request {
+                    method = HttpMethod.Get
+                    configure("/SyncPlay/List")
+                }.requireSyncPlaySuccess()
         return response.decodeSyncPlayBody()
     }
 
     suspend fun createGroup(name: String): JellyfinSyncPlayGroupDto {
         val response =
             client
-            .request {
-                method = HttpMethod.Post
-                configure("/SyncPlay/New")
-                contentType(ContentType.Application.Json)
-                setBody(NewSyncPlayGroupRequest(name.trim().take(MAX_GROUP_NAME_LENGTH)))
-            }.requireSyncPlaySuccess()
+                .request {
+                    method = HttpMethod.Post
+                    configure("/SyncPlay/New")
+                    contentType(ContentType.Application.Json)
+                    setBody(NewSyncPlayGroupRequest(name.trim().take(MAX_GROUP_NAME_LENGTH)))
+                }.requireSyncPlaySuccess()
         return response.decodeSyncPlayBody()
     }
 
@@ -117,19 +117,21 @@ class JellyfinSyncPlayApi(
         path: String,
         body: T,
     ) {
-        client.request {
-            method = HttpMethod.Post
-            configure(path)
-            contentType(ContentType.Application.Json)
-            setBody(body)
-        }.requireSyncPlaySuccess()
+        client
+            .request {
+                method = HttpMethod.Post
+                configure(path)
+                contentType(ContentType.Application.Json)
+                setBody(body)
+            }.requireSyncPlaySuccess()
     }
 
     private suspend fun postWithoutBody(path: String) {
-        client.request {
-            method = HttpMethod.Post
-            configure(path)
-        }.requireSyncPlaySuccess()
+        client
+            .request {
+                method = HttpMethod.Post
+                configure(path)
+            }.requireSyncPlaySuccess()
     }
 
     private fun HttpResponse.requireSyncPlaySuccess(): HttpResponse {

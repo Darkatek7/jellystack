@@ -16,9 +16,9 @@ import dev.jellystack.core.jellyfin.JellyfinBrowseRepository
 import dev.jellystack.core.playback.JellyfinStreamingProgressReporter
 import dev.jellystack.core.preferences.AppSettingsRepository
 import dev.jellystack.design.tv.TvJellystackRoot
-import dev.jellystack.players.AndroidTvPlaybackDeviceProfileProvider
 import dev.jellystack.players.AndroidPlaybackSessionBridge
 import dev.jellystack.players.AndroidPlayerEngine
+import dev.jellystack.players.AndroidTvPlaybackDeviceProfileProvider
 import dev.jellystack.players.JellyfinPlaybackSourceResolver
 import dev.jellystack.players.NetworkJellyfinPlaybackInfoService
 import dev.jellystack.players.PlaybackController
@@ -37,10 +37,11 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.decorView.setViewTreeNavigationEventDispatcherOwner(this)
-        playerEngine = AndroidPlayerEngine(
-            context = applicationContext,
-            preferHighestSupportedBitrate = true,
-        )
+        playerEngine =
+            AndroidPlayerEngine(
+                context = applicationContext,
+                preferHighestSupportedBitrate = true,
+            )
         val koin = JellystackDI.koin
         val settingsRepository = koin.get<AppSettingsRepository>()
         val browseRepository = koin.get<JellyfinBrowseRepository>()

@@ -19,7 +19,10 @@ fun selectTvDecoderCapabilities(
 ): PlaybackDecoderCapabilities {
     val usable = decoders.filterNot { it.isEncoder || it.isAlias }
 
-    fun supportsVideo(mimeType: String, requireHardware: Boolean): Boolean =
+    fun supportsVideo(
+        mimeType: String,
+        requireHardware: Boolean,
+    ): Boolean =
         usable.any {
             it.mimeType.equals(mimeType, ignoreCase = true) &&
                 (!requireHardware || it.isHardwareAccelerated)

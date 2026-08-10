@@ -16,10 +16,18 @@ internal data class TvPlayerPanelNavigation(
     val restoreFocusTo: TvPlayerPanel? = null,
 ) {
     fun openMore(): TvPlayerPanelNavigation =
-        copy(current = TvPlayerPanel.MORE, root = TvPlayerPanel.MORE, restoreFocusTo = null)
+        copy(
+            current = TvPlayerPanel.MORE,
+            root = TvPlayerPanel.MORE,
+            restoreFocusTo = null,
+        )
 
     fun openQuick(panel: TvPlayerPanel): TvPlayerPanelNavigation =
-        copy(current = panel, root = TvPlayerPanel.NONE, restoreFocusTo = null)
+        copy(
+            current = panel,
+            root = TvPlayerPanel.NONE,
+            restoreFocusTo = null,
+        )
 
     fun openFromMore(panel: TvPlayerPanel): TvPlayerPanelNavigation =
         copy(current = panel, root = TvPlayerPanel.MORE, restoreFocusTo = panel)
@@ -33,6 +41,9 @@ internal data class TvPlayerPanelNavigation(
 
     companion object {
         fun closed(): TvPlayerPanelNavigation =
-            TvPlayerPanelNavigation(current = TvPlayerPanel.NONE, root = TvPlayerPanel.NONE)
+            TvPlayerPanelNavigation(
+                current = TvPlayerPanel.NONE,
+                root = TvPlayerPanel.NONE,
+            )
     }
 }

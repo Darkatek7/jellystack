@@ -184,11 +184,13 @@ class JellyfinPlaybackSourceResolver(
                     ?: fallbackHlsUrl
                     ?: error("Jellyfin PlaybackInfo returned no usable playback URL for ${request.mediaId}")
             val negotiatedVideoCodec =
-                serverTranscodeUrl.queryParameter("VideoCodec")
+                serverTranscodeUrl
+                    .queryParameter("VideoCodec")
                     ?.takeIf { it.isNotBlank() }
                     ?: preferredTranscodeCodec
             val negotiatedAudioCodec =
-                serverTranscodeUrl.queryParameter("AudioCodec")
+                serverTranscodeUrl
+                    .queryParameter("AudioCodec")
                     ?.takeIf { it.isNotBlank() }
                     ?: preferredTranscodeAudioCodec
             val audioOnlySegmentContainer =

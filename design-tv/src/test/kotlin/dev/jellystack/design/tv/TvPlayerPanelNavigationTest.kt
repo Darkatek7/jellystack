@@ -7,7 +7,8 @@ class TvPlayerPanelNavigationTest {
     @Test
     fun childOpenedFromMoreReturnsToMoreAndRestoresItsRow() {
         val state =
-            TvPlayerPanelNavigation.closed()
+            TvPlayerPanelNavigation
+                .closed()
                 .openMore()
                 .openFromMore(TvPlayerPanel.QUALITY)
                 .back()

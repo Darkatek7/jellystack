@@ -1,8 +1,8 @@
 package dev.jellystack.players
 
+import dev.jellystack.network.jellyfin.JellyfinCodecProfileDto
 import dev.jellystack.network.jellyfin.JellyfinDeviceProfileDto
 import dev.jellystack.network.jellyfin.JellyfinDirectPlayProfileDto
-import dev.jellystack.network.jellyfin.JellyfinCodecProfileDto
 import dev.jellystack.network.jellyfin.JellyfinProfileConditionDto
 import dev.jellystack.network.jellyfin.JellyfinSubtitleProfileDto
 import dev.jellystack.network.jellyfin.JellyfinTranscodingProfileDto
@@ -144,11 +144,11 @@ object PlaybackDeviceProfileFactory {
                     emptyList()
                 } else {
                     transcodeCodecs.map {
-                    JellyfinTranscodingProfileDto(
-                        videoCodec = it.jellyfinName,
-                        audioCodec = transcodeAudioCodecs.joinToString(",") { codec -> codec.jellyfinName },
-                        maxAudioChannels = capabilities.maxAacChannelCount?.toString(),
-                    )
+                        JellyfinTranscodingProfileDto(
+                            videoCodec = it.jellyfinName,
+                            audioCodec = transcodeAudioCodecs.joinToString(",") { codec -> codec.jellyfinName },
+                            maxAudioChannels = capabilities.maxAacChannelCount?.toString(),
+                        )
                     }
                 },
             subtitleProfiles =

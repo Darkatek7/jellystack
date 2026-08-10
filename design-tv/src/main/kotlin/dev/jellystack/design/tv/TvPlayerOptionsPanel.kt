@@ -1,4 +1,4 @@
-@file:Suppress("FunctionName", "FunctionNaming", "LongMethod", "LongParameterList", "MaxLineLength")
+@file:Suppress("FunctionName", "FunctionNaming", "LongMethod", "LongParameterList", "MaxLineLength", "TooManyFunctions")
 
 package dev.jellystack.design.tv
 
@@ -160,6 +160,7 @@ internal fun TvPlayerSelectionRow(
 }
 
 @Composable
+@Suppress("CyclomaticComplexMethod")
 internal fun TvPlayerOptionsPanel(
     navigation: TvPlayerPanelNavigation,
     state: PlaybackState.Active,
@@ -199,7 +200,12 @@ internal fun TvPlayerOptionsPanel(
         }
     }
     Column(
-        modifier = modifier.width(560.dp).fillMaxHeight().background(TvBackground.copy(alpha = 0.985f)).padding(30.dp),
+        modifier =
+            modifier
+                .width(560.dp)
+                .fillMaxHeight()
+                .background(TvBackground.copy(alpha = 0.985f))
+                .padding(30.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
         TvPlayerPanelHeader(
@@ -212,16 +218,44 @@ internal fun TvPlayerOptionsPanel(
             TvPlayerPanel.MORE ->
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     item {
-                        TvPlayerOptionRow(Icons.AutoMirrored.Filled.VolumeUp, strings.audio, state.audioSummary(strings), false, { onOpenFromMore(TvPlayerPanel.AUDIO) }, Modifier.focusRequester(audioFocus))
+                        TvPlayerOptionRow(
+                            Icons.AutoMirrored.Filled.VolumeUp,
+                            strings.audio,
+                            state.audioSummary(strings),
+                            false,
+                            { onOpenFromMore(TvPlayerPanel.AUDIO) },
+                            Modifier.focusRequester(audioFocus),
+                        )
                     }
                     item {
-                        TvPlayerOptionRow(Icons.Default.Subtitles, strings.subtitles, state.subtitleSummary(strings), false, { onOpenFromMore(TvPlayerPanel.SUBTITLES) }, Modifier.focusRequester(subtitleFocus))
+                        TvPlayerOptionRow(
+                            Icons.Default.Subtitles,
+                            strings.subtitles,
+                            state.subtitleSummary(strings),
+                            false,
+                            { onOpenFromMore(TvPlayerPanel.SUBTITLES) },
+                            Modifier.focusRequester(subtitleFocus),
+                        )
                     }
                     item {
-                        TvPlayerOptionRow(Icons.Default.HighQuality, strings.quality, state.qualitySummary(strings), false, { onOpenFromMore(TvPlayerPanel.QUALITY) }, Modifier.focusRequester(qualityFocus))
+                        TvPlayerOptionRow(
+                            Icons.Default.HighQuality,
+                            strings.quality,
+                            state.qualitySummary(strings),
+                            false,
+                            { onOpenFromMore(TvPlayerPanel.QUALITY) },
+                            Modifier.focusRequester(qualityFocus),
+                        )
                     }
                     item {
-                        TvPlayerOptionRow(Icons.Default.Speed, strings.playbackSpeed, "${state.playbackSpeed.cleanSpeed()}x", false, { onOpenFromMore(TvPlayerPanel.SPEED) }, Modifier.focusRequester(speedFocus))
+                        TvPlayerOptionRow(
+                            Icons.Default.Speed,
+                            strings.playbackSpeed,
+                            "${state.playbackSpeed.cleanSpeed()}x",
+                            false,
+                            { onOpenFromMore(TvPlayerPanel.SPEED) },
+                            Modifier.focusRequester(speedFocus),
+                        )
                     }
                     item {
                         TvPlayerOptionRow(
@@ -252,11 +286,22 @@ internal fun TvPlayerOptionsPanel(
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     if (state.stream.audioTracks.isEmpty()) {
                         item {
-                            TvPlayerOptionRow(Icons.AutoMirrored.Filled.VolumeUp, strings.noResults, null, false, onBack, Modifier.focusRequester(firstFocus), trailing = {})
+                            TvPlayerOptionRow(
+                                Icons.AutoMirrored.Filled.VolumeUp,
+                                strings.noResults,
+                                null,
+                                false,
+                                onBack,
+                                Modifier.focusRequester(firstFocus),
+                                trailing = {},
+                            )
                         }
                     }
                     itemsIndexed(state.stream.audioTracks, key = { _, track -> track.id }) { index, track ->
-                        val selectedIndex = state.stream.audioTracks.indexOfFirst { it.id == state.audioTrack?.id }.takeIf { it >= 0 } ?: 0
+                        val selectedIndex =
+                            state.stream.audioTracks
+                                .indexOfFirst { it.id == state.audioTrack?.id }
+                                .takeIf { it >= 0 } ?: 0
                         val selected = index == selectedIndex
                         TvPlayerSelectionRow(
                             title = track.title ?: track.language ?: strings.audioTrack.format(track.streamIndex),
@@ -270,7 +315,13 @@ internal fun TvPlayerOptionsPanel(
             TvPlayerPanel.SUBTITLES ->
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     item {
-                        TvPlayerSelectionRow(strings.off, null, state.subtitleTrack == null, { onSubtitleSelected(null) }, Modifier.focusRequester(firstFocus))
+                        TvPlayerSelectionRow(
+                            strings.off,
+                            null,
+                            state.subtitleTrack == null,
+                            { onSubtitleSelected(null) },
+                            Modifier.focusRequester(firstFocus),
+                        )
                     }
                     items(state.stream.subtitleTracks, key = { it.id }) { track ->
                         TvPlayerSelectionRow(
@@ -285,13 +336,29 @@ internal fun TvPlayerOptionsPanel(
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     if (state.qualityOptions.isEmpty()) {
                         item {
-                            TvPlayerOptionRow(Icons.Default.HighQuality, strings.noResults, null, false, onBack, Modifier.focusRequester(firstFocus), trailing = {})
+                            TvPlayerOptionRow(
+                                Icons.Default.HighQuality,
+                                strings.noResults,
+                                null,
+                                false,
+                                onBack,
+                                Modifier.focusRequester(firstFocus),
+                                trailing = {},
+                            )
                         }
                     }
                     itemsIndexed(state.qualityOptions, key = { _, option -> option.id }) { index, option ->
                         val selectedIndex = state.qualityOptions.indexOfFirst { it.id == state.selectedQualityId }.takeIf { it >= 0 } ?: 0
                         val selected = index == selectedIndex
-                        TvPlayerSelectionRow(option.label.ifBlank { strings.automatic }, option.mode.name.lowercase().replaceFirstChar(Char::uppercase), selected, { onQualitySelected(option.id) }, if (index == 0) Modifier.focusRequester(firstFocus) else Modifier)
+                        TvPlayerSelectionRow(
+                            option.label.ifBlank { strings.automatic },
+                            option.mode.name
+                                .lowercase()
+                                .replaceFirstChar(Char::uppercase),
+                            selected,
+                            { onQualitySelected(option.id) },
+                            if (index == 0) Modifier.focusRequester(firstFocus) else Modifier,
+                        )
                     }
                 }
             TvPlayerPanel.SPEED -> {
@@ -299,7 +366,13 @@ internal fun TvPlayerOptionsPanel(
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     itemsIndexed(speeds) { index, speed ->
                         val selected = state.playbackSpeed == speed
-                        TvPlayerSelectionRow("${speed.cleanSpeed()}x", null, selected, { onSpeedSelected(speed) }, if (index == 0) Modifier.focusRequester(firstFocus) else Modifier)
+                        TvPlayerSelectionRow(
+                            "${speed.cleanSpeed()}x",
+                            null,
+                            selected,
+                            { onSpeedSelected(speed) },
+                            if (index == 0) Modifier.focusRequester(firstFocus) else Modifier,
+                        )
                     }
                 }
             }
@@ -322,36 +395,71 @@ internal fun TvPlayerOptionsPanel(
                         }
                     } else {
                         syncState.currentGroup?.let { group ->
-                        item { TvPlayerOptionRow(Icons.Default.Groups, strings.useCurrentItemAsQueue, group.name, false, syncPlay::setCurrentPlaybackAsQueue, Modifier.focusRequester(firstFocus), trailing = {}) }
-                        item { TvPlayerOptionRow(Icons.Default.Close, strings.leaveGroup, group.name, false, syncPlay::leaveGroup, trailing = {}) }
-                    } ?: run {
-                        if (syncState.canCreate) {
-                            item { TvPlayerOptionRow(Icons.Default.Groups, strings.createGroup, null, false, { syncPlay.createGroup("Jellystack TV") }, Modifier.focusRequester(firstFocus), trailing = {}) }
-                        }
-                        if (syncState.groups.isEmpty() && !syncState.loading) {
                             item {
                                 TvPlayerOptionRow(
                                     Icons.Default.Groups,
-                                    strings.noResults,
-                                    null,
+                                    strings.useCurrentItemAsQueue,
+                                    group.name,
                                     false,
-                                    onBack,
-                                    if (syncState.canCreate) Modifier else Modifier.focusRequester(firstFocus),
+                                    syncPlay::setCurrentPlaybackAsQueue,
+                                    Modifier.focusRequester(firstFocus),
                                     trailing = {},
                                 )
                             }
+                            item {
+                                TvPlayerOptionRow(
+                                    Icons.Default.Close,
+                                    strings.leaveGroup,
+                                    group.name,
+                                    false,
+                                    syncPlay::leaveGroup,
+                                    trailing = {},
+                                )
+                            }
+                        } ?: run {
+                            if (syncState.canCreate) {
+                                item {
+                                    TvPlayerOptionRow(
+                                        Icons.Default.Groups,
+                                        strings.createGroup,
+                                        null,
+                                        false,
+                                        { syncPlay.createGroup("Jellystack TV") },
+                                        Modifier.focusRequester(firstFocus),
+                                        trailing = {},
+                                    )
+                                }
+                            }
+                            if (syncState.groups.isEmpty() && !syncState.loading) {
+                                item {
+                                    TvPlayerOptionRow(
+                                        Icons.Default.Groups,
+                                        strings.noResults,
+                                        null,
+                                        false,
+                                        onBack,
+                                        if (syncState.canCreate) Modifier else Modifier.focusRequester(firstFocus),
+                                        trailing = {},
+                                    )
+                                }
+                            }
+                            itemsIndexed(syncState.groups, key = { _, group -> group.id }) { index, group ->
+                                val rowModifier =
+                                    if (!syncState.canCreate && index == 0) {
+                                        Modifier.focusRequester(firstFocus)
+                                    } else {
+                                        Modifier
+                                    }
+                                TvPlayerOptionRow(
+                                    Icons.Default.Groups,
+                                    strings.joinGroup.format(group.name),
+                                    group.state,
+                                    false,
+                                    { syncPlay.joinGroup(group) },
+                                    rowModifier,
+                                )
+                            }
                         }
-                        itemsIndexed(syncState.groups, key = { _, group -> group.id }) { index, group ->
-                            TvPlayerOptionRow(
-                                Icons.Default.Groups,
-                                strings.joinGroup.format(group.name),
-                                group.state,
-                                false,
-                                { syncPlay.joinGroup(group) },
-                                if (!syncState.canCreate && index == 0) Modifier.focusRequester(firstFocus) else Modifier,
-                            )
-                        }
-                    }
                     }
                 }
             TvPlayerPanel.NONE -> Unit
@@ -360,9 +468,20 @@ internal fun TvPlayerOptionsPanel(
 }
 
 @Composable
-private fun TvPlayerPanelHeader(title: String, root: Boolean, strings: TvStrings, onBack: () -> Unit) {
+private fun TvPlayerPanelHeader(
+    title: String,
+    root: Boolean,
+    strings: TvStrings,
+    onBack: () -> Unit,
+) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        TvPlayerIconButton(if (root) Icons.Default.Close else Icons.AutoMirrored.Filled.ArrowBack, if (root) strings.close else strings.back, onBack, size = 52.dp, iconSize = 26.dp)
+        TvPlayerIconButton(
+            if (root) Icons.Default.Close else Icons.AutoMirrored.Filled.ArrowBack,
+            if (root) strings.close else strings.back,
+            onBack,
+            size = 52.dp,
+            iconSize = 26.dp,
+        )
         Spacer(Modifier.width(16.dp))
         Text(title, color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
     }
@@ -371,33 +490,54 @@ private fun TvPlayerPanelHeader(title: String, root: Boolean, strings: TvStrings
 @Composable
 private fun TvPlayerToggle(checked: Boolean) {
     val shape = RoundedCornerShape(50)
-    Box(Modifier.width(54.dp).height(30.dp).background(if (checked) TvPurple else Color.White.copy(alpha = 0.18f), shape).padding(4.dp)) {
-        Box(Modifier.size(22.dp).align(if (checked) Alignment.CenterEnd else Alignment.CenterStart).background(Color.White, RoundedCornerShape(50)))
+    Box(
+        Modifier
+            .width(54.dp)
+            .height(30.dp)
+            .background(if (checked) TvPurple else Color.White.copy(alpha = 0.18f), shape)
+            .padding(4.dp),
+    ) {
+        Box(
+            Modifier
+                .size(22.dp)
+                .align(if (checked) Alignment.CenterEnd else Alignment.CenterStart)
+                .background(Color.White, RoundedCornerShape(50)),
+        )
     }
 }
 
 @Composable
-internal fun TvStatsForNerdsOverlay(state: PlaybackState.Active, strings: TvStrings, modifier: Modifier = Modifier) {
+internal fun TvStatsForNerdsOverlay(
+    state: PlaybackState.Active,
+    strings: TvStrings,
+    modifier: Modifier = Modifier,
+) {
     val stats = state.runtimeStats
-    val entries = listOfNotNull(
-        stats.playbackMode?.let { strings.mode to it },
-        stats.width?.let { width -> stats.height?.let { strings.resolution to "$width × $it" } },
-        listOfNotNull(stats.videoCodec, stats.audioCodec).joinToString(" / ").takeIf(String::isNotBlank)?.let { strings.video to it },
-        stats.videoBitrate?.let { strings.bitrate to "%.1f Mbps".format(it / 1_000_000f) },
-        stats.droppedFrames?.let { strings.droppedFrames to it.toString() },
-    )
-    Column(modifier.background(Color.Black.copy(alpha = 0.82f), RoundedCornerShape(16.dp)).padding(18.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+    val entries =
+        listOfNotNull(
+            stats.playbackMode?.let { strings.mode to it },
+            stats.width?.let { width -> stats.height?.let { strings.resolution to "$width × $it" } },
+            listOfNotNull(stats.videoCodec, stats.audioCodec).joinToString(" / ").takeIf(String::isNotBlank)?.let { strings.video to it },
+            stats.videoBitrate?.let { strings.bitrate to "%.1f Mbps".format(it / 1_000_000f) },
+            stats.droppedFrames?.let { strings.droppedFrames to it.toString() },
+        )
+    Column(
+        modifier.background(Color.Black.copy(alpha = 0.82f), RoundedCornerShape(16.dp)).padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
         Text(strings.statsForNerds, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 17.sp)
         entries.forEach { (label, value) -> Text("$label: $value", color = TvTextMuted, fontSize = 14.sp) }
     }
 }
 
 private fun PlaybackState.Active.audioSummary(strings: TvStrings): String =
-    audioTrack?.let { listOfNotNull(it.title, it.language, it.codec).distinct().joinToString(" · ") }
+    audioTrack
+        ?.let { listOfNotNull(it.title, it.language, it.codec).distinct().joinToString(" · ") }
         ?.takeIf(String::isNotBlank) ?: strings.automatic
 
 private fun PlaybackState.Active.subtitleSummary(strings: TvStrings): String =
-    subtitleTrack?.let { listOfNotNull(it.title, it.language, it.format.name).distinct().joinToString(" · ") }
+    subtitleTrack
+        ?.let { listOfNotNull(it.title, it.language, it.format.name).distinct().joinToString(" · ") }
         ?.takeIf(String::isNotBlank) ?: strings.off
 
 private fun PlaybackState.Active.qualitySummary(strings: TvStrings): String =

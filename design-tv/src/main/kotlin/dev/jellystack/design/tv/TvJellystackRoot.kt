@@ -524,8 +524,7 @@ private fun TvNavigationRail(
                         } else {
                             false
                         }
-                    }
-                    .background(
+                    }.background(
                         if (isSelected) TvPurpleStrong.copy(alpha = 0.48f) else Color.Transparent,
                         androidx.compose.foundation.shape
                             .RoundedCornerShape(18.dp),

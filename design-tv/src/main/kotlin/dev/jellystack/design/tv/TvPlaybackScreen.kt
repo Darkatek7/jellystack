@@ -169,8 +169,11 @@ internal fun TvPlaybackScreen(
                 modifier =
                     Modifier
                         .align(Alignment.TopCenter)
-                        .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.86f), Color.Black.copy(alpha = 0.42f), Color.Transparent)))
-                        .padding(start = 36.dp, end = 36.dp, top = 24.dp, bottom = 54.dp),
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color.Black.copy(alpha = 0.86f), Color.Black.copy(alpha = 0.42f), Color.Transparent),
+                            ),
+                        ).padding(start = 36.dp, end = 36.dp, top = 24.dp, bottom = 54.dp),
             )
             if (active.statsForNerdsEnabled && navigation.current == TvPlayerPanel.NONE) {
                 TvStatsForNerdsOverlay(
@@ -219,7 +222,11 @@ private fun TvPlaybackError(
     modifier: Modifier = Modifier,
 ) {
     Column(
-        modifier.width(720.dp).background(TvSurface.copy(alpha = 0.98f), RoundedCornerShape(28.dp)).padding(horizontal = 48.dp, vertical = 38.dp),
+        modifier
+            .width(
+                720.dp,
+            ).background(TvSurface.copy(alpha = 0.98f), RoundedCornerShape(28.dp))
+            .padding(horizontal = 48.dp, vertical = 38.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
@@ -244,7 +251,11 @@ private fun TvPlayerControls(
     modifier: Modifier = Modifier,
 ) {
     Column(
-        modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.95f)))).padding(start = 42.dp, end = 42.dp, top = 86.dp, bottom = 28.dp),
+        modifier
+            .fillMaxWidth()
+            .background(
+                Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.95f))),
+            ).padding(start = 42.dp, end = 42.dp, top = 86.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         TvProgress(active.positionMs, active.durationMs)
@@ -255,7 +266,9 @@ private fun TvPlayerControls(
                 TvPlayerIconButton(Icons.Default.Subtitles, strings.subtitles, onSubtitles)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(22.dp), verticalAlignment = Alignment.CenterVertically) {
-                TvPlayerIconButton(Icons.Default.Replay10, "${strings.seekBack} 10", { controller.seekTo((active.positionMs - 10_000L).coerceAtLeast(0L)) }, size = 64.dp, iconSize = 34.dp)
+                TvPlayerIconButton(Icons.Default.Replay10, "${strings.seekBack} 10", {
+                    controller.seekTo((active.positionMs - 10_000L).coerceAtLeast(0L))
+                }, size = 64.dp, iconSize = 34.dp)
                 TvPlayerIconButton(
                     if (active.isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
                     if (active.isPaused) strings.play else strings.pause,
@@ -264,7 +277,13 @@ private fun TvPlayerControls(
                     size = 78.dp,
                     iconSize = 42.dp,
                 )
-                TvPlayerIconButton(Icons.Default.Forward30, "${strings.seekForward} 30", { controller.seekTo((active.positionMs + 30_000L).coerceAtMost(active.durationMs ?: Long.MAX_VALUE)) }, size = 64.dp, iconSize = 34.dp)
+                TvPlayerIconButton(Icons.Default.Forward30, "${strings.seekForward} 30", {
+                    controller.seekTo(
+                        (active.positionMs + 30_000L).coerceAtMost(
+                            active.durationMs ?: Long.MAX_VALUE,
+                        ),
+                    )
+                }, size = 64.dp, iconSize = 34.dp)
             }
             Row(Modifier.weight(1f), horizontalArrangement = Arrangement.End) {
                 TvPlayerIconButton(Icons.Default.MoreVert, strings.more, onMore)
@@ -274,7 +293,10 @@ private fun TvPlayerControls(
 }
 
 @Composable
-private fun TvProgress(position: Long, duration: Long?) {
+private fun TvProgress(
+    position: Long,
+    duration: Long?,
+) {
     val fraction = if (duration != null && duration > 0) (position.toFloat() / duration).coerceIn(0f, 1f) else 0f
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Box(Modifier.fillMaxWidth().height(5.dp).background(Color.White.copy(alpha = 0.25f), RoundedCornerShape(50))) {
@@ -296,11 +318,29 @@ private fun dev.jellystack.players.PlaybackMetadata?.playerPrimaryTitle(strings:
     this?.seriesName?.takeIf(String::isNotBlank) ?: this?.title?.takeIf(String::isNotBlank) ?: strings.playback
 
 private fun dev.jellystack.players.PlaybackMetadata?.playerSecondaryTitle(): String? {
-    val metadata = this ?: return null
-    if (metadata.seriesName.isNullOrBlank()) return null
-    val episodePrefix = if (metadata.seasonNumber != null && metadata.episodeNumber != null) "S${metadata.seasonNumber} · E${metadata.episodeNumber}" else null
-    return listOfNotNull(episodePrefix, (metadata.episodeName ?: metadata.title)?.takeIf(String::isNotBlank)).joinToString(" · ").ifBlank { null }
+    val metadata = this
+    return if (metadata == null || metadata.seriesName.isNullOrBlank()) {
+        null
+    } else {
+        val episodePrefix =
+            if (metadata.seasonNumber != null &&
+                metadata.episodeNumber != null
+            ) {
+                "S${metadata.seasonNumber} · E${metadata.episodeNumber}"
+            } else {
+                null
+            }
+        listOfNotNull(
+            episodePrefix,
+            (metadata.episodeName ?: metadata.title)?.takeIf(String::isNotBlank),
+        ).joinToString(" · ").ifBlank {
+            null
+        }
+    }
 }
 
 @Suppress("UNUSED_PARAMETER")
-internal fun tvPlaybackErrorMessage(rawMessage: String, strings: TvStrings): String = strings.playbackFailedMessage
+internal fun tvPlaybackErrorMessage(
+    rawMessage: String,
+    strings: TvStrings,
+): String = strings.playbackFailedMessage

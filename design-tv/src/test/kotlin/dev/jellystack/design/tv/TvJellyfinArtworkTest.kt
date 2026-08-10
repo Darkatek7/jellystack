@@ -1,8 +1,8 @@
 package dev.jellystack.design.tv
 
-import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.HomeSectionAction
 import dev.jellystack.core.jellyfin.HomeSectionItem
+import dev.jellystack.core.jellyfin.JellyfinItem
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -52,10 +52,10 @@ class TvJellyfinArtworkTest {
                 action = HomeSectionAction.JELLYFIN,
             )
 
-        assertEquals(
-            "https://media.example/Items/item-1/Images/Primary?tag=primary-tag&maxWidth=1000&quality=90&api_key=dummy-token",
-            resolveTvHomeSectionImageUrl(sectionItem, "https://media.example/", "dummy-token"),
-        )
+        val expectedUrl =
+            "https://media.example/Items/item-1/Images/Primary" +
+                "?tag=primary-tag&maxWidth=1000&quality=90&api_key=dummy-token"
+        assertEquals(expectedUrl, resolveTvHomeSectionImageUrl(sectionItem, "https://media.example/", "dummy-token"))
     }
 
     @Test

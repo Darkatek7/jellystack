@@ -404,7 +404,8 @@ internal data class TvStrings(
                 preparingPlayback = "Wiedergabe wird vorbereitet",
                 playbackFailedTitle = "Wiedergabe konnte nicht fortgesetzt werden",
                 playbackFailedMessage =
-                    "Der Player konnte diesen Stream nicht dekodieren. Versuche es erneut, um eine kompatible Version von Jellyfin anzufordern.",
+                    "Der Player konnte diesen Stream nicht dekodieren. " +
+                        "Versuche es erneut, um eine kompatible Version von Jellyfin anzufordern.",
                 tvBeta = "TV-Beta",
                 tvTagline = "Deine Jellyfin- und Seerr-Bibliothek - gemacht für den großen Bildschirm.",
                 playback = "Wiedergabe",

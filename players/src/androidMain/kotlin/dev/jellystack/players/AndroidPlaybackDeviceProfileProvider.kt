@@ -82,8 +82,7 @@ class AndroidTvPlaybackDeviceProfileProvider(
                         isEncoder = codecInfo.isEncoder,
                     )
                 }
-            }
-            .toList()
+            }.toList()
     },
     private val allowSoftwareAdvancedVideo: () -> Boolean = {
         Build.FINGERPRINT.startsWith("generic", ignoreCase = true) ||

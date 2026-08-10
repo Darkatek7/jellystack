@@ -25,19 +25,18 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -45,14 +44,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -77,6 +76,7 @@ import dev.jellystack.core.jellyseerr.JellyseerrRequestsState
 import dev.jellystack.core.jellyseerr.JellyseerrSearchItem
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
+import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
 
 private enum class TvSearchSource { ALL, JELLYFIN, SEERR }
 
@@ -495,7 +495,10 @@ internal fun TvLibraryScreen(
     ) {
         if (route.libraryId == null) return@LaunchedEffect
         snapshotFlow {
-            val lastGridIndex = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+            val lastGridIndex =
+                gridState.layoutInfo.visibleItemsInfo
+                    .lastOrNull()
+                    ?.index ?: -1
             (lastGridIndex - 1).coerceAtMost(state.libraryItems.lastIndex)
         }.distinctUntilChanged().collect { lastVisibleIndex ->
             if (
@@ -598,7 +601,16 @@ internal fun shouldLoadNextLibraryPage(
     endReached: Boolean,
     hasError: Boolean,
 ): Boolean {
-    if (totalItemCount <= 0 || lastVisibleIndex < 0 || isInitialLoading || isPageLoading || endReached || hasError) return false
+    val pagingBlocked =
+        listOf(
+            totalItemCount <= 0,
+            lastVisibleIndex < 0,
+            isInitialLoading,
+            isPageLoading,
+            endReached,
+            hasError,
+        ).any { it }
+    if (pagingBlocked) return false
     val thresholdIndex = (totalItemCount - 1 - LIBRARY_PREFETCH_ITEM_COUNT).coerceAtLeast(0)
     return lastVisibleIndex >= thresholdIndex
 }

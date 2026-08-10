@@ -21,15 +21,51 @@ class TvLibraryPagingTest {
 
     @Test
     fun doesNotLoadWhileBusyOrAtTheEnd() {
-        assertFalse(shouldLoadNextLibraryPage(29, 30, isInitialLoading = true, isPageLoading = false, endReached = false, hasError = false))
-        assertFalse(shouldLoadNextLibraryPage(29, 30, isInitialLoading = false, isPageLoading = true, endReached = false, hasError = false))
-        assertFalse(shouldLoadNextLibraryPage(29, 30, isInitialLoading = false, isPageLoading = false, endReached = true, hasError = false))
-        assertFalse(shouldLoadNextLibraryPage(29, 30, isInitialLoading = false, isPageLoading = false, endReached = false, hasError = true))
+        assertPagingBlocked(isInitialLoading = true)
+        assertPagingBlocked(isPageLoading = true)
+        assertPagingBlocked(endReached = true)
+        assertPagingBlocked(hasError = true)
     }
 
     @Test
     fun doesNotLoadBeforeTheThresholdOrWithoutItems() {
-        assertFalse(shouldLoadNextLibraryPage(10, 30, isInitialLoading = false, isPageLoading = false, endReached = false, hasError = false))
-        assertFalse(shouldLoadNextLibraryPage(-1, 0, isInitialLoading = false, isPageLoading = false, endReached = false, hasError = false))
+        assertFalse(
+            shouldLoadNextLibraryPage(
+                10,
+                30,
+                isInitialLoading = false,
+                isPageLoading = false,
+                endReached = false,
+                hasError = false,
+            ),
+        )
+        assertFalse(
+            shouldLoadNextLibraryPage(
+                -1,
+                0,
+                isInitialLoading = false,
+                isPageLoading = false,
+                endReached = false,
+                hasError = false,
+            ),
+        )
+    }
+
+    private fun assertPagingBlocked(
+        isInitialLoading: Boolean = false,
+        isPageLoading: Boolean = false,
+        endReached: Boolean = false,
+        hasError: Boolean = false,
+    ) {
+        assertFalse(
+            shouldLoadNextLibraryPage(
+                29,
+                30,
+                isInitialLoading = isInitialLoading,
+                isPageLoading = isPageLoading,
+                endReached = endReached,
+                hasError = hasError,
+            ),
+        )
     }
 }

@@ -1,9 +1,8 @@
-@file:Suppress("FunctionName", "FunctionNaming", "LongParameterList", "MaxLineLength")
+@file:Suppress("FunctionName", "FunctionNaming", "LongParameterList", "MaxLineLength", "TooManyFunctions")
 
 package dev.jellystack.design.tv
 
 import android.view.KeyEvent
-
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
@@ -21,8 +20,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ImageNotSupported
@@ -132,14 +131,12 @@ internal fun TvActionButton(
                 .semantics(mergeDescendants = true) {
                     contentDescription = label
                     selected = primary
-                }
-                .tvFocusable(
+                }.tvFocusable(
                     onClick = onClick,
                     enabled = enabled,
                     shape = shape,
                     focusToNavigationRailOnLeft = focusToNavigationRailOnLeft,
-                )
-                .padding(horizontal = 24.dp),
+                ).padding(horizontal = 24.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
     ) {
@@ -173,16 +170,14 @@ internal fun TvPlayerIconButton(
                 .graphicsLayer {
                     scaleX = if (focused) 1.08f else 1f
                     scaleY = if (focused) 1.08f else 1f
-                }
-                .background(Color.Black.copy(alpha = 0.68f), shape)
+                }.background(Color.Black.copy(alpha = 0.68f), shape)
                 .border(if (focused) 3.dp else 1.dp, if (focused) TvPurple else Color.White.copy(alpha = 0.18f), shape)
                 .clip(shape)
                 .onFocusChanged { focused = it.isFocused }
                 .semantics {
                     role = Role.Button
                     contentDescription = description
-                }
-                .clickable(onClick = onClick)
+                }.clickable(onClick = onClick)
                 .focusable(),
         contentAlignment = Alignment.Center,
     ) {
@@ -214,14 +209,12 @@ internal fun TvMediaCard(
                 .then(if (fillWidth) Modifier.fillMaxWidth() else Modifier.width(if (landscape) 276.dp else 166.dp))
                 .semantics(mergeDescendants = true) {
                     contentDescription = listOfNotNull(title, subtitle).joinToString(", ")
-                }
-                .tvFocusable(
+                }.tvFocusable(
                     onClick = onClick,
                     shape = shape,
                     onFocused = onFocused,
                     focusToNavigationRailOnLeft = focusToNavigationRailOnLeft,
-                )
-                .background(TvSurface, shape),
+                ).background(TvSurface, shape),
     ) {
         Box(
             modifier =

@@ -18,7 +18,11 @@ class SyncPlayCoordinatorTest {
             var environmentCalls = 0
             val coordinator =
                 SyncPlayCoordinator(
-                    environmentProvider = JellyfinEnvironmentProvider { environmentCalls += 1; null },
+                    environmentProvider =
+                        JellyfinEnvironmentProvider {
+                            environmentCalls += 1
+                            null
+                        },
                     playbackController = PlaybackController(scope = backgroundScope),
                     playItem = { _, _ -> },
                     scope = this,
@@ -40,7 +44,11 @@ class SyncPlayCoordinatorTest {
             var environmentCalls = 0
             val coordinator =
                 SyncPlayCoordinator(
-                    environmentProvider = JellyfinEnvironmentProvider { environmentCalls += 1; null },
+                    environmentProvider =
+                        JellyfinEnvironmentProvider {
+                            environmentCalls += 1
+                            null
+                        },
                     playbackController = PlaybackController(scope = backgroundScope),
                     playItem = { _, _ -> },
                     scope = this,

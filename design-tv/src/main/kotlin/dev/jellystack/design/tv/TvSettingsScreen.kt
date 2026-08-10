@@ -35,7 +35,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -48,6 +47,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.jellystack.core.preferences.AppLanguage
 import dev.jellystack.core.preferences.AppSettings
 import dev.jellystack.core.preferences.AppSettingsRepository
@@ -379,8 +379,7 @@ private fun TvSettingTile(
                 onClick = onClick,
                 shape = RoundedCornerShape(20.dp),
                 focusToNavigationRailOnLeft = focusToNavigationRailOnLeft,
-            )
-            .padding(20.dp),
+            ).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
         Text(title, color = TvText, fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
