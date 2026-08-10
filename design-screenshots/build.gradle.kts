@@ -5,6 +5,25 @@ plugins {
     alias(libs.plugins.screenshot)
 }
 
+private val screenshotComposeGroups =
+    setOf(
+        "androidx.compose.animation",
+        "androidx.compose.foundation",
+        "androidx.compose.material",
+        "androidx.compose.ui",
+    )
+
+configurations.configureEach {
+    if (name.contains("ScreenshotTest", ignoreCase = true)) {
+        resolutionStrategy.eachDependency {
+            if (requested.group in screenshotComposeGroups) {
+                useVersion("1.7.1")
+                because("Compose Preview Screenshot alpha15 renders against the Compose 1.7 ABI")
+            }
+        }
+    }
+}
+
 android {
     namespace = "dev.jellystack.design.screenshots"
     compileSdk = 36
