@@ -772,7 +772,7 @@ private fun ExpandableOverview(overview: String) {
 }
 
 @Composable
-private fun SeerrRatingsSection(
+internal fun SeerrRatingsSection(
     ratings: JellyseerrMediaRatings?,
     loading: Boolean,
     failed: Boolean,

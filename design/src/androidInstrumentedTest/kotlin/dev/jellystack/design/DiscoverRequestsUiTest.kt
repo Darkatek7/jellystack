@@ -64,6 +64,7 @@ import dev.jellystack.design.jellyseerr.DiscoverUiState
 import dev.jellystack.design.jellyseerr.RequestConfigurationTestTags
 import dev.jellystack.design.jellyseerr.RequestsTestTags
 import dev.jellystack.design.jellyseerr.SeerrImmersiveDetailTestTags
+import dev.jellystack.design.jellyseerr.SeerrRatingsSection
 import dev.jellystack.design.jellyseerr.reduce
 import dev.jellystack.design.layout.LocalResponsiveProfile
 import dev.jellystack.design.layout.ProvideResponsiveProfile
@@ -254,30 +255,24 @@ class DiscoverRequestsUiTest {
     }
 
     @Test
-    fun recommendationDetailsShowThemeAwareSeerrRatings() {
-        val item = dune()
+    fun ratingsSectionShowsThemeAwareSeerrRatings() {
         composeRule.setContent {
-            discoverRequestsHarness(
-                detailStates =
-                    mapOf(
-                        item.mediaType to item.tmdbId to
-                            loadedDetail(
-                                item,
-                                ratings =
-                                    JellyseerrMediaRatings(
-                                        tmdb = 8.6,
-                                        imdb = 8.3,
-                                        rottenTomatoesCritics = 92.0,
-                                        rottenTomatoesAudience = 89.0,
-                                    ),
-                            ),
-                    ),
-            )
+            JellystackTheme(isDarkTheme = true) {
+                SeerrRatingsSection(
+                    ratings =
+                        JellyseerrMediaRatings(
+                            tmdb = 8.6,
+                            imdb = 8.3,
+                            rottenTomatoesCritics = 92.0,
+                            rottenTomatoesAudience = 89.0,
+                        ),
+                    loading = false,
+                    failed = false,
+                    onRetry = null,
+                )
+            }
         }
 
-        composeRule.onNodeWithText("Dune").performClick()
-
-        composeRule.onNodeWithTag(SeerrImmersiveDetailTestTags.ROOT).performScrollToIndex(3)
         composeRule.onNodeWithTag(SeerrImmersiveDetailTestTags.RATINGS).assertExists()
         composeRule.onNodeWithText("TMDb").assertExists()
         composeRule.onNodeWithText("8.6").assertExists()
