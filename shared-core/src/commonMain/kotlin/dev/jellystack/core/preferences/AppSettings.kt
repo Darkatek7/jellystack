@@ -81,6 +81,8 @@ data class AppSettings(
     val spotlightIntervalSeconds: Int = 6,
     val useServerHomeSections: Boolean = true,
     val downloadsWifiOnly: Boolean = false,
+    val defaultPlaybackSpeed: Float = 1f,
+    val statsForNerdsEnabled: Boolean = false,
 )
 
 data class AppPlatformCapabilities(
@@ -88,6 +90,11 @@ data class AppPlatformCapabilities(
     val autoplayNextEpisode: Boolean = false,
     val meteredDownloadPolicy: Boolean = false,
     val subtitleAppearance: Boolean = false,
+    val isTelevision: Boolean = false,
+    val supportsCast: Boolean = false,
+    val supportsDownloads: Boolean = false,
+    val supportsBiometricLock: Boolean = false,
+    val supportsAdmin: Boolean = false,
 ) {
     companion object {
         val Android =
@@ -96,6 +103,18 @@ data class AppPlatformCapabilities(
                 autoplayNextEpisode = true,
                 meteredDownloadPolicy = true,
                 subtitleAppearance = true,
+                supportsCast = true,
+                supportsDownloads = true,
+                supportsBiometricLock = true,
+                supportsAdmin = true,
+            )
+
+        val Television =
+            AppPlatformCapabilities(
+                appLanguageSelection = true,
+                autoplayNextEpisode = true,
+                subtitleAppearance = true,
+                isTelevision = true,
             )
     }
 }

@@ -21,7 +21,7 @@ subprojects {
     extensions.configure<io.gitlab.arturbosch.detekt.extensions.DetektExtension> {
         buildUponDefaultConfig = true
         allRules = false
-        config.setFrom(files("config/detekt/detekt.yml").filter { it.exists() })
+        config.setFrom(rootProject.files("config/detekt/detekt.yml").filter { it.exists() })
     }
 
     tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
@@ -77,6 +77,8 @@ tasks.register("generateThirdPartyReport") {
                 Triple("Multiplatform Settings", version("multiplatform-settings"), "Apache-2.0"),
                 Triple("Voyager", version("voyager"), "MIT"),
                 Triple("AndroidX Media3", version("media3"), "Apache-2.0"),
+                Triple("Compose for TV Material", version("tv-material"), "Apache-2.0"),
+                Triple("AndroidX Navigation 3", version("navigation3"), "Apache-2.0"),
                 Triple("Google Cast SDK", version("play-services-cast"), "Google APIs Terms"),
             )
         output.get().asFile.apply {
@@ -96,4 +98,38 @@ tasks.register("generateThirdPartyReport") {
             )
         }
     }
+}
+
+val verifyUniqueAndroidVersionCodes by tasks.registering {
+    group = "verification"
+    description = "Prevents mobile and TV store artifacts from sharing a version code."
+    doLast {
+        val mobileBuild = file("app-android/build.gradle.kts").readText()
+        val tvBuild = file("app-tv/build.gradle.kts").readText()
+        val pattern = Regex("""versionCode\s*=\s*(\d+)""")
+        val mobileCode =
+            pattern
+                .find(mobileBuild)
+                ?.groupValues
+                ?.get(1)
+                ?.toInt()
+                ?: error("Mobile versionCode is missing")
+        val tvCode =
+            pattern
+                .find(tvBuild)
+                ?.groupValues
+                ?.get(1)
+                ?.toInt()
+                ?: error("TV versionCode is missing")
+        check(mobileCode != tvCode) {
+            "Mobile and TV versionCode must be globally unique: $mobileCode"
+        }
+        check(tvCode > mobileCode) {
+            "The first TV versionCode must be newer than mobile: mobile=$mobileCode tv=$tvCode"
+        }
+    }
+}
+
+tasks.named("check").configure {
+    dependsOn(verifyUniqueAndroidVersionCodes)
 }

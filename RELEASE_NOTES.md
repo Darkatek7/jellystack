@@ -1,5 +1,13 @@
 # Release Notes
 
+## 0.16.0-tv-beta.1
+
+- Add a dedicated remote-first interface for Android TV, Google TV, and Fire TV.
+- Browse Home Sections, libraries, Jellyfin and Seerr search, Discover, requests, and cinematic details from the couch.
+- Use Quick Connect, playback controls, audio, subtitles, quality, speed, Stats for Nerds, and SyncPlay without touch.
+- Restore row focus and scroll position after opening details, and stop playback cleanly when leaving the TV app.
+- Ship one GMS-free TV build for closed Google TV testing and Amazon Live App Testing.
+
 ## 0.15.0
 
 - Follow the Home Sections layout configured on compatible Jellyfin servers, with an Appearance setting to use Jellystack's default Home instead.

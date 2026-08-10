@@ -29,6 +29,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.jellystack.mobile.R
 import dev.jellystack.players.syncplay.SyncPlayCoordinator
+import dev.jellystack.players.syncplay.SyncPlayErrorCode
 import dev.jellystack.players.syncplay.SyncPlayUiState
 
 private const val MAX_GROUP_NAME_LENGTH = 80
@@ -51,8 +52,15 @@ internal fun SyncPlaySheet(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text(stringResource(R.string.syncplay_title), style = MaterialTheme.typography.headlineSmall)
-            state.error?.let {
-                Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+            state.error?.let { error ->
+                val message =
+                    when (error) {
+                        SyncPlayErrorCode.ACCESS_DENIED -> stringResource(R.string.syncplay_error_access_denied)
+                        SyncPlayErrorCode.UNAUTHORIZED -> stringResource(R.string.syncplay_error_unauthorized)
+                        SyncPlayErrorCode.NETWORK -> stringResource(R.string.syncplay_error_network)
+                        SyncPlayErrorCode.INVALID_RESPONSE -> stringResource(R.string.syncplay_error_invalid_response)
+                    }
+                Text(message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
             }
             val current = state.currentGroup
             if (current != null) {

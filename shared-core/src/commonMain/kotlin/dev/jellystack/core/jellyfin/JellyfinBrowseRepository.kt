@@ -80,6 +80,30 @@ class JellyfinBrowseRepository(
         return libraryStore.list(environment.serverKey).map { it.toDomain() }
     }
 
+    /** Searches the active server without replacing the user's cached library pages. */
+    suspend fun searchItems(
+        query: String,
+        limit: Int = 40,
+    ): List<JellyfinItem> {
+        val normalized = query.trim()
+        if (normalized.isEmpty()) return emptyList()
+        val environment = environmentProvider.current() ?: return emptyList()
+        val response =
+            apiFor(environment).fetchLibraryItems(
+                userId = environment.userId,
+                libraryId = "",
+                startIndex = 0,
+                limit = limit.coerceIn(1, 100),
+                includeItemTypes = "Movie,Series,Episode,MusicVideo,Audio",
+                recursive = true,
+                searchTerm = normalized,
+            )
+        val now = clock.now()
+        val records = response.items.map { it.toRecord(environment, fallbackLibraryId = "search", updatedAt = now) }
+        itemStore.upsert(records)
+        return records.map { it.toDomain() }
+    }
+
     suspend fun cachedContinueWatching(limit: Int): List<JellyfinItem> {
         val environment = environmentProvider.current() ?: return emptyList()
         return itemStore.listContinueWatching(environment.serverKey, limit.toLong()).map { it.toDomain() }
@@ -692,7 +716,7 @@ private fun JellyfinLibraryDto.toRecord(
         serverId = environment.serverKey,
         name = name,
         collectionType = collectionType,
-        primaryImageTag = primaryImageTag,
+        primaryImageTag = imageTags?.get("Primary") ?: primaryImageTag,
         itemCount = itemCount,
         createdAt = now,
         updatedAt = now,

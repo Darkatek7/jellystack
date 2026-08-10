@@ -23,6 +23,7 @@ Thumbs.db
 /.kotlin/
 /kotlin-js-store/
 /.qa-artifacts/
+/.qa-tv-*
 /.superpowers/
 /Handle/
 /Handle.zip

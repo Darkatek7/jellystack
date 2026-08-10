@@ -16,6 +16,7 @@ Jellystack is a privacy-focused Jellyfin and Seerr client with a native Android 
 - Cinematic details with cast, ratings, streams, collections, and similar titles
 - Phone and tablet layouts, English and German, light and dark themes
 - Contextual Cast permissions and an optional biometric app lock
+- A remote-first Android TV, Google TV, and Fire TV interface in closed beta
 
 Android is the stable, published platform. The shared Kotlin Multiplatform code and iOS host remain experimental; iOS is not currently distributed as a supported release.
 
@@ -37,6 +38,7 @@ All Gradle commands run from the repository root:
 
 ```bash
 ./gradlew :app-android:assembleDebug
+./gradlew :app-tv:assembleDebug
 ```
 
 Useful verification:
@@ -48,6 +50,8 @@ Useful verification:
 ```
 
 See [Building](docs/building.md) for local setup and [Architecture](docs/architecture.md) for module boundaries.
+
+The TV beta uses a separate GMS-free application module while sharing Jellyfin, Seerr, settings, and playback logic with mobile. See [Android TV and Fire TV](docs/android-tv.md) for emulator setup, remote controls, builds, testing, and store submission.
 
 ## Contributing
 

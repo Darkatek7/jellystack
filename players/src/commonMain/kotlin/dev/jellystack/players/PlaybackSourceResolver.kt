@@ -14,12 +14,16 @@ data class ResolvedPlaybackSource(
     val mediaSourceId: String? = null,
     val supportsTranscoding: Boolean? = null,
     val isFallbackHls: Boolean = false,
+    val segmentContainer: String? = null,
 )
 
 data class PlaybackSourceOptions(
     val audioStreamIndex: Int? = null,
     val subtitleStreamIndex: Int? = null,
     val playSessionId: String? = null,
+    val forceTranscoding: Boolean = false,
+    val forceAudioTranscoding: Boolean = false,
+    val preferFmp4Hls: Boolean = false,
 )
 
 data class ResolvedSubtitle(

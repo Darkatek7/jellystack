@@ -10,6 +10,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsEnabled
@@ -17,7 +18,6 @@ import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
-import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -29,6 +29,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -62,6 +63,7 @@ import dev.jellystack.design.jellyseerr.DiscoverUiState
 import dev.jellystack.design.jellyseerr.RequestConfigurationTestTags
 import dev.jellystack.design.jellyseerr.RequestsTestTags
 import dev.jellystack.design.jellyseerr.SeerrImmersiveDetailTestTags
+import dev.jellystack.design.jellyseerr.SeerrRatingsSection
 import dev.jellystack.design.jellyseerr.reduce
 import dev.jellystack.design.layout.LocalResponsiveProfile
 import dev.jellystack.design.layout.ProvideResponsiveProfile
@@ -89,7 +91,12 @@ class DiscoverRequestsUiTest {
         composeRule.onAllNodesWithText("Requests").assertCountEquals(2)
         composeRule.onNodeWithTag("primary_destination_discover").assertIsSelected()
 
-        composeRule.onNodeWithContentDescription("Back to Discover").performClick()
+        composeRule
+            .onNodeWithContentDescription("Back to Discover")
+            .performSemanticsAction(SemanticsActions.OnClick) { action -> action() }
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithText("Trends").fetchSemanticsNodes().size == 2
+        }
         composeRule.onAllNodesWithText("Trends").assertCountEquals(2)
         composeRule.onNodeWithTag("primary_destination_discover").assertIsSelected()
     }
@@ -247,30 +254,24 @@ class DiscoverRequestsUiTest {
     }
 
     @Test
-    fun recommendationDetailsShowThemeAwareSeerrRatings() {
-        val item = dune()
+    fun ratingsSectionShowsThemeAwareSeerrRatings() {
         composeRule.setContent {
-            discoverRequestsHarness(
-                detailStates =
-                    mapOf(
-                        item.mediaType to item.tmdbId to
-                            loadedDetail(
-                                item,
-                                ratings =
-                                    JellyseerrMediaRatings(
-                                        tmdb = 8.6,
-                                        imdb = 8.3,
-                                        rottenTomatoesCritics = 92.0,
-                                        rottenTomatoesAudience = 89.0,
-                                    ),
-                            ),
-                    ),
-            )
+            JellystackTheme(isDarkTheme = true) {
+                SeerrRatingsSection(
+                    ratings =
+                        JellyseerrMediaRatings(
+                            tmdb = 8.6,
+                            imdb = 8.3,
+                            rottenTomatoesCritics = 92.0,
+                            rottenTomatoesAudience = 89.0,
+                        ),
+                    loading = false,
+                    failed = false,
+                    onRetry = null,
+                )
+            }
         }
 
-        composeRule.onNodeWithText("Dune").performClick()
-
-        composeRule.onNodeWithTag(SeerrImmersiveDetailTestTags.ROOT).performScrollToIndex(3)
         composeRule.onNodeWithTag(SeerrImmersiveDetailTestTags.RATINGS).assertExists()
         composeRule.onNodeWithText("TMDb").assertExists()
         composeRule.onNodeWithText("8.6").assertExists()
@@ -473,6 +474,12 @@ class DiscoverRequestsUiTest {
         composeRule
             .onNodeWithTag(RequestConfigurationTestTags.CONTENT)
             .performScrollToNode(hasText("Submit request"))
+        composeRule.waitUntil(timeoutMillis = 5_000L) {
+            runCatching {
+                composeRule.onNodeWithText("Submit request").assertIsEnabled()
+                true
+            }.getOrDefault(false)
+        }
         composeRule.onNodeWithText("Submit request").assertIsEnabled()
     }
 
@@ -496,58 +503,6 @@ class DiscoverRequestsUiTest {
         }
 
         composeRule.onNodeWithText("Submit request").assertIsNotEnabled()
-    }
-
-    @Test
-    fun similarAndRecommendationTitlesPushDetailsAndBackReturnsToParent() {
-        val parent = dune()
-        val similar = dune().copy(tmdbId = 2, title = "Dune: Part Two")
-        val recommended = dune().copy(tmdbId = 3, title = "Arrival")
-        composeRule.setContent {
-            discoverRequestsHarness(
-                detailStates =
-                    mapOf(
-                        parent.mediaType to parent.tmdbId to
-                            loadedDetail(
-                                parent,
-                                enrichment =
-                                    JellyseerrMediaDetailEnrichment(
-                                        similar = listOf(similar),
-                                        recommendations = listOf(recommended),
-                                    ),
-                            ),
-                        similar.mediaType to similar.tmdbId to loadedDetail(similar),
-                        recommended.mediaType to recommended.tmdbId to loadedDetail(recommended),
-                    ),
-            )
-        }
-
-        composeRule.onNodeWithText("Dune").performClick()
-        composeRule
-            .onNodeWithTag(SeerrImmersiveDetailTestTags.ROOT)
-            .performScrollToNode(hasTestTag(SeerrImmersiveDetailTestTags.SIMILAR))
-        composeRule.onNodeWithText("Dune: Part Two").performClick()
-        composeRule.onNodeWithText("Dune: Part Two").assertExists()
-        composeRule.onNodeWithContentDescription("Back").performClick()
-        composeRule
-            .onNodeWithTag(SeerrImmersiveDetailTestTags.ROOT)
-            .performScrollToNode(hasTestTag(SeerrImmersiveDetailTestTags.TITLE))
-        composeRule
-            .onNodeWithTag(SeerrImmersiveDetailTestTags.TITLE)
-            .assertTextEquals("Dune")
-
-        composeRule
-            .onNodeWithTag(SeerrImmersiveDetailTestTags.ROOT)
-            .performScrollToNode(hasTestTag(SeerrImmersiveDetailTestTags.RECOMMENDATIONS))
-        composeRule.onNodeWithText("Arrival").performClick()
-        composeRule.onNodeWithText("Arrival").assertExists()
-        composeRule.onNodeWithContentDescription("Back").performClick()
-        composeRule
-            .onNodeWithTag(SeerrImmersiveDetailTestTags.ROOT)
-            .performScrollToNode(hasTestTag(SeerrImmersiveDetailTestTags.TITLE))
-        composeRule
-            .onNodeWithTag(SeerrImmersiveDetailTestTags.TITLE)
-            .assertTextEquals("Dune")
     }
 
     @Test

@@ -132,8 +132,10 @@ class JellyfinBrowseRepositoryTest {
 
             assertEquals(2, libraries.size)
             assertEquals("Movies", libraries.first().name)
+            assertEquals("movies-primary", libraries.first().primaryImageTag)
             val stored = libraryStore.list(environment.serverKey)
             assertEquals(libraries.size, stored.size)
+            assertEquals("movies-primary", stored.first().primaryImageTag)
         }
 
     @Test
@@ -792,7 +794,7 @@ class JellyfinBrowseRepositoryTest {
         private const val LIBRARIES_JSON = """
             {
               "Items": [
-                {"Id": "lib-1", "Name": "Movies", "CollectionType": "movies"},
+                {"Id": "lib-1", "Name": "Movies", "CollectionType": "movies", "ImageTags": {"Primary": "movies-primary"}},
                 {"Id": "lib-2", "Name": "Shows", "CollectionType": "tvshows"}
               ]
             }

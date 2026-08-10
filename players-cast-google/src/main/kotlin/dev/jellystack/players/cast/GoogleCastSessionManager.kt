@@ -1,3 +1,5 @@
+@file:Suppress("CyclomaticComplexMethod", "LongMethod", "MaxLineLength", "ReturnCount", "TooManyFunctions")
+
 package dev.jellystack.players.cast
 
 import android.content.Context

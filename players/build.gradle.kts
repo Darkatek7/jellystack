@@ -44,7 +44,7 @@ kotlin {
                 api(libs.androidx.media3.exoplayer)
                 api(libs.androidx.media3.hls)
                 implementation(libs.androidx.media3.ui)
-                implementation(libs.google.cast.framework)
+                implementation(libs.androidx.media3.session)
                 implementation(libs.androidx.media)
             }
         }

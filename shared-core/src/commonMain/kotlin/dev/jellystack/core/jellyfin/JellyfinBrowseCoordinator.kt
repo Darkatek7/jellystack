@@ -15,6 +15,7 @@ import kotlinx.coroutines.sync.withLock
 
 data class JellyfinHomeState(
     val isInitialLoading: Boolean = false,
+    val isHomeLoading: Boolean = false,
     val isPageLoading: Boolean = false,
     val libraries: List<JellyfinLibrary> = emptyList(),
     val continueWatching: List<JellyfinItem> = emptyList(),
@@ -91,7 +92,7 @@ class JellyfinBrowseCoordinator(
         mutableFavoriteError.value = null
     }
 
-    private val mutableState = MutableStateFlow(JellyfinHomeState(isInitialLoading = true))
+    private val mutableState = MutableStateFlow(JellyfinHomeState(isInitialLoading = true, isHomeLoading = true))
     private val loadMutex = Mutex()
     private var refreshJob: Job? = null
     private val browseHistory = ArrayDeque<LibraryPageSnapshot>()
@@ -121,21 +122,31 @@ class JellyfinBrowseCoordinator(
         refreshJob =
             scope.launch {
                 loadMutex.withLock {
+                    val cachedLibraries = repository.listLibraries()
+                    val shouldRefreshLibraries =
+                        forceRefresh ||
+                            cachedLibraries.isEmpty() ||
+                            cachedLibraries.all { it.primaryImageTag.isNullOrBlank() }
                     val cachedState = loadCachedState()
-                    val shouldRefresh = forceRefresh || cachedState == null
+                    val shouldRefresh = forceRefresh || cachedState == null || shouldRefreshLibraries
                     if (cachedState != null) {
                         mutableState.value =
                             cachedState.copy(
                                 isInitialLoading = shouldRefresh,
+                                isHomeLoading = shouldRefresh,
                                 errorMessage = null,
                             )
                     } else {
-                        mutableState.value = mutableState.value.copy(isInitialLoading = true, errorMessage = null)
+                        mutableState.value =
+                            mutableState.value.copy(
+                                isInitialLoading = true,
+                                isHomeLoading = true,
+                                errorMessage = null,
+                            )
                     }
                     try {
-                        val cachedLibraries = repository.listLibraries()
                         val libraries =
-                            if (forceRefresh || cachedLibraries.isEmpty()) {
+                            if (shouldRefreshLibraries) {
                                 repository.refreshLibraries()
                             } else {
                                 cachedLibraries
@@ -224,6 +235,7 @@ class JellyfinBrowseCoordinator(
                         mutableState.value =
                             mutableState.value.copy(
                                 isInitialLoading = false,
+                                isHomeLoading = false,
                                 isPageLoading = false,
                                 libraries = libraries,
                                 continueWatching = continueWatching,
@@ -247,6 +259,7 @@ class JellyfinBrowseCoordinator(
                         mutableState.value =
                             mutableState.value.copy(
                                 isInitialLoading = false,
+                                isHomeLoading = false,
                                 isPageLoading = false,
                                 errorMessage = t.message?.takeIf { it.isNotBlank() } ?: "",
                                 imageBaseUrl = imageBaseUrl,
@@ -283,8 +296,6 @@ class JellyfinBrowseCoordinator(
                         browsePath = emptyList(),
                         libraryItems = emptyList(),
                         currentPage = 0,
-                        recentShows = emptyList(),
-                        recentMovies = emptyList(),
                         endReached = false,
                         isInitialLoading = true,
                         errorMessage = null,
@@ -414,7 +425,7 @@ class JellyfinBrowseCoordinator(
                     imageAccessToken = imageAccessToken,
                 )
             try {
-                val libraryPage: LibraryPage =
+                val requestPage: suspend () -> LibraryPage = {
                     stateBefore.browsePath.lastOrNull()?.let { parent ->
                         repository.loadChildrenPage(
                             libraryId = selectedId,
@@ -430,58 +441,14 @@ class JellyfinBrowseCoordinator(
                         refresh = refresh,
                         filters = filters,
                     )
+                }
+                val libraryPage = requestPage.retryOnce()
                 val (items, totalRecordCount) = libraryPage
                 val totalCandidate = totalRecordCount
                 val newTotal =
                     when {
                         page == 0 && refresh && filters == null -> totalCandidate ?: stateBefore.totalLibraryItemCount
                         else -> stateBefore.totalLibraryItemCount
-                    }
-                val showsLibraryId = preferredLibraryId(stateBefore.libraries, "tvshows", "series") ?: selectedId
-                val moviesLibraryId = preferredLibraryId(stateBefore.libraries, "movies") ?: selectedId
-                val refreshedNextUp =
-                    if (page == 0 && refresh && filters == null && stateBefore.browsePath.isEmpty()) {
-                        try {
-                            repository.refreshNextUp(
-                                limit = HOME_SECTION_ITEM_LIMIT,
-                                libraryId = showsLibraryId,
-                            )
-                        } catch (cancellation: CancellationException) {
-                            throw cancellation
-                        } catch (_: Throwable) {
-                            repository.cachedNextUp(limit = HOME_SECTION_ITEM_LIMIT)
-                        }
-                    } else {
-                        null
-                    }
-                refreshedNextUp?.let { items ->
-                    JellystackLog.d("Refreshed Next Up after library load with ${items.size} items (page=$page)")
-                }
-                val recentShows =
-                    if (
-                        page == 0 &&
-                        (refresh || stateBefore.recentShows.isEmpty()) &&
-                        filters == null &&
-                        stateBefore.browsePath.isEmpty()
-                    ) {
-                        showsLibraryId?.let { id ->
-                            repository.refreshRecentlyAddedShows(id, limit = HOME_SECTION_ITEM_LIMIT)
-                        }
-                    } else {
-                        null
-                    }
-                val recentMovies =
-                    if (
-                        page == 0 &&
-                        (refresh || stateBefore.recentMovies.isEmpty()) &&
-                        filters == null &&
-                        stateBefore.browsePath.isEmpty()
-                    ) {
-                        moviesLibraryId?.let { id ->
-                            repository.refreshRecentlyAddedMovies(id, limit = HOME_SECTION_ITEM_LIMIT)
-                        }
-                    } else {
-                        null
                     }
                 val merged =
                     if (page == 0) {
@@ -499,9 +466,6 @@ class JellyfinBrowseCoordinator(
                         endReached = items.size < pageSize,
                         imageBaseUrl = imageBaseUrl,
                         imageAccessToken = imageAccessToken,
-                        nextUp = refreshedNextUp ?: mutableState.value.nextUp,
-                        recentShows = recentShows ?: mutableState.value.recentShows,
-                        recentMovies = recentMovies ?: mutableState.value.recentMovies,
                         totalLibraryItemCount = newTotal,
                     )
             } catch (cancellation: CancellationException) {
@@ -519,6 +483,15 @@ class JellyfinBrowseCoordinator(
             }
         }
     }
+
+    private suspend fun (suspend () -> LibraryPage).retryOnce(): LibraryPage =
+        try {
+            invoke()
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            invoke()
+        }
 
     private suspend fun loadCachedState(): JellyfinHomeState? {
         val libraries = repository.listLibraries()

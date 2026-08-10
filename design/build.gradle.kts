@@ -75,6 +75,7 @@ kotlin {
         }
         val androidMain by getting {
             dependencies {
+                implementation(projects.playersCastGoogle)
                 implementation(libs.androidx.activity.compose)
                 implementation(libs.androidx.mediarouter)
                 implementation(libs.google.cast.framework)

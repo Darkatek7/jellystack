@@ -29,6 +29,7 @@ import dev.jellystack.core.preferences.SubtitleBackground
 import dev.jellystack.core.preferences.SubtitleTextSize
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
@@ -45,6 +46,7 @@ import kotlinx.coroutines.withContext
 @UnstableApi
 class AndroidPlayerEngine(
     context: Context,
+    preferHighestSupportedBitrate: Boolean = false,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
 ) : PlayerEngine {
     private val appContext = context.applicationContext
@@ -55,12 +57,21 @@ class AndroidPlayerEngine(
     private var videoSurface: PlayerView? = null
     private var subtitleTextSize: SubtitleTextSize = SubtitleTextSize.SYSTEM
     private var subtitleBackground: SubtitleBackground = SubtitleBackground.SYSTEM
+    private var firstFrameRendered = false
+    private var firstFrameWatchdog: Job? = null
 
     private val exoPlayer =
         ExoPlayer
             .Builder(context)
             .build()
             .apply {
+                if (preferHighestSupportedBitrate) {
+                    trackSelectionParameters =
+                        trackSelectionParameters
+                            .buildUpon()
+                            .setForceHighestSupportedBitrate(true)
+                            .build()
+                }
                 setAudioAttributes(
                     AudioAttributes
                         .Builder()
@@ -69,21 +80,39 @@ class AndroidPlayerEngine(
                         .build(),
                     true,
                 )
+                setHandleAudioBecomingNoisy(true)
                 addListener(
                     object : Player.Listener {
                         override fun onPlaybackStateChanged(playbackState: Int) {
                             when (playbackState) {
                                 Player.STATE_BUFFERING -> eventFlow.tryEmit(PlayerEvent.Buffering)
-                                Player.STATE_READY -> eventFlow.tryEmit(PlayerEvent.Ready)
+                                Player.STATE_READY -> {
+                                    eventFlow.tryEmit(PlayerEvent.Ready)
+                                    scheduleFirstFrameWatchdog()
+                                }
                                 Player.STATE_ENDED -> eventFlow.tryEmit(PlayerEvent.Completed)
                             }
                         }
 
                         override fun onPlayerError(error: PlaybackException) {
+                            firstFrameWatchdog?.cancel()
                             scope.launch { eventFlow.emit(PlayerEvent.Error(error)) }
                         }
 
+                        override fun onRenderedFirstFrame() {
+                            firstFrameRendered = true
+                            firstFrameWatchdog?.cancel()
+                        }
+
+                        override fun onPlayWhenReadyChanged(
+                            playWhenReady: Boolean,
+                            reason: Int,
+                        ) {
+                            if (playWhenReady) scheduleFirstFrameWatchdog() else firstFrameWatchdog?.cancel()
+                        }
+
                         override fun onTracksChanged(tracks: Tracks) {
+                            scheduleFirstFrameWatchdog()
                             val audioResult = applyAudioTrack(pendingAudioTrack)
                             val subtitleResult = applySubtitleTrack(pendingSubtitleTrack)
                             val pendingTrackId = pendingAudioSelectionConfirmationId
@@ -143,6 +172,10 @@ class AndroidPlayerEngine(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                 )
             keepScreenOn = true
+            // Compose owns TV remote focus. A focusable PlayerView can silently consume the first
+            // D-pad event and leave the visible controls without a selected action.
+            isFocusable = false
+            isFocusableInTouchMode = false
             setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
             updateVideoSurface(
                 view = this,
@@ -209,6 +242,8 @@ class AndroidPlayerEngine(
         audioTrack: AudioTrack?,
         subtitleTrack: SubtitleTrack?,
     ) {
+        firstFrameWatchdog?.cancel()
+        firstFrameRendered = false
         pendingAudioTrack = audioTrack
         pendingSubtitleTrack = subtitleTrack
         withContext(Dispatchers.Main) {
@@ -289,6 +324,7 @@ class AndroidPlayerEngine(
     }
 
     override fun stop() {
+        firstFrameWatchdog?.cancel()
         exoPlayer.stop()
         exoPlayer.clearMediaItems()
     }
@@ -338,9 +374,24 @@ class AndroidPlayerEngine(
     }
 
     override fun release() {
+        firstFrameWatchdog?.cancel()
         positionJob.cancel()
         exoPlayer.release()
         scope.cancel()
+    }
+
+    internal fun media3Player(): Player = exoPlayer
+
+    private fun scheduleFirstFrameWatchdog() {
+        if (firstFrameRendered || !exoPlayer.playWhenReady || exoPlayer.videoFormat == null) return
+        firstFrameWatchdog?.cancel()
+        firstFrameWatchdog =
+            scope.launch {
+                delay(FIRST_FRAME_TIMEOUT_MS)
+                if (!firstFrameRendered && exoPlayer.playWhenReady && exoPlayer.videoFormat != null) {
+                    eventFlow.emit(PlayerEvent.VideoOutputStalled)
+                }
+            }
     }
 
     private fun currentRuntimeStats(): PlaybackRuntimeStats {
@@ -562,6 +613,7 @@ class AndroidPlayerEngine(
     }
 
     private companion object {
+        private const val FIRST_FRAME_TIMEOUT_MS = 8_000L
         private const val POSITION_POLL_INTERVAL_MS = 500L
     }
 }

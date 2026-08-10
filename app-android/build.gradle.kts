@@ -182,6 +182,7 @@ dependencies {
     implementation(projects.sharedNetwork)
     implementation(projects.sharedDatabase)
     implementation(projects.players)
+    implementation(projects.playersCastGoogle)
     implementation(projects.design)
 
     implementation(libs.androidx.activity.compose)

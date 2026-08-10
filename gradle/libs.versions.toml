@@ -1,6 +1,6 @@
 [versions]
 android-gradle-plugin = "9.2.1"
-androidx-activity-compose = "1.9.3"
+androidx-activity-compose = "1.12.4"
 androidx-core-ktx = "1.13.1"
 androidx-lifecycle-runtime = "2.8.7"
 androidx-test-junit = "1.3.0"
@@ -30,12 +30,14 @@ coil3 = "3.0.0"
 androidx-appcompat = "1.7.0"
 multiplatform-settings = "1.1.1"
 sqlite-jdbc = "3.45.3.0"
-media3 = "1.4.1"
+media3 = "1.10.1"
 play-services-cast = "21.4.0"
 androidx-media = "1.7.0"
 androidx-mediarouter = "1.6.0"
 androidx-biometric = "1.1.0"
 screenshot = "0.0.1-alpha15"
+tv-material = "1.1.0"
+navigation3 = "1.1.4"
 
 [libraries]
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity-compose" }
@@ -98,6 +100,11 @@ sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version.ref = "sqlite-jdbc" }
 androidx-media3-exoplayer = { module = "androidx.media3:media3-exoplayer", version.ref = "media3" }
 androidx-media3-hls = { module = "androidx.media3:media3-exoplayer-hls", version.ref = "media3" }
 androidx-media3-ui = { module = "androidx.media3:media3-ui", version.ref = "media3" }
+androidx-media3-session = { module = "androidx.media3:media3-session", version.ref = "media3" }
+androidx-tv-material = { module = "androidx.tv:tv-material", version.ref = "tv-material" }
+androidx-navigation3-runtime = { module = "androidx.navigation3:navigation3-runtime", version.ref = "navigation3" }
+androidx-navigation3-ui = { module = "androidx.navigation3:navigation3-ui", version.ref = "navigation3" }
+androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version = "2.10.0" }
 google-cast-framework = { module = "com.google.android.gms:play-services-cast-framework", version.ref = "play-services-cast" }
 androidx-media = { module = "androidx.media:media", version.ref = "androidx-media" }
 androidx-mediarouter = { module = "androidx.mediarouter:mediarouter", version.ref = "androidx-mediarouter" }

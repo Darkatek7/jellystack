@@ -1,3 +1,5 @@
+@file:Suppress("MaxLineLength", "SpreadOperator")
+
 package dev.jellystack.players.cast
 
 import android.app.NotificationChannel

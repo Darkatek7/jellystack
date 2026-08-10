@@ -80,6 +80,9 @@ class PlaybackController(
     private var subtitleSwitchJob: Job? = null
     private var subtitleSwitchGeneration = 0L
     private var playGeneration = 0L
+    private var directFallbackAttempted = false
+    private var hlsForcedTranscodeFallbackAttempted = false
+    private var hlsContainerFallbackAttempted = false
     private val streamingReportMutex = Mutex()
     private var finalStreamingReportJob: Job? = null
     private var released = false
@@ -124,6 +127,9 @@ class PlaybackController(
     ) {
         check(!released) { "PlaybackController has been released" }
         stopInternal(saveProgress = true, clearRetryContext = false)
+        directFallbackAttempted = false
+        hlsForcedTranscodeFallbackAttempted = false
+        hlsContainerFallbackAttempted = false
         val attemptGeneration = playGeneration
         retryContext = RetryContext(request, environment)
         _state.value =
@@ -1638,6 +1644,11 @@ class PlaybackController(
                     when (event) {
                         PlayerEvent.Buffering -> updatePlaybackPhase(PlaybackPhase.Buffering)
                         PlayerEvent.Ready -> updatePlaybackPhase(PlaybackPhase.Ready)
+                        PlayerEvent.VideoOutputStalled -> {
+                            if (!attemptPlaybackFallback()) {
+                                publishPlaybackError(IllegalStateException("Video output did not start."))
+                            }
+                        }
                         is PlayerEvent.AudioTrackSelectionApplied ->
                             confirmPendingAudioSelection(event.trackId)
                         is PlayerEvent.AudioTrackSelectionUnavailable ->
@@ -1666,7 +1677,9 @@ class PlaybackController(
                                 publishCurrentState(ended)
                             }
                         is PlayerEvent.Error -> {
-                            publishPlaybackError(event.throwable)
+                            if (!attemptPlaybackFallback(event.throwable)) {
+                                publishPlaybackError(event.throwable)
+                            }
                         }
                     }
                 }
@@ -1720,6 +1733,119 @@ class PlaybackController(
         val updated = current.copy(phase = phase)
         session = updated
         publishCurrentState(updated)
+    }
+
+    private fun attemptPlaybackFallback(originalError: Throwable? = null): Boolean {
+        val current = session ?: return false
+        val environment = lastEnvironment ?: return false
+        if (current.stream.mode == PlaybackMode.LOCAL || current.source.supportsTranscoding != true) return false
+        val fallbackOptions =
+            when (current.stream.mode) {
+                PlaybackMode.DIRECT -> {
+                    if (directFallbackAttempted) return false
+                    directFallbackAttempted = true
+                    val audioOnlyFallback = originalError.isAudioDecoderFailure()
+                    hlsForcedTranscodeFallbackAttempted = !audioOnlyFallback
+                    PlaybackSourceOptions(
+                        audioStreamIndex = current.audioTrack?.streamIndex,
+                        subtitleStreamIndex = current.subtitleTrack?.streamIndex ?: SUBTITLES_DISABLED_INDEX,
+                        playSessionId = current.source.playSessionId,
+                        forceTranscoding = !audioOnlyFallback,
+                        forceAudioTranscoding = audioOnlyFallback,
+                    )
+                }
+
+                PlaybackMode.HLS -> {
+                    if (!hlsForcedTranscodeFallbackAttempted) {
+                        hlsForcedTranscodeFallbackAttempted = true
+                        PlaybackSourceOptions(
+                            audioStreamIndex = current.audioTrack?.streamIndex,
+                            subtitleStreamIndex = current.subtitleTrack?.streamIndex ?: SUBTITLES_DISABLED_INDEX,
+                            playSessionId = current.source.playSessionId,
+                            forceTranscoding = true,
+                        )
+                    } else {
+                        if (hlsContainerFallbackAttempted || current.source.segmentContainer.equals("mp4", true)) {
+                            return false
+                        }
+                        hlsContainerFallbackAttempted = true
+                        PlaybackSourceOptions(
+                            audioStreamIndex = current.audioTrack?.streamIndex,
+                            subtitleStreamIndex = current.subtitleTrack?.streamIndex ?: SUBTITLES_DISABLED_INDEX,
+                            playSessionId = current.source.playSessionId,
+                            forceTranscoding = true,
+                            preferFmp4Hls = true,
+                        )
+                    }
+                }
+
+                PlaybackMode.LOCAL -> return false
+            }
+        scope.launch {
+            try {
+                val latest = session ?: return@launch
+                val source =
+                    playbackSourceResolver.resolve(
+                        request = latest.request,
+                        selection = latest.stream,
+                        environment = environment,
+                        startPositionMs = latest.positionMs,
+                        options = fallbackOptions,
+                    )
+                val resolvedStream = latest.stream.withResolvedSource(source)
+                val resolvedSource =
+                    source.copy(
+                        audioStreamIndex = latest.audioTrack?.streamIndex,
+                        subtitleStreamIndex = latest.subtitleTrack?.streamIndex ?: SUBTITLES_DISABLED_INDEX,
+                    )
+                val updated =
+                    latest.copy(
+                        source = resolvedSource,
+                        stream = resolvedStream,
+                        qualityOptions = resolvedStream.qualityOptions,
+                        selectedQualityId = resolvedStream.selectedQualityId,
+                        phase = PlaybackPhase.Buffering,
+                        runtimeStats =
+                            latest.runtimeStats.copy(
+                                playbackMode = resolvedStream.mode,
+                                container = resolvedStream.container,
+                                videoCodec = resolvedStream.videoCodec,
+                                audioCodec = resolvedStream.audioCodec,
+                                videoBitrate = resolvedStream.videoBitrate,
+                            ),
+                    )
+                playerEngine.prepare(
+                    source = resolvedSource,
+                    startPositionMs = latest.positionMs,
+                    audioTrack = latest.audioTrack,
+                    subtitleTrack = latest.subtitleTrack,
+                )
+                session = updated
+                playerEngine.setVideoQuality(resolvedStream.maxBitrate)
+                playerEngine.setPlaybackSpeed(latest.playbackSpeed)
+                publishCurrentState(updated)
+                if (latest.isPaused) playerEngine.pause() else playerEngine.play()
+            } catch (fallbackError: Throwable) {
+                publishPlaybackError(originalError ?: fallbackError)
+            }
+        }
+        return true
+    }
+
+    private fun Throwable?.isAudioDecoderFailure(): Boolean {
+        var current = this
+        while (current != null) {
+            val description = "${current::class.simpleName.orEmpty()} ${current.message.orEmpty()}".lowercase()
+            if (
+                "mediacodecaudiorenderer" in description ||
+                "audio renderer" in description ||
+                "audio decoder" in description
+            ) {
+                return true
+            }
+            current = current.cause
+        }
+        return false
     }
 
     private fun confirmPendingAudioSelection(trackId: String) {

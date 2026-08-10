@@ -75,14 +75,26 @@ jobs:
           - name: design-0
             command: >-
               ./gradlew :design:connectedDebugAndroidTest
-              -Pandroid.testInstrumentationRunnerArguments.numShards=2
+              -Pandroid.testInstrumentationRunnerArguments.numShards=4
               -Pandroid.testInstrumentationRunnerArguments.shardIndex=0
               --max-workers=1 --stacktrace
           - name: design-1
             command: >-
               ./gradlew :design:connectedDebugAndroidTest
-              -Pandroid.testInstrumentationRunnerArguments.numShards=2
+              -Pandroid.testInstrumentationRunnerArguments.numShards=4
               -Pandroid.testInstrumentationRunnerArguments.shardIndex=1
+              --max-workers=1 --stacktrace
+          - name: design-2
+            command: >-
+              ./gradlew :design:connectedDebugAndroidTest
+              -Pandroid.testInstrumentationRunnerArguments.numShards=4
+              -Pandroid.testInstrumentationRunnerArguments.shardIndex=2
+              --max-workers=1 --stacktrace
+          - name: design-3
+            command: >-
+              ./gradlew :design:connectedDebugAndroidTest
+              -Pandroid.testInstrumentationRunnerArguments.numShards=4
+              -Pandroid.testInstrumentationRunnerArguments.shardIndex=3
               --max-workers=1 --stacktrace
           - name: app
             command: >-
@@ -124,8 +136,10 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: "10.1in WXGA (Tablet)"
-          ram-size: 1536M
-          emulator-options: "-no-window -gpu swiftshader -feature -Vulkan -no-snapshot -noaudio -no-boot-anim -no-metrics"
+          # The cinematic detail suites render many image-heavy screens in sequence. A smaller
+          # heap can terminate the emulator itself before UTP can report a test result.
+          ram-size: 3072M
+          emulator-options: "-no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics"
           script: ${{ matrix.command }}
 
   android-instrumentation:

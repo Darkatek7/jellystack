@@ -30,6 +30,10 @@
     <string name="syncplay_participants">%1$d Teilnehmer</string>
     <string name="syncplay_no_groups">Keine Gruppen verfügbar.</string>
     <string name="syncplay_no_permission">Dein Jellyfin-Konto darf keinen SyncPlay-Gruppen beitreten.</string>
+    <string name="syncplay_error_access_denied">Dein Jellyfin-Konto hat keine Berechtigung für diese SyncPlay-Aktion.</string>
+    <string name="syncplay_error_unauthorized">Melde dich erneut bei Jellyfin an, um SyncPlay zu verwenden.</string>
+    <string name="syncplay_error_network">SyncPlay konnte deinen Jellyfin-Server nicht erreichen.</string>
+    <string name="syncplay_error_invalid_response">Jellyfin hat eine ungültige SyncPlay-Antwort gesendet.</string>
     <string name="player_unavailable">Nicht verfügbar</string>
     <string name="player_off">Aus</string>
     <string name="player_default">Standard</string>
