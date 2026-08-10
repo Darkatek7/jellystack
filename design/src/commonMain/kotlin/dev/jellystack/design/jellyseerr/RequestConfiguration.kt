@@ -61,6 +61,7 @@ import org.jetbrains.compose.resources.stringResource
 
 internal object RequestConfigurationTestTags {
     const val CONTENT = "request_configuration_content"
+    const val CLOSE_ACTION = "request_configuration_close_action"
     const val VARIANT_SELECTOR = "request_configuration_variant_selector"
     const val ADVANCED_PROFILE_SELECTOR = "request_configuration_advanced_profile_selector"
 }
@@ -293,7 +294,13 @@ internal fun RequestConfiguration(
                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
                 ) {
-                    OutlinedButton(onClick = onClose, modifier = Modifier.heightIn(min = 48.dp)) {
+                    OutlinedButton(
+                        onClick = onClose,
+                        modifier =
+                            Modifier
+                                .heightIn(min = 48.dp)
+                                .testTag(RequestConfigurationTestTags.CLOSE_ACTION),
+                    ) {
                         Text(stringResource(Res.string.close))
                     }
                     Button(

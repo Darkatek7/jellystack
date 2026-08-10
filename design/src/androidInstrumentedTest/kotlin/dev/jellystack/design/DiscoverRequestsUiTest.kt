@@ -10,6 +10,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsEnabled
@@ -29,6 +30,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -89,7 +91,12 @@ class DiscoverRequestsUiTest {
         composeRule.onAllNodesWithText("Requests").assertCountEquals(2)
         composeRule.onNodeWithTag("primary_destination_discover").assertIsSelected()
 
-        composeRule.onNodeWithContentDescription("Back to Discover").performClick()
+        composeRule
+            .onNodeWithContentDescription("Back to Discover")
+            .performSemanticsAction(SemanticsActions.OnClick) { action -> action() }
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithText("Trends").fetchSemanticsNodes().size == 2
+        }
         composeRule.onAllNodesWithText("Trends").assertCountEquals(2)
         composeRule.onNodeWithTag("primary_destination_discover").assertIsSelected()
     }

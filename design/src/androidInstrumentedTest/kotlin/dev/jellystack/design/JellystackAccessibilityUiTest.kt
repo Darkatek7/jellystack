@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -85,7 +86,14 @@ class JellystackAccessibilityUiTest {
         composeRule.onNodeWithText("Configure request").performClick()
         waitUntilFocused("Search request profiles")
         composeRule.onNodeWithText("Search request profiles").assertIsFocused()
-        composeRule.onNodeWithText("Close").performClick()
+        composeRule
+            .onNodeWithTag(RequestConfigurationTestTags.CONTENT)
+            .performScrollToNode(
+                hasTestTag(RequestConfigurationTestTags.CLOSE_ACTION),
+            )
+        composeRule
+            .onNodeWithTag(RequestConfigurationTestTags.CLOSE_ACTION)
+            .performClick()
         waitUntilFocused("Configure request")
         composeRule.onNodeWithText("Configure request").assertIsFocused()
     }
