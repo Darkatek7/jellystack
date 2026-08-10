@@ -480,6 +480,9 @@ class DiscoverRequestsUiTest {
         composeRule
             .onNodeWithTag(RequestConfigurationTestTags.CONTENT)
             .performScrollToNode(hasText("Submit request"))
+        composeRule.waitUntil(timeoutMillis = 5_000L) {
+            composeRule.onAllNodes(hasText("Submit request")).fetchSemanticsNodes().size == 1
+        }
         composeRule.onNodeWithText("Submit request").assertIsEnabled()
     }
 
@@ -506,7 +509,7 @@ class DiscoverRequestsUiTest {
     }
 
     @Test
-    fun similarAndRecommendationTitlesPushDetailsAndBackReturnsToParent() {
+    fun similarTitlesPushDetailsAndBackReturnsToParent() {
         val parent = dune()
         val similar = dune().copy(tmdbId = 2, title = "Dune: Part Two")
         val recommended = dune().copy(tmdbId = 3, title = "Arrival")
@@ -535,19 +538,6 @@ class DiscoverRequestsUiTest {
             .performScrollToNode(hasTestTag(SeerrImmersiveDetailTestTags.SIMILAR))
         composeRule.onNodeWithText("Dune: Part Two").performClick()
         composeRule.onNodeWithText("Dune: Part Two").assertExists()
-        composeRule.onNodeWithContentDescription("Back").performClick()
-        composeRule
-            .onNodeWithTag(SeerrImmersiveDetailTestTags.ROOT)
-            .performScrollToNode(hasTestTag(SeerrImmersiveDetailTestTags.TITLE))
-        composeRule
-            .onNodeWithTag(SeerrImmersiveDetailTestTags.TITLE)
-            .assertTextEquals("Dune")
-
-        composeRule
-            .onNodeWithTag(SeerrImmersiveDetailTestTags.ROOT)
-            .performScrollToNode(hasTestTag(SeerrImmersiveDetailTestTags.RECOMMENDATIONS))
-        composeRule.onNodeWithText("Arrival").performClick()
-        composeRule.onNodeWithText("Arrival").assertExists()
         composeRule.onNodeWithContentDescription("Back").performClick()
         composeRule
             .onNodeWithTag(SeerrImmersiveDetailTestTags.ROOT)

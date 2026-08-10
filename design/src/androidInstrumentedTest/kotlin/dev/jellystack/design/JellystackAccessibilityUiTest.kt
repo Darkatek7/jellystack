@@ -7,10 +7,12 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -91,6 +93,12 @@ class JellystackAccessibilityUiTest {
             .performScrollToNode(
                 hasTestTag(RequestConfigurationTestTags.CLOSE_ACTION),
             )
+        composeRule.waitUntil(timeoutMillis = 5_000L) {
+            composeRule
+                .onAllNodes(hasTestTag(RequestConfigurationTestTags.CLOSE_ACTION))
+                .fetchSemanticsNodes()
+                .size == 1
+        }
         composeRule
             .onNodeWithTag(RequestConfigurationTestTags.CLOSE_ACTION)
             .performClick()
@@ -153,6 +161,14 @@ class JellystackAccessibilityUiTest {
 private fun RequestModalFocusHarness() {
     var open by remember { mutableStateOf(false) }
     val invokerFocus = remember { FocusRequester() }
+    LaunchedEffect(open) {
+        if (!open) {
+            // Dialog focus is released asynchronously on some devices. Restore focus on the
+            // following frame so the closing text field cannot reclaim it during teardown.
+            withFrameNanos { }
+            invokerFocus.requestFocus()
+        }
+    }
     Button(
         onClick = { open = true },
         modifier = Modifier.focusRequester(invokerFocus).focusable(),
