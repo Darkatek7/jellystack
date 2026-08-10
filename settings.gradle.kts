@@ -9,7 +9,7 @@ pluginManagement {
             }
         }
     }
-    val kotlinVersion = "2.2.10"
+    val kotlinVersion = "2.4.10"
     val agpVersion = "9.2.1"
     val composeVersion = "1.7.0"
     val sqldelightVersion = "2.0.2"
