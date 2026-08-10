@@ -139,7 +139,7 @@ jobs:
           # The cinematic detail suites render many image-heavy screens in sequence. A smaller
           # heap can terminate the emulator itself before UTP can report a test result.
           ram-size: 3072M
-          emulator-options: "-no-window -gpu swiftshader -feature -Vulkan -no-snapshot -noaudio -no-boot-anim -no-metrics"
+          emulator-options: "-no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics"
           script: ${{ matrix.command }}
 
   android-instrumentation:

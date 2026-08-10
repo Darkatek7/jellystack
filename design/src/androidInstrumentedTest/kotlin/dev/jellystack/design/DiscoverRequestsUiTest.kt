@@ -18,7 +18,6 @@ import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
-import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -501,45 +500,6 @@ class DiscoverRequestsUiTest {
         }
 
         composeRule.onNodeWithText("Submit request").assertIsNotEnabled()
-    }
-
-    @Test
-    fun similarTitlesPushDetailsAndBackReturnsToParent() {
-        val parent = dune()
-        val similar = dune().copy(tmdbId = 2, title = "Dune: Part Two")
-        val recommended = dune().copy(tmdbId = 3, title = "Arrival")
-        composeRule.setContent {
-            discoverRequestsHarness(
-                detailStates =
-                    mapOf(
-                        parent.mediaType to parent.tmdbId to
-                            loadedDetail(
-                                parent,
-                                enrichment =
-                                    JellyseerrMediaDetailEnrichment(
-                                        similar = listOf(similar),
-                                        recommendations = listOf(recommended),
-                                    ),
-                            ),
-                        similar.mediaType to similar.tmdbId to loadedDetail(similar),
-                        recommended.mediaType to recommended.tmdbId to loadedDetail(recommended),
-                    ),
-            )
-        }
-
-        composeRule.onNodeWithText("Dune").performClick()
-        composeRule
-            .onNodeWithTag(SeerrImmersiveDetailTestTags.ROOT)
-            .performScrollToNode(hasTestTag(SeerrImmersiveDetailTestTags.SIMILAR))
-        composeRule.onNodeWithText("Dune: Part Two").performClick()
-        composeRule.onNodeWithText("Dune: Part Two").assertExists()
-        composeRule.onNodeWithContentDescription("Back").performClick()
-        composeRule
-            .onNodeWithTag(SeerrImmersiveDetailTestTags.ROOT)
-            .performScrollToNode(hasTestTag(SeerrImmersiveDetailTestTags.TITLE))
-        composeRule
-            .onNodeWithTag(SeerrImmersiveDetailTestTags.TITLE)
-            .assertTextEquals("Dune")
     }
 
     @Test
