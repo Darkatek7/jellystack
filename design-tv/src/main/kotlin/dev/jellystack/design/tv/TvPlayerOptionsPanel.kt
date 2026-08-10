@@ -60,6 +60,7 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.Text
 import dev.jellystack.players.PlaybackState
 import dev.jellystack.players.syncplay.SyncPlayCoordinator
+import dev.jellystack.players.syncplay.SyncPlayErrorCode
 import dev.jellystack.players.syncplay.SyncPlayUiState
 
 @Composable
@@ -234,7 +235,17 @@ internal fun TvPlayerOptionsPanel(
                         )
                     }
                     item {
-                        TvPlayerOptionRow(Icons.Default.Groups, strings.syncPlay, syncState.currentGroup?.name ?: strings.off, false, { syncPlay.refresh(); onOpenFromMore(TvPlayerPanel.SYNCPLAY) }, Modifier.focusRequester(syncFocus))
+                        TvPlayerOptionRow(
+                            Icons.Default.Groups,
+                            strings.syncPlay,
+                            if (syncState.canJoin) syncState.currentGroup?.name ?: strings.off else strings.syncPlayNoPermission,
+                            false,
+                            {
+                                if (syncState.canJoin) syncPlay.refresh()
+                                onOpenFromMore(TvPlayerPanel.SYNCPLAY)
+                            },
+                            Modifier.focusRequester(syncFocus),
+                        )
                     }
                 }
             TvPlayerPanel.AUDIO ->
@@ -294,15 +305,53 @@ internal fun TvPlayerOptionsPanel(
             }
             TvPlayerPanel.SYNCPLAY ->
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    syncState.error?.let { error -> item { Text(error, color = Color(0xFFFFA59E), fontSize = 16.sp) } }
-                    syncState.currentGroup?.let { group ->
+                    syncState.error?.let { error ->
+                        item { Text(error.message(strings), color = Color(0xFFFFA59E), fontSize = 16.sp) }
+                    }
+                    if (!syncState.canJoin) {
+                        item {
+                            TvPlayerOptionRow(
+                                Icons.Default.Groups,
+                                strings.syncPlayNoPermission,
+                                null,
+                                false,
+                                onBack,
+                                Modifier.focusRequester(firstFocus),
+                                trailing = {},
+                            )
+                        }
+                    } else {
+                        syncState.currentGroup?.let { group ->
                         item { TvPlayerOptionRow(Icons.Default.Groups, strings.useCurrentItemAsQueue, group.name, false, syncPlay::setCurrentPlaybackAsQueue, Modifier.focusRequester(firstFocus), trailing = {}) }
                         item { TvPlayerOptionRow(Icons.Default.Close, strings.leaveGroup, group.name, false, syncPlay::leaveGroup, trailing = {}) }
                     } ?: run {
-                        item { TvPlayerOptionRow(Icons.Default.Groups, strings.createGroup, null, false, { syncPlay.createGroup("Jellystack TV") }, Modifier.focusRequester(firstFocus), trailing = {}) }
-                        items(syncState.groups, key = { it.id }) { group ->
-                            TvPlayerOptionRow(Icons.Default.Groups, strings.joinGroup.format(group.name), group.state, false, { syncPlay.joinGroup(group) })
+                        if (syncState.canCreate) {
+                            item { TvPlayerOptionRow(Icons.Default.Groups, strings.createGroup, null, false, { syncPlay.createGroup("Jellystack TV") }, Modifier.focusRequester(firstFocus), trailing = {}) }
                         }
+                        if (syncState.groups.isEmpty() && !syncState.loading) {
+                            item {
+                                TvPlayerOptionRow(
+                                    Icons.Default.Groups,
+                                    strings.noResults,
+                                    null,
+                                    false,
+                                    onBack,
+                                    if (syncState.canCreate) Modifier else Modifier.focusRequester(firstFocus),
+                                    trailing = {},
+                                )
+                            }
+                        }
+                        itemsIndexed(syncState.groups, key = { _, group -> group.id }) { index, group ->
+                            TvPlayerOptionRow(
+                                Icons.Default.Groups,
+                                strings.joinGroup.format(group.name),
+                                group.state,
+                                false,
+                                { syncPlay.joinGroup(group) },
+                                if (!syncState.canCreate && index == 0) Modifier.focusRequester(firstFocus) else Modifier,
+                            )
+                        }
+                    }
                     }
                 }
             TvPlayerPanel.NONE -> Unit
@@ -355,6 +404,14 @@ private fun PlaybackState.Active.qualitySummary(strings: TvStrings): String =
     qualityOptions.firstOrNull { it.id == selectedQualityId }?.label?.takeIf(String::isNotBlank) ?: strings.automatic
 
 private fun Float.cleanSpeed(): String = if (this % 1f == 0f) toInt().toString() else toString()
+
+private fun SyncPlayErrorCode.message(strings: TvStrings): String =
+    when (this) {
+        SyncPlayErrorCode.ACCESS_DENIED -> strings.syncPlayNoPermission
+        SyncPlayErrorCode.UNAUTHORIZED -> strings.syncPlayUnauthorized
+        SyncPlayErrorCode.NETWORK -> strings.syncPlayNetworkError
+        SyncPlayErrorCode.INVALID_RESPONSE -> strings.syncPlayInvalidResponse
+    }
 
 private fun TvPlayerPanel.title(strings: TvStrings): String =
     when (this) {

@@ -46,6 +46,7 @@ class JellyfinBrowseCoordinatorTest {
     private val environmentProvider = JellyfinEnvironmentProvider { environment }
     private val viewsCallCount = MutableStateFlow(0)
     private val itemPageCallCount = MutableStateFlow(0)
+    private val latestCallCount = MutableStateFlow(0)
     private val itemPageResponseWithTotal = MutableStateFlow<String?>(null)
     private val engine =
         MockEngine { request ->
@@ -58,12 +59,14 @@ class JellyfinBrowseCoordinatorTest {
                     }
                     path.endsWith("/Items/Resume") -> RESUME_JSON
                     path.endsWith("/Items/NextUp") -> NEXT_UP_JSON
-                    path.endsWith("/Items/Latest") ->
+                    path.endsWith("/Items/Latest") -> {
+                        latestCallCount.update { count -> count + 1 }
                         when (request.url.parameters["includeItemTypes"]) {
                             "Series,Episode" -> LATEST_SHOWS_JSON
                             "Movie" -> LATEST_MOVIES_JSON
                             else -> error("Unexpected includeItemTypes: ${request.url.parameters}")
                         }
+                    }
                     path.endsWith("/Items") -> {
                         itemPageResponseWithTotal.value
                             ?: when (itemPageCallCount.updateAndGet { it + 1 } - 1) {
@@ -366,6 +369,34 @@ class JellyfinBrowseCoordinatorTest {
             val loaded = awaitState(coordinator) { it.currentPage == 1 }
             assertFalse(loaded.isPageLoading)
             assertEquals(listOf("item-1", "item-2", "item-3"), loaded.libraryItems.map { it.id })
+        }
+
+    @Test
+    fun selectingAnotherLibraryDoesNotRestartOrClearHomeContent() =
+        runTest {
+            itemPageCallCount.value = 0
+            latestCallCount.value = 0
+            val repository =
+                JellyfinBrowseRepository(
+                    environmentProvider,
+                    InMemoryLibraryStore(),
+                    InMemoryItemStore(),
+                    InMemoryDetailStore(),
+                    apiFactory,
+                )
+            val coordinator =
+                JellyfinBrowseCoordinator(repository, backgroundScope, favoritesStore = FakeJellyfinFavoritesStore(), pageSize = 2)
+            val home = awaitInitialLoad(coordinator)
+            val latestCallsAfterBootstrap = latestCallCount.value
+
+            coordinator.selectLibrary("lib-1")
+            val library = awaitState(coordinator) { it.selectedLibraryId == "lib-1" && !it.isInitialLoading }
+
+            assertFalse(library.isHomeLoading)
+            assertEquals(home.recentShows, library.recentShows)
+            assertEquals(home.recentMovies, library.recentMovies)
+            assertEquals(home.nextUp, library.nextUp)
+            assertEquals(latestCallsAfterBootstrap, latestCallCount.value)
         }
 
     @Test

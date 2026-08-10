@@ -91,6 +91,7 @@ import dev.jellystack.core.preferences.AppSettingsRepository
 import dev.jellystack.core.privacy.AppPrivacyStatus
 import dev.jellystack.core.privacy.RuntimePermissionStatus
 import dev.jellystack.core.security.BiometricAuthGate
+import dev.jellystack.core.server.ServerRepository
 import dev.jellystack.design.JellystackOrientation
 import dev.jellystack.design.JellystackRoot
 import dev.jellystack.design.theme.JellystackTheme
@@ -513,6 +514,8 @@ private fun JellystackApp(
     val environmentProvider = remember { JellystackDI.koin.get<JellyfinEnvironmentProvider>() }
     val sessionRepository = remember { JellystackDI.koin.get<JellyfinSessionRepository>() }
     val sessionState by sessionRepository.state.collectAsStateWithLifecycle()
+    val serverRepository = remember { JellystackDI.koin.get<ServerRepository>() }
+    val servers by serverRepository.observeServers().collectAsStateWithLifecycle()
     val syncPlayCoordinator =
         remember(environment.controller, environmentProvider, browseRepository) {
             SyncPlayCoordinator(
@@ -562,8 +565,18 @@ private fun JellystackApp(
                     )
                     if (startPositionMs > 0L) environment.controller.seekTo(startPositionMs)
                 },
+                onAccessDenied = { sessionRepository.refresh() },
             )
         }
+    val syncPlayAccess =
+        (sessionState as? JellyfinSessionState.Ready)?.capabilities?.syncPlayAccess
+            ?: dev.jellystack.core.jellyfin.JellyfinSyncPlayAccess.NONE
+    LaunchedEffect(syncPlayAccess) {
+        syncPlayCoordinator.updateAccess(syncPlayAccess)
+    }
+    LaunchedEffect(servers) {
+        sessionRepository.refresh()
+    }
     DisposableEffect(syncPlayCoordinator) {
         onDispose(syncPlayCoordinator::close)
     }

@@ -6,17 +6,20 @@ import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.request
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.HttpResponse
 import io.ktor.http.ContentType
 import io.ktor.http.HttpMethod
 import io.ktor.http.URLBuilder
 import io.ktor.http.URLProtocol
 import io.ktor.http.contentType
+import io.ktor.http.isSuccess
 import io.ktor.http.path
 import io.ktor.http.takeFrom
 import io.ktor.websocket.Frame
 import io.ktor.websocket.readText
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -38,21 +41,27 @@ class JellyfinSyncPlayApi(
         headers.append("X-Emby-Token", accessToken)
     }
 
-    suspend fun groups(): List<JellyfinSyncPlayGroupDto> =
-        client
+    suspend fun groups(): List<JellyfinSyncPlayGroupDto> {
+        val response =
+            client
             .request {
                 method = HttpMethod.Get
                 configure("/SyncPlay/List")
-            }.body()
+            }.requireSyncPlaySuccess()
+        return response.decodeSyncPlayBody()
+    }
 
-    suspend fun createGroup(name: String): JellyfinSyncPlayGroupDto =
-        client
+    suspend fun createGroup(name: String): JellyfinSyncPlayGroupDto {
+        val response =
+            client
             .request {
                 method = HttpMethod.Post
                 configure("/SyncPlay/New")
                 contentType(ContentType.Application.Json)
                 setBody(NewSyncPlayGroupRequest(name.trim().take(MAX_GROUP_NAME_LENGTH)))
-            }.body()
+            }.requireSyncPlaySuccess()
+        return response.decodeSyncPlayBody()
+    }
 
     suspend fun joinGroup(groupId: String) = post("/SyncPlay/Join", JoinSyncPlayGroupRequest(groupId))
 
@@ -113,15 +122,40 @@ class JellyfinSyncPlayApi(
             configure(path)
             contentType(ContentType.Application.Json)
             setBody(body)
-        }
+        }.requireSyncPlaySuccess()
     }
 
     private suspend fun postWithoutBody(path: String) {
         client.request {
             method = HttpMethod.Post
             configure(path)
-        }
+        }.requireSyncPlaySuccess()
     }
+
+    private fun HttpResponse.requireSyncPlaySuccess(): HttpResponse {
+        if (status.isSuccess()) return this
+        val failure =
+            when (status.value) {
+                401 -> JellyfinSyncPlayFailure.UNAUTHORIZED
+                403 -> JellyfinSyncPlayFailure.ACCESS_DENIED
+                else -> JellyfinSyncPlayFailure.INVALID_RESPONSE
+            }
+        throw JellyfinSyncPlayException(failure = failure, statusCode = status.value)
+    }
+
+    private suspend inline fun <reified T> HttpResponse.decodeSyncPlayBody(): T =
+        try {
+            body()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: JellyfinSyncPlayException) {
+            throw failure
+        } catch (_: Throwable) {
+            throw JellyfinSyncPlayException(
+                failure = JellyfinSyncPlayFailure.INVALID_RESPONSE,
+                statusCode = status.value,
+            )
+        }
 
     private fun socketUrl(): String =
         URLBuilder()
@@ -137,6 +171,23 @@ class JellyfinSyncPlayApi(
         const val MAX_GROUP_NAME_LENGTH = 80
     }
 }
+
+enum class JellyfinSyncPlayFailure {
+    UNAUTHORIZED,
+    ACCESS_DENIED,
+    INVALID_RESPONSE,
+}
+
+class JellyfinSyncPlayException(
+    val failure: JellyfinSyncPlayFailure,
+    val statusCode: Int? = null,
+) : RuntimeException(
+        when (failure) {
+            JellyfinSyncPlayFailure.UNAUTHORIZED -> "SyncPlay authentication is required."
+            JellyfinSyncPlayFailure.ACCESS_DENIED -> "SyncPlay access was denied."
+            JellyfinSyncPlayFailure.INVALID_RESPONSE -> "SyncPlay returned an invalid response."
+        },
+    )
 
 @Serializable
 data class JellyfinSyncPlayGroupDto(

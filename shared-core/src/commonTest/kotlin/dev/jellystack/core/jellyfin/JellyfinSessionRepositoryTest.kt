@@ -40,6 +40,19 @@ class JellyfinSessionRepositoryTest {
             assertEquals(JellyfinSyncPlayAccess.NONE, capabilities.syncPlayAccess)
         }
 
+    @Test
+    fun mapsJoinOnlySyncPlayPolicy() =
+        runTest {
+            val capabilities =
+                repositoryWith(
+                    """{"Id":"user-3","Name":"Viewer","Policy":{"SyncPlayAccess":"JoinGroups"}}""",
+                ).refresh()
+
+            assertTrue(capabilities.canJoinSyncPlay)
+            assertFalse(capabilities.canCreateSyncPlay)
+            assertEquals(JellyfinSyncPlayAccess.JOIN_GROUPS, capabilities.syncPlayAccess)
+        }
+
     private fun repositoryWith(responseBody: String): JellyfinSessionRepository {
         val engine =
             MockEngine {

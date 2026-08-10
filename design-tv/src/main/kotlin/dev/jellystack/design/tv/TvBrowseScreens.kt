@@ -37,6 +37,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -44,6 +45,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -74,6 +76,7 @@ import dev.jellystack.core.jellyseerr.JellyseerrRequestSummary
 import dev.jellystack.core.jellyseerr.JellyseerrRequestsState
 import dev.jellystack.core.jellyseerr.JellyseerrSearchItem
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 private enum class TvSearchSource { ALL, JELLYFIN, SEERR }
 
@@ -91,7 +94,7 @@ internal fun TvHomeScreen(
     onSeerrItem: (TvRoute.SeerrDetail) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    if (state.isInitialLoading && state.continueWatching.isEmpty() && state.nextUp.isEmpty()) {
+    if (state.isHomeLoading && state.continueWatching.isEmpty() && state.nextUp.isEmpty()) {
         TvLoading(strings.loading, modifier)
         return
     }
@@ -466,6 +469,7 @@ internal fun TvLibraryScreen(
     onOpenItem: (JellyfinItem) -> Unit,
     onOpenContainer: (JellyfinItem) -> Unit,
     onLoadMore: () -> Unit,
+    onRetry: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LaunchedEffect(route.libraryId) { route.libraryId?.let(onSelectLibrary) }
@@ -479,6 +483,33 @@ internal fun TvLibraryScreen(
         if (restoreId != null) {
             gridState.scrollToItem((snapshot?.verticalIndex ?: 0).coerceAtLeast(0))
             focusRequester.requestFocus()
+        }
+    }
+    LaunchedEffect(
+        route.libraryId,
+        state.libraryItems.size,
+        state.isInitialLoading,
+        state.isPageLoading,
+        state.endReached,
+        state.errorMessage,
+    ) {
+        if (route.libraryId == null) return@LaunchedEffect
+        snapshotFlow {
+            val lastGridIndex = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+            (lastGridIndex - 1).coerceAtMost(state.libraryItems.lastIndex)
+        }.distinctUntilChanged().collect { lastVisibleIndex ->
+            if (
+                shouldLoadNextLibraryPage(
+                    lastVisibleIndex = lastVisibleIndex,
+                    totalItemCount = state.libraryItems.size,
+                    isInitialLoading = state.isInitialLoading,
+                    isPageLoading = state.isPageLoading,
+                    endReached = state.endReached,
+                    hasError = state.errorMessage != null,
+                )
+            ) {
+                onLoadMore()
+            }
         }
     }
     LazyVerticalGrid(
@@ -530,12 +561,49 @@ internal fun TvLibraryScreen(
                     focusToNavigationRailOnLeft = index % 4 == 0,
                 )
             }
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                if (!state.endReached) TvActionButton(strings.loadMore, onLoadMore, modifier = Modifier.width(220.dp))
+            if (state.isInitialLoading || state.isPageLoading) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().height(112.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator(color = TvPurple)
+                    }
+                }
+            } else if (state.errorMessage != null) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Text(strings.libraryLoadFailed, color = Color(0xFFFFA59E), fontSize = 18.sp)
+                        TvActionButton(
+                            strings.retry,
+                            if (state.libraryItems.isEmpty()) onRetry else onLoadMore,
+                            modifier = Modifier.width(220.dp),
+                        )
+                    }
+                }
             }
         }
     }
 }
+
+internal fun shouldLoadNextLibraryPage(
+    lastVisibleIndex: Int,
+    totalItemCount: Int,
+    isInitialLoading: Boolean,
+    isPageLoading: Boolean,
+    endReached: Boolean,
+    hasError: Boolean,
+): Boolean {
+    if (totalItemCount <= 0 || lastVisibleIndex < 0 || isInitialLoading || isPageLoading || endReached || hasError) return false
+    val thresholdIndex = (totalItemCount - 1 - LIBRARY_PREFETCH_ITEM_COUNT).coerceAtLeast(0)
+    return lastVisibleIndex >= thresholdIndex
+}
+
+private const val LIBRARY_PREFETCH_ITEM_COUNT = 8
 
 @Composable
 internal fun TvSearchScreen(

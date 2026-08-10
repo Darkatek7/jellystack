@@ -2,9 +2,12 @@ package dev.jellystack.players.syncplay
 
 import dev.jellystack.core.jellyfin.JellyfinEnvironment
 import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
+import dev.jellystack.core.jellyfin.JellyfinSyncPlayAccess
 import dev.jellystack.network.ClientConfig
 import dev.jellystack.network.NetworkClientFactory
 import dev.jellystack.network.jellyfin.JellyfinSyncPlayApi
+import dev.jellystack.network.jellyfin.JellyfinSyncPlayException
+import dev.jellystack.network.jellyfin.JellyfinSyncPlayFailure
 import dev.jellystack.network.jellyfin.JellyfinSyncPlayGroupDto
 import dev.jellystack.players.PlaybackController
 import dev.jellystack.players.PlaybackPhase
@@ -41,9 +44,23 @@ data class SyncPlayUiState(
     val currentGroup: SyncPlayGroup? = null,
     val loading: Boolean = false,
     val connected: Boolean = false,
-    val error: String? = null,
+    val error: SyncPlayErrorCode? = null,
     val playlistItemId: String? = null,
-)
+    val access: JellyfinSyncPlayAccess = JellyfinSyncPlayAccess.NONE,
+) {
+    val canJoin: Boolean
+        get() = access != JellyfinSyncPlayAccess.NONE
+
+    val canCreate: Boolean
+        get() = access == JellyfinSyncPlayAccess.CREATE_AND_JOIN_GROUPS
+}
+
+enum class SyncPlayErrorCode {
+    ACCESS_DENIED,
+    UNAUTHORIZED,
+    NETWORK,
+    INVALID_RESPONSE,
+}
 
 class SyncPlayCoordinator(
     private val environmentProvider: JellyfinEnvironmentProvider,
@@ -58,6 +75,7 @@ class SyncPlayCoordinator(
                 configure = { install(WebSockets) },
             ),
         ),
+    private val onAccessDenied: suspend () -> Unit = {},
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
 ) {
     private val mutableState = MutableStateFlow(SyncPlayUiState())
@@ -95,11 +113,35 @@ class SyncPlayCoordinator(
     }
 
     fun refresh() {
+        if (!state.value.canJoin) return
         scope.launch { refreshInternal() }
+    }
+
+    fun updateAccess(access: JellyfinSyncPlayAccess) {
+        if (state.value.access == access) return
+        if (access == JellyfinSyncPlayAccess.NONE) {
+            socketJob?.cancel()
+            socketJob = null
+            api = null
+            apiEnvironmentKey = null
+            clearJoinedGroup()
+        }
+        mutableState.value =
+            state.value.copy(
+                access = access,
+                groups = if (access == JellyfinSyncPlayAccess.NONE) emptyList() else state.value.groups,
+                connected = if (access == JellyfinSyncPlayAccess.NONE) false else state.value.connected,
+                loading = false,
+                error = null,
+            )
     }
 
     fun createGroup(name: String) {
         if (name.isBlank()) return
+        if (!state.value.canCreate) {
+            publishError(SyncPlayErrorCode.ACCESS_DENIED)
+            return
+        }
         scope.launch {
             withApi { service ->
                 val group = service.createGroup(name)
@@ -110,6 +152,10 @@ class SyncPlayCoordinator(
     }
 
     fun joinGroup(group: SyncPlayGroup) {
+        if (!state.value.canJoin) {
+            publishError(SyncPlayErrorCode.ACCESS_DENIED)
+            return
+        }
         scope.launch {
             withApi { service ->
                 service.joinGroup(group.id)
@@ -301,7 +347,24 @@ class SyncPlayCoordinator(
     }
 
     private fun publishError(failure: Throwable) {
-        mutableState.value = state.value.copy(loading = false, error = failure.message ?: "SyncPlay connection failed")
+        val error =
+            when (failure) {
+                is JellyfinSyncPlayException ->
+                    when (failure.failure) {
+                        JellyfinSyncPlayFailure.ACCESS_DENIED -> SyncPlayErrorCode.ACCESS_DENIED
+                        JellyfinSyncPlayFailure.UNAUTHORIZED -> SyncPlayErrorCode.UNAUTHORIZED
+                        JellyfinSyncPlayFailure.INVALID_RESPONSE -> SyncPlayErrorCode.INVALID_RESPONSE
+                    }
+                else -> SyncPlayErrorCode.NETWORK
+            }
+        publishError(error)
+    }
+
+    private fun publishError(error: SyncPlayErrorCode) {
+        mutableState.value = state.value.copy(loading = false, connected = false, error = error)
+        if (error == SyncPlayErrorCode.ACCESS_DENIED) {
+            scope.launch { onAccessDenied() }
+        }
     }
 
     private fun JellyfinSyncPlayGroupDto.toDomain(): SyncPlayGroup = SyncPlayGroup(groupId, groupName, state, participants)

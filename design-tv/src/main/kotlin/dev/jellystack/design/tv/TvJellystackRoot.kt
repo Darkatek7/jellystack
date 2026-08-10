@@ -61,6 +61,9 @@ import dev.jellystack.core.jellyfin.JellyfinBrowseCoordinator
 import dev.jellystack.core.jellyfin.JellyfinBrowseRepository
 import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
 import dev.jellystack.core.jellyfin.JellyfinFavoritesStoreApi
+import dev.jellystack.core.jellyfin.JellyfinSessionRepository
+import dev.jellystack.core.jellyfin.JellyfinSessionState
+import dev.jellystack.core.jellyfin.JellyfinSyncPlayAccess
 import dev.jellystack.core.jellyseerr.JellyseerrEnvironmentProvider
 import dev.jellystack.core.jellyseerr.JellyseerrMediaAvailability
 import dev.jellystack.core.jellyseerr.JellyseerrRecommendationsCoordinator
@@ -136,6 +139,7 @@ private fun TvAuthenticatedApp(
     val scope = rememberCoroutineScope()
     val browseRepository = remember { koin.get<JellyfinBrowseRepository>() }
     val environmentProvider = remember { koin.get<JellyfinEnvironmentProvider>() }
+    val sessionRepository = remember { koin.get<JellyfinSessionRepository>() }
     val browseCoordinator =
         remember {
             JellyfinBrowseCoordinator(
@@ -199,6 +203,7 @@ private fun TvAuthenticatedApp(
                         environment,
                     )
                 },
+                onAccessDenied = { sessionRepository.refresh() },
                 scope = scope,
             )
         }
@@ -209,6 +214,7 @@ private fun TvAuthenticatedApp(
     val details by recommendationsCoordinator.details.collectAsStateWithLifecycle()
     val settings by settingsRepository.settings.collectAsStateWithLifecycle()
     val playbackState by playbackController.state.collectAsStateWithLifecycle()
+    val sessionState by sessionRepository.state.collectAsStateWithLifecycle()
     val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateFlow
         .collectAsStateWithLifecycle()
     val focusMemory = remember { TvFocusMemory() }
@@ -239,6 +245,9 @@ private fun TvAuthenticatedApp(
             )
         }
     val autoplayState by autoplayCoordinator.state.collectAsStateWithLifecycle()
+    val syncPlayAccess =
+        (sessionState as? JellyfinSessionState.Ready)?.capabilities?.syncPlayAccess
+            ?: JellyfinSyncPlayAccess.NONE
 
     fun push(route: TvRoute) {
         if (backStack.lastOrNull() != route) backStack.add(route)
@@ -265,6 +274,12 @@ private fun TvAuthenticatedApp(
             enabledByUser = settings.useServerHomeSections,
             language = settings.appLanguage.languageTag,
         )
+    }
+    LaunchedEffect(serverRepository.currentServers()) {
+        sessionRepository.refresh()
+    }
+    LaunchedEffect(syncPlayAccess) {
+        syncPlay.updateAccess(syncPlayAccess)
     }
     LaunchedEffect(playbackState) { autoplayCoordinator.onPlaybackState(playbackState) }
     LaunchedEffect(lifecycleState) {
@@ -338,6 +353,7 @@ private fun TvAuthenticatedApp(
                                     onOpenItem = { push(TvRoute.JellyfinDetail(it.id)) },
                                     onOpenContainer = browseCoordinator::openContainer,
                                     onLoadMore = browseCoordinator::loadNextPage,
+                                    onRetry = browseCoordinator::refreshSelectedLibrary,
                                 )
                             TvRoute.Search ->
                                 TvSearchScreen(
