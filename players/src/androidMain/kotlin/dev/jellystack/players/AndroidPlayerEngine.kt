@@ -59,6 +59,9 @@ class AndroidPlayerEngine(
     private var subtitleBackground: SubtitleBackground = SubtitleBackground.SYSTEM
     private var firstFrameRendered = false
     private var firstFrameWatchdog: Job? = null
+    private var expectsAudioOutput = false
+    private var audioOutputUnavailableReported = false
+    private var audioOutputWatchdog: Job? = null
 
     private val exoPlayer =
         ExoPlayer
@@ -89,6 +92,7 @@ class AndroidPlayerEngine(
                                 Player.STATE_READY -> {
                                     eventFlow.tryEmit(PlayerEvent.Ready)
                                     scheduleFirstFrameWatchdog()
+                                    scheduleAudioOutputWatchdog()
                                 }
                                 Player.STATE_ENDED -> eventFlow.tryEmit(PlayerEvent.Completed)
                             }
@@ -96,6 +100,7 @@ class AndroidPlayerEngine(
 
                         override fun onPlayerError(error: PlaybackException) {
                             firstFrameWatchdog?.cancel()
+                            audioOutputWatchdog?.cancel()
                             scope.launch { eventFlow.emit(PlayerEvent.Error(error)) }
                         }
 
@@ -113,6 +118,11 @@ class AndroidPlayerEngine(
 
                         override fun onTracksChanged(tracks: Tracks) {
                             scheduleFirstFrameWatchdog()
+                            if (tracks.hasSelectedAudioTrack()) {
+                                audioOutputWatchdog?.cancel()
+                            } else {
+                                scheduleAudioOutputWatchdog()
+                            }
                             val audioResult = applyAudioTrack(pendingAudioTrack)
                             val subtitleResult = applySubtitleTrack(pendingSubtitleTrack)
                             val pendingTrackId = pendingAudioSelectionConfirmationId
@@ -243,7 +253,10 @@ class AndroidPlayerEngine(
         subtitleTrack: SubtitleTrack?,
     ) {
         firstFrameWatchdog?.cancel()
+        audioOutputWatchdog?.cancel()
         firstFrameRendered = false
+        expectsAudioOutput = audioTrack != null || source.audioStreamIndex != null
+        audioOutputUnavailableReported = false
         pendingAudioTrack = audioTrack
         pendingSubtitleTrack = subtitleTrack
         withContext(Dispatchers.Main) {
@@ -325,6 +338,8 @@ class AndroidPlayerEngine(
 
     override fun stop() {
         firstFrameWatchdog?.cancel()
+        audioOutputWatchdog?.cancel()
+        expectsAudioOutput = false
         exoPlayer.stop()
         exoPlayer.clearMediaItems()
     }
@@ -375,6 +390,7 @@ class AndroidPlayerEngine(
 
     override fun release() {
         firstFrameWatchdog?.cancel()
+        audioOutputWatchdog?.cancel()
         positionJob.cancel()
         exoPlayer.release()
         scope.cancel()
@@ -390,6 +406,34 @@ class AndroidPlayerEngine(
                 delay(FIRST_FRAME_TIMEOUT_MS)
                 if (!firstFrameRendered && exoPlayer.playWhenReady && exoPlayer.videoFormat != null) {
                     eventFlow.emit(PlayerEvent.VideoOutputStalled)
+                }
+            }
+    }
+
+    private fun scheduleAudioOutputWatchdog() {
+        if (
+            !expectsAudioOutput ||
+            audioOutputUnavailableReported ||
+            !exoPlayer.playWhenReady ||
+            exoPlayer.audioFormat != null ||
+            exoPlayer.currentTracks.hasSelectedAudioTrack()
+        ) {
+            return
+        }
+        audioOutputWatchdog?.cancel()
+        audioOutputWatchdog =
+            scope.launch {
+                delay(AUDIO_OUTPUT_TIMEOUT_MS)
+                if (
+                    expectsAudioOutput &&
+                    !audioOutputUnavailableReported &&
+                    exoPlayer.playWhenReady &&
+                    exoPlayer.playbackState == Player.STATE_READY &&
+                    exoPlayer.audioFormat == null &&
+                    !exoPlayer.currentTracks.hasSelectedAudioTrack()
+                ) {
+                    audioOutputUnavailableReported = true
+                    eventFlow.emit(PlayerEvent.AudioOutputUnavailable)
                 }
             }
     }
@@ -613,7 +657,10 @@ class AndroidPlayerEngine(
     }
 
     private companion object {
+        private const val AUDIO_OUTPUT_TIMEOUT_MS = 1_500L
         private const val FIRST_FRAME_TIMEOUT_MS = 8_000L
         private const val POSITION_POLL_INTERVAL_MS = 500L
     }
 }
+
+private fun Tracks.hasSelectedAudioTrack(): Boolean = groups.any { group -> group.type == C.TRACK_TYPE_AUDIO && group.isSelected }

@@ -1,5 +1,13 @@
 # Release Notes
 
+## 0.16.0-tv-beta.2
+
+- Negotiate playback codecs, HLS containers, and audio channel limits from the capabilities of each TV.
+- Fix missing audio when playback starts and preserve working audio when changing languages.
+- Restart HLS sessions cleanly when switching audio tracks instead of reusing stale transcodes.
+- Keep Auto quality at the best reliable source resolution and bitrate while retaining manual quality controls.
+- Improve compatibility for AV1, HEVC, H.264, AAC, AC3, and EAC3 across Android TV and Fire TV devices.
+
 ## 0.16.0-tv-beta.1
 
 - Add a dedicated remote-first interface for Android TV, Google TV, and Fire TV.

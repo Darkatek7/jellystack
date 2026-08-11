@@ -36,11 +36,19 @@ data class PlaybackDecoderCapabilities(
             PlaybackAudioCodec.MP3,
         ),
     val maxAacChannelCount: Int? = null,
+    val maxAudioChannelCounts: Map<PlaybackAudioCodec, Int> = emptyMap(),
     val maxStreamingBitrate: Int? = null,
 )
 
 fun interface PlaybackDeviceProfileProvider {
     fun deviceProfile(): JellyfinDeviceProfileDto
+
+    /**
+     * TV implementations can expose an audio rendition as selectable while failing to route it
+     * to the active output. Resolve one server-selected compatibility rendition before the first
+     * prepare so initial playback follows the same reliable path as an explicit track switch.
+     */
+    fun requiresServerSelectedAudioForVideo(): Boolean = false
 }
 
 object PlaybackDeviceProfileFactory {
@@ -55,20 +63,32 @@ object PlaybackDeviceProfileFactory {
                 PlaybackVideoCodec.VP9,
                 PlaybackVideoCodec.H264,
             ).filter(capabilities.videoCodecs::contains)
-        val transcodeCodecs =
+        // Match Jellyfin Android TV: modern codecs are valid Direct Play inputs, but HLS
+        // encoder targets are limited to codecs the server can package reliably.
+        val hlsVideoCodecs =
             listOf(
-                PlaybackVideoCodec.AV1,
                 PlaybackVideoCodec.HEVC,
-                PlaybackVideoCodec.VP9,
                 PlaybackVideoCodec.H264,
             ).filter(capabilities.videoCodecs::contains)
-        val transcodeAudioCodecs =
+        val hlsMpegTsAudioCodecs =
             listOf(
-                PlaybackAudioCodec.EAC3,
-                PlaybackAudioCodec.AC3,
                 PlaybackAudioCodec.AAC,
+                PlaybackAudioCodec.AC3,
+                PlaybackAudioCodec.EAC3,
                 PlaybackAudioCodec.MP3,
             ).filter(capabilities.audioCodecs::contains)
+        val hlsFmp4AudioCodecs =
+            listOf(
+                PlaybackAudioCodec.AAC,
+                PlaybackAudioCodec.AC3,
+                PlaybackAudioCodec.EAC3,
+                PlaybackAudioCodec.MP3,
+                PlaybackAudioCodec.FLAC,
+                PlaybackAudioCodec.OPUS,
+            ).filter(capabilities.audioCodecs::contains)
+        val maxTranscodeAudioChannels =
+            hlsFmp4AudioCodecs.mapNotNull(capabilities.maxAudioChannelCounts::get).maxOrNull()
+                ?: capabilities.maxAacChannelCount
 
         fun directProfile(
             container: String,
@@ -140,15 +160,30 @@ object PlaybackDeviceProfileFactory {
                     ),
                 ),
             transcodingProfiles =
-                if (transcodeAudioCodecs.isEmpty()) {
+                if (hlsVideoCodecs.isEmpty() || hlsMpegTsAudioCodecs.isEmpty()) {
                     emptyList()
                 } else {
-                    transcodeCodecs.map {
-                        JellyfinTranscodingProfileDto(
-                            videoCodec = it.jellyfinName,
-                            audioCodec = transcodeAudioCodecs.joinToString(",") { codec -> codec.jellyfinName },
-                            maxAudioChannels = capabilities.maxAacChannelCount?.toString(),
+                    buildList {
+                        add(
+                            JellyfinTranscodingProfileDto(
+                                container = "ts",
+                                videoCodec = hlsVideoCodecs.joinToString(",") { codec -> codec.jellyfinName },
+                                audioCodec = hlsMpegTsAudioCodecs.joinToString(",") { codec -> codec.jellyfinName },
+                                maxAudioChannels = maxTranscodeAudioChannels?.toString(),
+                                breakOnNonKeyFrames = true,
+                            ),
                         )
+                        if (hlsFmp4AudioCodecs.isNotEmpty()) {
+                            add(
+                                JellyfinTranscodingProfileDto(
+                                    container = "mp4",
+                                    videoCodec = hlsVideoCodecs.joinToString(",") { codec -> codec.jellyfinName },
+                                    audioCodec = hlsFmp4AudioCodecs.joinToString(",") { codec -> codec.jellyfinName },
+                                    maxAudioChannels = maxTranscodeAudioChannels?.toString(),
+                                    breakOnNonKeyFrames = false,
+                                ),
+                            )
+                        }
                     }
                 },
             subtitleProfiles =
@@ -159,23 +194,45 @@ object PlaybackDeviceProfileFactory {
                     JellyfinSubtitleProfileDto("ssa"),
                 ),
             codecProfiles =
-                capabilities.maxAacChannelCount
-                    ?.takeIf { PlaybackAudioCodec.AAC in capabilities.audioCodecs }
-                    ?.let { maxChannels ->
-                        listOf(
-                            JellyfinCodecProfileDto(
-                                codec = PlaybackAudioCodec.AAC.jellyfinName,
-                                conditions =
-                                    listOf(
-                                        JellyfinProfileConditionDto(
-                                            condition = "LessThanEqual",
-                                            property = "AudioChannels",
-                                            value = maxChannels.toString(),
+                buildList {
+                    capabilities.maxAudioChannelCounts.forEach { (codec, maxChannels) ->
+                        if (codec in capabilities.audioCodecs) {
+                            add(
+                                JellyfinCodecProfileDto(
+                                    codec = codec.jellyfinName,
+                                    conditions =
+                                        listOf(
+                                            JellyfinProfileConditionDto(
+                                                condition = "LessThanEqual",
+                                                property = "AudioChannels",
+                                                value = maxChannels.toString(),
+                                            ),
                                         ),
-                                    ),
-                            ),
-                        )
-                    }.orEmpty(),
+                                ),
+                            )
+                        }
+                    }
+                    if (
+                        PlaybackAudioCodec.AAC in capabilities.audioCodecs &&
+                        PlaybackAudioCodec.AAC !in capabilities.maxAudioChannelCounts
+                    ) {
+                        capabilities.maxAacChannelCount?.let { maxChannels ->
+                            add(
+                                JellyfinCodecProfileDto(
+                                    codec = PlaybackAudioCodec.AAC.jellyfinName,
+                                    conditions =
+                                        listOf(
+                                            JellyfinProfileConditionDto(
+                                                condition = "LessThanEqual",
+                                                property = "AudioChannels",
+                                                value = maxChannels.toString(),
+                                            ),
+                                        ),
+                                ),
+                            )
+                        }
+                    }
+                },
         )
     }
 }

@@ -2,6 +2,7 @@ package dev.jellystack.network.jellyfin
 
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
+import io.ktor.client.request.delete
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
 import io.ktor.client.request.post
@@ -18,6 +19,21 @@ class JellyfinPlaybackApi(
     private val baseUrl: String,
     private val accessToken: String,
 ) {
+    suspend fun stopEncodingProcess(
+        deviceId: String,
+        playSessionId: String,
+    ) {
+        client.delete {
+            url {
+                takeFrom(baseUrl)
+                path("Videos/ActiveEncodings")
+            }
+            header("X-Emby-Token", accessToken)
+            parameter("DeviceId", deviceId)
+            parameter("PlaySessionId", playSessionId)
+        }
+    }
+
     suspend fun fetchPlaybackInfo(
         itemId: String,
         userId: String,

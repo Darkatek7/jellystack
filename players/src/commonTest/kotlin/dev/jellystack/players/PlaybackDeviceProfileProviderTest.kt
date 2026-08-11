@@ -33,8 +33,10 @@ class PlaybackDeviceProfileProviderTest {
         assertEquals("av1,vp9", profile.directPlayProfiles[2].videoCodec)
         assertEquals("hevc,h264", profile.directPlayProfiles[3].videoCodec)
         assertEquals("opus,vorbis", profile.directPlayProfiles[2].audioCodec)
-        assertEquals(listOf("av1", "hevc", "vp9", "h264"), profile.transcodingProfiles.map { it.videoCodec })
-        assertTrue(profile.transcodingProfiles.all { it.audioCodec == "eac3,ac3,aac,mp3" })
+        assertEquals(listOf("ts", "mp4"), profile.transcodingProfiles.map { it.container })
+        assertTrue(profile.transcodingProfiles.all { it.videoCodec == "hevc,h264" })
+        assertEquals("aac,ac3,eac3,mp3", profile.transcodingProfiles[0].audioCodec)
+        assertEquals("aac,ac3,eac3,mp3,flac,opus", profile.transcodingProfiles[1].audioCodec)
     }
 
     @Test
@@ -51,7 +53,8 @@ class PlaybackDeviceProfileProviderTest {
         )
         assertTrue(profile.directPlayProfiles.all { it.videoCodec == "h264" })
         assertFalse(profile.directPlayProfiles.any { it.container == "webm" })
-        assertEquals(listOf("h264"), profile.transcodingProfiles.map { it.videoCodec })
+        assertEquals(listOf("ts", "mp4"), profile.transcodingProfiles.map { it.container })
+        assertTrue(profile.transcodingProfiles.all { it.videoCodec == "h264" })
     }
 
     @Test
@@ -117,7 +120,7 @@ class PlaybackDeviceProfileProviderTest {
             )
 
         assertEquals(120_000_000, profile.maxStreamingBitrate)
-        assertEquals("2", profile.transcodingProfiles.single().maxAudioChannels)
+        assertTrue(profile.transcodingProfiles.all { it.maxAudioChannels == "2" })
         val aacProfile = profile.codecProfiles.single { it.codec == "aac" }
         assertEquals("VideoAudio", aacProfile.type)
         assertEquals("LessThanEqual", aacProfile.conditions.single().condition)

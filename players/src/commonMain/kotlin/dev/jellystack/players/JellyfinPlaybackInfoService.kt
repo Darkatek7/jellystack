@@ -15,11 +15,25 @@ fun interface JellyfinPlaybackInfoService {
         userId: String,
         request: JellyfinPlaybackInfoRequestDto,
     ): JellyfinPlaybackInfoResponseDto
+
+    suspend fun stopEncoding(
+        environment: JellyfinEnvironment,
+        playSessionId: String,
+    ) = Unit
 }
 
 class NetworkJellyfinPlaybackInfoService(
     private val client: HttpClient = NetworkClientFactory.create(ClientConfig(installLogging = false)),
 ) : JellyfinPlaybackInfoService {
+    override suspend fun stopEncoding(
+        environment: JellyfinEnvironment,
+        playSessionId: String,
+    ) {
+        val deviceId = environment.deviceId ?: return
+        JellyfinPlaybackApi(client, environment.baseUrl, environment.accessToken)
+            .stopEncodingProcess(deviceId, playSessionId)
+    }
+
     override suspend fun fetch(
         environment: JellyfinEnvironment,
         itemId: String,
