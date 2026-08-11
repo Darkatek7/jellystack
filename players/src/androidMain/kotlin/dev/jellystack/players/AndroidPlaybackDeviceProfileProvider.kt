@@ -69,6 +69,10 @@ class AndroidTvPlaybackDeviceProfileProvider(
             .asSequence()
             .flatMap { codecInfo ->
                 codecInfo.supportedTypes.asSequence().map { mimeType ->
+                    val maxAudioChannelCount =
+                        runCatching {
+                            codecInfo.getCapabilitiesForType(mimeType).audioCapabilities?.maxInputChannelCount
+                        }.getOrNull()
                     PlaybackDecoderDescriptor(
                         mimeType = mimeType.lowercase(),
                         isHardwareAccelerated =
@@ -80,6 +84,7 @@ class AndroidTvPlaybackDeviceProfileProvider(
                             },
                         isAlias = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && codecInfo.isAlias,
                         isEncoder = codecInfo.isEncoder,
+                        maxAudioChannelCount = maxAudioChannelCount,
                     )
                 }
             }.toList()
@@ -91,6 +96,8 @@ class AndroidTvPlaybackDeviceProfileProvider(
             Build.PRODUCT.contains("sdk", ignoreCase = true)
     },
 ) : PlaybackDeviceProfileProvider {
+    override fun requiresServerSelectedAudioForVideo(): Boolean = true
+
     override fun deviceProfile(): JellyfinDeviceProfileDto =
         PlaybackDeviceProfileFactory.create(
             name = "Jellystack TV",

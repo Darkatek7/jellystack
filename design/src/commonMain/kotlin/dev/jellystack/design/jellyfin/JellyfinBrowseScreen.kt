@@ -294,6 +294,7 @@ internal fun JellyfinBrowseScreen(
     spotlightLogoPainter: Painter? = null,
     spotlightAutoAdvanceEnabled: Boolean = true,
     spotlightAutoAdvanceIntervalMillis: Long = 6_000L,
+    spotlightEligibilityNow: Instant? = null,
 ) {
     val shellDestination = libraryNavigationState.destination
     val responsiveProfile = LocalResponsiveProfile.current
@@ -915,13 +916,16 @@ internal fun JellyfinBrowseScreen(
                     .take(12)
                     .toList()
             }
-        val spotlightEligibilityNow = remember { Clock.System.now() }
+        val resolvedSpotlightEligibilityNow =
+            remember(spotlightEligibilityNow) {
+                spotlightEligibilityNow ?: Clock.System.now()
+            }
         val spotlightCandidates =
-            remember(state.recentShows, state.recentMovies, state.libraryItems, spotlightEligibilityNow) {
+            remember(state.recentShows, state.recentMovies, state.libraryItems, resolvedSpotlightEligibilityNow) {
                 buildSpotlightCandidates(
                     recentShows = state.recentShows,
                     recentMovies = state.recentMovies,
-                    now = spotlightEligibilityNow,
+                    now = resolvedSpotlightEligibilityNow,
                     libraryItems = state.libraryItems,
                 )
             }

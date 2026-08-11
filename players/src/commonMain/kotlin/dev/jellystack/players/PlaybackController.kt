@@ -81,6 +81,7 @@ class PlaybackController(
     private var subtitleSwitchGeneration = 0L
     private var playGeneration = 0L
     private var directFallbackAttempted = false
+    private var hlsAudioFallbackAttempted = false
     private var hlsForcedTranscodeFallbackAttempted = false
     private var hlsContainerFallbackAttempted = false
     private val streamingReportMutex = Mutex()
@@ -128,6 +129,7 @@ class PlaybackController(
         check(!released) { "PlaybackController has been released" }
         stopInternal(saveProgress = true, clearRetryContext = false)
         directFallbackAttempted = false
+        hlsAudioFallbackAttempted = false
         hlsForcedTranscodeFallbackAttempted = false
         hlsContainerFallbackAttempted = false
         val attemptGeneration = playGeneration
@@ -891,7 +893,8 @@ class PlaybackController(
                                 PlaybackSourceOptions(
                                     audioStreamIndex = audio.streamIndex,
                                     subtitleStreamIndex = current.subtitleTrack?.streamIndex ?: SUBTITLES_DISABLED_INDEX,
-                                    playSessionId = current.source.playSessionId,
+                                    forceAudioTranscoding = true,
+                                    stopEncodingPlaySessionId = current.source.playSessionId,
                                 ),
                         )
                     currentCoroutineContext().ensureActive()
@@ -1185,25 +1188,11 @@ class PlaybackController(
         positionMs: Long,
         audioTrack: AudioTrack?,
         subtitleTrack: SubtitleTrack?,
-    ): ResolvedPlaybackSource {
-        val withTracks =
-            applyPlaybackIndicesToUrl(
-                url = url,
-                audioStreamIndex = audioTrack?.streamIndex,
-                subtitleStreamIndex = subtitleTrack?.streamIndex ?: SUBTITLES_DISABLED_INDEX,
-            )
-        val reconciledUrl =
-            if (mode == PlaybackMode.HLS && !isFallbackHls) {
-                withQueryParameter(withTracks, "StartTimeTicks", positionMs.coerceAtLeast(0L).toTicks().toString())
-            } else {
-                withTracks
-            }
-        return copy(
-            url = reconciledUrl,
+    ): ResolvedPlaybackSource =
+        copy(
             audioStreamIndex = audioTrack?.streamIndex,
             subtitleStreamIndex = subtitleTrack?.streamIndex ?: SUBTITLES_DISABLED_INDEX,
         )
-    }
 
     private fun PlaybackRequest.validPlaybackPosition(
         positionMs: Long,
@@ -1649,6 +1638,11 @@ class PlaybackController(
                                 publishPlaybackError(IllegalStateException("Video output did not start."))
                             }
                         }
+                        PlayerEvent.AudioOutputUnavailable -> {
+                            if (!attemptPlaybackFallback(audioOutputUnavailable = true)) {
+                                publishPlaybackError(IllegalStateException("Audio output did not start."))
+                            }
+                        }
                         is PlayerEvent.AudioTrackSelectionApplied ->
                             confirmPendingAudioSelection(event.trackId)
                         is PlayerEvent.AudioTrackSelectionUnavailable ->
@@ -1735,7 +1729,10 @@ class PlaybackController(
         publishCurrentState(updated)
     }
 
-    private fun attemptPlaybackFallback(originalError: Throwable? = null): Boolean {
+    private fun attemptPlaybackFallback(
+        originalError: Throwable? = null,
+        audioOutputUnavailable: Boolean = false,
+    ): Boolean {
         val current = session ?: return false
         val environment = lastEnvironment ?: return false
         if (current.stream.mode == PlaybackMode.LOCAL || current.source.supportsTranscoding != true) return false
@@ -1744,7 +1741,8 @@ class PlaybackController(
                 PlaybackMode.DIRECT -> {
                     if (directFallbackAttempted) return false
                     directFallbackAttempted = true
-                    val audioOnlyFallback = originalError.isAudioDecoderFailure()
+                    val audioOnlyFallback = audioOutputUnavailable || originalError.isAudioDecoderFailure()
+                    hlsAudioFallbackAttempted = audioOnlyFallback
                     hlsForcedTranscodeFallbackAttempted = !audioOnlyFallback
                     PlaybackSourceOptions(
                         audioStreamIndex = current.audioTrack?.streamIndex,
@@ -1756,7 +1754,17 @@ class PlaybackController(
                 }
 
                 PlaybackMode.HLS -> {
-                    if (!hlsForcedTranscodeFallbackAttempted) {
+                    val audioOnlyFallback = audioOutputUnavailable || originalError.isAudioDecoderFailure()
+                    if (audioOnlyFallback && !hlsAudioFallbackAttempted) {
+                        hlsAudioFallbackAttempted = true
+                        PlaybackSourceOptions(
+                            audioStreamIndex = current.audioTrack?.streamIndex,
+                            subtitleStreamIndex = current.subtitleTrack?.streamIndex ?: SUBTITLES_DISABLED_INDEX,
+                            playSessionId = current.source.playSessionId,
+                            forceAudioTranscoding = true,
+                            preferFmp4Hls = current.source.segmentContainer.equals("mp4", true),
+                        )
+                    } else if (!hlsForcedTranscodeFallbackAttempted) {
                         hlsForcedTranscodeFallbackAttempted = true
                         PlaybackSourceOptions(
                             audioStreamIndex = current.audioTrack?.streamIndex,

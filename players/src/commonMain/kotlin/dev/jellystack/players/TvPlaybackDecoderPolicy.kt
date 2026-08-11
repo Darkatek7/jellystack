@@ -6,6 +6,7 @@ data class PlaybackDecoderDescriptor(
     val isHardwareAccelerated: Boolean,
     val isAlias: Boolean = false,
     val isEncoder: Boolean = false,
+    val maxAudioChannelCount: Int? = null,
 )
 
 /**
@@ -42,6 +43,27 @@ fun selectTvDecoderCapabilities(
             if (supportsAudio("audio/flac")) add(PlaybackAudioCodec.FLAC)
         }
 
+    fun maxChannelsFor(vararg mimeTypes: String): Int? =
+        usable
+            .filter { decoder -> mimeTypes.any { decoder.mimeType.equals(it, ignoreCase = true) } }
+            .mapNotNull(PlaybackDecoderDescriptor::maxAudioChannelCount)
+            .maxOrNull()
+
+    val maxAudioChannelCounts =
+        buildMap {
+            if (PlaybackAudioCodec.AAC in audioCodecs) {
+                put(PlaybackAudioCodec.AAC, maxChannelsFor("audio/mp4a-latm", "audio/aac") ?: 2)
+            }
+            if (PlaybackAudioCodec.MP3 in audioCodecs) put(PlaybackAudioCodec.MP3, 2)
+            if (PlaybackAudioCodec.AC3 in audioCodecs) put(PlaybackAudioCodec.AC3, maxChannelsFor("audio/ac3") ?: 6)
+            if (PlaybackAudioCodec.EAC3 in audioCodecs) {
+                put(PlaybackAudioCodec.EAC3, maxChannelsFor("audio/eac3", "audio/eac3-joc") ?: 6)
+            }
+            if (PlaybackAudioCodec.OPUS in audioCodecs) put(PlaybackAudioCodec.OPUS, maxChannelsFor("audio/opus") ?: 8)
+            if (PlaybackAudioCodec.VORBIS in audioCodecs) put(PlaybackAudioCodec.VORBIS, maxChannelsFor("audio/vorbis") ?: 8)
+            if (PlaybackAudioCodec.FLAC in audioCodecs) put(PlaybackAudioCodec.FLAC, maxChannelsFor("audio/flac") ?: 8)
+        }
+
     return PlaybackDecoderCapabilities(
         videoCodecs =
             buildSet {
@@ -53,9 +75,8 @@ fun selectTvDecoderCapabilities(
                 if (supportsVideo("video/avc", requireHardware = false)) add(PlaybackVideoCodec.H264)
             },
         audioCodecs = audioCodecs,
-        // TV codec registries often claim multichannel AAC support even when their platform
-        // decoder crashes at runtime. Stereo AAC is the interoperable HLS fallback baseline.
-        maxAacChannelCount = if (PlaybackAudioCodec.AAC in audioCodecs) 2 else null,
+        maxAacChannelCount = maxAudioChannelCounts[PlaybackAudioCodec.AAC],
+        maxAudioChannelCounts = maxAudioChannelCounts,
         // Keep Auto quality visually lossless on the big screen. Manual quality selections still
         // override this ceiling for an individual playback session.
         maxStreamingBitrate = 120_000_000,

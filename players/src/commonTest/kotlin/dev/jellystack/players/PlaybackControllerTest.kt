@@ -1270,7 +1270,7 @@ class PlaybackControllerTest {
                 val state = controller.state.value as PlaybackState.Active
                 assertEquals(0L, state.positionMs)
                 assertEquals(0L, engine.lastStartPositionMs)
-                assertEquals("0", state.source.url.queryParameter("StartTimeTicks"))
+                assertEquals(null, state.source.url.queryParameter("StartTimeTicks"))
             } finally {
                 controller.release()
             }
@@ -1369,8 +1369,10 @@ class PlaybackControllerTest {
                 assertEquals(23_456L, engine.lastStartPositionMs)
                 assertEquals("8", engine.lastAudioTrack?.id)
                 assertEquals("3", engine.lastSubtitleTrack?.id)
-                assertEquals("8", state.source.url.queryParameter("AudioStreamIndex"))
-                assertEquals("234560000", state.source.url.queryParameter("StartTimeTicks"))
+                assertEquals(8, state.source.audioStreamIndex)
+                assertEquals(3, state.source.subtitleStreamIndex)
+                assertEquals(null, state.source.url.queryParameter("AudioStreamIndex"))
+                assertEquals(null, state.source.url.queryParameter("StartTimeTicks"))
                 assertTrue(state.source.url.endsWith("#playback-fragment"))
             } finally {
                 controller.release()
@@ -2578,6 +2580,35 @@ class PlaybackControllerTest {
         }
 
     @Test
+    fun missingHlsAudioOutputUsesAudioOnlyFallbackBeforeReencodingVideo() =
+        runTest {
+            val engine = RecordingPlayerEngine()
+            val resolver = HlsContainerFallbackPlaybackSourceResolver()
+            val controllerScope = TestScope(UnconfinedTestDispatcher(testScheduler))
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = resolver,
+                    playerEngine = engine,
+                    scope = controllerScope,
+                )
+            val request = PlaybackRequest.from(sampleItem(), sampleDetail(withDirect = true))
+
+            try {
+                controller.play(request, testEnvironment())
+                engine.emitPosition(31_000L)
+                engine.emitEvent(PlayerEvent.AudioOutputUnavailable)
+                controllerScope.advanceUntilIdle()
+
+                val options = resolver.requests.last()
+                assertTrue(options.forceAudioTranscoding)
+                assertFalse(options.forceTranscoding)
+                assertEquals(31_000L, controller.currentSession()?.positionMs)
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
     fun tsHlsFailureForcesEncodingBeforeTryingFmp4WithoutLosingSessionState() =
         runTest {
             val engine = RecordingPlayerEngine()
@@ -2625,6 +2656,54 @@ class PlaybackControllerTest {
                 controllerScope.advanceUntilIdle()
                 assertTrue(controller.state.value is PlaybackState.PlaybackError)
                 assertEquals(3, engine.prepareCount)
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
+    fun hlsAudioSwitchRenegotiatesWithoutReusingTheBrokenFmp4Session() =
+        runTest {
+            val engine = RecordingPlayerEngine()
+            val resolver = HlsContainerFallbackPlaybackSourceResolver()
+            val controllerScope = TestScope(UnconfinedTestDispatcher(testScheduler))
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = resolver,
+                    playerEngine = engine,
+                    scope = controllerScope,
+                )
+            val request =
+                PlaybackRequest.from(
+                    sampleItem(),
+                    sampleDetail(includeJapaneseAudio = true),
+                )
+
+            try {
+                controller.play(request, testEnvironment())
+                engine.emitEvent(PlayerEvent.Error(IllegalStateException("Malformed MPEG-TS SPS")))
+                controllerScope.advanceUntilIdle()
+                engine.emitEvent(PlayerEvent.Error(IllegalStateException("Forced MPEG-TS failed")))
+                controllerScope.advanceUntilIdle()
+
+                assertEquals("mp4", controller.currentSession()?.source?.segmentContainer)
+                val beforeSwitch = assertNotNull(controller.currentSession())
+                val targetAudio =
+                    assertNotNull(
+                        beforeSwitch.stream.audioTracks.firstOrNull { it.id != beforeSwitch.audioTrack?.id },
+                    )
+
+                controller.selectAudioTrack(targetAudio.id)
+                controllerScope.advanceUntilIdle()
+
+                val switchOptions = resolver.requests.last()
+                assertFalse(switchOptions.forceTranscoding)
+                assertTrue(switchOptions.forceAudioTranscoding)
+                assertFalse(switchOptions.preferFmp4Hls)
+                assertEquals(beforeSwitch.source.playSessionId, switchOptions.stopEncodingPlaySessionId)
+                assertEquals(null, switchOptions.playSessionId)
+                assertEquals("ts", controller.currentSession()?.source?.segmentContainer)
+                assertEquals(targetAudio.id, controller.currentSession()?.audioTrack?.id)
             } finally {
                 controller.release()
             }

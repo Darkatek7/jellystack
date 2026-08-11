@@ -25,6 +25,9 @@ sealed interface PlayerEvent {
     /** The player became ready but no video frame reached the surface in time. */
     data object VideoOutputStalled : PlayerEvent
 
+    /** The source declared audio, but the prepared media contained no playable audio output. */
+    data object AudioOutputUnavailable : PlayerEvent
+
     data object Completed : PlayerEvent
 
     data class AudioTrackSelectionApplied(

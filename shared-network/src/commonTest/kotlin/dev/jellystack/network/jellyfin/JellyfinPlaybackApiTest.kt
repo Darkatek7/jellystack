@@ -20,6 +20,26 @@ import kotlin.test.assertTrue
 
 class JellyfinPlaybackApiTest {
     @Test
+    fun stopEncodingProcessDeletesTheActiveSession() =
+        runTest {
+            val engine =
+                MockEngine { request ->
+                    assertEquals(HttpMethod.Delete, request.method)
+                    assertEquals("/Videos/ActiveEncodings", request.url.encodedPath)
+                    assertEquals("device-1", request.url.parameters["DeviceId"])
+                    assertEquals("play-1", request.url.parameters["PlaySessionId"])
+                    assertEquals("dummy-token", request.headers["X-Emby-Token"])
+                    respond("", HttpStatusCode.NoContent)
+                }
+            val client = NetworkClientFactory.create(ClientConfig(engine = engine, installLogging = false))
+
+            JellyfinPlaybackApi(client, "https://example.test", "dummy-token")
+                .stopEncodingProcess(deviceId = "device-1", playSessionId = "play-1")
+
+            client.close()
+        }
+
+    @Test
     fun fetchPlaybackInfoPostsDeviceProfileAndDecodesMediaSource() =
         runTest {
             var body = ""

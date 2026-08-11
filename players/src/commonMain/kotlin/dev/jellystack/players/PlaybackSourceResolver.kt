@@ -24,6 +24,7 @@ data class PlaybackSourceOptions(
     val forceTranscoding: Boolean = false,
     val forceAudioTranscoding: Boolean = false,
     val preferFmp4Hls: Boolean = false,
+    val stopEncodingPlaySessionId: String? = null,
 )
 
 data class ResolvedSubtitle(
