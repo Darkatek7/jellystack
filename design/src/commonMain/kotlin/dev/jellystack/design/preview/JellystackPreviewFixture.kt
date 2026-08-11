@@ -261,6 +261,7 @@ private fun BrowseFixture(
         libraryNavigationState = libraryNavigation,
         onLibraryNavigationChange = onLibraryNavigationChange,
         spotlightPainter = spotlightPainter,
+        spotlightEligibilityNow = JellystackPreviewData.fixedClock,
         modifier = Modifier.fillMaxSize(),
     )
 }
