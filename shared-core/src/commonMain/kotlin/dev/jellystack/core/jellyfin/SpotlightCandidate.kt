@@ -59,7 +59,12 @@ private fun buildGroupedSpotlightCandidates(items: List<DatedItem>): List<Groupe
 
     return groups.values
         .map { group ->
-            val selected = group.maxWith(compareBy<DatedItem> { it.addedAt != null }.thenBy { it.addedAt })
+            val selected =
+                if (group.first().item.type.equals("Movie", ignoreCase = true)) {
+                    group.first()
+                } else {
+                    group.maxWith(compareBy<DatedItem> { it.addedAt != null }.thenBy { it.addedAt })
+                }
             GroupedSpotlightCandidate(
                 candidate =
                     SpotlightCandidate(

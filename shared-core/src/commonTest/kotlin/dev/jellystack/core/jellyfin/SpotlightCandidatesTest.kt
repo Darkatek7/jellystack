@@ -133,6 +133,22 @@ class SpotlightCandidatesTest {
     }
 
     @Test
+    fun latestCandidatesKeepFirstEncounteredMovieWhenDuplicateIsNewer() {
+        val firstMovie = movie("movie", "First movie", "2026-06-10T12:00:00Z")
+        val laterDuplicate = movie("movie", "Later duplicate", "2026-06-20T12:00:00Z")
+
+        val result =
+            buildLatestSpotlightCandidates(
+                recentShows = emptyList(),
+                recentMovies = listOf(firstMovie),
+                additionalItems = listOf(laterDuplicate),
+            )
+
+        assertEquals("First movie", result.single().actionItem.name)
+        assertEquals(Instant.parse("2026-06-10T12:00:00Z"), result.single().addedAt)
+    }
+
+    @Test
     fun groupsReleasedEpisodesAsSeasonCandidates() {
         val episode =
             episode(
