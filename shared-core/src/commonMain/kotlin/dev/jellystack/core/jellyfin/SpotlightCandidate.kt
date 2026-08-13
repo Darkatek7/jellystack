@@ -19,56 +19,75 @@ fun buildSpotlightCandidates(
 ): List<SpotlightCandidate> {
     val cutoff = now - window
 
-    fun JellyfinItem.datedOrNull(): DatedItem? {
-        val addedAt =
-            premiereDate
-                ?.let { runCatching { Instant.parse(it) }.getOrNull() }
-                ?: dateCreated?.let { runCatching { Instant.parse(it) }.getOrNull() }
-                ?: return null
-        return DatedItem(this, addedAt).takeIf { addedAt >= cutoff && addedAt <= now }
-    }
-
-    val showCandidates =
-        (recentShows + libraryItems)
-            .asSequence()
-            .mapNotNull { item -> item.datedOrNull() }
-            .filter { dated ->
-                dated.item.type.equals("Series", ignoreCase = true) ||
-                    dated.item.type.equals("Season", ignoreCase = true) ||
-                    dated.item.type.equals("Episode", ignoreCase = true)
-            }.groupBy { dated -> dated.item.spotlightGroupKey() }
-            .values
-            .map { group ->
-                val newest = group.maxBy { it.addedAt }
-                SpotlightCandidate(
-                    displayItem = newest.item.toSpotlightDisplayItem(),
-                    actionItem = newest.item,
-                    addedAt = newest.addedAt,
-                )
-            }
-
-    val movieCandidates =
-        (recentMovies + libraryItems)
-            .asSequence()
-            .mapNotNull { item -> item.datedOrNull() }
-            .filter { dated -> dated.item.type.equals("Movie", ignoreCase = true) }
-            .map { dated ->
-                SpotlightCandidate(
-                    displayItem = dated.item,
-                    actionItem = dated.item,
-                    addedAt = dated.addedAt,
-                )
-            }.toList()
-
-    return (showCandidates + movieCandidates)
-        .distinctBy { candidate -> candidate.displayItem.id }
+    return buildGroupedSpotlightCandidates(
+        ((recentShows + libraryItems).filter { it.type.isSpotlightShowType() } +
+            (recentMovies + libraryItems).filter { it.type.equals("Movie", ignoreCase = true) }).mapNotNull { item ->
+            item.recencyOrNull()?.takeIf { it >= cutoff && it <= now }?.let { DatedItem(item, it) }
+        },
+    ).map { it.candidate }
         .sortedWith(compareByDescending<SpotlightCandidate> { it.addedAt }.thenBy { it.displayItem.name })
 }
 
+fun buildLatestSpotlightCandidates(
+    recentShows: List<JellyfinItem>,
+    recentMovies: List<JellyfinItem>,
+    additionalItems: List<JellyfinItem> = emptyList(),
+): List<SpotlightCandidate> =
+    buildGroupedSpotlightCandidates(
+        (recentShows + recentMovies + additionalItems).map { item -> DatedItem(item, item.recencyOrNull()) },
+    ).let { groupedCandidates ->
+        groupedCandidates.filter { it.hasRecency }.map { it.candidate } +
+            groupedCandidates.filterNot { it.hasRecency }.map { it.candidate }
+    }
+
 private data class DatedItem(
     val item: JellyfinItem,
-    val addedAt: Instant,
+    val addedAt: Instant?,
 )
+
+private data class GroupedSpotlightCandidate(
+    val candidate: SpotlightCandidate,
+    val hasRecency: Boolean,
+)
+
+private fun buildGroupedSpotlightCandidates(items: List<DatedItem>): List<GroupedSpotlightCandidate> {
+    val groups = linkedMapOf<String, MutableList<DatedItem>>()
+    items.forEach { dated ->
+        val groupKey = dated.item.spotlightCandidateGroupKey() ?: return@forEach
+        groups.getOrPut(groupKey) { mutableListOf() }.add(dated)
+    }
+
+    return groups.values
+        .map { group ->
+            val selected = group.maxWith(compareBy<DatedItem> { it.addedAt != null }.thenBy { it.addedAt })
+            GroupedSpotlightCandidate(
+                candidate =
+                    SpotlightCandidate(
+                        displayItem = selected.item.toSpotlightDisplayItem(),
+                        actionItem = selected.item,
+                        addedAt = selected.addedAt ?: Instant.DISTANT_PAST,
+                    ),
+                hasRecency = selected.addedAt != null,
+            )
+        }.distinctBy { groupedCandidate -> groupedCandidate.candidate.displayItem.id }
+}
+
+private fun JellyfinItem.recencyOrNull(): Instant? =
+    dateCreated
+        ?.let { runCatching { Instant.parse(it) }.getOrNull() }
+        ?: premiereDate?.let { runCatching { Instant.parse(it) }.getOrNull() }
+
+private fun JellyfinItem.spotlightCandidateGroupKey(): String? =
+    when {
+        type.isSpotlightShowType() -> "show:${spotlightGroupKey()}"
+        type.equals("Movie", ignoreCase = true) -> "movie:$id"
+        else -> null
+    }
+
+private fun String.isSpotlightShowType(): Boolean =
+    equals("Series", ignoreCase = true) ||
+        equals("Season", ignoreCase = true) ||
+        equals("Episode", ignoreCase = true)
 
 private fun JellyfinItem.spotlightGroupKey(): String =
     when {

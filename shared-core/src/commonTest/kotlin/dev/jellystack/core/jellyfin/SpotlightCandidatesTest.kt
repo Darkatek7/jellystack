@@ -54,19 +54,82 @@ class SpotlightCandidatesTest {
     }
 
     @Test
-    fun prefersPremiereDateAndFallsBackToDateCreated() {
-        val releasedInside =
+    fun prefersDateCreatedAndFallsBackToPremiereDateWhenMissingOrMalformed() {
+        val createdInside =
             movie(
-                id = "released",
-                name = "Released",
-                dateCreated = "2026-01-01T12:00:00Z",
-                premiereDate = "2026-06-20T12:00:00Z",
+                id = "created",
+                name = "Created",
+                dateCreated = "2026-06-19T12:00:00Z",
+                premiereDate = "2026-06-21T12:00:00Z",
             )
-        val createdInside = movie("created", "Created", "2026-06-19T12:00:00Z")
+        val missingDateCreated = movie("missing", "Missing", null, "2026-06-20T12:00:00Z")
+        val malformedDateCreated = movie("malformed", "Malformed", "yesterday", "2026-06-21T12:00:00Z")
 
-        val result = buildSpotlightCandidates(emptyList(), listOf(releasedInside, createdInside), now)
+        val result =
+            buildSpotlightCandidates(
+                emptyList(),
+                listOf(createdInside, missingDateCreated, malformedDateCreated),
+                now,
+            )
 
-        assertEquals(listOf("released", "created"), result.map { it.actionItem.id })
+        assertEquals(listOf("malformed", "missing", "created"), result.map { it.actionItem.id })
+    }
+
+    @Test
+    fun excludesItemsWithValidFutureDateCreatedEvenWhenPremiereDateIsInsideWindow() {
+        val futureCreated = movie("future", "Future", "2026-06-23T12:00:00Z", "2026-06-20T12:00:00Z")
+
+        val result = buildSpotlightCandidates(emptyList(), listOf(futureCreated), now)
+
+        assertEquals(emptyList(), result)
+    }
+
+    @Test
+    fun latestCandidatesPreferDateCreatedAndFallBackToPremiereDateWhenNeeded() {
+        val createdWins = movie("created", "Created", "2026-06-01T12:00:00Z", "2026-06-20T12:00:00Z")
+        val malformedDateCreated = movie("malformed", "Malformed", "yesterday", "2026-06-19T12:00:00Z")
+        val missingDateCreated = movie("missing", "Missing", null, "2026-06-18T12:00:00Z")
+
+        val result =
+            buildLatestSpotlightCandidates(
+                recentShows = emptyList(),
+                recentMovies = listOf(createdWins, malformedDateCreated, missingDateCreated),
+            )
+
+        assertEquals(listOf("created", "malformed", "missing"), result.map { it.actionItem.id })
+        assertEquals(
+            listOf(
+                Instant.parse("2026-06-01T12:00:00Z"),
+                Instant.parse("2026-06-19T12:00:00Z"),
+                Instant.parse("2026-06-18T12:00:00Z"),
+            ),
+            result.map { it.addedAt },
+        )
+    }
+
+    @Test
+    fun latestCandidatesKeepSourceOrderWhileGroupingDeduplicatingAndPlacingUndatedLast() {
+        val olderEpisode = episode("episode-1", "series", "Show", "2026-06-10T12:00:00Z")
+        val newerEpisode = episode("episode-2", "series", "Show", "2026-06-12T12:00:00Z")
+        val undatedSeries = item("undated", "Undated", "Series", null)
+        val movie = movie("movie", "Movie", "2026-06-20T12:00:00Z")
+
+        val result =
+            buildLatestSpotlightCandidates(
+                recentShows = listOf(olderEpisode, newerEpisode, undatedSeries),
+                recentMovies = listOf(movie),
+                additionalItems = listOf(movie.copy(name = "Duplicate movie")),
+            )
+
+        assertEquals(listOf("episode-2", "movie", "undated"), result.map { it.actionItem.id })
+        assertEquals(
+            listOf(
+                Instant.parse("2026-06-12T12:00:00Z"),
+                Instant.parse("2026-06-20T12:00:00Z"),
+                Instant.DISTANT_PAST,
+            ),
+            result.map { it.addedAt },
+        )
     }
 
     @Test
