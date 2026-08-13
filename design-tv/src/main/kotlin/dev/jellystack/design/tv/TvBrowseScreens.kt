@@ -107,6 +107,7 @@ internal fun TvHomeScreen(
     onRefresh: () -> Unit,
     onPreviewFocus: (JellyfinItem) -> Unit,
     onPreviewBlur: (JellyfinItem) -> Unit,
+    onCancelPreview: () -> Unit,
     trailerPreviewEngine: AndroidPlayerEngine,
     previewSoundEnabled: Boolean,
     previewProgress: Float,
@@ -194,7 +195,12 @@ internal fun TvHomeScreen(
     }
     val onVerticalMove: (TvHomeFocusOrigin, TvHomeVerticalDirection, JellyfinItem?) -> Unit =
         { origin, direction, previewItem ->
-            val move = verticalFocusCoordinator.beginMove(origin, direction)
+            val move =
+                verticalFocusCoordinator.beginMove(
+                    origin = origin,
+                    direction = direction,
+                    onAccepted = onCancelPreview,
+                )
             if (move != null) {
                 previewItem?.let(onPreviewBlur)
                 pendingFocusMove = move

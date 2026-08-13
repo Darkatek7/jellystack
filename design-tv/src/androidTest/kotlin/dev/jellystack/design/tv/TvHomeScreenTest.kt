@@ -25,6 +25,8 @@ import dev.jellystack.core.jellyfin.JellyfinHomeState
 import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.preferences.AppLanguage
 import dev.jellystack.players.AndroidPlayerEngine
+import kotlinx.datetime.Clock
+import kotlin.time.Duration.Companion.days
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -52,7 +54,7 @@ class TvHomeScreenTest {
     @Test
     fun heroAndFirstRowRouteVerticallyWhileRightStillMovesBetweenActions() {
         lateinit var engine: AndroidPlayerEngine
-        val recent = item("recent", "Recent", dateCreated = "2026-08-13T00:00:00Z")
+        val recent = item("recent", "Recent", dateCreated = (Clock.System.now() - 1.days).toString())
         composeRule.setContent {
             val context = LocalContext.current
             engine = remember(context) { AndroidPlayerEngine(context) }
@@ -115,6 +117,67 @@ class TvHomeScreenTest {
         composeRule.runOnIdle(engine::release)
     }
 
+    @Test
+    fun nonJellyfinMoveCancelsPreviewAndTargetsFirstCardOfNextRow() {
+        lateinit var engine: AndroidPlayerEngine
+        var previewCancellations = 0
+        val externalRow =
+            HomeSection(
+                id = "external",
+                title = "External",
+                viewMode = HomeSectionViewMode.LANDSCAPE,
+                displayTitle = true,
+                showDetailsMenu = false,
+                items =
+                    listOf(
+                        externalHomeSectionItem("external-1", "External 1"),
+                        externalHomeSectionItem("external-2", "External 2"),
+                    ),
+            )
+        val localRow =
+            HomeSection(
+                id = "local",
+                title = "Local",
+                viewMode = HomeSectionViewMode.PORTRAIT,
+                displayTitle = true,
+                showDetailsMenu = false,
+                items =
+                    listOf(
+                        homeSectionItem(item("local-1", "Local first")),
+                        homeSectionItem(item("local-2", "Local second")),
+                    ),
+            )
+        composeRule.setContent {
+            val context = LocalContext.current
+            engine = remember(context) { AndroidPlayerEngine(context) }
+            TestHomeScreen(
+                state = JellyfinHomeState(),
+                sections = HomeSectionsState.Ready(listOf(externalRow, localRow), "", ""),
+                engine = engine,
+                onCancelPreview = { previewCancellations += 1 },
+            )
+        }
+
+        composeRule
+            .onNodeWithContentDescription("Play")
+            .performSemanticsAction(SemanticsActions.RequestFocus)
+            .performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.onAllNodes(hasContentDescription("External 1") and hasClickAction())[0]
+            .assertIsFocused()
+            .performKeyInput { pressKey(Key.DirectionRight) }
+        composeRule.onAllNodes(hasContentDescription("External 2") and hasClickAction())[0]
+            .assertIsFocused()
+            .performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.onAllNodes(hasContentDescription("Local first") and hasClickAction())[0]
+            .assertIsFocused()
+            .performKeyInput { pressKey(Key.DirectionDown) }
+
+        composeRule.runOnIdle {
+            assertTrue(previewCancellations == 2)
+            engine.release()
+        }
+    }
+
     private fun homeSectionItem(item: JellyfinItem): HomeSectionItem =
         HomeSectionItem(
             id = item.id,
@@ -125,6 +188,20 @@ class TvHomeScreenTest {
             imageUrl = null,
             jellyfinItem = item,
             action = HomeSectionAction.JELLYFIN,
+        )
+
+    private fun externalHomeSectionItem(id: String, name: String): HomeSectionItem =
+        HomeSectionItem(
+            id = id,
+            name = name,
+            overview = null,
+            productionYear = null,
+            communityRating = null,
+            imageUrl = null,
+            jellyfinItem = null,
+            action = HomeSectionAction.SEERR,
+            seerrTmdbId = id.substringAfterLast('-').toInt(),
+            seerrMediaType = "movie",
         )
 
     private fun item(id: String, name: String, dateCreated: String? = null): JellyfinItem =
@@ -168,6 +245,7 @@ class TvHomeScreenTest {
         state: JellyfinHomeState,
         sections: HomeSectionsState,
         engine: AndroidPlayerEngine,
+        onCancelPreview: () -> Unit = {},
     ) {
         JellystackTvTheme {
             TvHomeScreen(
@@ -182,6 +260,7 @@ class TvHomeScreenTest {
                 onRefresh = {},
                 onPreviewFocus = {},
                 onPreviewBlur = {},
+                onCancelPreview = onCancelPreview,
                 trailerPreviewEngine = engine,
                 previewSoundEnabled = false,
                 previewProgress = 0f,

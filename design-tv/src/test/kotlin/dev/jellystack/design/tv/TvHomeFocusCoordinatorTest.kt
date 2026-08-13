@@ -76,4 +76,36 @@ class TvHomeFocusCoordinatorTest {
             coordinator.beginMove(TvHomeFocusOrigin.Hero, TvHomeVerticalDirection.DOWN)?.destination,
         )
     }
+
+    @Test
+    fun acceptedMoveCancelsPreviewBeforeItIsDispatched() {
+        val coordinator = TvHomeVerticalFocusCoordinator(rows)
+        val events = mutableListOf<String>()
+
+        val move =
+            coordinator.beginMove(
+                origin = TvHomeFocusOrigin.Row("portrait"),
+                direction = TvHomeVerticalDirection.DOWN,
+                onAccepted = { events += "cancel" },
+            )
+        if (move != null) events += "dispatch"
+
+        assertEquals(listOf("cancel", "dispatch"), events)
+    }
+
+    @Test
+    fun boundaryMoveDoesNotCancelPreview() {
+        val coordinator = TvHomeVerticalFocusCoordinator(rows)
+        var cancellations = 0
+
+        val move =
+            coordinator.beginMove(
+                origin = TvHomeFocusOrigin.Row("landscape"),
+                direction = TvHomeVerticalDirection.DOWN,
+                onAccepted = { cancellations += 1 },
+            )
+
+        assertNull(move)
+        assertEquals(0, cancellations)
+    }
 }

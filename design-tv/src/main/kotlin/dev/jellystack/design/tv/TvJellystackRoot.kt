@@ -443,6 +443,7 @@ private fun TvAuthenticatedApp(
                                             )
                                         }
                                     },
+                                    onCancelPreview = { trailerPreviewCoordinator.clearFocus() },
                                     trailerPreviewEngine = trailerPreviewEngine,
                                     previewSoundEnabled = settings.trailerPreviewSoundEnabled,
                                     previewProgress = trailerPreviewProgress,

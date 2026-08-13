@@ -31,9 +31,9 @@ class TvHomePresentationTest {
     }
 
     @Test
-    fun latestFallbackKeepsRecentListsAheadOfLocalHomeContent() {
+    fun latestFallbackExcludesDatedLocalContentWhenUndatedRecentExists() {
         val recent = item("recent-undated")
-        val local = item("local-undated")
+        val local = item("local-dated", dateCreated = "2026-08-12T12:00:00Z")
 
         val result =
             buildTvHomeHeroPresentation(
@@ -43,15 +43,15 @@ class TvHomePresentationTest {
             )
 
         assertEquals(TvHomeHeroMode.LATEST, result.mode)
-        assertEquals(listOf("recent-undated", "local-undated"), result.candidates.map { it.actionItem.id })
+        assertEquals(listOf("recent-undated"), result.candidates.map { it.actionItem.id })
     }
 
     @Test
     fun localFallbackUsesSectionsThenContinueNextUpAndLibraryItems() {
-        val section = item("section")
-        val continueItem = item("continue")
-        val next = item("next")
-        val library = item("library")
+        val section = item("section-undated")
+        val continueItem = item("continue-dated", dateCreated = "2026-08-12T12:00:00Z")
+        val next = item("next-undated")
+        val library = item("library-dated", dateCreated = "2026-08-11T12:00:00Z")
 
         val result =
             buildTvHomeHeroPresentation(
@@ -66,7 +66,10 @@ class TvHomePresentationTest {
             )
 
         assertEquals(TvHomeHeroMode.LIBRARY, result.mode)
-        assertEquals(listOf("section", "continue", "next", "library"), result.candidates.map { it.actionItem.id })
+        assertEquals(
+            listOf("section-undated", "continue-dated", "next-undated", "library-dated"),
+            result.candidates.map { it.actionItem.id },
+        )
     }
 
     @Test

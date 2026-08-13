@@ -21,39 +21,37 @@ internal fun buildTvHomeHeroPresentation(
     now: Instant,
 ): TvHomeHeroPresentation {
     val strict = buildSpotlightCandidates(state.recentShows, state.recentMovies, now)
-    return if (strict.isNotEmpty()) {
-        TvHomeHeroPresentation(TvHomeHeroMode.RECENT, strict)
-    } else {
-        val localSectionItems =
-            (homeSections as? HomeSectionsState.Ready)
-                ?.sections
-                .orEmpty()
-                .flatMap { section -> section.items }
-                .mapNotNull { item ->
-                    item.jellyfinItem?.takeIf { item.action == HomeSectionAction.JELLYFIN }
-                }
-        val additionalItems =
-            localSectionItems + state.continueWatching + state.nextUp + state.libraryItems
-        val latestFromRecent =
-            buildLatestSpotlightCandidates(
-                recentShows = state.recentShows,
-                recentMovies = state.recentMovies,
-            )
-        val latest =
-            buildLatestSpotlightCandidates(
-                recentShows = state.recentShows,
-                recentMovies = state.recentMovies,
-                additionalItems = additionalItems,
-            )
-        TvHomeHeroPresentation(
-            mode =
-                when {
-                    latest.isEmpty() -> TvHomeHeroMode.EMPTY
-                    latestFromRecent.isNotEmpty() -> TvHomeHeroMode.LATEST
-                    else -> TvHomeHeroMode.LIBRARY
-                },
-            candidates = latest,
+    val latestFromRecent =
+        buildLatestSpotlightCandidates(
+            recentShows = state.recentShows,
+            recentMovies = state.recentMovies,
         )
+    return when {
+        strict.isNotEmpty() -> TvHomeHeroPresentation(TvHomeHeroMode.RECENT, strict)
+        latestFromRecent.isNotEmpty() -> TvHomeHeroPresentation(TvHomeHeroMode.LATEST, latestFromRecent)
+        else -> {
+            val localSectionItems =
+                (homeSections as? HomeSectionsState.Ready)
+                    ?.sections
+                    .orEmpty()
+                    .flatMap { section -> section.items }
+                    .mapNotNull { item ->
+                        item.jellyfinItem?.takeIf { item.action == HomeSectionAction.JELLYFIN }
+                    }
+            val localCandidates =
+                listOf(localSectionItems, state.continueWatching, state.nextUp, state.libraryItems)
+                    .flatMap { tierItems ->
+                        buildLatestSpotlightCandidates(
+                            recentShows = emptyList(),
+                            recentMovies = emptyList(),
+                            additionalItems = tierItems,
+                        )
+                    }.distinctBy { candidate -> candidate.displayItem.id }
+            TvHomeHeroPresentation(
+                mode = if (localCandidates.isEmpty()) TvHomeHeroMode.EMPTY else TvHomeHeroMode.LIBRARY,
+                candidates = localCandidates,
+            )
+        }
     }
 }
 
@@ -100,9 +98,11 @@ internal class TvHomeVerticalFocusCoordinator(rows: List<TvHomeFocusRow>) {
     fun beginMove(
         origin: TvHomeFocusOrigin,
         direction: TvHomeVerticalDirection,
+        onAccepted: () -> Unit = {},
     ): TvHomeFocusMove? {
         pendingRequestId = null
         val destination = destination(origin, direction) ?: return null
+        onAccepted()
         val requestId = ++nextRequestId
         pendingRequestId = requestId
         return TvHomeFocusMove(requestId, destination)
