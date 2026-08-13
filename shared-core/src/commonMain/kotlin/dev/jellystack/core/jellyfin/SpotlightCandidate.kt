@@ -102,7 +102,13 @@ private fun JellyfinItem.spotlightGroupKey(): String =
     }
 
 private fun JellyfinItem.toSpotlightDisplayItem(): JellyfinItem {
-    if (type.equals("Series", ignoreCase = true) || type.equals("Season", ignoreCase = true)) return this
+    if (
+        type.equals("Movie", ignoreCase = true) ||
+        type.equals("Series", ignoreCase = true) ||
+        type.equals("Season", ignoreCase = true)
+    ) {
+        return this
+    }
 
     val displayId = seasonId ?: seriesId ?: parentId ?: id
     val seasonLabel =

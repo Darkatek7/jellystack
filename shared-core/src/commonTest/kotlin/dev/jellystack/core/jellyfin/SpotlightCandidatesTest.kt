@@ -149,6 +149,19 @@ class SpotlightCandidatesTest {
     }
 
     @Test
+    fun strictAndLatestCandidatesKeepMovieDisplayItemsUnchanged() {
+        val movie = movie("movie", "Movie", "2026-06-20T12:00:00Z")
+        val strict = buildSpotlightCandidates(emptyList(), listOf(movie), now).single()
+        val latest = buildLatestSpotlightCandidates(emptyList(), listOf(movie)).single()
+
+        listOf(strict, latest).forEach { candidate ->
+            assertEquals("movie", candidate.displayItem.id)
+            assertEquals("Movie", candidate.displayItem.name)
+            assertEquals("Movie", candidate.displayItem.type)
+        }
+    }
+
+    @Test
     fun groupsReleasedEpisodesAsSeasonCandidates() {
         val episode =
             episode(
