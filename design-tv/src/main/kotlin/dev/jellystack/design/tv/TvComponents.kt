@@ -5,10 +5,14 @@ package dev.jellystack.design.tv
 import android.view.KeyEvent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,11 +28,15 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.ImageNotSupported
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -56,10 +64,27 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
+import dev.jellystack.players.AndroidPlayerEngine
+import kotlinx.coroutines.delay
+
+internal const val TV_DETAIL_PRIMARY_ACTION_WIDTH_DP = 230
+internal const val TV_DETAIL_COMPACT_ACTION_WIDTH_DP = 132
+internal const val TV_DETAIL_ACTION_GAP_DP = 14
+internal const val TV_DETAIL_COMPACT_ACTION_HEIGHT_DP = 72
+
+internal fun tvDetailActionRowRequiredWidthDp(): Int =
+    TV_DETAIL_PRIMARY_ACTION_WIDTH_DP + (TV_DETAIL_COMPACT_ACTION_WIDTH_DP * 3) + (TV_DETAIL_ACTION_GAP_DP * 3)
+
+internal fun tvCompactActionRequiredHeightDp(fontScale: Float): Float =
+    25f + 3f + (13f * fontScale) + 16f
+
+internal fun tvCompactActionRequiredWidthDp(characterCount: Int, fontScale: Float): Float =
+    (characterCount * 6.5f * fontScale) + 16f
 
 @Composable
 internal fun Modifier.tvFocusable(
@@ -68,11 +93,23 @@ internal fun Modifier.tvFocusable(
     shape: RoundedCornerShape = RoundedCornerShape(16.dp),
     scale: Float = 1.045f,
     onFocused: (() -> Unit)? = null,
+    onFocusChanged: ((Boolean) -> Unit)? = null,
     focusToNavigationRailOnLeft: Boolean = false,
-): Modifier =
-    this.then(
+): Modifier {
+    val restorationRequester = remember { FocusRequester() }
+    val registerContentFocus = LocalTvContentFocusRegistrar.current
+    return this.then(
         Modifier
-            .tvFocusDecoration(shape, scale, onFocused)
+            .focusRequester(restorationRequester)
+            .tvFocusDecoration(
+                shape,
+                scale,
+                onFocused,
+                onFocusChanged = { focused ->
+                    if (focused) registerContentFocus?.invoke(restorationRequester)
+                    onFocusChanged?.invoke(focused)
+                },
+            )
             .tvReturnToNavigationRailOnLeft(focusToNavigationRailOnLeft)
             .semantics {
                 role = Role.Button
@@ -80,12 +117,14 @@ internal fun Modifier.tvFocusable(
             }.clickable(enabled = enabled, onClick = onClick)
             .focusable(enabled),
     )
+}
 
 @Composable
 private fun Modifier.tvFocusDecoration(
     shape: RoundedCornerShape,
     scale: Float,
     onFocused: (() -> Unit)?,
+    onFocusChanged: ((Boolean) -> Unit)?,
 ): Modifier {
     var focused by remember { mutableStateOf(false) }
     val animatedScale by animateFloatAsState(if (focused) scale else 1f, label = "tv-focus-scale")
@@ -94,6 +133,7 @@ private fun Modifier.tvFocusDecoration(
         .onFocusChanged {
             val becameFocused = it.isFocused && !focused
             focused = it.isFocused
+            onFocusChanged?.invoke(it.isFocused)
             if (becameFocused) onFocused?.invoke()
         }.graphicsLayer {
             scaleX = animatedScale
@@ -101,13 +141,13 @@ private fun Modifier.tvFocusDecoration(
         }.drawBehind {
             if (focused) {
                 drawRoundRect(
-                    color = TvPurpleStrong.copy(alpha = 0.38f),
+                    color = Color.Black.copy(alpha = 0.24f),
                     cornerRadius =
                         androidx.compose.ui.geometry
                             .CornerRadius(22.dp.toPx()),
                 )
             }
-        }.border(if (focused) 3.dp else 0.dp, borderColor, shape)
+        }.border(if (focused) 1.5.dp else 0.dp, borderColor.copy(alpha = 0.9f), shape)
         .clip(shape)
 }
 
@@ -191,6 +231,32 @@ internal fun TvPlayerIconButton(
 }
 
 @Composable
+internal fun TvCompactActionButton(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    selected: Boolean = false,
+) {
+    val shape = RoundedCornerShape(18.dp)
+    Column(
+        modifier =
+            modifier
+                .width(TV_DETAIL_COMPACT_ACTION_WIDTH_DP.dp)
+                .height(TV_DETAIL_COMPACT_ACTION_HEIGHT_DP.dp)
+                .background(if (selected) TvPurpleStrong.copy(alpha = 0.42f) else Color.Black.copy(alpha = 0.52f), shape)
+                .semantics(mergeDescendants = true) { contentDescription = label }
+                .tvFocusable(onClick = onClick, shape = shape, scale = 1.06f)
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterVertically),
+    ) {
+        Icon(icon, null, tint = if (selected) TvPurple else Color.White, modifier = Modifier.size(25.dp))
+        Text(label, color = TvText, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
 internal fun TvMediaCard(
     title: String,
     imageUrl: String?,
@@ -200,19 +266,51 @@ internal fun TvMediaCard(
     landscape: Boolean = true,
     fillWidth: Boolean = false,
     onFocused: (() -> Unit)? = null,
+    onFocusChanged: ((Boolean) -> Unit)? = null,
     focusToNavigationRailOnLeft: Boolean = false,
+    previewing: Boolean = false,
+    previewEngine: AndroidPlayerEngine? = null,
+    previewSoundEnabled: Boolean = true,
+    previewProgress: Float = 0f,
 ) {
     val shape = RoundedCornerShape(18.dp)
+    var focused by remember { mutableStateOf(false) }
+    val targetWidth by
+        animateDpAsState(
+            targetValue =
+                when {
+                    fillWidth -> 250.dp
+                    landscape && focused -> 266.dp
+                    landscape -> 250.dp
+                    focused -> 300.dp
+                    else -> 140.dp
+                },
+            animationSpec = tween(240),
+            label = "tv-card-width",
+        )
+    val aspectRatio = if (landscape || focused) 16f / 9f else 2f / 3f
+    val bringIntoViewRequester = remember { BringIntoViewRequester() }
+    LaunchedEffect(focused) {
+        if (focused) {
+            delay(250L)
+            bringIntoViewRequester.bringIntoView()
+        }
+    }
     Column(
         modifier =
             modifier
-                .then(if (fillWidth) Modifier.fillMaxWidth() else Modifier.width(if (landscape) 276.dp else 166.dp))
+                .then(if (fillWidth) Modifier.fillMaxWidth() else Modifier.width(targetWidth))
+                .bringIntoViewRequester(bringIntoViewRequester)
                 .semantics(mergeDescendants = true) {
                     contentDescription = listOfNotNull(title, subtitle).joinToString(", ")
                 }.tvFocusable(
                     onClick = onClick,
                     shape = shape,
                     onFocused = onFocused,
+                    onFocusChanged = {
+                        focused = it
+                        onFocusChanged?.invoke(it)
+                    },
                     focusToNavigationRailOnLeft = focusToNavigationRailOnLeft,
                 ).background(TvSurface, shape),
     ) {
@@ -220,10 +318,17 @@ internal fun TvMediaCard(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .aspectRatio(if (landscape) 16f / 9f else 2f / 3f)
+                    .aspectRatio(aspectRatio)
                     .clip(shape),
         ) {
-            if (imageUrl != null) {
+            if (previewing && previewEngine != null) {
+                AndroidView(
+                    factory = { previewEngine.createVideoSurface(it) },
+                    update = previewEngine::updateVideoSurface,
+                    onRelease = previewEngine::releaseVideoSurface,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else if (imageUrl != null) {
                 AsyncImage(
                     model = imageUrl,
                     contentDescription = title,
@@ -244,6 +349,33 @@ internal fun TvMediaCard(
                         ),
                     ),
             )
+            if (previewing) {
+                Row(
+                    Modifier
+                        .align(Alignment.TopStart)
+                        .padding(12.dp)
+                        .background(TvPurpleStrong.copy(alpha = 0.86f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 9.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text("Trailer", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Icon(
+                        if (previewSoundEnabled) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
+                        null,
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            }
+            if (previewing && previewProgress > 0f) {
+                LinearProgressIndicator(
+                    progress = { previewProgress.coerceIn(0f, 1f) },
+                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp),
+                    color = TvPurple,
+                    trackColor = Color.White.copy(alpha = 0.22f),
+                )
+            }
             Column(
                 modifier = Modifier.align(Alignment.BottomStart).padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -287,12 +419,12 @@ internal fun TvSectionTitle(
         title,
         modifier = modifier.padding(horizontal = 6.dp),
         color = TvText,
-        style = MaterialTheme.typography.headlineSmall,
+        fontSize = 20.sp,
         fontWeight = FontWeight.Bold,
     )
 }
 
-internal val TvScreenPadding = PaddingValues(start = 42.dp, end = 42.dp, top = 32.dp, bottom = 54.dp)
+internal val TvScreenPadding = PaddingValues(start = 92.dp, end = 36.dp, top = 20.dp, bottom = 54.dp)
 
 @Composable
 internal fun tvOutlinedTextFieldColors() =
@@ -311,6 +443,7 @@ internal fun tvOutlinedTextFieldColors() =
 
 internal val LocalTvNavigationRailOpener = staticCompositionLocalOf<(() -> Unit)?> { null }
 internal val LocalTvScreenEntryFocusRequester = staticCompositionLocalOf<FocusRequester?> { null }
+internal val LocalTvContentFocusRegistrar = staticCompositionLocalOf<((FocusRequester) -> Unit)?> { null }
 
 @Composable
 internal fun Modifier.tvScreenEntryFocus(enabled: Boolean = true): Modifier {

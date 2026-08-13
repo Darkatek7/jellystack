@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.LocalMovies
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -153,13 +154,10 @@ internal fun TvJellyfinDetailScreen(
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop,
                 )
-                Box(
-                    Modifier.fillMaxSize().background(
-                        Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.16f), TvBackground.copy(alpha = 0.25f), TvBackground)),
-                    ),
-                )
+                Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(TvBackground.copy(0.96f), TvBackground.copy(0.68f), Color.Transparent))))
+                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.08f), TvBackground.copy(alpha = 0.12f), TvBackground))))
                 Column(
-                    Modifier.align(Alignment.BottomStart).padding(start = 58.dp, end = 58.dp, bottom = 38.dp).fillMaxWidth(0.62f),
+                    Modifier.align(Alignment.BottomStart).padding(start = 108.dp, end = 42.dp, bottom = 38.dp).widthIn(max = 760.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     if (logoTag != null) {
@@ -182,7 +180,7 @@ internal fun TvJellyfinDetailScreen(
                     } else {
                         Text(currentDetail.genres.take(4).joinToString("  •  "), color = TvTextMuted, fontSize = 19.sp)
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(TV_DETAIL_ACTION_GAP_DP.dp), verticalAlignment = Alignment.CenterVertically) {
                         TvActionButton(
                             if ((currentItem.positionTicks ?: 0L) > 0L) strings.continueLabel else strings.play,
                             primary = true,
@@ -196,35 +194,28 @@ internal fun TvJellyfinDetailScreen(
                                     onPlaybackStarted()
                                 }
                             },
-                            modifier = Modifier.width(230.dp),
+                            modifier = Modifier.width(TV_DETAIL_PRIMARY_ACTION_WIDTH_DP.dp),
                         )
-                        TvActionButton(
-                            strings.favorite,
+                        TvCompactActionButton(
+                            label = strings.favorite,
                             onClick = { scope.launch { browseCoordinator.toggleFavorite(currentItem) } },
-                            leading = {
-                                Icon(
-                                    if (currentItem.id in homeState.favorites || currentDetail.isFavorite) {
-                                        Icons.Default.Favorite
-                                    } else {
-                                        Icons.Default.FavoriteBorder
-                                    },
-                                    null,
-                                    tint = TvPurple,
-                                )
-                            },
+                            icon = if (currentItem.id in homeState.favorites || currentDetail.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                            selected = currentItem.id in homeState.favorites || currentDetail.isFavorite,
                         )
-                        TvActionButton(
-                            strings.watched,
+                        TvCompactActionButton(
+                            label = strings.watched,
+                            icon = Icons.Default.CheckCircle,
+                            selected = currentDetail.isPlayed,
                             onClick = {
                                 scope.launch {
                                     detail = repository.setPlayedStatus(currentItem.id, !currentDetail.isPlayed)
                                 }
                             },
-                            leading = { Icon(Icons.Default.CheckCircle, null, tint = TvPurple) },
                         )
                         trailer?.let { source ->
-                            TvActionButton(
-                                strings.trailer,
+                            TvCompactActionButton(
+                                label = strings.trailer,
+                                icon = Icons.Default.LocalMovies,
                                 onClick = {
                                     when (source) {
                                         is DetailTrailerSource.Local -> {
@@ -244,7 +235,7 @@ internal fun TvJellyfinDetailScreen(
             }
         }
         item("facts") {
-            Row(Modifier.padding(horizontal = 58.dp), horizontalArrangement = Arrangement.spacedBy(22.dp)) {
+            Row(Modifier.padding(start = 108.dp, end = 42.dp), horizontalArrangement = Arrangement.spacedBy(22.dp)) {
                 listOfNotNull(
                     currentDetail.productionYear?.toString(),
                     currentDetail.runTimeTicks?.let { "${it / 600_000_000L} min" },
@@ -260,7 +251,7 @@ internal fun TvJellyfinDetailScreen(
             }
         }
         item("overview") {
-            Column(Modifier.padding(horizontal = 58.dp).fillMaxWidth(0.72f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.padding(start = 108.dp, end = 42.dp).fillMaxWidth(0.78f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 TvSectionTitle(strings.overview)
                 currentDetail.taglines.firstOrNull()?.let { Text(it, color = TvPurple, fontSize = 20.sp, fontWeight = FontWeight.SemiBold) }
                 Text(currentDetail.overview ?: strings.noOverview, color = TvText, fontSize = 20.sp, lineHeight = 29.sp)
@@ -269,7 +260,7 @@ internal fun TvJellyfinDetailScreen(
         if (episodes.isNotEmpty()) item("episodes") { TvDetailItemRow(strings.episodes, episodes, homeState, onOpenItem) }
         if (currentDetail.people.isNotEmpty()) {
             item("cast") {
-                Column(Modifier.padding(horizontal = 58.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.padding(start = 108.dp, end = 42.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     TvSectionTitle(strings.cast)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                         items(currentDetail.people.take(16), key = { it.id }) { person ->
@@ -305,7 +296,7 @@ private fun TvDetailItemRow(
     homeState: JellyfinHomeState,
     onOpenItem: (JellyfinItem) -> Unit,
 ) {
-    Column(Modifier.padding(horizontal = 58.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(Modifier.padding(start = 108.dp, end = 42.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         TvSectionTitle(title)
         LazyRow(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
             items(items, key = { it.id }) { item ->

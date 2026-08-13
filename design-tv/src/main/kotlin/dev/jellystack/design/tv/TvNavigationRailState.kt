@@ -5,7 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 
 internal class TvNavigationRailState(
-    initiallyVisible: Boolean,
+    initiallyVisible: Boolean = false,
 ) {
     var isVisible by mutableStateOf(initiallyVisible)
         private set
@@ -17,4 +17,16 @@ internal class TvNavigationRailState(
     fun onContentLeftEdge() {
         isVisible = true
     }
+}
+
+internal class TvContentFocusMemory<T> {
+    private var routeKey: Any? = null
+    private var target: T? = null
+
+    fun remember(routeKey: Any, target: T) {
+        this.routeKey = routeKey
+        this.target = target
+    }
+
+    fun restore(routeKey: Any): T? = target.takeIf { this.routeKey == routeKey }
 }

@@ -64,6 +64,8 @@ import dev.jellystack.core.jellyfin.JellyfinFavoritesStoreApi
 import dev.jellystack.core.jellyfin.JellyfinSessionRepository
 import dev.jellystack.core.jellyfin.JellyfinSessionState
 import dev.jellystack.core.jellyfin.JellyfinSyncPlayAccess
+import dev.jellystack.core.jellyfin.LocalTrailerContext
+import dev.jellystack.core.jellyfin.LocalTrailerResolver
 import dev.jellystack.core.jellyseerr.JellyseerrEnvironmentProvider
 import dev.jellystack.core.jellyseerr.JellyseerrMediaAvailability
 import dev.jellystack.core.jellyseerr.JellyseerrRecommendationsCoordinator
@@ -79,6 +81,7 @@ import dev.jellystack.players.AndroidPlayerEngine
 import dev.jellystack.players.PlaybackController
 import dev.jellystack.players.PlaybackRequest
 import dev.jellystack.players.PlaybackStartPolicy
+import dev.jellystack.players.PlaybackState
 import dev.jellystack.players.syncplay.SyncPlayCoordinator
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -89,6 +92,8 @@ import kotlinx.coroutines.launch
 fun TvJellystackRoot(
     playbackController: PlaybackController,
     playerEngine: AndroidPlayerEngine,
+    trailerPreviewController: PlaybackController,
+    trailerPreviewEngine: AndroidPlayerEngine,
     appVersion: String,
     stopPlayback: () -> Unit,
     modifier: Modifier = Modifier,
@@ -113,6 +118,8 @@ fun TvJellystackRoot(
                 TvAuthenticatedApp(
                     playbackController = playbackController,
                     playerEngine = playerEngine,
+                    trailerPreviewPlaybackController = trailerPreviewController,
+                    trailerPreviewEngine = trailerPreviewEngine,
                     appVersion = appVersion,
                     settingsRepository = settingsRepository,
                     serverRepository = serverRepository,
@@ -129,6 +136,8 @@ fun TvJellystackRoot(
 private fun TvAuthenticatedApp(
     playbackController: PlaybackController,
     playerEngine: AndroidPlayerEngine,
+    trailerPreviewPlaybackController: PlaybackController,
+    trailerPreviewEngine: AndroidPlayerEngine,
     appVersion: String,
     settingsRepository: AppSettingsRepository,
     serverRepository: ServerRepository,
@@ -187,6 +196,41 @@ private fun TvAuthenticatedApp(
                 },
             )
         }
+    val localTrailerResolver =
+        remember {
+            LocalTrailerResolver(
+                fetchLocalTrailers = browseRepository::fetchLocalTrailers,
+                fetchItemDetail = { browseRepository.getItemDetail(it, forceRefresh = false) },
+            )
+        }
+    val trailerPreviewPlayer =
+        remember(trailerPreviewPlaybackController, trailerPreviewEngine, environmentProvider) {
+            TvPlaybackTrailerPreviewPlayer(
+                controller = trailerPreviewPlaybackController,
+                engine = trailerPreviewEngine,
+                environmentProvider = environmentProvider,
+            )
+        }
+    val trailerPreviewCoordinator =
+        remember(localTrailerResolver, trailerPreviewPlayer) {
+            TvTrailerPreviewController(
+                scope = scope,
+                resolve = { target ->
+                    if (environmentProvider.current()?.serverKey != target.serverKey) {
+                        null
+                    } else {
+                        localTrailerResolver.resolve(
+                            LocalTrailerContext(
+                                itemId = target.itemId,
+                                isEpisode = target.isEpisode,
+                                seriesId = target.seriesId,
+                            ),
+                        )
+                    }
+                },
+                player = trailerPreviewPlayer,
+            )
+        }
     val syncPlay =
         remember {
             SyncPlayCoordinator(
@@ -214,6 +258,12 @@ private fun TvAuthenticatedApp(
     val details by recommendationsCoordinator.details.collectAsStateWithLifecycle()
     val settings by settingsRepository.settings.collectAsStateWithLifecycle()
     val playbackState by playbackController.state.collectAsStateWithLifecycle()
+    val trailerPreviewState by trailerPreviewCoordinator.state.collectAsStateWithLifecycle()
+    val trailerPlaybackState by trailerPreviewPlaybackController.state.collectAsStateWithLifecycle()
+    val trailerPreviewProgress =
+        (trailerPlaybackState as? PlaybackState.Active)?.let { active ->
+            active.durationMs?.takeIf { it > 0L }?.let { active.positionMs.toFloat() / it.toFloat() }
+        } ?: 0f
     val sessionState by sessionRepository.state.collectAsStateWithLifecycle()
     val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateFlow
         .collectAsStateWithLifecycle()
@@ -282,8 +332,21 @@ private fun TvAuthenticatedApp(
         syncPlay.updateAccess(syncPlayAccess)
     }
     LaunchedEffect(playbackState) { autoplayCoordinator.onPlaybackState(playbackState) }
+    LaunchedEffect(settings.trailerPreviewsEnabled) {
+        trailerPreviewCoordinator.setEnabled(settings.trailerPreviewsEnabled)
+    }
+    LaunchedEffect(settings.trailerPreviewSoundEnabled) {
+        trailerPreviewCoordinator.setSoundEnabled(settings.trailerPreviewSoundEnabled)
+    }
+    LaunchedEffect(playbackState) {
+        if (playbackState is PlaybackState.Active || playbackState is PlaybackState.Preparing) {
+            trailerPreviewCoordinator.clearFocus()
+        }
+    }
+    LaunchedEffect(serverRepository.currentServers()) { trailerPreviewCoordinator.invalidateCache() }
     LaunchedEffect(lifecycleState) {
         autoplayCoordinator.setForeground(lifecycleState.isAtLeast(Lifecycle.State.STARTED))
+        if (!lifecycleState.isAtLeast(Lifecycle.State.STARTED)) trailerPreviewCoordinator.clearFocus()
     }
     DisposableEffect(Unit) {
         onDispose {
@@ -291,10 +354,12 @@ private fun TvAuthenticatedApp(
             requestsCoordinator.shutdown()
             syncPlay.close()
             autoplayCoordinator.release()
+            trailerPreviewCoordinator.release()
         }
     }
 
     val currentRoute = backStack.last()
+    val jellyfinServerKey = serverRepository.activeServer(ServerType.JELLYFIN)?.id
     val showRail =
         currentRoute is TvRoute.Home ||
             currentRoute is TvRoute.Library ||
@@ -303,23 +368,40 @@ private fun TvAuthenticatedApp(
             currentRoute is TvRoute.Settings
     val railFocusRequester = remember { FocusRequester() }
     val contentFocusRequester = remember { FocusRequester() }
-    val railState = remember { TvNavigationRailState(initiallyVisible = true) }
+    val contentFocusMemory = remember { TvContentFocusMemory<FocusRequester>() }
+    val railState = remember { TvNavigationRailState() }
+    val contentStartPadding by animateDpAsState(if (showRail && railState.isVisible) 134.dp else 0.dp, label = "tv-content-rail-safe-area")
     BackHandler(enabled = showRail && !railState.isVisible) {
         railState.onContentLeftEdge()
     }
     LaunchedEffect(showRail, railState.isVisible, currentRoute) {
         if (!showRail) return@LaunchedEffect
-        if (railState.isVisible) railFocusRequester.requestFocus() else contentFocusRequester.requestFocus()
+        if (railState.isVisible) {
+            railFocusRequester.requestFocus()
+        } else {
+            val rememberedRequester = contentFocusMemory.restore(currentRoute)
+            val restored =
+                rememberedRequester?.let { requester ->
+                    runCatching { requester.requestFocus() }.getOrDefault(false)
+                } == true
+            if (!restored) contentFocusRequester.requestFocus()
+        }
+    }
+    LaunchedEffect(railState.isVisible, currentRoute) {
+        if (railState.isVisible || currentRoute !is TvRoute.Home) trailerPreviewCoordinator.clearFocus()
     }
     Box(Modifier.fillMaxSize()) {
         CompositionLocalProvider(
             LocalTvNavigationRailOpener provides railState::onContentLeftEdge,
             LocalTvScreenEntryFocusRequester provides contentFocusRequester,
+            LocalTvContentFocusRegistrar provides { requester ->
+                contentFocusMemory.remember(currentRoute, requester)
+            },
         ) {
             NavDisplay(
                 backStack = backStack,
                 onBack = { if (backStack.size > 1) backStack.removeLastOrNull() },
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().padding(start = contentStartPadding),
                 entryProvider = { route ->
                     NavEntry(route) {
                         when (route) {
@@ -330,9 +412,55 @@ private fun TvAuthenticatedApp(
                                     strings = strings,
                                     autoCycle = settings.spotlightAutoCycle,
                                     intervalSeconds = settings.spotlightIntervalSeconds,
+                                    railOpen = railState.isVisible,
+                                    trailerPreviewState = trailerPreviewState,
                                     focusMemory = focusMemory,
-                                    onRefresh = { browseCoordinator.bootstrap(true) },
-                                    onItem = { push(TvRoute.JellyfinDetail(it.id)) },
+                                    onRefresh = {
+                                        trailerPreviewCoordinator.invalidateCache()
+                                        browseCoordinator.bootstrap(true)
+                                    },
+                                    onPreviewFocus = { item ->
+                                        if (jellyfinServerKey != null) {
+                                            trailerPreviewCoordinator.focus(
+                                                TvTrailerPreviewTarget(
+                                                    serverKey = jellyfinServerKey,
+                                                    itemId = item.id,
+                                                    isEpisode = item.type.equals("Episode", true),
+                                                    seriesId = item.seriesId,
+                                                ),
+                                            )
+                                        }
+                                    },
+                                    onPreviewBlur = { item ->
+                                        if (jellyfinServerKey != null) {
+                                            trailerPreviewCoordinator.clearFocus(
+                                                TvTrailerPreviewTarget(
+                                                    serverKey = jellyfinServerKey,
+                                                    itemId = item.id,
+                                                    isEpisode = item.type.equals("Episode", true),
+                                                    seriesId = item.seriesId,
+                                                ),
+                                            )
+                                        }
+                                    },
+                                    trailerPreviewEngine = trailerPreviewEngine,
+                                    previewSoundEnabled = settings.trailerPreviewSoundEnabled,
+                                    previewProgress = trailerPreviewProgress,
+                                    onPlayItem = { item ->
+                                        trailerPreviewCoordinator.clearFocus()
+                                        scope.launch {
+                                            val detail = browseRepository.getItemDetail(item.id) ?: return@launch
+                                            val environment = environmentProvider.current() ?: return@launch
+                                            playbackController.play(PlaybackRequest.from(item, detail), environment)
+                                            playbackController.setPlaybackSpeed(settings.defaultPlaybackSpeed)
+                                            playbackController.setStatsForNerdsEnabled(settings.statsForNerdsEnabled)
+                                            push(TvRoute.Player)
+                                        }
+                                    },
+                                    onItem = {
+                                        trailerPreviewCoordinator.clearFocus()
+                                        push(TvRoute.JellyfinDetail(it.id))
+                                    },
                                     onLibrary = { push(TvRoute.Library(it.id, it.name)) },
                                     onSeerrItem = ::openSeerr,
                                 )
@@ -445,19 +573,22 @@ private fun TvAuthenticatedApp(
                 },
             )
         }
-        if (showRail && railState.isVisible) {
-            Box(
-                Modifier
-                    .width(280.dp)
-                    .fillMaxHeight()
-                    .background(
-                        androidx.compose.ui.graphics.Brush.horizontalGradient(
-                            listOf(Color(0xFF080910), Color(0xF20E0F18), Color.Transparent),
+        if (showRail) {
+            if (railState.isVisible) {
+                Box(
+                    Modifier
+                        .width(280.dp)
+                        .fillMaxHeight()
+                        .background(
+                            androidx.compose.ui.graphics.Brush.horizontalGradient(
+                                listOf(Color(0xFF080910), Color(0xF20E0F18), Color.Transparent),
+                            ),
                         ),
-                    ),
-            )
+                )
+            }
             TvNavigationRail(
                 selected = currentRoute,
+                expanded = railState.isVisible,
                 strings = strings,
                 onSelected = { route ->
                     selectTopLevel(route)
@@ -481,13 +612,13 @@ private fun TvAuthenticatedApp(
 @Composable
 private fun TvNavigationRail(
     selected: TvRoute,
+    expanded: Boolean,
     strings: TvStrings,
     onSelected: (TvRoute) -> Unit,
     selectedItemFocusRequester: FocusRequester,
     onDismiss: () -> Unit,
 ) {
-    var focused by remember { mutableStateOf(false) }
-    val width by animateDpAsState(if (focused) 214.dp else 82.dp, label = "tv-rail-width")
+    val width by animateDpAsState(if (expanded) 226.dp else 72.dp, label = "tv-rail-width")
     val entries =
         listOf(
             Triple(TvRoute.Home as TvRoute, strings.home, Icons.Default.Home),
@@ -501,17 +632,15 @@ private fun TvNavigationRail(
             Modifier
                 .width(width)
                 .fillMaxHeight()
-                .background(Color(0xFF0E0F18))
-                .onFocusChanged {
-                    focused = it.hasFocus
-                }.padding(horizontal = 12.dp, vertical = 34.dp),
+                .background(Color(0xE60B0C14))
+                .padding(horizontal = 10.dp, vertical = 34.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         entries.forEachIndexed { index, (route, label, icon) ->
             val isSelected = selected.sameTopLevel(route)
             Row(
                 Modifier
-                    .width(width - 24.dp)
+                    .width(width - 20.dp)
                     .then(if (isSelected) Modifier.focusRequester(selectedItemFocusRequester) else Modifier)
                     .onPreviewKeyEvent { event ->
                         if (
@@ -530,19 +659,22 @@ private fun TvNavigationRail(
                             .RoundedCornerShape(18.dp),
                     ).tvFocusable(
                         onClick = { onSelected(route) },
+                        enabled = tvNavigationRailItemsFocusable(expanded),
                         shape =
                             androidx.compose.foundation.shape
                                 .RoundedCornerShape(18.dp),
-                    ).padding(horizontal = 17.dp, vertical = 15.dp),
+                    ).padding(horizontal = 14.dp, vertical = 15.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 Icon(icon, label, tint = if (isSelected) TvPurple else TvTextMuted)
-                if (focused) Text(label, color = if (isSelected) TvText else TvTextMuted, fontSize = 18.sp)
+                if (expanded) Text(label, color = if (isSelected) TvText else TvTextMuted, fontSize = 18.sp)
             }
         }
     }
 }
+
+internal fun tvNavigationRailItemsFocusable(expanded: Boolean): Boolean = expanded
 
 private fun TvRoute.sameTopLevel(other: TvRoute): Boolean =
     (this is TvRoute.Home && other is TvRoute.Home) ||

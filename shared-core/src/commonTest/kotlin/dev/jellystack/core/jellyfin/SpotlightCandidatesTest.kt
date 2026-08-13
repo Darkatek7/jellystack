@@ -89,6 +89,22 @@ class SpotlightCandidatesTest {
         assertEquals("episode", result.single().actionItem.id)
     }
 
+    @Test
+    fun groupedEpisodesKeepSeriesBrandArtwork() {
+        val episode =
+            episode("episode", "series", "Show", "2026-06-20T12:00:00Z").copy(
+                seriesLogoImageTag = "series-logo",
+                seriesArtImageTag = "series-art",
+                seriesBannerImageTag = "series-banner",
+            )
+
+        val display = buildSpotlightCandidates(listOf(episode), emptyList(), now).single().displayItem
+
+        assertEquals("series-logo", display.logoImageTag)
+        assertEquals("series-art", display.artImageTag)
+        assertEquals("series-banner", display.bannerImageTag)
+    }
+
     private fun movie(
         id: String,
         name: String,

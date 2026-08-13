@@ -94,6 +94,9 @@ private fun JellyfinItem.toSpotlightDisplayItem(): JellyfinItem {
         primaryImageTag = seriesPrimaryImageTag ?: primaryImageTag,
         thumbImageTag = seriesThumbImageTag ?: thumbImageTag,
         backdropImageTag = seriesBackdropImageTag ?: backdropImageTag,
+        logoImageTag = seriesLogoImageTag ?: logoImageTag,
+        artImageTag = seriesArtImageTag ?: artImageTag,
+        bannerImageTag = seriesBannerImageTag ?: bannerImageTag,
         overview = overview,
     )
 }

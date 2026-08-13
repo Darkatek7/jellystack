@@ -41,6 +41,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -242,6 +243,19 @@ internal fun TvSettingsScreen(
                 ) {
                     repository.setUseServerHomeSections(!settings.useServerHomeSections)
                 }
+                TvSettingTile(
+                    strings.trailerPreviews,
+                    if (settings.trailerPreviewsEnabled) strings.on else strings.off,
+                ) {
+                    repository.setTrailerPreviewsEnabled(!settings.trailerPreviewsEnabled)
+                }
+                TvSettingTile(
+                    strings.trailerPreviewSound,
+                    if (settings.trailerPreviewSoundEnabled) strings.on else strings.off,
+                    enabled = settings.trailerPreviewsEnabled,
+                ) {
+                    repository.setTrailerPreviewSoundEnabled(!settings.trailerPreviewSoundEnabled)
+                }
             }
         }
         item { TvSectionTitle(strings.connections) }
@@ -367,6 +381,7 @@ private fun TvSettingTile(
     value: String,
     focusToNavigationRailOnLeft: Boolean = false,
     screenEntry: Boolean = false,
+    enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
     Column(
@@ -374,9 +389,11 @@ private fun TvSettingTile(
             .tvScreenEntryFocus(screenEntry)
             .width(330.dp)
             .height(112.dp)
+            .graphicsLayer { alpha = if (enabled) 1f else 0.46f }
             .background(TvSurface, RoundedCornerShape(20.dp))
             .tvFocusable(
                 onClick = onClick,
+                enabled = enabled,
                 shape = RoundedCornerShape(20.dp),
                 focusToNavigationRailOnLeft = focusToNavigationRailOnLeft,
             ).padding(20.dp),

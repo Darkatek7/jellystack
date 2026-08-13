@@ -15,6 +15,9 @@ import dev.jellystack.core.di.JellystackDI
 import dev.jellystack.core.jellyfin.JellyfinBrowseRepository
 import dev.jellystack.core.playback.JellyfinStreamingProgressReporter
 import dev.jellystack.core.preferences.AppSettingsRepository
+import dev.jellystack.core.preferences.ResumeMode
+import dev.jellystack.core.preferences.StreamingQualityPreference
+import dev.jellystack.core.preferences.SubtitleMode
 import dev.jellystack.design.tv.TvJellystackRoot
 import dev.jellystack.players.AndroidPlaybackSessionBridge
 import dev.jellystack.players.AndroidPlayerEngine
@@ -33,6 +36,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var playerEngine: AndroidPlayerEngine
     private lateinit var playbackController: PlaybackController
     private lateinit var playbackBridge: AndroidPlaybackSessionBridge
+    private lateinit var trailerPreviewEngine: AndroidPlayerEngine
+    private lateinit var trailerPreviewController: PlaybackController
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -63,6 +68,28 @@ class MainActivity : AppCompatActivity() {
                 subtitlePreferenceStore = SettingsSubtitlePreferenceStore(playbackSettings),
                 playbackPreferencesProvider = PlaybackPreferencesProvider { settingsRepository.settings.value },
             )
+        trailerPreviewEngine = AndroidPlayerEngine(context = applicationContext)
+        trailerPreviewController =
+            PlaybackController(
+                playbackSourceResolver =
+                    JellyfinPlaybackSourceResolver(
+                        playbackInfoService = NetworkJellyfinPlaybackInfoService(),
+                        deviceProfileProvider = AndroidTvPlaybackDeviceProfileProvider(),
+                        clientVersion = BuildConfig.VERSION_NAME,
+                    ),
+                playerEngine = trailerPreviewEngine,
+                playbackPreferencesProvider =
+                    PlaybackPreferencesProvider {
+                        settingsRepository.settings.value.copy(
+                            wifiStreamingQuality = StreamingQualityPreference.MBPS_4_720P,
+                            mobileStreamingQuality = StreamingQualityPreference.MBPS_4_720P,
+                            resumeMode = ResumeMode.RESTART,
+                            preferredSubtitleLanguage = null,
+                            subtitleMode = SubtitleMode.OFF,
+                            rememberSeriesTracks = false,
+                        )
+                    },
+            )
         playbackBridge =
             AndroidPlaybackSessionBridge(
                 context = this,
@@ -88,6 +115,8 @@ class MainActivity : AppCompatActivity() {
             TvJellystackRoot(
                 playbackController = playbackController,
                 playerEngine = playerEngine,
+                trailerPreviewController = trailerPreviewController,
+                trailerPreviewEngine = trailerPreviewEngine,
                 appVersion = BuildConfig.VERSION_NAME,
                 stopPlayback = playbackBridge::stopPlayback,
             )
@@ -101,11 +130,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onStop() {
+        trailerPreviewController.stop(saveProgress = false)
         if (!isChangingConfigurations) playbackBridge.stopPlayback()
         super.onStop()
     }
 
     override fun onDestroy() {
+        trailerPreviewController.release()
         playbackBridge.release()
         playbackController.release()
         super.onDestroy()

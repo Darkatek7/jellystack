@@ -13,7 +13,10 @@ internal fun resolveTvJellyfinArtwork(
     item: JellyfinItem,
     landscape: Boolean = true,
 ): TvJellyfinArtwork? {
-    val seriesId = item.seriesId?.takeIf { item.type.equals("Episode", ignoreCase = true) }
+    val seriesId =
+        item.seriesId?.takeIf {
+            item.type.equals("Episode", ignoreCase = true) || item.type.equals("Season", ignoreCase = true)
+        }
 
     fun direct(
         tag: String?,

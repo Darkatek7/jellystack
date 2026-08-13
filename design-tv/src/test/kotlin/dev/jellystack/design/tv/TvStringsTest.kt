@@ -23,6 +23,12 @@ class TvStringsTest {
         assertEquals("Playback could not continue", english.playbackFailedTitle)
         assertEquals("Wiedergabe konnte nicht fortgesetzt werden", german.playbackFailedTitle)
         assertEquals("Your Jellyfin and Seerr library, designed for the big screen.", english.tvTagline)
+        assertEquals("Recently added", english.recentlyAdded)
+        assertEquals("New in the last 30 days", english.newInLastThirtyDays)
+        assertEquals("Details", english.details)
+        assertEquals("Details", german.details)
+        assertEquals("Trailer previews", english.trailerPreviews)
+        assertEquals("Preview sound", english.trailerPreviewSound)
         assertEquals("Automatisch", german.automatic)
     }
 }
