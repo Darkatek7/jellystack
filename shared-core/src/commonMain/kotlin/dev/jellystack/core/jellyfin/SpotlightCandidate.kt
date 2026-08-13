@@ -1,17 +1,16 @@
-package dev.jellystack.design.jellyfin
+package dev.jellystack.core.jellyfin
 
-import dev.jellystack.core.jellyfin.JellyfinItem
 import kotlinx.datetime.Instant
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.days
 
-internal data class SpotlightCandidate(
+data class SpotlightCandidate(
     val displayItem: JellyfinItem,
     val actionItem: JellyfinItem,
     val addedAt: Instant,
 )
 
-internal fun buildSpotlightCandidates(
+fun buildSpotlightCandidates(
     recentShows: List<JellyfinItem>,
     recentMovies: List<JellyfinItem>,
     now: Instant,

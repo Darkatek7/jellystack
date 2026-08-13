@@ -1,5 +1,7 @@
 package dev.jellystack.design.jellyfin
 
+import dev.jellystack.core.jellyfin.buildSpotlightCandidates
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box

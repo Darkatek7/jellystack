@@ -1,6 +1,5 @@
-package dev.jellystack.design.jellyfin
+package dev.jellystack.core.jellyfin
 
-import dev.jellystack.core.jellyfin.JellyfinItem
 import kotlinx.datetime.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -55,7 +54,7 @@ class SpotlightCandidatesTest {
     }
 
     @Test
-    fun prefersPremiereDateForReleasedContent() {
+    fun prefersPremiereDateAndFallsBackToDateCreated() {
         val releasedInside =
             movie(
                 id = "released",
@@ -63,10 +62,11 @@ class SpotlightCandidatesTest {
                 dateCreated = "2026-01-01T12:00:00Z",
                 premiereDate = "2026-06-20T12:00:00Z",
             )
+        val createdInside = movie("created", "Created", "2026-06-19T12:00:00Z")
 
-        val result = buildSpotlightCandidates(emptyList(), listOf(releasedInside), now)
+        val result = buildSpotlightCandidates(emptyList(), listOf(releasedInside, createdInside), now)
 
-        assertEquals(listOf("released"), result.map { it.actionItem.id })
+        assertEquals(listOf("released", "created"), result.map { it.actionItem.id })
     }
 
     @Test
@@ -95,13 +95,7 @@ class SpotlightCandidatesTest {
         dateCreated: String?,
         premiereDate: String? = null,
     ): JellyfinItem =
-        item(
-            id = id,
-            name = name,
-            type = "Movie",
-            dateCreated = dateCreated,
-            premiereDate = premiereDate,
-        )
+        item(id, name, "Movie", dateCreated, premiereDate)
 
     private fun episode(
         id: String,
@@ -116,11 +110,11 @@ class SpotlightCandidatesTest {
             id = id,
             name = "Episode $id",
             type = "Episode",
+            dateCreated = dateCreated,
+            premiereDate = premiereDate,
             parentId = seriesId,
             seriesId = seriesId,
             seriesName = seriesName,
-            dateCreated = dateCreated,
-            premiereDate = premiereDate,
             seasonId = seasonId,
             parentIndexNumber = seasonNumber,
         )

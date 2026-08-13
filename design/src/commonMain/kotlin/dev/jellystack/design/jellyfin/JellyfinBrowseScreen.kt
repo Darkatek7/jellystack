@@ -2,6 +2,9 @@
 
 package dev.jellystack.design.jellyfin
 
+import dev.jellystack.core.jellyfin.buildSpotlightCandidates
+import dev.jellystack.core.jellyfin.SpotlightCandidate
+
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
