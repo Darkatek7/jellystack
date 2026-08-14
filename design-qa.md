@@ -9,8 +9,13 @@
 - Detail, German, 100% font: `C:\Users\heel\.codex\visualizations\2026\08\13\019ffc02-7b0b-7881-8c1d-f0c6fb41a271\tv-premium-qa\detail-final.png`
 - Detail, German, 200% font, all four actions: `C:\Users\heel\.codex\visualizations\2026\08\13\019ffc02-7b0b-7881-8c1d-f0c6fb41a271\tv-premium-qa\detail-font2-prominent.png`
 - Responsive home, 1280×720: `C:\Users\heel\.codex\visualizations\2026\08\13\019ffc02-7b0b-7881-8c1d-f0c6fb41a271\tv-premium-qa\home-720.png`
+- Home Sections with restored hero, 1920×1080: `C:\Users\heel\.codex\visualizations\2026\08\13\019ffc02-7b0b-7881-8c1d-f0c6fb41a271\tv-premium-qa\home-sections-hero-fixed-1080.png`
+- D-pad next-row focus from Discover to Discover Movies, 1920×1080: `C:\Users\heel\.codex\visualizations\2026\08\13\019ffc02-7b0b-7881-8c1d-f0c6fb41a271\tv-premium-qa\home-sections-dpad-next-row-1080.png`
+- Home Sections with restored hero and strict recent row, 1280×720: `C:\Users\heel\.codex\visualizations\2026\08\13\019ffc02-7b0b-7881-8c1d-f0c6fb41a271\tv-premium-qa\home-sections-hero-fixed-720.png`
 
 The live Jellyfin state used for the final home capture had no item eligible for the fixed 30-day window. The full hero was therefore compared in the preceding 1920×1080 pass (`home-1080-v2.png`); the final geometry change was then verified independently by the layout test and the final row, rail, preview, and detail captures above.
+
+The Home Sections regression pass installed commit `4de8235` over the existing authenticated TV app. The hero remained LazyColumn slot zero with server sections enabled. Live D-pad traversal moved from the second My Media card to the first Continue Watching card, and from `Reacher` in Discover directly to `Toy Story 5`, the first Discover Movies card. The same build passed at 1920×1080 and 1280×720.
 
 ## Comparison history
 
@@ -27,5 +32,6 @@ The live Jellyfin state used for the final home capture had no item eligible for
 - Typography: hierarchy remains clear at 100%; German detail actions and labels remain present and legible at 200% font scale.
 - Colors and surfaces: the existing Jellystack purple/lavender theme is retained with subtle borders, shadow, brightness, and scale instead of heavy outer frames.
 - Interaction states: home-first focus, exact focus restoration, portrait morph, local preview after 3 seconds, immediate artwork restoration, open rail, and primary/secondary detail focus states were exercised on the emulator.
+- Home regression states: hero-first rendering with Ready/Loading/Unavailable server sections, deterministic first-card Up/Down routing, offscreen row focus, boundary retention, and preview cancellation were covered by 11 passing TV instrumentation tests and live remote traversal.
 
 passed
