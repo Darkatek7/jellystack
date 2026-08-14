@@ -8,13 +8,33 @@ import kotlin.test.assertTrue
 
 class TvHomeCarouselSelectionTest {
     @Test
+    fun autoCycleIntervalUsesConfiguredValueAboveMinimum() {
+        assertEquals(11_000L, tvHomeCarouselIntervalMillis(intervalSeconds = 11))
+    }
+
+    @Test
+    fun autoCycleIntervalClampsConfiguredValueToSixSecondMinimum() {
+        assertEquals(6_000L, tvHomeCarouselIntervalMillis(intervalSeconds = 2))
+    }
+
+    @Test
+    fun previewPauseIncludesArmedAndPlayingButNotTerminalStates() {
+        val target = TvTrailerPreviewTarget("server", "item", isEpisode = false, seriesId = null)
+
+        assertTrue(TvTrailerPreviewState.Armed(target).blocksTvHomeCarouselAutoCycle())
+        assertTrue(TvTrailerPreviewState.Playing(target).blocksTvHomeCarouselAutoCycle())
+        assertFalse(TvTrailerPreviewState.Idle.blocksTvHomeCarouselAutoCycle())
+        assertFalse(TvTrailerPreviewState.Unavailable(target).blocksTvHomeCarouselAutoCycle())
+    }
+
+    @Test
     fun autoCycleOnlyRunsWithMultipleCandidatesAndNoPauseReason() {
         assertTrue(
             shouldAutoCycleTvHomeCarousel(
                 enabled = true,
                 candidateCount = 2,
                 railOpen = false,
-                previewPlaying = false,
+                previewActive = false,
                 heroFocused = false,
             ),
         )

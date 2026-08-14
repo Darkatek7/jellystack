@@ -104,7 +104,7 @@ private const val TV_HOME_HERO_HEIGHT_DP = 360
 
 internal fun tvHomeHeroHeightDp(): Int = TV_HOME_HERO_HEIGHT_DP
 
-internal fun tvHomeFirstCardTopDp(): Int = 20 + TV_HOME_HERO_HEIGHT_DP + 28 + 24 + 14
+internal fun tvHomeFirstCardTopDp(): Int = 20 + TV_HOME_HERO_HEIGHT_DP + 28 + 24 + 14 + 6
 
 private enum class TvSearchSource { ALL, JELLYFIN, SEERR }
 
@@ -237,19 +237,19 @@ internal fun TvHomeScreen(
     LaunchedEffect(candidateIds) {
         spotlightItemId = reconcileTvHomeCarouselSelection(candidateIds, spotlightItemId)
     }
-    val previewPlaying = trailerPreviewState is TvTrailerPreviewState.Playing
+    val previewActive = trailerPreviewState.blocksTvHomeCarouselAutoCycle()
     val heroFocusPaused = heroCarouselFocused || heroPrimaryFocused || heroDetailsFocused
-    LaunchedEffect(autoCycle, intervalSeconds, candidateIds, railOpen, previewPlaying, heroFocusPaused, spotlightItemId) {
+    LaunchedEffect(autoCycle, intervalSeconds, candidateIds, railOpen, previewActive, heroFocusPaused, spotlightItemId) {
         if (
             shouldAutoCycleTvHomeCarousel(
                 enabled = autoCycle,
                 candidateCount = candidateIds.size,
                 railOpen = railOpen,
-                previewPlaying = previewPlaying,
+                previewActive = previewActive,
                 heroFocused = heroFocusPaused,
             )
         ) {
-            delay(intervalSeconds.coerceAtLeast(6) * 1_000L)
+            delay(tvHomeCarouselIntervalMillis(intervalSeconds))
             carouselDirection = TvHomeCarouselDirection.NEXT
             spotlightItemId =
                 moveTvHomeCarouselSelection(
@@ -625,12 +625,12 @@ private fun TvHeroSlide(
                 ).joinToString("  •  ")
             if (metadata.isNotBlank()) Text(metadata, color = TvTextMuted, fontSize = 15.sp)
         }
-        if (mode == TvHomeHeroMode.RECENT) {
-            Column(
-                Modifier.align(Alignment.TopEnd).padding(top = 24.dp, end = 22.dp),
-                horizontalAlignment = Alignment.End,
-            ) {
-                Text("%02d | %02d".format(position, total), color = TvPurple, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Column(
+            Modifier.align(Alignment.TopEnd).padding(top = 24.dp, end = 22.dp),
+            horizontalAlignment = Alignment.End,
+        ) {
+            Text("%02d | %02d".format(position, total), color = TvPurple, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            if (mode == TvHomeHeroMode.RECENT) {
                 Text(strings.lastThirtyDays, color = TvTextMuted, fontSize = 15.sp)
             }
         }

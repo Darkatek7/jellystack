@@ -28,7 +28,7 @@ class TvPremiumLayoutTest {
     @Test
     fun firstHomeRowStartsInsideAStandardTvViewport() {
         assertEquals(360, tvHomeHeroHeightDp())
-        assertEquals(446, tvHomeFirstCardTopDp())
+        assertEquals(452, tvHomeFirstCardTopDp())
         assertTrue(tvHomeFirstCardTopDp() < 540)
     }
 }

@@ -72,6 +72,59 @@ class TvHomeScreenTest {
         }
 
         composeRule.onAllNodesWithText("New in the last 30 days").assertCountEquals(0)
+        composeRule.onAllNodes(cardWithDescription("Recent")).assertCountEquals(0)
+        composeRule.runOnIdle(engine::release)
+    }
+
+    @Test
+    fun heroAndFirstMediaCardUseRenderedHomeGeometry() {
+        lateinit var engine: AndroidPlayerEngine
+        val recent = item("recent", "Recent", dateCreated = (Clock.System.now() - 1.days).toString())
+        val firstCard = item("first-card", "First media card")
+        val section =
+            HomeSection(
+                id = "first-row",
+                title = "First row",
+                viewMode = HomeSectionViewMode.LANDSCAPE,
+                displayTitle = true,
+                showDetailsMenu = false,
+                items = listOf(homeSectionItem(firstCard)),
+            )
+        composeRule.setContent {
+            val context = LocalContext.current
+            engine = remember(context) { AndroidPlayerEngine(context) }
+            TestHomeScreen(
+                state = JellyfinHomeState(recentMovies = listOf(recent)),
+                sections = HomeSectionsState.Ready(listOf(section), "", ""),
+                engine = engine,
+            )
+        }
+
+        val heroBounds = composeRule.onNodeWithTag("tv-home-hero-carousel").getUnclippedBoundsInRoot()
+        val firstCardBounds = composeRule.onAllNodes(cardWithDescription("First media card"))[0].getUnclippedBoundsInRoot()
+        assertEquals(360f, (heroBounds.bottom - heroBounds.top).value, 0.01f)
+        assertEquals(452f, firstCardBounds.top.value, 0.51f)
+        assertEquals(tvHomeFirstCardTopDp().toFloat(), firstCardBounds.top.value, 0.51f)
+        composeRule.runOnIdle(engine::release)
+    }
+
+    @Test
+    fun latestFallbackShowsCarouselPositionWithoutRecentWindowLabel() {
+        lateinit var engine: AndroidPlayerEngine
+        val first = item("old-first", "Old first", dateCreated = (Clock.System.now() - 40.days).toString())
+        val second = item("old-second", "Old second", dateCreated = (Clock.System.now() - 50.days).toString())
+        composeRule.setContent {
+            val context = LocalContext.current
+            engine = remember(context) { AndroidPlayerEngine(context) }
+            TestHomeScreen(
+                state = JellyfinHomeState(recentMovies = listOf(first, second)),
+                sections = HomeSectionsState.Unavailable,
+                engine = engine,
+            )
+        }
+
+        composeRule.onAllNodesWithText("01 | 02", useUnmergedTree = true).assertCountEquals(1)
+        composeRule.onAllNodesWithText("Last 30 days", useUnmergedTree = true).assertCountEquals(0)
         composeRule.runOnIdle(engine::release)
     }
 
@@ -236,6 +289,49 @@ class TvHomeScreenTest {
 
         row.performSemanticsAction(SemanticsActions.RequestFocus)
         composeRule.mainClock.advanceTimeBy(5_999)
+        composeRule.onAllNodesWithText("First hero", useUnmergedTree = true).assertCountEquals(1)
+        composeRule.mainClock.advanceTimeBy(241)
+        composeRule.onAllNodesWithText("Second hero", useUnmergedTree = true).assertCountEquals(1)
+        composeRule.runOnIdle(engine::release)
+    }
+
+    @Test
+    fun autoCyclePausesForRailAndPreviewThenUsesFullConfiguredInterval() {
+        lateinit var engine: AndroidPlayerEngine
+        val railOpen = androidx.compose.runtime.mutableStateOf(true)
+        val previewState = androidx.compose.runtime.mutableStateOf<TvTrailerPreviewState>(TvTrailerPreviewState.Idle)
+        val target = TvTrailerPreviewTarget("server", "preview", isEpisode = false, seriesId = null)
+        val first = item("first", "First hero", dateCreated = (Clock.System.now() - 1.days).toString())
+        val second = item("second", "Second hero", dateCreated = (Clock.System.now() - 2.days).toString())
+        composeRule.mainClock.autoAdvance = false
+        composeRule.setContent {
+            val context = LocalContext.current
+            engine = remember(context) { AndroidPlayerEngine(context) }
+            TestHomeScreen(
+                state = JellyfinHomeState(recentMovies = listOf(first, second)),
+                sections = HomeSectionsState.Unavailable,
+                engine = engine,
+                autoCycle = true,
+                intervalSeconds = 8,
+                provideEntryFocus = false,
+                railOpen = railOpen.value,
+                trailerPreviewState = previewState.value,
+            )
+        }
+
+        composeRule.mainClock.advanceTimeBy(9_000)
+        composeRule.onAllNodesWithText("First hero", useUnmergedTree = true).assertCountEquals(1)
+        composeRule.runOnIdle {
+            railOpen.value = false
+            previewState.value = TvTrailerPreviewState.Armed(target)
+        }
+        composeRule.mainClock.advanceTimeBy(9_000)
+        composeRule.onAllNodesWithText("First hero", useUnmergedTree = true).assertCountEquals(1)
+        composeRule.runOnIdle { previewState.value = TvTrailerPreviewState.Playing(target) }
+        composeRule.mainClock.advanceTimeBy(9_000)
+        composeRule.onAllNodesWithText("First hero", useUnmergedTree = true).assertCountEquals(1)
+        composeRule.runOnIdle { previewState.value = TvTrailerPreviewState.Idle }
+        composeRule.mainClock.advanceTimeBy(7_999)
         composeRule.onAllNodesWithText("First hero", useUnmergedTree = true).assertCountEquals(1)
         composeRule.mainClock.advanceTimeBy(241)
         composeRule.onAllNodesWithText("Second hero", useUnmergedTree = true).assertCountEquals(1)
@@ -428,6 +524,8 @@ class TvHomeScreenTest {
         autoCycle: Boolean = false,
         intervalSeconds: Int = 10,
         provideEntryFocus: Boolean = true,
+        railOpen: Boolean = false,
+        trailerPreviewState: TvTrailerPreviewState = TvTrailerPreviewState.Idle,
     ) {
         val entryFocusRequester = remember { FocusRequester() }
         CompositionLocalProvider(LocalTvScreenEntryFocusRequester provides entryFocusRequester.takeIf { provideEntryFocus }) {
@@ -438,8 +536,8 @@ class TvHomeScreenTest {
                     strings = TvStrings.current(AppLanguage.ENGLISH),
                     autoCycle = autoCycle,
                     intervalSeconds = intervalSeconds,
-                    railOpen = false,
-                    trailerPreviewState = TvTrailerPreviewState.Idle,
+                    railOpen = railOpen,
+                    trailerPreviewState = trailerPreviewState,
                     focusMemory = TvFocusMemory(),
                     onRefresh = {},
                     onPreviewFocus = {},

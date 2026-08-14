@@ -40,13 +40,19 @@ internal fun shouldAutoCycleTvHomeCarousel(
     enabled: Boolean,
     candidateCount: Int,
     railOpen: Boolean,
-    previewPlaying: Boolean,
+    previewActive: Boolean,
     heroFocused: Boolean,
 ): Boolean {
     val canStart = enabled && candidateCount > 1
-    val paused = railOpen || previewPlaying || heroFocused
+    val paused = railOpen || previewActive || heroFocused
     return canStart && !paused
 }
+
+internal fun TvTrailerPreviewState.blocksTvHomeCarouselAutoCycle(): Boolean =
+    this is TvTrailerPreviewState.Armed || this is TvTrailerPreviewState.Playing
+
+internal fun tvHomeCarouselIntervalMillis(intervalSeconds: Int): Long =
+    intervalSeconds.coerceAtLeast(6) * 1_000L
 
 internal fun buildTvHomeHeroPresentation(
     state: JellyfinHomeState,
