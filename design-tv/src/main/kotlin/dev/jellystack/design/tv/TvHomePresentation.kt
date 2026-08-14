@@ -36,6 +36,18 @@ internal fun moveTvHomeCarouselSelection(
     }
 }
 
+internal fun shouldAutoCycleTvHomeCarousel(
+    enabled: Boolean,
+    candidateCount: Int,
+    railOpen: Boolean,
+    previewPlaying: Boolean,
+    heroFocused: Boolean,
+): Boolean {
+    val canStart = enabled && candidateCount > 1
+    val paused = railOpen || previewPlaying || heroFocused
+    return canStart && !paused
+}
+
 internal fun buildTvHomeHeroPresentation(
     state: JellyfinHomeState,
     homeSections: HomeSectionsState,

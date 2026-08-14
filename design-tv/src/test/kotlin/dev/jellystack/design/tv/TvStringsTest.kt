@@ -24,7 +24,6 @@ class TvStringsTest {
         assertEquals("Wiedergabe konnte nicht fortgesetzt werden", german.playbackFailedTitle)
         assertEquals("Your Jellyfin and Seerr library, designed for the big screen.", english.tvTagline)
         assertEquals("Recently added", english.recentlyAdded)
-        assertEquals("New in the last 30 days", english.newInLastThirtyDays)
         assertEquals("Last 30 days", english.lastThirtyDays)
         assertEquals("Latest additions", english.latestAdditions)
         assertEquals("From your library", english.fromYourLibrary)

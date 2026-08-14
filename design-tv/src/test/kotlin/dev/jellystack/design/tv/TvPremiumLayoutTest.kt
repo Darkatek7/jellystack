@@ -1,6 +1,7 @@
 package dev.jellystack.design.tv
 
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class TvPremiumLayoutTest {
@@ -26,6 +27,8 @@ class TvPremiumLayoutTest {
 
     @Test
     fun firstHomeRowStartsInsideAStandardTvViewport() {
+        assertEquals(360, tvHomeHeroHeightDp())
+        assertEquals(446, tvHomeFirstCardTopDp())
         assertTrue(tvHomeFirstCardTopDp() < 540)
     }
 }
