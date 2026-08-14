@@ -47,6 +47,7 @@ import dev.jellystack.core.jellyfin.HomeSectionViewMode
 import dev.jellystack.core.jellyfin.HomeSectionsState
 import dev.jellystack.core.jellyfin.JellyfinHomeState
 import dev.jellystack.core.jellyfin.JellyfinItem
+import dev.jellystack.core.jellyfin.buildSpotlightCandidates
 import dev.jellystack.design.components.ShimmerPlaceholder
 import dev.jellystack.design.layout.LocalResponsiveProfile
 import kotlinx.datetime.Clock

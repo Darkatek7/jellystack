@@ -2,7 +2,7 @@
 
 Jellystack TV is a remote-first companion build in the same Kotlin Multiplatform repository. It shares server, authentication, metadata, settings, and playback code with Jellystack mobile while using a dedicated Compose for TV interface.
 
-The current closed beta is `0.16.0-tv-beta.2` with `versionCode 20` and package ID `app.jellystack.mobile`.
+The current closed beta is `0.16.0-tv-beta.3` with `versionCode 21` and package ID `app.jellystack.mobile`.
 
 ## Supported devices
 
@@ -71,7 +71,7 @@ Run `:app-tv:verifyTvReleaseManifestPermissions` before every store build. Also 
 
 1. Enable the Android TV form factor for the existing Play Console app.
 2. Create a dedicated closed Android TV test track.
-3. Upload `app-tv-release.aab` with `versionCode 20`.
+3. Upload `app-tv-release.aab` with `versionCode 21`.
 4. Upload `store-assets/tv/google-play-banner-320x180.png` as the localized TV banner.
 5. Upload at least two real 1920x1080 TV screenshots captured from a current build.
 6. Provide reusable English reviewer credentials and Quick Connect instructions under App Access.
@@ -86,9 +86,9 @@ Google guidance: <https://developer.android.com/training/tv/publishing/distribut
 2. Select Fire TV as the supported device class.
 3. Upload the same GMS-free TV APK or AAB used for Google TV testing.
 4. Upload:
-   - `store-assets/tv/amazon-app-icon-1280x720.png`
-   - `store-assets/tv/amazon-background-1920x1080.png`
-   - three to ten real 1920x1080 screenshots
+   - `store-assets/amazon/0.16.0-tv-beta.3/fire-tv/app-icon-1280x720.png`
+   - `store-assets/amazon/0.16.0-tv-beta.3/fire-tv/background-1920x1080.png`
+   - the five real 1920x1080 screenshots in the same `fire-tv` directory
 5. Add the privacy URL, support URL, English reviewer credentials, and Quick Connect steps.
 6. Start Live App Testing, install Amazon's re-signed build on a physical Fire TV, and rerun playback, audio focus, remote, network, and lifecycle checks.
 7. Submit for normal review only after Live App Testing passes.

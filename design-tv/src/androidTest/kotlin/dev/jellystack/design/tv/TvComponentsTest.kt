@@ -4,6 +4,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.LocalContentColor
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toPixelMap
@@ -49,6 +50,32 @@ class TvComponentsTest {
             .performKeyInput { pressKey(Key.DirectionCenter) }
 
         composeRule.runOnIdle { assertEquals(1, clicks) }
+    }
+
+    @Test
+    fun homeVerticalFocusInterceptsDownButLeavesHorizontalNavigationUntouched() {
+        var direction: TvHomeVerticalDirection? = null
+        composeRule.setContent {
+            JellystackTvTheme {
+                TvActionButton(
+                    label = "Focus target",
+                    onClick = {},
+                    modifier = Modifier.tvHomeVerticalFocus { direction = it },
+                )
+            }
+        }
+
+        composeRule
+            .onNodeWithText("Focus target")
+            .performSemanticsAction(SemanticsActions.RequestFocus)
+            .performKeyInput { pressKey(Key.DirectionRight) }
+        composeRule.runOnIdle { assertEquals(null, direction) }
+
+        composeRule
+            .onNodeWithText("Focus target")
+            .performSemanticsAction(SemanticsActions.RequestFocus)
+            .performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.runOnIdle { assertEquals(TvHomeVerticalDirection.DOWN, direction) }
     }
 
     @Test

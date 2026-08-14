@@ -28,7 +28,7 @@ kotlin {
                 implementation(libs.coroutines.core)
                 implementation(libs.serialization.json)
                 implementation(libs.napier)
-                implementation(libs.kotlinx.datetime)
+                api(libs.kotlinx.datetime)
                 implementation(projects.sharedNetwork)
                 implementation(libs.ktor.client.core)
                 implementation(libs.ktor.client.logging)

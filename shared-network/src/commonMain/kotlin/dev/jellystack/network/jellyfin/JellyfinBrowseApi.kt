@@ -362,7 +362,7 @@ class JellyfinBrowseApi(
             "PrimaryImageAspectRatio,MediaSourceCount,BasicSyncInfo,CanDelete,Genres," +
                 "SeasonUserData,ChildCount,SeriesInfo,CollectionType,Overview,Taglines,Studios," +
                 "PremiereDate,ProductionYear,ProviderIds,ParentLogoImageTag,ParentThumbImageTag," +
-                "ParentArtImageTag,ParentBannerImageTag,LocationType"
+                "ParentArtImageTag,ParentBannerImageTag,LocationType,DateCreated"
         private const val DETAIL_FIELDS =
             REQUIRED_FIELDS +
                 ",MediaStreams,SeasonUserData,ParentBackdropImageTags,ParentLogoImageTags," +

@@ -49,6 +49,12 @@ class AndroidPlayerEngine(
     preferHighestSupportedBitrate: Boolean = false,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
 ) : PlayerEngine {
+    private val mediaAudioAttributes =
+        AudioAttributes
+            .Builder()
+            .setUsage(C.USAGE_MEDIA)
+            .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+            .build()
     private val appContext = context.applicationContext
     private var pendingAudioTrack: AudioTrack? = null
     private var pendingAudioSelectionConfirmationId: String? = null
@@ -76,11 +82,7 @@ class AndroidPlayerEngine(
                             .build()
                 }
                 setAudioAttributes(
-                    AudioAttributes
-                        .Builder()
-                        .setUsage(C.USAGE_MEDIA)
-                        .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
-                        .build(),
+                    mediaAudioAttributes,
                     true,
                 )
                 setHandleAudioBecomingNoisy(true)
@@ -173,6 +175,11 @@ class AndroidPlayerEngine(
     override val positionUpdates: SharedFlow<Long> = positionFlow.asSharedFlow()
     override val events: SharedFlow<PlayerEvent> = eventFlow.asSharedFlow()
     override val runtimeStats: StateFlow<PlaybackRuntimeStats> = runtimeStatsFlow.asStateFlow()
+
+    fun setAudioOutputEnabled(enabled: Boolean) {
+        exoPlayer.volume = if (enabled) 1f else 0f
+        exoPlayer.setAudioAttributes(mediaAudioAttributes, enabled)
+    }
 
     fun createVideoSurface(context: Context): View =
         PlayerView(context).apply {

@@ -51,6 +51,11 @@ class AppSettingsRepository(
 
     fun setUseServerHomeSections(value: Boolean) = update(KEY_USE_SERVER_HOME_SECTIONS, value) { copy(useServerHomeSections = value) }
 
+    fun setTrailerPreviewsEnabled(value: Boolean) = update(KEY_TRAILER_PREVIEWS_ENABLED, value) { copy(trailerPreviewsEnabled = value) }
+
+    fun setTrailerPreviewSoundEnabled(value: Boolean) =
+        update(KEY_TRAILER_PREVIEW_SOUND_ENABLED, value) { copy(trailerPreviewSoundEnabled = value) }
+
     fun setSpotlightIntervalSeconds(value: Int) {
         val normalized = value.takeIf(SPOTLIGHT_INTERVAL_SECONDS::contains) ?: 6
         storage.putInt(KEY_SPOTLIGHT_INTERVAL, normalized)
@@ -84,6 +89,8 @@ class AppSettingsRepository(
             subtitleBackground = enumValue(KEY_SUBTITLE_BACKGROUND, SubtitleBackground.SYSTEM),
             spotlightAutoCycle = storage.getBoolean(KEY_SPOTLIGHT_AUTO_CYCLE, true),
             useServerHomeSections = storage.getBoolean(KEY_USE_SERVER_HOME_SECTIONS, true),
+            trailerPreviewsEnabled = storage.getBoolean(KEY_TRAILER_PREVIEWS_ENABLED, true),
+            trailerPreviewSoundEnabled = storage.getBoolean(KEY_TRAILER_PREVIEW_SOUND_ENABLED, true),
             spotlightIntervalSeconds =
                 storage.getInt(KEY_SPOTLIGHT_INTERVAL, 6).takeIf(SPOTLIGHT_INTERVAL_SECONDS::contains) ?: 6,
             downloadsWifiOnly = storage.getBoolean(KEY_DOWNLOADS_WIFI_ONLY, false),
@@ -146,6 +153,8 @@ class AppSettingsRepository(
         const val KEY_SUBTITLE_BACKGROUND = "settings.subtitle_background"
         const val KEY_SPOTLIGHT_AUTO_CYCLE = "settings.spotlight_auto_cycle"
         const val KEY_USE_SERVER_HOME_SECTIONS = "settings.use_server_home_sections"
+        const val KEY_TRAILER_PREVIEWS_ENABLED = "settings.trailer_previews_enabled"
+        const val KEY_TRAILER_PREVIEW_SOUND_ENABLED = "settings.trailer_preview_sound_enabled"
         const val KEY_SPOTLIGHT_INTERVAL = "settings.spotlight_interval_seconds"
         const val KEY_DOWNLOADS_WIFI_ONLY = "settings.downloads_wifi_only"
         const val KEY_DEFAULT_PLAYBACK_SPEED = "settings.default_playback_speed"

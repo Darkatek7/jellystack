@@ -16,6 +16,33 @@ import kotlin.test.assertTrue
 
 class JellyfinBrowseApiTest {
     @Test
+    fun fetchLatestItemsRequestsDateCreatedMetadata() =
+        runTest {
+            var requestedFields = ""
+            val engine =
+                MockEngine { request ->
+                    requestedFields = request.url.parameters["Fields"].orEmpty()
+                    respond(
+                        "[]",
+                        HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                    )
+                }
+            val client = NetworkClientFactory.create(ClientConfig(engine = engine, installLogging = false))
+            val api = JellyfinBrowseApi(client, baseUrl = "https://example.test", accessToken = "dummy-access-token")
+
+            api.fetchLatestItems(
+                userId = "u-1",
+                libraryId = "library-1",
+                limit = 12,
+                includeItemTypes = "Movie",
+            )
+
+            assertTrue("DateCreated" in requestedFields, "Expected DateCreated in $requestedFields")
+            client.close()
+        }
+
+    @Test
     fun searchTermIsForwardedToLibraryItemsEndpoint() =
         runTest {
             var searchTerm: String? = null

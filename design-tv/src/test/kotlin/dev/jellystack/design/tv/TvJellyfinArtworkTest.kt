@@ -8,6 +8,19 @@ import kotlin.test.assertEquals
 
 class TvJellyfinArtworkTest {
     @Test
+    fun seasonUsesSeriesArtworkWhenAvailable() {
+        val artwork =
+            resolveTvJellyfinArtwork(
+                item(type = "Season", seriesId = "series").copy(
+                    seriesBackdropImageTag = "series-backdrop",
+                ),
+            )
+
+        assertEquals("series", artwork?.itemId)
+        assertEquals("series-backdrop", artwork?.imageTag)
+    }
+
+    @Test
     fun moviePrimaryArtworkUsesMovieIdInsteadOfParentLibraryId() {
         val movie = item(type = "Movie", seriesId = "library-1", primaryImageTag = "movie-primary")
 

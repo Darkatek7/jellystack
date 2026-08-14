@@ -34,6 +34,7 @@ import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import dev.jellystack.core.jellyfin.SpotlightCandidate
 import jellystack_mobile.design.generated.resources.Res
 import jellystack_mobile.design.generated.resources.spotlight_position
 import kotlinx.coroutines.coroutineScope

@@ -80,6 +80,8 @@ data class AppSettings(
     val spotlightAutoCycle: Boolean = true,
     val spotlightIntervalSeconds: Int = 6,
     val useServerHomeSections: Boolean = true,
+    val trailerPreviewsEnabled: Boolean = true,
+    val trailerPreviewSoundEnabled: Boolean = true,
     val downloadsWifiOnly: Boolean = false,
     val defaultPlaybackSpeed: Float = 1f,
     val statsForNerdsEnabled: Boolean = false,

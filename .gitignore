@@ -25,6 +25,7 @@ Thumbs.db
 /.qa-artifacts/
 /.qa-tv-*
 /.superpowers/
+/.worktrees/
 /Handle/
 /Handle.zip
 /adb.exe

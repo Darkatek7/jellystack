@@ -128,6 +128,8 @@ import dev.jellystack.core.jellyfin.JellyfinHomeState
 import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.JellyfinItemDetail
 import dev.jellystack.core.jellyfin.JellyfinLibrary
+import dev.jellystack.core.jellyfin.SpotlightCandidate
+import dev.jellystack.core.jellyfin.buildSpotlightCandidates
 import dev.jellystack.core.jellyfin.isBrowseContainer
 import dev.jellystack.design.components.ImageTextScrim
 import dev.jellystack.design.components.ShimmerPlaceholder

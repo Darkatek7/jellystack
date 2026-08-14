@@ -66,6 +66,7 @@ import dev.jellystack.core.jellyfin.JellyfinMediaStream
 import dev.jellystack.core.jellyfin.JellyfinMediaStreamType
 import dev.jellystack.core.jellyfin.JellyfinPerson
 import dev.jellystack.core.jellyfin.MediaDetailEnrichment
+import dev.jellystack.core.jellyfin.SpotlightCandidate
 import dev.jellystack.core.jellyseerr.JellyseerrLanguageProfiles
 import dev.jellystack.core.jellyseerr.JellyseerrMediaDetail
 import dev.jellystack.core.jellyseerr.JellyseerrMediaRatings
@@ -82,7 +83,6 @@ import dev.jellystack.design.jellyfin.JellyfinDetailContent
 import dev.jellystack.design.jellyfin.LibraryCardTestTags
 import dev.jellystack.design.jellyfin.LibraryNavigationState
 import dev.jellystack.design.jellyfin.SeasonEpisodes
-import dev.jellystack.design.jellyfin.SpotlightCandidate
 import dev.jellystack.design.jellyfin.SpotlightTestTags
 import dev.jellystack.design.jellyfin.TrackPickerOption
 import dev.jellystack.design.jellyfin.TrackPickerTestTags
