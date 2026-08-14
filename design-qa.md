@@ -26,7 +26,7 @@ The 30-day content is now presented only in the 360 dp Home hero. The separate r
 
 The exact debug TV APK was installed on the authenticated TV AVD and checked at 1920×1080 and 1280×720. Both action buttons remained visible at 720p. Live remote traversal passed in both resolutions: Hero → Play → Details → first card of the first media row, then Up → Play → Hero. Back from the Hero opened the rail and Right restored the Hero focus. No fatal app exception was recorded after the restored 1080p launch.
 
-The Home instrumentation class passed 12/12 tests, including cyclic multi-item Left/Right selection, stable Hero focus, active-item Play/Details callbacks, rail restoration, preview cancellation, offscreen row focus, no duplicate recent presentation, rendered geometry, and full-interval auto-cycle restart. The complete TV instrumentation suite passed 19/19 tests.
+The Home instrumentation class passed 12/12 tests, including cyclic multi-item Left/Right selection, stable Hero focus, active-item Play/Details callbacks, rail and preview pause states, preview cancellation, offscreen row focus, no duplicate recent presentation, rendered geometry, and full-interval auto-cycle restart. Back-to-rail and Right-to-Hero restoration were verified separately in the live remote pass above. The complete TV instrumentation suite passed 19/19 tests.
 
 ## Comparison history
 
@@ -44,7 +44,7 @@ The Home instrumentation class passed 12/12 tests, including cyclic multi-item L
 - Typography: hierarchy remains clear at 100%; German detail actions and labels remain present and legible at 200% font scale.
 - Colors and surfaces: the existing Jellystack purple/lavender theme is retained with subtle borders, shadow, brightness, and scale instead of heavy outer frames.
 - Interaction states: home-first focus, exact focus restoration, portrait morph, local preview after 3 seconds, immediate artwork restoration, open rail, and primary/secondary detail focus states were exercised on the emulator.
-- Home regression states: hero-first rendering with Ready/Loading/Unavailable server sections, deterministic first-card Up/Down routing, offscreen row focus, boundary retention, and preview cancellation were covered by 11 passing TV instrumentation tests and live remote traversal.
-- Hero carousel states: empty, single, multiple, cyclic wrap, stable-ID refresh, fallback counter, long-press suppression, focus pause, rail pause, Armed/Playing preview pause, and full configured interval restart are covered by unit and TV instrumentation tests.
+- Home regression states: hero-first rendering with Ready/Loading/Unavailable server sections, deterministic first-card Up/Down routing, offscreen row focus, boundary retention, and preview cancellation remain covered in the expanded 12-test Home instrumentation class and live remote traversal.
+- Hero carousel states: empty, single, multiple, cyclic wrap, stable-ID refresh, fallback counter, focus pause, rail pause, Armed/Playing preview pause, and full configured interval restart are covered by unit and TV instrumentation tests. Long-press repeat events are suppressed by the production key guard and were confirmed in code review.
 
 passed
