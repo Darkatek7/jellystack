@@ -35,19 +35,36 @@ class TvHomeFocusCoordinatorTest {
     }
 
     @Test
-    fun heroDownTargetsFirstNonEmptyMediaRow() {
+    fun heroCarouselDownTargetsPrimaryAction() {
         val coordinator = TvHomeVerticalFocusCoordinator(rows)
 
-        val move = coordinator.beginMove(TvHomeFocusOrigin.Hero, TvHomeVerticalDirection.DOWN)
+        val move = coordinator.beginMove(TvHomeFocusOrigin.HeroCarousel, TvHomeVerticalDirection.DOWN)
 
-        assertEquals(TvHomeFocusDestination.Row("portrait", 1, "portrait-1"), move?.destination)
+        assertEquals(TvHomeFocusDestination.HeroPrimary, move?.destination)
     }
 
     @Test
-    fun boundariesAreConsumedWithoutStartingFocusRequest() {
+    fun heroCarouselUpDoesNotStartFocusRequest() {
         val coordinator = TvHomeVerticalFocusCoordinator(rows)
 
-        assertNull(coordinator.beginMove(TvHomeFocusOrigin.Hero, TvHomeVerticalDirection.UP))
+        assertNull(coordinator.beginMove(TvHomeFocusOrigin.HeroCarousel, TvHomeVerticalDirection.UP))
+    }
+
+    @Test
+    fun heroActionsUpTargetsCarouselAndDownTargetsFirstNonEmptyMediaRow() {
+        val coordinator = TvHomeVerticalFocusCoordinator(rows)
+
+        val carousel = coordinator.beginMove(TvHomeFocusOrigin.HeroActions, TvHomeVerticalDirection.UP)
+        val row = coordinator.beginMove(TvHomeFocusOrigin.HeroActions, TvHomeVerticalDirection.DOWN)
+
+        assertEquals(TvHomeFocusDestination.HeroCarousel, carousel?.destination)
+        assertEquals(TvHomeFocusDestination.Row("portrait", 1, "portrait-1"), row?.destination)
+    }
+
+    @Test
+    fun rowDownBoundaryDoesNotStartFocusRequest() {
+        val coordinator = TvHomeVerticalFocusCoordinator(rows)
+
         assertNull(coordinator.beginMove(TvHomeFocusOrigin.Row("landscape"), TvHomeVerticalDirection.DOWN))
     }
 
@@ -64,7 +81,7 @@ class TvHomeFocusCoordinatorTest {
     @Test
     fun modelReplacementCancelsPendingRequestAndUsesNewIndices() {
         val coordinator = TvHomeVerticalFocusCoordinator(rows)
-        val stale = coordinator.beginMove(TvHomeFocusOrigin.Hero, TvHomeVerticalDirection.DOWN)!!
+        val stale = coordinator.beginMove(TvHomeFocusOrigin.HeroActions, TvHomeVerticalDirection.DOWN)!!
 
         coordinator.replaceRows(
             listOf(TvHomeFocusRow("new", lazyColumnIndex = 5, firstItemId = "new-1", landscape = false)),
@@ -73,7 +90,7 @@ class TvHomeFocusCoordinatorTest {
         assertFalse(coordinator.acceptCompletion(stale.requestId))
         assertEquals(
             TvHomeFocusDestination.Row("new", 5, "new-1"),
-            coordinator.beginMove(TvHomeFocusOrigin.Hero, TvHomeVerticalDirection.DOWN)?.destination,
+            coordinator.beginMove(TvHomeFocusOrigin.HeroActions, TvHomeVerticalDirection.DOWN)?.destination,
         )
     }
 
@@ -107,5 +124,21 @@ class TvHomeFocusCoordinatorTest {
 
         assertNull(move)
         assertEquals(0, cancellations)
+    }
+
+    @Test
+    fun acceptedMovesCancelPreviewExactlyOnce() {
+        val coordinator = TvHomeVerticalFocusCoordinator(rows)
+        var cancellations = 0
+
+        val move =
+            coordinator.beginMove(
+                origin = TvHomeFocusOrigin.HeroActions,
+                direction = TvHomeVerticalDirection.UP,
+                onAccepted = { cancellations += 1 },
+            )
+
+        assertEquals(TvHomeFocusDestination.HeroCarousel, move?.destination)
+        assertEquals(1, cancellations)
     }
 }

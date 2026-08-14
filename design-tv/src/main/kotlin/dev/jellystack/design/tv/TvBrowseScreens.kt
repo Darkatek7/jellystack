@@ -176,6 +176,7 @@ internal fun TvHomeScreen(
     LaunchedEffect(pendingFocusMove) {
         val move = pendingFocusMove ?: return@LaunchedEffect
         when (val destination = move.destination) {
+            TvHomeFocusDestination.HeroCarousel,
             TvHomeFocusDestination.HeroPrimary -> {
                 homeListState.scrollToItem(0)
                 if (verticalFocusCoordinator.acceptCompletion(move.requestId)) heroPrimaryFocusRequester.requestFocus()

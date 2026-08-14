@@ -15,6 +15,27 @@ internal data class TvHomeHeroPresentation(
     val candidates: List<SpotlightCandidate>,
 )
 
+internal enum class TvHomeCarouselDirection { PREVIOUS, NEXT }
+
+internal fun reconcileTvHomeCarouselSelection(
+    candidateIds: List<String>,
+    currentId: String?,
+): String? =
+    currentId?.takeIf { it in candidateIds } ?: candidateIds.firstOrNull()
+
+internal fun moveTvHomeCarouselSelection(
+    candidateIds: List<String>,
+    currentId: String?,
+    direction: TvHomeCarouselDirection,
+): String? {
+    val selectedId = reconcileTvHomeCarouselSelection(candidateIds, currentId) ?: return null
+    val selectedIndex = candidateIds.indexOf(selectedId)
+    return when (direction) {
+        TvHomeCarouselDirection.NEXT -> candidateIds[(selectedIndex + 1) % candidateIds.size]
+        TvHomeCarouselDirection.PREVIOUS -> candidateIds[(selectedIndex - 1 + candidateIds.size) % candidateIds.size]
+    }
+}
+
 internal fun buildTvHomeHeroPresentation(
     state: JellyfinHomeState,
     homeSections: HomeSectionsState,
@@ -65,12 +86,18 @@ internal data class TvHomeFocusRow(
 internal enum class TvHomeVerticalDirection { UP, DOWN }
 
 internal sealed interface TvHomeFocusOrigin {
+    data object HeroCarousel : TvHomeFocusOrigin
+
+    data object HeroActions : TvHomeFocusOrigin
+
     data object Hero : TvHomeFocusOrigin
 
     data class Row(val id: String) : TvHomeFocusOrigin
 }
 
 internal sealed interface TvHomeFocusDestination {
+    data object HeroCarousel : TvHomeFocusDestination
+
     data object HeroPrimary : TvHomeFocusDestination
 
     data class Row(
@@ -119,6 +146,14 @@ internal class TvHomeVerticalFocusCoordinator(rows: List<TvHomeFocusRow>) {
         direction: TvHomeVerticalDirection,
     ): TvHomeFocusDestination? =
         when (origin) {
+            TvHomeFocusOrigin.HeroCarousel ->
+                if (direction == TvHomeVerticalDirection.DOWN) TvHomeFocusDestination.HeroPrimary else null
+            TvHomeFocusOrigin.HeroActions ->
+                if (direction == TvHomeVerticalDirection.UP) {
+                    TvHomeFocusDestination.HeroCarousel
+                } else {
+                    rows.firstOrNull()?.destination()
+                }
             TvHomeFocusOrigin.Hero ->
                 if (direction == TvHomeVerticalDirection.DOWN) rows.firstOrNull()?.destination() else null
             is TvHomeFocusOrigin.Row -> {
