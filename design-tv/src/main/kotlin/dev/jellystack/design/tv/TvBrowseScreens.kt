@@ -251,7 +251,7 @@ internal fun TvHomeScreen(
                     onPlay = { onPlayItem(candidate.actionItem) },
                     onDetails = { onItem(candidate.actionItem) },
                     primaryFocusRequester = heroPrimaryFocusRequester,
-                    onVerticalMove = { direction -> onVerticalMove(TvHomeFocusOrigin.Hero, direction, null) },
+                    onVerticalMove = { direction -> onVerticalMove(TvHomeFocusOrigin.HeroActions, direction, null) },
                 )
             } else {
                 TvEmptyHomeHero(
@@ -259,7 +259,7 @@ internal fun TvHomeScreen(
                     strings = strings,
                     onRefresh = onRefresh,
                     primaryFocusRequester = heroPrimaryFocusRequester,
-                    onVerticalMove = { direction -> onVerticalMove(TvHomeFocusOrigin.Hero, direction, null) },
+                    onVerticalMove = { direction -> onVerticalMove(TvHomeFocusOrigin.HeroActions, direction, null) },
                 )
             }
         }

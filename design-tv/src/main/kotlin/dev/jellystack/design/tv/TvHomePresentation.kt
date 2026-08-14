@@ -90,8 +90,6 @@ internal sealed interface TvHomeFocusOrigin {
 
     data object HeroActions : TvHomeFocusOrigin
 
-    data object Hero : TvHomeFocusOrigin
-
     data class Row(val id: String) : TvHomeFocusOrigin
 }
 
@@ -154,8 +152,6 @@ internal class TvHomeVerticalFocusCoordinator(rows: List<TvHomeFocusRow>) {
                 } else {
                     rows.firstOrNull()?.destination()
                 }
-            TvHomeFocusOrigin.Hero ->
-                if (direction == TvHomeVerticalDirection.DOWN) rows.firstOrNull()?.destination() else null
             is TvHomeFocusOrigin.Row -> {
                 val currentIndex = rows.indexOfFirst { it.id == origin.id }
                 if (currentIndex < 0) {
