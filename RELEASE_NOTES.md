@@ -1,5 +1,13 @@
 # Release Notes
 
+## 0.16.0-tv-beta.3
+
+- Explore Home through a larger, immersive carousel built from recently added Jellyfin media.
+- Move through carousel slides and Home rows predictably with a TV remote while keeping focus stable.
+- Preview local Jellyfin trailers from Home cards after a short pause, with separate preview and sound settings.
+- Enjoy redesigned full-bleed details with clearer actions and reliable navigation back to the complete hero artwork.
+- Keep the hero first with or without server Home Sections, including a latest-local-media fallback when nothing was added in the last 30 days.
+
 ## 0.16.0-tv-beta.2
 
 - Negotiate playback codecs, HLS containers, and audio channel limits from the capabilities of each TV.

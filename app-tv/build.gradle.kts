@@ -50,8 +50,8 @@ android {
         applicationId = "app.jellystack.mobile"
         minSdk = 24
         targetSdk = 36
-        versionCode = 20
-        versionName = "0.16.0-tv-beta.2"
+        versionCode = 21
+        versionName = "0.16.0-tv-beta.3"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
