@@ -67,6 +67,7 @@ import dev.jellystack.core.server.ServerRepository
 import kotlinx.coroutines.launch
 
 @Composable
+@Suppress("CyclomaticComplexMethod")
 internal fun TvSettingsScreen(
     settings: AppSettings,
     repository: AppSettingsRepository,

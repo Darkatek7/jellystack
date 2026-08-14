@@ -20,8 +20,7 @@ internal enum class TvHomeCarouselDirection { PREVIOUS, NEXT }
 internal fun reconcileTvHomeCarouselSelection(
     candidateIds: List<String>,
     currentId: String?,
-): String? =
-    currentId?.takeIf { it in candidateIds } ?: candidateIds.firstOrNull()
+): String? = currentId?.takeIf { it in candidateIds } ?: candidateIds.firstOrNull()
 
 internal fun moveTvHomeCarouselSelection(
     candidateIds: List<String>,
@@ -51,8 +50,7 @@ internal fun shouldAutoCycleTvHomeCarousel(
 internal fun TvTrailerPreviewState.blocksTvHomeCarouselAutoCycle(): Boolean =
     this is TvTrailerPreviewState.Armed || this is TvTrailerPreviewState.Playing
 
-internal fun tvHomeCarouselIntervalMillis(intervalSeconds: Int): Long =
-    intervalSeconds.coerceAtLeast(6) * 1_000L
+internal fun tvHomeCarouselIntervalMillis(intervalSeconds: Int): Long = intervalSeconds.coerceAtLeast(6) * 1_000L
 
 internal fun buildTvHomeHeroPresentation(
     state: JellyfinHomeState,
@@ -108,7 +106,9 @@ internal sealed interface TvHomeFocusOrigin {
 
     data object HeroActions : TvHomeFocusOrigin
 
-    data class Row(val id: String) : TvHomeFocusOrigin
+    data class Row(
+        val id: String,
+    ) : TvHomeFocusOrigin
 }
 
 internal sealed interface TvHomeFocusDestination {
@@ -128,7 +128,9 @@ internal data class TvHomeFocusMove(
     val destination: TvHomeFocusDestination,
 )
 
-internal class TvHomeVerticalFocusCoordinator(rows: List<TvHomeFocusRow>) {
+internal class TvHomeVerticalFocusCoordinator(
+    rows: List<TvHomeFocusRow>,
+) {
     private var rows = rows.nonEmptyRows()
     private var nextRequestId = 0L
     private var pendingRequestId: Long? = null
@@ -183,8 +185,7 @@ internal class TvHomeVerticalFocusCoordinator(rows: List<TvHomeFocusRow>) {
         }
 }
 
-private fun List<TvHomeFocusRow>.nonEmptyRows(): List<TvHomeFocusRow> =
-    filter { !it.firstItemId.isNullOrBlank() }
+private fun List<TvHomeFocusRow>.nonEmptyRows(): List<TvHomeFocusRow> = filter { !it.firstItemId.isNullOrBlank() }
 
 private fun TvHomeFocusRow.destination(): TvHomeFocusDestination.Row =
     TvHomeFocusDestination.Row(

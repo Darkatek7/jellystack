@@ -202,8 +202,7 @@ class SpotlightCandidatesTest {
         name: String,
         dateCreated: String?,
         premiereDate: String? = null,
-    ): JellyfinItem =
-        item(id, name, "Movie", dateCreated, premiereDate)
+    ): JellyfinItem = item(id, name, "Movie", dateCreated, premiereDate)
 
     private fun episode(
         id: String,

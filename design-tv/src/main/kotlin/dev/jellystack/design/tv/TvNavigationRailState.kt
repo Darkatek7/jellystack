@@ -23,7 +23,10 @@ internal class TvContentFocusMemory<T> {
     private var routeKey: Any? = null
     private var target: T? = null
 
-    fun remember(routeKey: Any, target: T) {
+    fun remember(
+        routeKey: Any,
+        target: T,
+    ) {
         this.routeKey = routeKey
         this.target = target
     }

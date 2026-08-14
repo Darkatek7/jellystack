@@ -68,28 +68,7 @@ class MainActivity : AppCompatActivity() {
                 subtitlePreferenceStore = SettingsSubtitlePreferenceStore(playbackSettings),
                 playbackPreferencesProvider = PlaybackPreferencesProvider { settingsRepository.settings.value },
             )
-        trailerPreviewEngine = AndroidPlayerEngine(context = applicationContext)
-        trailerPreviewController =
-            PlaybackController(
-                playbackSourceResolver =
-                    JellyfinPlaybackSourceResolver(
-                        playbackInfoService = NetworkJellyfinPlaybackInfoService(),
-                        deviceProfileProvider = AndroidTvPlaybackDeviceProfileProvider(),
-                        clientVersion = BuildConfig.VERSION_NAME,
-                    ),
-                playerEngine = trailerPreviewEngine,
-                playbackPreferencesProvider =
-                    PlaybackPreferencesProvider {
-                        settingsRepository.settings.value.copy(
-                            wifiStreamingQuality = StreamingQualityPreference.MBPS_4_720P,
-                            mobileStreamingQuality = StreamingQualityPreference.MBPS_4_720P,
-                            resumeMode = ResumeMode.RESTART,
-                            preferredSubtitleLanguage = null,
-                            subtitleMode = SubtitleMode.OFF,
-                            rememberSeriesTracks = false,
-                        )
-                    },
-            )
+        trailerPreviewController = createTrailerPreviewController(settingsRepository)
         playbackBridge =
             AndroidPlaybackSessionBridge(
                 context = this,
@@ -121,6 +100,30 @@ class MainActivity : AppCompatActivity() {
                 stopPlayback = playbackBridge::stopPlayback,
             )
         }
+    }
+
+    private fun createTrailerPreviewController(settingsRepository: AppSettingsRepository): PlaybackController {
+        trailerPreviewEngine = AndroidPlayerEngine(context = applicationContext)
+        return PlaybackController(
+            playbackSourceResolver =
+                JellyfinPlaybackSourceResolver(
+                    playbackInfoService = NetworkJellyfinPlaybackInfoService(),
+                    deviceProfileProvider = AndroidTvPlaybackDeviceProfileProvider(),
+                    clientVersion = BuildConfig.VERSION_NAME,
+                ),
+            playerEngine = trailerPreviewEngine,
+            playbackPreferencesProvider =
+                PlaybackPreferencesProvider {
+                    settingsRepository.settings.value.copy(
+                        wifiStreamingQuality = StreamingQualityPreference.MBPS_4_720P,
+                        mobileStreamingQuality = StreamingQualityPreference.MBPS_4_720P,
+                        resumeMode = ResumeMode.RESTART,
+                        preferredSubtitleLanguage = null,
+                        subtitleMode = SubtitleMode.OFF,
+                        rememberSeriesTracks = false,
+                    )
+                },
+        )
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {

@@ -112,14 +112,20 @@ class TvHomePresentationTest {
         assertEquals(emptyList(), result.candidates)
     }
 
-    private fun readySection(item: JellyfinItem, action: HomeSectionAction): HomeSectionsState.Ready =
+    private fun readySection(
+        item: JellyfinItem,
+        action: HomeSectionAction,
+    ): HomeSectionsState.Ready =
         HomeSectionsState.Ready(
             sections = listOf(sectionOf(item, action)),
             imageBaseUrl = "https://example.test",
             imageAccessToken = "token",
         )
 
-    private fun sectionOf(item: JellyfinItem, action: HomeSectionAction): HomeSection =
+    private fun sectionOf(
+        item: JellyfinItem,
+        action: HomeSectionAction,
+    ): HomeSection =
         HomeSection(
             id = "section-${item.id}",
             title = "Section",
@@ -141,7 +147,10 @@ class TvHomePresentationTest {
                 ),
         )
 
-    private fun item(id: String, dateCreated: String? = null): JellyfinItem =
+    private fun item(
+        id: String,
+        dateCreated: String? = null,
+    ): JellyfinItem =
         JellyfinItem(
             id = id,
             libraryId = "library",

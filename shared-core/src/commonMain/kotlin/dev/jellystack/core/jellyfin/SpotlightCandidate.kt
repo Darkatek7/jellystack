@@ -20,8 +20,10 @@ fun buildSpotlightCandidates(
     val cutoff = now - window
 
     return buildGroupedSpotlightCandidates(
-        ((recentShows + libraryItems).filter { it.type.isSpotlightShowType() } +
-            (recentMovies + libraryItems).filter { it.type.equals("Movie", ignoreCase = true) }).mapNotNull { item ->
+        (
+            (recentShows + libraryItems).filter { it.type.isSpotlightShowType() } +
+                (recentMovies + libraryItems).filter { it.type.equals("Movie", ignoreCase = true) }
+        ).mapNotNull { item ->
             item.recencyOrNull()?.takeIf { it >= cutoff && it <= now }?.let { DatedItem(item, it) }
         },
     ).map { it.candidate }
@@ -60,7 +62,11 @@ private fun buildGroupedSpotlightCandidates(items: List<DatedItem>): List<Groupe
     return groups.values
         .map { group ->
             val selected =
-                if (group.first().item.type.equals("Movie", ignoreCase = true)) {
+                if (group
+                        .first()
+                        .item.type
+                        .equals("Movie", ignoreCase = true)
+                ) {
                     group.first()
                 } else {
                     group.maxWith(compareBy<DatedItem> { it.addedAt != null }.thenBy { it.addedAt })

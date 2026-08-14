@@ -4,17 +4,16 @@ package dev.jellystack.design.tv
 
 import android.view.KeyEvent
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.relocation.BringIntoViewRequester
-import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -26,6 +25,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
@@ -35,8 +36,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -66,7 +67,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.tv.material3.Icon
-import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import dev.jellystack.players.AndroidPlayerEngine
@@ -80,11 +80,12 @@ internal const val TV_DETAIL_COMPACT_ACTION_HEIGHT_DP = 72
 internal fun tvDetailActionRowRequiredWidthDp(): Int =
     TV_DETAIL_PRIMARY_ACTION_WIDTH_DP + (TV_DETAIL_COMPACT_ACTION_WIDTH_DP * 3) + (TV_DETAIL_ACTION_GAP_DP * 3)
 
-internal fun tvCompactActionRequiredHeightDp(fontScale: Float): Float =
-    25f + 3f + (13f * fontScale) + 16f
+internal fun tvCompactActionRequiredHeightDp(fontScale: Float): Float = 25f + 3f + (13f * fontScale) + 16f
 
-internal fun tvCompactActionRequiredWidthDp(characterCount: Int, fontScale: Float): Float =
-    (characterCount * 6.5f * fontScale) + 16f
+internal fun tvCompactActionRequiredWidthDp(
+    characterCount: Int,
+    fontScale: Float,
+): Float = (characterCount * 6.5f * fontScale) + 16f
 
 @Composable
 internal fun Modifier.tvFocusable(
@@ -109,8 +110,7 @@ internal fun Modifier.tvFocusable(
                     if (focused) registerContentFocus?.invoke(restorationRequester)
                     onFocusChanged?.invoke(focused)
                 },
-            )
-            .tvReturnToNavigationRailOnLeft(focusToNavigationRailOnLeft)
+            ).tvReturnToNavigationRailOnLeft(focusToNavigationRailOnLeft)
             .semantics {
                 role = Role.Button
                 if (!enabled) disabled()
@@ -321,76 +321,97 @@ internal fun TvMediaCard(
                     .aspectRatio(aspectRatio)
                     .clip(shape),
         ) {
-            if (previewing && previewEngine != null) {
-                AndroidView(
-                    factory = { previewEngine.createVideoSurface(it) },
-                    update = previewEngine::updateVideoSurface,
-                    onRelease = previewEngine::releaseVideoSurface,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            } else if (imageUrl != null) {
-                AsyncImage(
-                    model = imageUrl,
-                    contentDescription = title,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            } else {
-                Box(Modifier.fillMaxSize().background(TvSurfaceRaised), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.ImageNotSupported, contentDescription = null, tint = TvTextMuted)
-                }
-            }
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Color.Transparent, Color.Transparent, Color.Black.copy(alpha = 0.82f)),
-                        ),
-                    ),
+            TvMediaCardContent(
+                title = title,
+                imageUrl = imageUrl,
+                subtitle = subtitle,
+                previewing = previewing,
+                previewEngine = previewEngine,
+                previewSoundEnabled = previewSoundEnabled,
+                previewProgress = previewProgress,
             )
-            if (previewing) {
-                Row(
-                    Modifier
-                        .align(Alignment.TopStart)
-                        .padding(12.dp)
-                        .background(TvPurpleStrong.copy(alpha = 0.86f), RoundedCornerShape(8.dp))
-                        .padding(horizontal = 9.dp, vertical = 5.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Text("Trailer", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                    Icon(
-                        if (previewSoundEnabled) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
-                        null,
-                        tint = Color.White,
-                        modifier = Modifier.size(16.dp),
-                    )
-                }
-            }
-            if (previewing && previewProgress > 0f) {
-                LinearProgressIndicator(
-                    progress = { previewProgress.coerceIn(0f, 1f) },
-                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp),
-                    color = TvPurple,
-                    trackColor = Color.White.copy(alpha = 0.22f),
-                )
-            }
-            Column(
-                modifier = Modifier.align(Alignment.BottomStart).padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                Text(
-                    title,
-                    color = TvText,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 18.sp,
-                )
-                subtitle?.let { Text(it, color = TvTextMuted, fontSize = 14.sp, maxLines = 1) }
-            }
         }
+    }
+}
+
+@Composable
+private fun BoxScope.TvMediaCardContent(
+    title: String,
+    imageUrl: String?,
+    subtitle: String?,
+    previewing: Boolean,
+    previewEngine: AndroidPlayerEngine?,
+    previewSoundEnabled: Boolean,
+    previewProgress: Float,
+) {
+    if (previewing && previewEngine != null) {
+        AndroidView(
+            factory = { previewEngine.createVideoSurface(it) },
+            update = previewEngine::updateVideoSurface,
+            onRelease = previewEngine::releaseVideoSurface,
+            modifier = Modifier.fillMaxSize(),
+        )
+    } else if (imageUrl != null) {
+        AsyncImage(
+            model = imageUrl,
+            contentDescription = title,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize(),
+        )
+    } else {
+        Box(Modifier.fillMaxSize().background(TvSurfaceRaised), contentAlignment = Alignment.Center) {
+            Icon(Icons.Default.ImageNotSupported, contentDescription = null, tint = TvTextMuted)
+        }
+    }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    listOf(Color.Transparent, Color.Transparent, Color.Black.copy(alpha = 0.82f)),
+                ),
+            ),
+    )
+    if (previewing) {
+        Row(
+            Modifier
+                .align(Alignment.TopStart)
+                .padding(12.dp)
+                .background(TvPurpleStrong.copy(alpha = 0.86f), RoundedCornerShape(8.dp))
+                .padding(horizontal = 9.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text("Trailer", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            Icon(
+                if (previewSoundEnabled) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
+                null,
+                tint = Color.White,
+                modifier = Modifier.size(16.dp),
+            )
+        }
+    }
+    if (previewing && previewProgress > 0f) {
+        LinearProgressIndicator(
+            progress = { previewProgress.coerceIn(0f, 1f) },
+            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp),
+            color = TvPurple,
+            trackColor = Color.White.copy(alpha = 0.22f),
+        )
+    }
+    Column(
+        modifier = Modifier.align(Alignment.BottomStart).padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Text(
+            title,
+            color = TvText,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 18.sp,
+        )
+        subtitle?.let { Text(it, color = TvTextMuted, fontSize = 14.sp, maxLines = 1) }
     }
 }
 

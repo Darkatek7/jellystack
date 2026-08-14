@@ -51,8 +51,7 @@ class AppSettingsRepository(
 
     fun setUseServerHomeSections(value: Boolean) = update(KEY_USE_SERVER_HOME_SECTIONS, value) { copy(useServerHomeSections = value) }
 
-    fun setTrailerPreviewsEnabled(value: Boolean) =
-        update(KEY_TRAILER_PREVIEWS_ENABLED, value) { copy(trailerPreviewsEnabled = value) }
+    fun setTrailerPreviewsEnabled(value: Boolean) = update(KEY_TRAILER_PREVIEWS_ENABLED, value) { copy(trailerPreviewsEnabled = value) }
 
     fun setTrailerPreviewSoundEnabled(value: Boolean) =
         update(KEY_TRAILER_PREVIEW_SOUND_ENABLED, value) { copy(trailerPreviewSoundEnabled = value) }
