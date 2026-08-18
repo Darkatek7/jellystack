@@ -528,7 +528,11 @@ class JellyfinBrowseCoordinatorTest {
 
             pageRequestStarted.await()
 
-            assertEquals(listOf("cached-item"), coordinator.state.value.libraryItems.map { it.id })
+            assertEquals(
+                listOf("cached-item"),
+                coordinator.state.value.libraryItems
+                    .map { it.id },
+            )
             assertTrue(coordinator.state.value.isLibraryLoading)
 
             releasePage.complete(Unit)
@@ -650,7 +654,11 @@ class JellyfinBrowseCoordinatorTest {
             releaseFirstRequest.complete(Unit)
             advanceUntilIdle()
             assertEquals("lib-2", coordinator.state.value.selectedLibraryId)
-            assertEquals(listOf("latest-item"), coordinator.state.value.libraryItems.map { it.id })
+            assertEquals(
+                listOf("latest-item"),
+                coordinator.state.value.libraryItems
+                    .map { it.id },
+            )
         }
 
     @Test
@@ -701,7 +709,11 @@ class JellyfinBrowseCoordinatorTest {
 
                 assertNull(staleSelection.await())
                 assertEquals("lib-2", coordinator.state.value.selectedLibraryId)
-                assertEquals(listOf("lib-2-item"), coordinator.state.value.libraryItems.map { it.id })
+                assertEquals(
+                    listOf("lib-2-item"),
+                    coordinator.state.value.libraryItems
+                        .map { it.id },
+                )
                 assertFalse(coordinator.state.value.isLibraryLoading)
             } finally {
                 releaseFirstMetadataLookup.value = true

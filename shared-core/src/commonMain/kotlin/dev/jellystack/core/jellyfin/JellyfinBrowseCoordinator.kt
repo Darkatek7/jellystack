@@ -249,25 +249,27 @@ class JellyfinBrowseCoordinator internal constructor(
                             val recentShowsDeferred =
                                 async {
                                     loadHomeFeed(cachedState?.recentShows.orEmpty()) {
-                                        showsLibraryId?.let { id ->
-                                            if (forceRefresh || cachedState?.recentShows.isNullOrEmpty()) {
-                                                repository.refreshRecentlyAddedShows(id, limit = HOME_SECTION_ITEM_LIMIT)
-                                            } else {
-                                                cachedState!!.recentShows
-                                            }
-                                        }.orEmpty()
+                                        showsLibraryId
+                                            ?.let { id ->
+                                                if (forceRefresh || cachedState?.recentShows.isNullOrEmpty()) {
+                                                    repository.refreshRecentlyAddedShows(id, limit = HOME_SECTION_ITEM_LIMIT)
+                                                } else {
+                                                    cachedState!!.recentShows
+                                                }
+                                            }.orEmpty()
                                     }
                                 }
                             val recentMoviesDeferred =
                                 async {
                                     loadHomeFeed(cachedState?.recentMovies.orEmpty()) {
-                                        moviesLibraryId?.let { id ->
-                                            if (forceRefresh || cachedState?.recentMovies.isNullOrEmpty()) {
-                                                repository.refreshRecentlyAddedMovies(id, limit = HOME_SECTION_ITEM_LIMIT)
-                                            } else {
-                                                cachedState!!.recentMovies
-                                            }
-                                        }.orEmpty()
+                                        moviesLibraryId
+                                            ?.let { id ->
+                                                if (forceRefresh || cachedState?.recentMovies.isNullOrEmpty()) {
+                                                    repository.refreshRecentlyAddedMovies(id, limit = HOME_SECTION_ITEM_LIMIT)
+                                                } else {
+                                                    cachedState!!.recentMovies
+                                                }
+                                            }.orEmpty()
                                     }
                                 }
                             HomeFeedResults(
@@ -561,7 +563,9 @@ class JellyfinBrowseCoordinator internal constructor(
                 expectedGeneration != browseLoadGeneration ||
                 current.selectedLibraryId != expectedSelectedLibraryId ||
                 current.browsePath != expectedBrowsePath
-            ) return false
+            ) {
+                return false
+            }
             if (mutableState.compareAndSet(current, transform(current))) return true
         }
     }
