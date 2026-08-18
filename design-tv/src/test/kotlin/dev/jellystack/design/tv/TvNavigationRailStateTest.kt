@@ -1,15 +1,13 @@
 package dev.jellystack.design.tv
 
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class TvNavigationRailStateTest {
     @Test
     fun startsCollapsedForContentFirstNavigation() {
-        assertFalse(TvNavigationRailState().isVisible)
+        assertFalse(TvFocusCoordinator<String>().isRailVisible)
     }
 
     @Test
@@ -35,23 +33,13 @@ class TvNavigationRailStateTest {
     }
 
     @Test
-    fun remembersTheLastContentTargetOnlyForItsRoute() {
-        val memory = TvContentFocusMemory<String>()
-
-        memory.remember("home", "library-card")
-
-        assertEquals("library-card", memory.restore("home"))
-        assertNull(memory.restore("settings"))
-    }
-
-    @Test
     fun selectingContentHidesRailAndLeftEdgeRestoresIt() {
-        val state = TvNavigationRailState(initiallyVisible = true)
+        val state = TvFocusCoordinator<String>(initiallyRailVisible = true)
 
-        assertTrue(state.isVisible)
-        state.onDestinationSelected()
-        assertFalse(state.isVisible)
-        state.onContentLeftEdge()
-        assertTrue(state.isVisible)
+        assertTrue(state.isRailVisible)
+        state.closeRail()
+        assertFalse(state.isRailVisible)
+        state.openRail()
+        assertTrue(state.isRailVisible)
     }
 }

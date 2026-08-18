@@ -36,7 +36,9 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.currentCompositeKeyHashCode
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -97,9 +99,17 @@ internal fun Modifier.tvFocusable(
     onFocused: (() -> Unit)? = null,
     onFocusChanged: ((Boolean) -> Unit)? = null,
     focusToNavigationRailOnLeft: Boolean = false,
+    focusTargetId: Any? = null,
 ): Modifier {
     val restorationRequester = remember { FocusRequester() }
-    val registerContentFocus = LocalTvContentFocusRegistrar.current
+    val restorationTargetId = focusTargetId ?: currentCompositeKeyHashCode
+    val focusContext = LocalTvFocusContext.current
+    DisposableEffect(focusContext, restorationTargetId, restorationRequester) {
+        focusContext?.coordinator?.register(focusContext.routeKey, restorationTargetId, restorationRequester)
+        onDispose {
+            focusContext?.coordinator?.unregister(focusContext.routeKey, restorationTargetId, restorationRequester)
+        }
+    }
     return this.then(
         Modifier
             .focusRequester(restorationRequester)
@@ -108,7 +118,13 @@ internal fun Modifier.tvFocusable(
                 scale,
                 onFocused,
                 onFocusChanged = { focused ->
-                    if (focused) registerContentFocus?.invoke(restorationRequester)
+                    if (focused) {
+                        focusContext?.coordinator?.rememberFocused(
+                            focusContext.routeKey,
+                            restorationTargetId,
+                            restorationRequester,
+                        )
+                    }
                     onFocusChanged?.invoke(focused)
                 },
             ).tvReturnToNavigationRailOnLeft(focusToNavigationRailOnLeft)
@@ -497,12 +513,42 @@ internal fun tvOutlinedTextFieldColors() =
 
 internal val LocalTvNavigationRailOpener = staticCompositionLocalOf<(() -> Unit)?> { null }
 internal val LocalTvScreenEntryFocusRequester = staticCompositionLocalOf<FocusRequester?> { null }
-internal val LocalTvContentFocusRegistrar = staticCompositionLocalOf<((FocusRequester) -> Unit)?> { null }
+internal data class TvFocusContext(
+    val coordinator: TvFocusCoordinator<FocusRequester>,
+    val routeKey: String,
+)
+
+internal val LocalTvFocusContext = staticCompositionLocalOf<TvFocusContext?> { null }
 
 @Composable
 internal fun Modifier.tvScreenEntryFocus(enabled: Boolean = true): Modifier {
     val requester = LocalTvScreenEntryFocusRequester.current
-    return if (enabled && requester != null) focusRequester(requester) else this
+    return if (enabled && requester != null) {
+        tvFocusTarget(requester, fallback = true, focusTargetId = "route-entry").focusRequester(requester)
+    } else {
+        this
+    }
+}
+
+@Composable
+internal fun Modifier.tvFocusTarget(
+    requester: FocusRequester,
+    fallback: Boolean = false,
+    focusTargetId: Any? = null,
+): Modifier {
+    val focusContext = LocalTvFocusContext.current
+    val restorationTargetId = focusTargetId ?: currentCompositeKeyHashCode
+    DisposableEffect(focusContext, restorationTargetId, requester, fallback) {
+        focusContext?.coordinator?.register(focusContext.routeKey, restorationTargetId, requester, fallback)
+        onDispose {
+            focusContext?.coordinator?.unregister(focusContext.routeKey, restorationTargetId, requester)
+        }
+    }
+    return onFocusChanged { state ->
+        if (state.isFocused) {
+            focusContext?.coordinator?.rememberFocused(focusContext.routeKey, restorationTargetId, requester)
+        }
+    }
 }
 
 @Composable
@@ -514,7 +560,8 @@ internal fun Modifier.tvReturnToNavigationRailOnLeft(enabled: Boolean = true): M
         onPreviewKeyEvent { event ->
             if (
                 event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
-                event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT
+                event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT &&
+                event.nativeKeyEvent.repeatCount == 0
             ) {
                 openNavigationRail()
                 true
@@ -524,6 +571,11 @@ internal fun Modifier.tvReturnToNavigationRailOnLeft(enabled: Boolean = true): M
         }
     }
 }
+
+internal fun isTvGridLeftEdge(
+    itemIndex: Int,
+    columnCount: Int,
+): Boolean = itemIndex >= 0 && columnCount > 0 && itemIndex % columnCount == 0
 
 internal fun jellyfinImageUrl(
     baseUrl: String?,

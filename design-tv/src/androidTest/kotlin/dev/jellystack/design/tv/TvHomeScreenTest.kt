@@ -712,9 +712,20 @@ class TvHomeScreenTest {
         trailerPreviewState: TvTrailerPreviewState = TvTrailerPreviewState.Idle,
     ) {
         val entryFocusRequester = remember { FocusRequester() }
+        val focusCoordinator = remember { TvFocusCoordinator<FocusRequester>() }
+        androidx.compose.runtime.LaunchedEffect(provideEntryFocus, focusCoordinator.registrationRevision) {
+            if (provideEntryFocus && focusCoordinator.needsContentRestoration("home")) {
+                focusCoordinator.restoreContentFocus(
+                    routeKey = "home",
+                    awaitFrame = { androidx.compose.runtime.withFrameNanos { } },
+                    requestFocus = { requester -> runCatching { requester.requestFocus() }.getOrDefault(false) },
+                )
+            }
+        }
         CompositionLocalProvider(
             LocalTvScreenEntryFocusRequester provides entryFocusRequester.takeIf { provideEntryFocus },
             LocalTvNavigationRailOpener provides onOpenNavigationRail,
+            LocalTvFocusContext provides TvFocusContext(focusCoordinator, "home"),
         ) {
             JellystackTvTheme {
                 TvHomeScreen(

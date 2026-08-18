@@ -47,6 +47,49 @@ sealed interface TvRoute : NavKey {
     data object Player : TvRoute
 }
 
+internal fun TvRoute.focusRouteKey(libraryPath: List<String> = emptyList()): String =
+    when (this) {
+        TvRoute.Home -> "home"
+        is TvRoute.Library ->
+            if (libraryId == null) {
+                "library:list"
+            } else {
+                buildString {
+                    append("library:")
+                    append(libraryId)
+                    if (libraryPath.isNotEmpty()) {
+                        append("/path:")
+                        append(libraryPath.joinToString("/"))
+                    }
+                }
+            }
+        TvRoute.Search -> "search"
+        TvRoute.Discover -> "discover"
+        is TvRoute.Settings -> "settings:${section ?: "root"}"
+        is TvRoute.JellyfinDetail -> "jellyfin-detail:$itemId"
+        is TvRoute.SeerrDetail -> "seerr-detail:${mediaType.name}:$tmdbId"
+        TvRoute.Player -> "player"
+    }
+
+internal enum class TvBackAction { POP_LIBRARY_PATH, POP_ROUTE, CLOSE_RAIL, OPEN_RAIL }
+
+internal fun tvBackAction(
+    currentRoute: TvRoute,
+    backStackSize: Int,
+    libraryPathDepth: Int,
+    railVisible: Boolean,
+    selectedLibraryId: String?,
+): TvBackAction =
+    when {
+        currentRoute is TvRoute.Library &&
+            currentRoute.libraryId != null &&
+            currentRoute.libraryId == selectedLibraryId &&
+            libraryPathDepth > 0 -> TvBackAction.POP_LIBRARY_PATH
+        backStackSize > 1 -> TvBackAction.POP_ROUTE
+        railVisible -> TvBackAction.CLOSE_RAIL
+        else -> TvBackAction.OPEN_RAIL
+    }
+
 data class TvFocusSnapshot(
     val rowKey: String?,
     val itemId: String?,

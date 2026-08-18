@@ -37,6 +37,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -367,35 +368,78 @@ private fun TvAuthenticatedApp(
             currentRoute is TvRoute.Settings
     val railFocusRequester = remember { FocusRequester() }
     val contentFocusRequester = remember { FocusRequester() }
-    val contentFocusMemory = remember { TvContentFocusMemory<FocusRequester>() }
-    val railState = remember { TvNavigationRailState() }
-    val contentStartPadding by animateDpAsState(if (showRail && railState.isVisible) 134.dp else 0.dp, label = "tv-content-rail-safe-area")
-    BackHandler(enabled = showRail && !railState.isVisible) {
-        railState.onContentLeftEdge()
-    }
-    LaunchedEffect(showRail, railState.isVisible, currentRoute) {
-        if (!showRail) return@LaunchedEffect
-        if (railState.isVisible) {
-            railFocusRequester.requestFocus()
-        } else {
-            val rememberedRequester = contentFocusMemory.restore(currentRoute)
-            val restored =
-                rememberedRequester?.let { requester ->
-                    runCatching { requester.requestFocus() }.getOrDefault(false)
-                } == true
-            if (!restored) contentFocusRequester.requestFocus()
+    val focusCoordinator = remember { TvFocusCoordinator<FocusRequester>() }
+    val currentFocusRouteKey =
+        currentRoute.focusRouteKey(
+            if (currentRoute is TvRoute.Library) homeState.browsePath.map { it.id } else emptyList(),
+        )
+    val contentStartPadding by
+        animateDpAsState(
+            if (showRail && focusCoordinator.isRailVisible) 134.dp else 0.dp,
+            label = "tv-content-rail-safe-area",
+        )
+    BackHandler(enabled = showRail) {
+        when (
+            tvBackAction(
+                currentRoute,
+                backStack.size,
+                homeState.browsePath.size,
+                focusCoordinator.isRailVisible,
+                homeState.selectedLibraryId,
+            )
+        ) {
+            TvBackAction.POP_LIBRARY_PATH -> {
+                browseCoordinator.navigateUp()
+                focusCoordinator.closeRail()
+            }
+            TvBackAction.POP_ROUTE -> {
+                backStack.removeLastOrNull()
+                focusCoordinator.closeRail()
+            }
+            TvBackAction.CLOSE_RAIL -> focusCoordinator.closeRail()
+            TvBackAction.OPEN_RAIL -> focusCoordinator.openRail()
         }
     }
-    LaunchedEffect(railState.isVisible, currentRoute) {
-        if (railState.isVisible || currentRoute !is TvRoute.Home) trailerPreviewCoordinator.clearFocus()
+    LaunchedEffect(showRail, focusCoordinator.isRailVisible, currentFocusRouteKey) {
+        if (!showRail) return@LaunchedEffect
+        if (focusCoordinator.isRailVisible) {
+            repeat(2) {
+                withFrameNanos { }
+                if (runCatching { railFocusRequester.requestFocus() }.getOrDefault(false)) return@LaunchedEffect
+            }
+        } else {
+            val restored =
+                focusCoordinator.restoreContentFocus(
+                    routeKey = currentFocusRouteKey,
+                    awaitFrame = { withFrameNanos { } },
+                    requestFocus = { requester -> runCatching { requester.requestFocus() }.getOrDefault(false) },
+                )
+            if (restored == null) focusCoordinator.openRail()
+        }
+    }
+    LaunchedEffect(showRail, currentFocusRouteKey, focusCoordinator.registrationRevision) {
+        if (
+            showRail &&
+            !focusCoordinator.isRailVisible &&
+            focusCoordinator.needsContentRestoration(currentFocusRouteKey)
+        ) {
+            val restored =
+                focusCoordinator.restoreContentFocus(
+                    routeKey = currentFocusRouteKey,
+                    awaitFrame = { withFrameNanos { } },
+                    requestFocus = { requester -> runCatching { requester.requestFocus() }.getOrDefault(false) },
+                )
+            if (restored == null) focusCoordinator.openRail()
+        }
+    }
+    LaunchedEffect(focusCoordinator.isRailVisible, currentRoute) {
+        if (focusCoordinator.isRailVisible || currentRoute !is TvRoute.Home) trailerPreviewCoordinator.clearFocus()
     }
     Box(Modifier.fillMaxSize()) {
         CompositionLocalProvider(
-            LocalTvNavigationRailOpener provides railState::onContentLeftEdge,
+            LocalTvNavigationRailOpener provides { focusCoordinator.openRail() },
             LocalTvScreenEntryFocusRequester provides contentFocusRequester,
-            LocalTvContentFocusRegistrar provides { requester ->
-                contentFocusMemory.remember(currentRoute, requester)
-            },
+            LocalTvFocusContext provides TvFocusContext(focusCoordinator, currentFocusRouteKey),
         ) {
             NavDisplay(
                 backStack = backStack,
@@ -411,7 +455,7 @@ private fun TvAuthenticatedApp(
                                     strings = strings,
                                     autoCycle = settings.spotlightAutoCycle,
                                     intervalSeconds = settings.spotlightIntervalSeconds,
-                                    railOpen = railState.isVisible,
+                                    railOpen = focusCoordinator.isRailVisible,
                                     trailerPreviewState = trailerPreviewState,
                                     focusMemory = focusMemory,
                                     onRefresh = {
@@ -582,7 +626,7 @@ private fun TvAuthenticatedApp(
             )
         }
         if (showRail) {
-            if (railState.isVisible) {
+            if (focusCoordinator.isRailVisible) {
                 Box(
                     Modifier
                         .width(280.dp)
@@ -596,14 +640,14 @@ private fun TvAuthenticatedApp(
             }
             TvNavigationRail(
                 selected = currentRoute,
-                expanded = railState.isVisible,
+                expanded = focusCoordinator.isRailVisible,
                 strings = strings,
                 onSelected = { route ->
                     selectTopLevel(route)
-                    railState.onDestinationSelected()
+                    focusCoordinator.closeRail()
                 },
                 selectedItemFocusRequester = railFocusRequester,
-                onDismiss = railState::onDestinationSelected,
+                onDismiss = { focusCoordinator.closeRail() },
             )
         }
         (autoplayState as? TvAutoplayState.Countdown)?.let { countdown ->

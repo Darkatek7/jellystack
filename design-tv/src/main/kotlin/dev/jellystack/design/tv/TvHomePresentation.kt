@@ -168,7 +168,7 @@ internal fun buildTvHomeHeroPresentation(
 internal data class TvHomeFocusRow(
     val id: String,
     val lazyColumnIndex: Int,
-    val firstItemId: String?,
+    val itemIds: List<String>,
     val landscape: Boolean,
 )
 
@@ -181,6 +181,7 @@ internal sealed interface TvHomeFocusOrigin {
 
     data class Row(
         val id: String,
+        val itemId: String? = null,
     ) : TvHomeFocusOrigin
 }
 
@@ -193,6 +194,7 @@ internal sealed interface TvHomeFocusDestination {
         val id: String,
         val lazyColumnIndex: Int,
         val firstItemId: String,
+        val horizontalIndex: Int,
     ) : TvHomeFocusDestination
 }
 
@@ -201,16 +203,35 @@ internal data class TvHomeFocusMove(
     val destination: TvHomeFocusDestination,
 )
 
+internal class TvHomeFocusTargetRegistry<T : Any>(
+    private val targetFactory: () -> T,
+) {
+    private val targets = linkedMapOf<String, LinkedHashMap<String, T>>()
+
+    fun reconcile(rows: List<TvHomeFocusRow>): Map<String, Map<String, T>> {
+        targets.keys.retainAll(rows.mapTo(mutableSetOf()) { it.id })
+        rows.forEach { row ->
+            val rowTargets = targets.getOrPut(row.id) { linkedMapOf() }
+            rowTargets.keys.retainAll(row.itemIds.toSet())
+            row.itemIds.forEach { itemId -> rowTargets.getOrPut(itemId, targetFactory) }
+        }
+        return targets.mapValues { (_, rowTargets) -> rowTargets.toMap() }
+    }
+}
+
 internal class TvHomeVerticalFocusCoordinator(
     rows: List<TvHomeFocusRow>,
 ) {
     private var rows = rows.nonEmptyRows()
     private var nextRequestId = 0L
-    private var pendingRequestId: Long? = null
+    private var pendingMove: TvHomeFocusMove? = null
 
-    fun replaceRows(rows: List<TvHomeFocusRow>) {
-        this.rows = rows.nonEmptyRows()
-        pendingRequestId = null
+    fun replaceRows(rows: List<TvHomeFocusRow>): TvHomeFocusMove? {
+        val replacement = rows.nonEmptyRows()
+        if (this.rows == replacement) return pendingMove
+        this.rows = replacement
+        pendingMove = pendingMove?.reconcile(replacement)
+        return pendingMove
     }
 
     fun beginMove(
@@ -218,17 +239,17 @@ internal class TvHomeVerticalFocusCoordinator(
         direction: TvHomeVerticalDirection,
         onAccepted: () -> Unit = {},
     ): TvHomeFocusMove? {
-        pendingRequestId = null
         val destination = destination(origin, direction) ?: return null
+        pendingMove?.takeIf { it.destination == destination }?.let { return it }
+        pendingMove = null
         onAccepted()
         val requestId = ++nextRequestId
-        pendingRequestId = requestId
-        return TvHomeFocusMove(requestId, destination)
+        return TvHomeFocusMove(requestId, destination).also { pendingMove = it }
     }
 
     fun acceptCompletion(requestId: Long): Boolean {
-        if (pendingRequestId != requestId) return false
-        pendingRequestId = null
+        if (pendingMove?.requestId != requestId) return false
+        pendingMove = null
         return true
     }
 
@@ -247,22 +268,41 @@ internal class TvHomeVerticalFocusCoordinator(
                 }
             is TvHomeFocusOrigin.Row -> {
                 val currentIndex = rows.indexOfFirst { it.id == origin.id }
+                val horizontalIndex =
+                    rows
+                        .getOrNull(currentIndex)
+                        ?.itemIds
+                        ?.indexOf(origin.itemId)
+                        ?.takeIf { it >= 0 }
+                        ?: 0
                 if (currentIndex < 0) {
                     null
                 } else if (direction == TvHomeVerticalDirection.UP) {
-                    rows.getOrNull(currentIndex - 1)?.destination() ?: TvHomeFocusDestination.HeroPrimary
+                    rows.getOrNull(currentIndex - 1)?.destination(horizontalIndex) ?: TvHomeFocusDestination.HeroPrimary
                 } else {
-                    rows.getOrNull(currentIndex + 1)?.destination()
+                    rows.getOrNull(currentIndex + 1)?.destination(horizontalIndex)
                 }
             }
         }
+
+    private fun TvHomeFocusMove.reconcile(rows: List<TvHomeFocusRow>): TvHomeFocusMove? {
+        val destination = destination as? TvHomeFocusDestination.Row ?: return this
+        val row =
+            rows.firstOrNull { it.id == destination.id }
+                ?: rows.minByOrNull { kotlin.math.abs(it.lazyColumnIndex - destination.lazyColumnIndex) }
+                ?: return null
+        return copy(destination = row.destination(destination.horizontalIndex))
+    }
 }
 
-private fun List<TvHomeFocusRow>.nonEmptyRows(): List<TvHomeFocusRow> = filter { !it.firstItemId.isNullOrBlank() }
+private fun List<TvHomeFocusRow>.nonEmptyRows(): List<TvHomeFocusRow> = filter { it.itemIds.isNotEmpty() }
 
-private fun TvHomeFocusRow.destination(): TvHomeFocusDestination.Row =
-    TvHomeFocusDestination.Row(
+private fun TvHomeFocusRow.destination(horizontalIndex: Int = 0): TvHomeFocusDestination.Row {
+    val resolvedHorizontalIndex = horizontalIndex.coerceIn(0, itemIds.lastIndex)
+    return TvHomeFocusDestination.Row(
         id = id,
         lazyColumnIndex = lazyColumnIndex,
-        firstItemId = requireNotNull(firstItemId),
+        firstItemId = itemIds[resolvedHorizontalIndex],
+        horizontalIndex = resolvedHorizontalIndex,
     )
+}

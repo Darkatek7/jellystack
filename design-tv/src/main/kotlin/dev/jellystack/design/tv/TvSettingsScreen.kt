@@ -152,7 +152,11 @@ internal fun TvSettingsScreen(
                         },
                     )
                 }
-                TvSettingTile(strings.subtitleLanguage, settings.preferredSubtitleLanguage ?: strings.serverDefault) {
+                TvSettingTile(
+                    strings.subtitleLanguage,
+                    settings.preferredSubtitleLanguage ?: strings.serverDefault,
+                    focusToNavigationRailOnLeft = true,
+                ) {
                     showChoices(
                         strings.subtitleLanguage,
                         preferredLanguageOptions(strings, settings.preferredSubtitleLanguage) {
@@ -178,7 +182,11 @@ internal fun TvSettingsScreen(
                         },
                     )
                 }
-                TvSettingTile(strings.subtitleBackground, settings.subtitleBackground.label(strings)) {
+                TvSettingTile(
+                    strings.subtitleBackground,
+                    settings.subtitleBackground.label(strings),
+                    focusToNavigationRailOnLeft = true,
+                ) {
                     showChoices(
                         strings.subtitleBackground,
                         SubtitleBackground.entries.map { value ->
@@ -206,7 +214,11 @@ internal fun TvSettingsScreen(
                         },
                     )
                 }
-                TvSettingTile(strings.seekBack, "${settings.seekBackSeconds}s") {
+                TvSettingTile(
+                    strings.seekBack,
+                    "${settings.seekBackSeconds}s",
+                    focusToNavigationRailOnLeft = true,
+                ) {
                     showChoices(
                         strings.seekBack,
                         tvSeekOptions().map { value ->
@@ -235,6 +247,7 @@ internal fun TvSettingsScreen(
                 TvSettingTile(
                     strings.statsForNerds,
                     if (settings.statsForNerdsEnabled) strings.on else strings.off,
+                    focusToNavigationRailOnLeft = true,
                 ) {
                     repository.setStatsForNerdsEnabled(!settings.statsForNerdsEnabled)
                 }
@@ -253,6 +266,7 @@ internal fun TvSettingsScreen(
                 TvSettingTile(
                     strings.trailerPreviewSound,
                     if (settings.trailerPreviewSoundEnabled) strings.on else strings.off,
+                    focusToNavigationRailOnLeft = true,
                     enabled = settings.trailerPreviewsEnabled,
                 ) {
                     repository.setTrailerPreviewSoundEnabled(!settings.trailerPreviewSoundEnabled)
@@ -271,12 +285,16 @@ internal fun TvSettingsScreen(
                             Text(server.name, color = TvText, fontSize = 21.sp, fontWeight = FontWeight.SemiBold)
                             Text("${server.type.name.label()}  •  ${strings.connected}", color = TvTextMuted)
                         }
-                        TvActionButton(strings.remove, {
-                            scope.launch {
-                                serverRepository.remove(server.id)
-                                onServersChanged()
-                            }
-                        })
+                        TvActionButton(
+                            strings.remove,
+                            {
+                                scope.launch {
+                                    serverRepository.remove(server.id)
+                                    onServersChanged()
+                                }
+                            },
+                            focusToNavigationRailOnLeft = true,
+                        )
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -284,6 +302,7 @@ internal fun TvSettingsScreen(
                         if (jellyfinServer == null) strings.addJellyfin else strings.manageJellyfin,
                         { showJellyfinConnect = true },
                         primary = jellyfinServer == null,
+                        focusToNavigationRailOnLeft = true,
                     )
                     TvActionButton(
                         if (seerrServer == null) strings.addSeerr else strings.manageSeerr,
