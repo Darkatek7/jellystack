@@ -458,21 +458,26 @@ class JellyfinBrowseCoordinator internal constructor(
                 mutableState.value.selectedLibraryId ?: return
             }
         val stateBefore = mutableState.value
+        val expectedSelectedLibraryId = stateBefore.selectedLibraryId
+        val expectedBrowsePath = stateBefore.browsePath
         var imageBaseUrl = stateBefore.imageBaseUrl
         var imageAccessToken = stateBefore.imageAccessToken
         try {
             imageBaseUrl = repository.currentServerBaseUrl()
-            if (expectedGeneration != browseLoadGeneration) return
+            if (!isBrowseContextCurrent(expectedGeneration, expectedSelectedLibraryId, expectedBrowsePath)) return
             imageAccessToken = repository.currentAccessToken()
-            if (expectedGeneration != browseLoadGeneration) return
-            mutableState.value =
-                stateBefore.copy(
-                    isLibraryLoading = page == 0,
-                    isPageLoading = page > 0,
-                    errorMessage = null,
-                    imageBaseUrl = imageBaseUrl,
-                    imageAccessToken = imageAccessToken,
-                )
+            if (!isBrowseContextCurrent(expectedGeneration, expectedSelectedLibraryId, expectedBrowsePath)) return
+            val loadingPublished =
+                updateBrowseStateIfCurrent(expectedGeneration, expectedSelectedLibraryId, expectedBrowsePath) { current ->
+                    current.copy(
+                        isLibraryLoading = page == 0,
+                        isPageLoading = page > 0,
+                        errorMessage = null,
+                        imageBaseUrl = imageBaseUrl,
+                        imageAccessToken = imageAccessToken,
+                    )
+                }
+            if (!loadingPublished) return
             val requestPage: suspend () -> LibraryPage = {
                 stateBefore.browsePath.lastOrNull()?.let { parent ->
                     repository.loadChildrenPage(
@@ -503,9 +508,8 @@ class JellyfinBrowseCoordinator internal constructor(
                 } else {
                     (stateBefore.libraryItems + items).distinctBy { it.id }
                 }
-            if (expectedGeneration != browseLoadGeneration) return
-            mutableState.value =
-                mutableState.value.copy(
+            updateBrowseStateIfCurrent(expectedGeneration, expectedSelectedLibraryId, expectedBrowsePath) { current ->
+                current.copy(
                     isLibraryLoading = false,
                     isPageLoading = false,
                     libraryItems = merged,
@@ -515,21 +519,50 @@ class JellyfinBrowseCoordinator internal constructor(
                     imageAccessToken = imageAccessToken,
                     totalLibraryItemCount = newTotal,
                 )
+            }
         } catch (cancellation: CancellationException) {
-            if (expectedGeneration == browseLoadGeneration) {
-                mutableState.update { it.copy(isLibraryLoading = false, isPageLoading = false) }
+            updateBrowseStateIfCurrent(expectedGeneration, expectedSelectedLibraryId, expectedBrowsePath) { current ->
+                current.copy(isLibraryLoading = false, isPageLoading = false)
             }
             throw cancellation
         } catch (t: Throwable) {
-            if (expectedGeneration != browseLoadGeneration) return
-            mutableState.value =
-                mutableState.value.copy(
+            updateBrowseStateIfCurrent(expectedGeneration, expectedSelectedLibraryId, expectedBrowsePath) { current ->
+                current.copy(
                     isLibraryLoading = false,
                     isPageLoading = false,
                     errorMessage = t.message?.takeIf { it.isNotBlank() } ?: "",
                     imageBaseUrl = imageBaseUrl,
                     imageAccessToken = imageAccessToken,
                 )
+            }
+        }
+    }
+
+    private fun isBrowseContextCurrent(
+        expectedGeneration: Long,
+        expectedSelectedLibraryId: String?,
+        expectedBrowsePath: List<LibraryBrowseEntry>,
+    ): Boolean {
+        val current = mutableState.value
+        return expectedGeneration == browseLoadGeneration &&
+            current.selectedLibraryId == expectedSelectedLibraryId &&
+            current.browsePath == expectedBrowsePath
+    }
+
+    private fun updateBrowseStateIfCurrent(
+        expectedGeneration: Long,
+        expectedSelectedLibraryId: String?,
+        expectedBrowsePath: List<LibraryBrowseEntry>,
+        transform: (JellyfinHomeState) -> JellyfinHomeState,
+    ): Boolean {
+        while (true) {
+            val current = mutableState.value
+            if (
+                expectedGeneration != browseLoadGeneration ||
+                current.selectedLibraryId != expectedSelectedLibraryId ||
+                current.browsePath != expectedBrowsePath
+            ) return false
+            if (mutableState.compareAndSet(current, transform(current))) return true
         }
     }
 

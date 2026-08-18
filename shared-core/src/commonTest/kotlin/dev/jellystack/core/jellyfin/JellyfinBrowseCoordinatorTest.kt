@@ -446,6 +446,63 @@ class JellyfinBrowseCoordinatorTest {
         }
 
     @Test
+    fun libraryMetadataResumePreservesCompletedHomeFeedState() =
+        runTest {
+            val pageMetadataStarted = CompletableDeferred<Unit>()
+            val releasePageMetadata = CompletableDeferred<Unit>()
+            val metadataLookups = MutableStateFlow(0)
+            val homeItem = favoriteJellyfinItem("home-item")
+            val libraryItem = favoriteJellyfinItem("library-item")
+            val repository =
+                FakeBrowseRepository(
+                    loadPage = { _, _, _, _, _ -> LibraryPage(listOf(libraryItem), 1) },
+                    loadRecentShows = { _, _ ->
+                        pageMetadataStarted.await()
+                        listOf(homeItem)
+                    },
+                    loadServerBaseUrl = {
+                        if (metadataLookups.updateAndGet { it + 1 } == 3) {
+                            pageMetadataStarted.complete(Unit)
+                            releasePageMetadata.await()
+                        }
+                        "https://demo.jellyfin.org"
+                    },
+                )
+            val coordinator =
+                JellyfinBrowseCoordinator(
+                    repository = repository,
+                    scope = backgroundScope,
+                    favoritesStore = FakeJellyfinFavoritesStore(),
+                    autoBootstrap = false,
+                )
+
+            try {
+                coordinator.bootstrap(forceRefresh = true)
+                pageMetadataStarted.await()
+                val homeComplete =
+                    awaitState(coordinator) {
+                        !it.isInitialLoading &&
+                            !it.isHomeLoading &&
+                            it.recentShows == listOf(homeItem)
+                    }
+                assertTrue(homeComplete.isLibraryLoading)
+
+                releasePageMetadata.complete(Unit)
+                val finalState =
+                    awaitState(coordinator) {
+                        !it.isLibraryLoading && it.libraryItems == listOf(libraryItem)
+                    }
+
+                assertFalse(finalState.isInitialLoading)
+                assertFalse(finalState.isHomeLoading)
+                assertEquals(listOf(homeItem), finalState.recentShows)
+                assertEquals(listOf(libraryItem), finalState.libraryItems)
+            } finally {
+                releasePageMetadata.complete(Unit)
+            }
+        }
+
+    @Test
     fun cachedItemsRemainVisibleDuringLibraryRefresh() =
         runTest {
             val cachedItem = favoriteJellyfinItem("cached-item")
