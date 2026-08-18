@@ -11,7 +11,7 @@ class TvLibraryPagingTest {
             shouldLoadNextLibraryPage(
                 lastVisibleIndex = 22,
                 totalItemCount = 30,
-                isInitialLoading = false,
+                isLibraryLoading = false,
                 isPageLoading = false,
                 endReached = false,
                 hasError = false,
@@ -21,7 +21,7 @@ class TvLibraryPagingTest {
 
     @Test
     fun doesNotLoadWhileBusyOrAtTheEnd() {
-        assertPagingBlocked(isInitialLoading = true)
+        assertPagingBlocked(isLibraryLoading = true)
         assertPagingBlocked(isPageLoading = true)
         assertPagingBlocked(endReached = true)
         assertPagingBlocked(hasError = true)
@@ -33,7 +33,7 @@ class TvLibraryPagingTest {
             shouldLoadNextLibraryPage(
                 10,
                 30,
-                isInitialLoading = false,
+                isLibraryLoading = false,
                 isPageLoading = false,
                 endReached = false,
                 hasError = false,
@@ -43,7 +43,7 @@ class TvLibraryPagingTest {
             shouldLoadNextLibraryPage(
                 -1,
                 0,
-                isInitialLoading = false,
+                isLibraryLoading = false,
                 isPageLoading = false,
                 endReached = false,
                 hasError = false,
@@ -52,7 +52,7 @@ class TvLibraryPagingTest {
     }
 
     private fun assertPagingBlocked(
-        isInitialLoading: Boolean = false,
+        isLibraryLoading: Boolean = false,
         isPageLoading: Boolean = false,
         endReached: Boolean = false,
         hasError: Boolean = false,
@@ -61,7 +61,7 @@ class TvLibraryPagingTest {
             shouldLoadNextLibraryPage(
                 29,
                 30,
-                isInitialLoading = isInitialLoading,
+                isLibraryLoading = isLibraryLoading,
                 isPageLoading = isPageLoading,
                 endReached = endReached,
                 hasError = hasError,

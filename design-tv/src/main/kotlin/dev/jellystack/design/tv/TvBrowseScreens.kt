@@ -980,7 +980,7 @@ internal fun TvLibraryScreen(
     LaunchedEffect(
         route.libraryId,
         state.libraryItems.size,
-        state.isInitialLoading,
+        state.isLibraryLoading,
         state.isPageLoading,
         state.endReached,
         state.errorMessage,
@@ -997,7 +997,7 @@ internal fun TvLibraryScreen(
                 shouldLoadNextLibraryPage(
                     lastVisibleIndex = lastVisibleIndex,
                     totalItemCount = state.libraryItems.size,
-                    isInitialLoading = state.isInitialLoading,
+                    isLibraryLoading = state.isLibraryLoading,
                     isPageLoading = state.isPageLoading,
                     endReached = state.endReached,
                     hasError = state.errorMessage != null,
@@ -1056,7 +1056,7 @@ internal fun TvLibraryScreen(
                     focusToNavigationRailOnLeft = index % 4 == 0,
                 )
             }
-            if (state.isInitialLoading || state.isPageLoading) {
+            if (state.isLibraryLoading || state.isPageLoading) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Box(
                         modifier = Modifier.fillMaxWidth().height(112.dp),
@@ -1088,7 +1088,7 @@ internal fun TvLibraryScreen(
 internal fun shouldLoadNextLibraryPage(
     lastVisibleIndex: Int,
     totalItemCount: Int,
-    isInitialLoading: Boolean,
+    isLibraryLoading: Boolean,
     isPageLoading: Boolean,
     endReached: Boolean,
     hasError: Boolean,
@@ -1097,7 +1097,7 @@ internal fun shouldLoadNextLibraryPage(
         listOf(
             totalItemCount <= 0,
             lastVisibleIndex < 0,
-            isInitialLoading,
+            isLibraryLoading,
             isPageLoading,
             endReached,
             hasError,

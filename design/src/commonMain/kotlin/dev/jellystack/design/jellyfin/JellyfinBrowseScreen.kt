@@ -314,7 +314,7 @@ internal fun JellyfinBrowseScreen(
         )
     val pullRefreshState =
         rememberPullRefreshState(
-            refreshing = state.isInitialLoading,
+            refreshing = if (showLibraryItems) state.isLibraryLoading else state.isInitialLoading,
             onRefresh = onRefresh,
         )
     val showsLibrary =
@@ -460,7 +460,7 @@ internal fun JellyfinBrowseScreen(
                     downloadedMedia.isNotEmpty()
                 }
             val isOffline = state.errorMessage?.isNotBlank() == true
-            val showSkeleton = state.isInitialLoading && state.libraryItems.isEmpty()
+            val showSkeleton = state.isLibraryLoading && state.libraryItems.isEmpty()
             val librarySeriesGroups =
                 remember(state.libraryItems, state.recentShows, isTvLibrary) {
                     val sourceItems = if (isTvLibrary && state.libraryItems.isNotEmpty()) state.libraryItems else state.recentShows
@@ -489,7 +489,7 @@ internal fun JellyfinBrowseScreen(
                     isPagedLibraryDestination &&
                         !state.endReached &&
                         !state.isPageLoading &&
-                        !state.isInitialLoading &&
+                        !state.isLibraryLoading &&
                         state.libraryItems.isNotEmpty(),
                 onLoadMore = onLoadMore,
             )
@@ -597,7 +597,7 @@ internal fun JellyfinBrowseScreen(
                                         )
                                     }
                                     if (
-                                        !state.isInitialLoading &&
+                                        !state.isLibraryLoading &&
                                         !isResolvingVisibleLibrarySelection &&
                                         libraryMovieItems.isEmpty() &&
                                         librarySeriesGroups.isEmpty() &&
@@ -651,7 +651,7 @@ internal fun JellyfinBrowseScreen(
                                 }
                                 ShellLibraryDestination.Section(ShellLibrarySection.Favorites) -> {
                                     val favoriteItems = state.libraryItems
-                                    val isFavoritesLoading = state.isInitialLoading || state.isPageLoading
+                                    val isFavoritesLoading = state.isLibraryLoading || state.isPageLoading
                                     if (!isFavoritesLoading && favoriteItems.isEmpty()) {
                                         item(span = { GridItemSpan(maxLineSpan) }) {
                                             LibraryEmptyState(
@@ -727,7 +727,7 @@ internal fun JellyfinBrowseScreen(
                                                 filteredLibraryItems.isEmpty()
                                             }
                                     val libraryIsEmpty = trimmedQuery.isBlank() && !backingItemsExist
-                                    if (!state.isInitialLoading && (libraryIsEmpty || noMatches)) {
+                                    if (!state.isLibraryLoading && (libraryIsEmpty || noMatches)) {
                                         item(span = { GridItemSpan(maxLineSpan) }) {
                                             LibraryEmptyState(
                                                 title =
@@ -821,7 +821,7 @@ internal fun JellyfinBrowseScreen(
 
                 if (!showSkeleton) {
                     PullRefreshIndicator(
-                        refreshing = state.isInitialLoading,
+                        refreshing = state.isLibraryLoading,
                         state = pullRefreshState,
                         modifier =
                             Modifier
@@ -956,7 +956,7 @@ internal fun JellyfinBrowseScreen(
 
         LoadMoreListener(
             listState = listState,
-            shouldLoadMore = !state.endReached && !state.isPageLoading && !state.isInitialLoading && state.libraryItems.isNotEmpty(),
+            shouldLoadMore = !state.endReached && !state.isPageLoading && !state.isLibraryLoading && state.libraryItems.isNotEmpty(),
             onLoadMore = onLoadMore,
         )
 
