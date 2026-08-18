@@ -5,6 +5,7 @@ import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.JellyfinItemDetail
 import dev.jellystack.players.PlaybackState
 import dev.jellystack.players.PlayerEvent
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -20,6 +21,115 @@ import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class TvTrailerPreviewControllerTest {
+    @Test
+    fun clearingMatchingRequestStopsPlayerWhilePlayIsPreparingExactlyOnce() =
+        runTest {
+            val player = SuspendingPreviewPlayer()
+            val controller =
+                TvTrailerPreviewController(
+                    scope = this,
+                    resolve = { source("trailer") },
+                    player = player,
+                    focusDelayMillis = 0,
+                )
+            val request = request(TvTrailerPreviewOwner.CARD, "movie")
+
+            controller.focus(request)
+            runCurrent()
+            player.playStarted.await()
+
+            controller.clearFocus(request)
+            runCurrent()
+            controller.release()
+
+            assertEquals(1, player.cancellations)
+            assertEquals(1, player.stops)
+            assertEquals(TvTrailerPreviewState.Idle, controller.state.value)
+        }
+
+    @Test
+    fun ownerCleanupOnlyStopsMatchingPreparingRequest() =
+        runTest {
+            val player = SuspendingPreviewPlayer()
+            val controller =
+                TvTrailerPreviewController(
+                    scope = this,
+                    resolve = { source("trailer") },
+                    player = player,
+                    focusDelayMillis = 0,
+                )
+
+            controller.focus(request(TvTrailerPreviewOwner.CARD, "movie"))
+            runCurrent()
+            player.playStarted.await()
+
+            controller.clearFocus(TvTrailerPreviewOwner.HERO)
+            runCurrent()
+            assertEquals(0, player.cancellations)
+            assertEquals(0, player.stops)
+
+            controller.clearFocus(TvTrailerPreviewOwner.CARD)
+            runCurrent()
+            controller.release()
+
+            assertEquals(1, player.cancellations)
+            assertEquals(1, player.stops)
+        }
+
+    @Test
+    fun staleRequestCleanupDoesNotStopCurrentPreparingRequest() =
+        runTest {
+            val player = SuspendingPreviewPlayer()
+            val controller =
+                TvTrailerPreviewController(
+                    scope = this,
+                    resolve = { source("trailer") },
+                    player = player,
+                    focusDelayMillis = 0,
+                )
+            val current = request(TvTrailerPreviewOwner.CARD, "current")
+
+            controller.focus(current)
+            runCurrent()
+            player.playStarted.await()
+
+            controller.clearFocus(request(TvTrailerPreviewOwner.CARD, "stale"))
+            runCurrent()
+            assertEquals(0, player.cancellations)
+            assertEquals(0, player.stops)
+
+            controller.clearFocus(current)
+            runCurrent()
+            controller.release()
+
+            assertEquals(1, player.cancellations)
+            assertEquals(1, player.stops)
+        }
+
+    @Test
+    fun releaseStopsPlayerWhilePlayIsPreparingExactlyOnce() =
+        runTest {
+            val player = SuspendingPreviewPlayer()
+            val controller =
+                TvTrailerPreviewController(
+                    scope = this,
+                    resolve = { source("trailer") },
+                    player = player,
+                    focusDelayMillis = 0,
+                )
+
+            controller.focus(request(TvTrailerPreviewOwner.HERO, "movie"))
+            runCurrent()
+            player.playStarted.await()
+
+            controller.release()
+            runCurrent()
+
+            assertEquals(1, player.cancellations)
+            assertEquals(1, player.stops)
+            assertEquals(TvTrailerPreviewState.Idle, controller.state.value)
+        }
+
     @Test
     fun staleOwnerCleanupDoesNotClearNewerRequestForSameItem() =
         runTest {
@@ -309,5 +419,29 @@ class TvTrailerPreviewControllerTest {
         override fun setSoundEnabled(enabled: Boolean) {
             soundState = enabled
         }
+    }
+
+    private class SuspendingPreviewPlayer : TvTrailerPreviewPlayer {
+        override val events = MutableSharedFlow<TvTrailerPreviewPlayerEvent>()
+        val playStarted = CompletableDeferred<Unit>()
+        private val playResult = CompletableDeferred<Boolean>()
+        var cancellations = 0
+        var stops = 0
+
+        override suspend fun play(source: DetailTrailerSource.Local): Boolean {
+            playStarted.complete(Unit)
+            return try {
+                playResult.await()
+            } catch (cancellation: CancellationException) {
+                cancellations += 1
+                throw cancellation
+            }
+        }
+
+        override fun stop() {
+            stops += 1
+        }
+
+        override fun setSoundEnabled(enabled: Boolean) = Unit
     }
 }

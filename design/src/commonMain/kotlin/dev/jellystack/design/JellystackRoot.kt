@@ -1807,7 +1807,7 @@ fun JellystackRoot(
                     val preferOfflineDetail = !forceRefresh && offlineStatus is DownloadStatus.Completed
                     val cachedDetail = browseRepository.cachedItemDetail(item.id)
                     val fallbackDetail = cachedDetail ?: item.toOfflineDetail()
-                    val isOfflineMode = browseState.errorMessage?.isNotBlank() == true
+                    val isOfflineMode = browseState.homeErrorMessage?.isNotBlank() == true
                     var remoteFailure: Throwable? = null
                     var usedFallbackForEmptyRemoteDetail = false
                     val detail: JellyfinItemDetail? =
@@ -2360,7 +2360,7 @@ fun JellystackRoot(
             }
     }
 
-    LaunchedEffect(detailState, browseState.errorMessage) {
+    LaunchedEffect(detailState, browseState.homeErrorMessage) {
         when (val state = detailState) {
             is JellyfinDetailUiState.Loaded -> {
                 val seriesId =
@@ -2375,7 +2375,7 @@ fun JellystackRoot(
                     return@LaunchedEffect
                 }
                 isDetailEpisodesLoading = true
-                val offlineMode = browseState.errorMessage?.isNotBlank() == true
+                val offlineMode = browseState.homeErrorMessage?.isNotBlank() == true
                 val cachedEpisodes = browseRepository.episodesForSeries(seriesId)
                 detailEpisodeCache = cachedEpisodes
                 if (cachedEpisodes.isNotEmpty()) {

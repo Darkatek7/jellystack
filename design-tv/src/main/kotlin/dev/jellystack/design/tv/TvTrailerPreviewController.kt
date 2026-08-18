@@ -70,6 +70,7 @@ internal class TvTrailerPreviewController(
     private val cache = mutableMapOf<TvTrailerPreviewTarget, DetailTrailerSource.Local?>()
     private var focusedRequest: TvTrailerPreviewRequest? = null
     private var focusJob: Job? = null
+    private var activePlayerRequest: TvTrailerPreviewRequest? = null
     private var enabled = true
     private var soundEnabled = true
     private val eventJob =
@@ -102,9 +103,14 @@ internal class TvTrailerPreviewController(
                     return@launch
                 }
                 player.setSoundEnabled(soundEnabled)
-                if (player.play(source)) {
+                activePlayerRequest = request
+                val started = player.play(source)
+                currentCoroutineContext().ensureActive()
+                if (!enabled || focusedRequest != request || activePlayerRequest != request) return@launch
+                if (started) {
                     mutableState.value = TvTrailerPreviewState.Playing(request)
                 } else {
+                    activePlayerRequest = null
                     mutableState.value = TvTrailerPreviewState.Idle
                 }
             }
@@ -156,11 +162,17 @@ internal class TvTrailerPreviewController(
     private fun cancelPendingAndStopPlaying() {
         focusJob?.cancel()
         focusJob = null
-        if (mutableState.value is TvTrailerPreviewState.Playing) player.stop()
+        if (activePlayerRequest != null) {
+            activePlayerRequest = null
+            player.stop()
+        }
     }
 
     private fun stopPlaying() {
-        player.stop()
+        if (activePlayerRequest != null) {
+            activePlayerRequest = null
+            player.stop()
+        }
         mutableState.value = TvTrailerPreviewState.Idle
     }
 

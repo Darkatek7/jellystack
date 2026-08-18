@@ -34,6 +34,7 @@ import dev.jellystack.core.jellyfin.HomeSectionsState
 import dev.jellystack.core.jellyfin.JellyfinHomeState
 import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.JellyfinLibrary
+import dev.jellystack.core.jellyfin.LibraryLoadErrorKind
 import dev.jellystack.core.preferences.AppLanguage
 import dev.jellystack.players.AndroidPlayerEngine
 import kotlinx.coroutines.delay
@@ -145,6 +146,8 @@ class TvHomeScreenTest {
         val shown = androidx.compose.runtime.mutableStateOf(true)
         val preferred = androidx.compose.runtime.mutableStateOf<String?>(TV_LIBRARY_RETRY_TARGET)
         var railOpenRequests = 0
+        var refreshRequests = 0
+        var nextPageRequests = 0
         val items = (0..31).map { index -> item("library-item-$index", "Library item $index") }
         composeRule.setContent {
             RestorablePagedLibraryErrorHost(
@@ -152,13 +155,23 @@ class TvHomeScreenTest {
                 preferredTargetId = preferred.value,
                 items = items,
                 onOpenRail = { railOpenRequests += 1 },
+                errorKind = LibraryLoadErrorKind.NEXT_PAGE,
+                onRetry = { refreshRequests += 1 },
+                onLoadMore = { nextPageRequests += 1 },
             )
         }
 
         composeRule.waitUntil(2_000) {
             composeRule.onAllNodes(hasContentDescription("Try again")).fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNodeWithContentDescription("Try again").assertIsFocused()
+        composeRule
+            .onNodeWithContentDescription("Try again")
+            .assertIsFocused()
+            .performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.runOnIdle {
+            assertEquals(0, refreshRequests)
+            assertEquals(1, nextPageRequests)
+        }
         composeRule.runOnIdle {
             preferred.value = null
             shown.value = false
@@ -172,6 +185,35 @@ class TvHomeScreenTest {
             .assertIsFocused()
             .performKeyInput { pressKey(Key.DirectionLeft) }
         composeRule.runOnIdle { assertEquals(1, railOpenRequests) }
+    }
+
+    @Test
+    fun retainedItemsFirstPageErrorRetryDispatchesRefresh() {
+        var refreshRequests = 0
+        var nextPageRequests = 0
+        val items = (0..3).map { index -> item("library-item-$index", "Library item $index") }
+        composeRule.setContent {
+            RestorablePagedLibraryErrorHost(
+                shown = true,
+                preferredTargetId = TV_LIBRARY_RETRY_TARGET,
+                items = items,
+                onOpenRail = {},
+                errorKind = LibraryLoadErrorKind.FIRST_PAGE,
+                onRetry = { refreshRequests += 1 },
+                onLoadMore = { nextPageRequests += 1 },
+            )
+        }
+
+        composeRule.waitUntil(2_000) {
+            composeRule.onAllNodes(hasContentDescription("Try again")).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule
+            .onNodeWithContentDescription("Try again")
+            .performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.runOnIdle {
+            assertEquals(1, refreshRequests)
+            assertEquals(0, nextPageRequests)
+        }
     }
 
     @Test
@@ -959,6 +1001,9 @@ class TvHomeScreenTest {
         preferredTargetId: String?,
         items: List<JellyfinItem>,
         onOpenRail: () -> Unit,
+        errorKind: LibraryLoadErrorKind = LibraryLoadErrorKind.NEXT_PAGE,
+        onRetry: () -> Unit = {},
+        onLoadMore: () -> Unit = {},
     ) {
         val route = TvRoute.Library("library", "Library")
         val routeKey = route.focusRouteKey(emptyList())
@@ -978,15 +1023,16 @@ class TvHomeScreenTest {
                                 JellyfinHomeState(
                                     selectedLibraryId = "library",
                                     libraryItems = items,
-                                    errorMessage = "Paging failed",
+                                    libraryErrorMessage = "Paging failed",
+                                    libraryErrorKind = errorKind,
                                 ),
                             strings = TvStrings.current(AppLanguage.ENGLISH),
                             focusMemory = remember { TvFocusMemory() },
                             onSelectLibrary = {},
                             onOpenItem = {},
                             onOpenContainer = {},
-                            onLoadMore = {},
-                            onRetry = {},
+                            onLoadMore = onLoadMore,
+                            onRetry = onRetry,
                         )
                     }
                 }

@@ -1,10 +1,28 @@
 package dev.jellystack.design.tv
 
+import dev.jellystack.core.jellyfin.LibraryLoadErrorKind
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class TvLibraryPagingTest {
+    @Test
+    fun retainedItemsFirstPageFailureMapsRetryToRefresh() {
+        assertEquals(
+            TvLibraryRetryAction.REFRESH,
+            tvLibraryRetryAction(LibraryLoadErrorKind.FIRST_PAGE),
+        )
+    }
+
+    @Test
+    fun laterPageFailureMapsRetryToNextPage() {
+        assertEquals(
+            TvLibraryRetryAction.NEXT_PAGE,
+            tvLibraryRetryAction(LibraryLoadErrorKind.NEXT_PAGE),
+        )
+    }
+
     @Test
     fun loadsWithinTwoFourColumnRowsOfTheEnd() {
         assertTrue(

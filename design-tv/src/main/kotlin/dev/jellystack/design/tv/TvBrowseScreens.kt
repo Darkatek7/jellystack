@@ -88,6 +88,7 @@ import dev.jellystack.core.jellyfin.HomeSectionsState
 import dev.jellystack.core.jellyfin.JellyfinHomeState
 import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.JellyfinLibrary
+import dev.jellystack.core.jellyfin.LibraryLoadErrorKind
 import dev.jellystack.core.jellyfin.SpotlightCandidate
 import dev.jellystack.core.jellyfin.isBrowseContainer
 import dev.jellystack.core.jellyseerr.JellyseerrRecommendationRail
@@ -240,7 +241,7 @@ internal fun TvHomeScreen(
                     )
                 }
             }
-            if (state.errorMessage != null && heroCandidates.isNotEmpty()) {
+            if (state.homeErrorMessage != null && heroCandidates.isNotEmpty()) {
                 put(TV_HOME_RETRY_TARGET, TvLazyFocusLocation(errorLazyColumnIndex))
             }
         }
@@ -484,7 +485,7 @@ internal fun TvHomeScreen(
                 }
             }
         }
-        state.errorMessage?.takeIf { heroCandidates.isNotEmpty() }?.let { message ->
+        state.homeErrorMessage?.takeIf { heroCandidates.isNotEmpty() }?.let { message ->
             item("error") {
                 TvActionButton(
                     "${strings.retry}: $message",
@@ -816,7 +817,7 @@ private fun TvEmptyHomeHero(
             }
             Text("Jellystack", color = TvText, fontSize = 40.sp, fontWeight = FontWeight.Bold)
             Text(
-                state.errorMessage
+                state.homeErrorMessage
                     ?.takeIf { it.isNotBlank() }
                     ?: if (state.isHomeLoading || state.isInitialLoading) strings.loading else strings.noResults,
                 color = TvTextMuted,
@@ -1081,7 +1082,7 @@ internal fun TvLibraryScreen(
             itemCount = itemTargetIds.size,
             isLibraryLoading = state.isLibraryLoading,
             isPageLoading = state.isPageLoading,
-            hasError = state.errorMessage != null,
+            hasError = state.libraryErrorMessage != null,
         )
     val locations = tvLibraryGridFocusLocations(itemTargetIds, terminalTarget)
     TvRouteFocusMaterializer(
@@ -1100,7 +1101,7 @@ internal fun TvLibraryScreen(
         state.isLibraryLoading,
         state.isPageLoading,
         state.endReached,
-        state.errorMessage,
+        state.libraryErrorMessage,
     ) {
         if (route.libraryId == null) return@LaunchedEffect
         snapshotFlow {
@@ -1117,7 +1118,7 @@ internal fun TvLibraryScreen(
                     isLibraryLoading = state.isLibraryLoading,
                     isPageLoading = state.isPageLoading,
                     endReached = state.endReached,
-                    hasError = state.errorMessage != null,
+                    hasError = state.libraryErrorMessage != null,
                 )
             ) {
                 onLoadMore()
@@ -1208,7 +1209,7 @@ internal fun TvLibraryScreen(
                         CircularProgressIndicator(color = TvPurple)
                     }
                 }
-            } else if (state.errorMessage != null) {
+            } else if (state.libraryErrorMessage != null) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Column(
                         modifier = Modifier.fillMaxWidth(),
@@ -1218,7 +1219,10 @@ internal fun TvLibraryScreen(
                         Text(strings.libraryLoadFailed, color = Color(0xFFFFA59E), fontSize = 18.sp)
                         TvActionButton(
                             strings.retry,
-                            if (state.libraryItems.isEmpty()) onRetry else onLoadMore,
+                            when (tvLibraryRetryAction(state.libraryErrorKind)) {
+                                TvLibraryRetryAction.REFRESH -> onRetry
+                                TvLibraryRetryAction.NEXT_PAGE -> onLoadMore
+                            },
                             modifier =
                                 Modifier
                                     .tvScreenEntryFocus(state.libraryItems.isEmpty(), TV_LIBRARY_RETRY_TARGET)
@@ -1250,6 +1254,15 @@ internal fun tvLibraryTerminalFocusTarget(
         libraryId != null && hasError -> TV_LIBRARY_RETRY_TARGET
         libraryId != null && itemCount == 0 -> TV_LIBRARY_EMPTY_TARGET
         else -> null
+    }
+
+internal enum class TvLibraryRetryAction { REFRESH, NEXT_PAGE }
+
+internal fun tvLibraryRetryAction(errorKind: LibraryLoadErrorKind?): TvLibraryRetryAction =
+    if (errorKind == LibraryLoadErrorKind.NEXT_PAGE) {
+        TvLibraryRetryAction.NEXT_PAGE
+    } else {
+        TvLibraryRetryAction.REFRESH
     }
 
 internal fun tvLibraryGridFocusLocations(
