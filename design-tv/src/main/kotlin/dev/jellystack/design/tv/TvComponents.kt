@@ -38,10 +38,10 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.currentCompositeKeyHashCode
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
@@ -57,13 +57,13 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -99,15 +99,16 @@ internal fun Modifier.tvFocusable(
     onFocused: (() -> Unit)? = null,
     onFocusChanged: ((Boolean) -> Unit)? = null,
     focusToNavigationRailOnLeft: Boolean = false,
-    focusTargetId: Any? = null,
+    focusTargetId: String? = null,
 ): Modifier {
     val restorationRequester = remember { FocusRequester() }
-    val restorationTargetId = focusTargetId ?: currentCompositeKeyHashCode
     val focusContext = LocalTvFocusContext.current
-    DisposableEffect(focusContext, restorationTargetId, restorationRequester) {
-        focusContext?.coordinator?.register(focusContext.routeKey, restorationTargetId, restorationRequester)
-        onDispose {
-            focusContext?.coordinator?.unregister(focusContext.routeKey, restorationTargetId, restorationRequester)
+    if (focusContext != null && focusTargetId != null) {
+        DisposableEffect(focusContext, focusTargetId, restorationRequester) {
+            focusContext.coordinator.register(focusContext.routeKey, focusTargetId, restorationRequester)
+            onDispose {
+                focusContext.coordinator.unregister(focusContext.routeKey, focusTargetId, restorationRequester)
+            }
         }
     }
     return this.then(
@@ -118,10 +119,10 @@ internal fun Modifier.tvFocusable(
                 scale,
                 onFocused,
                 onFocusChanged = { focused ->
-                    if (focused) {
+                    if (focused && focusTargetId != null) {
                         focusContext?.coordinator?.rememberFocused(
                             focusContext.routeKey,
-                            restorationTargetId,
+                            focusTargetId,
                             restorationRequester,
                         )
                     }
@@ -177,6 +178,7 @@ internal fun TvActionButton(
     primary: Boolean = false,
     enabled: Boolean = true,
     focusToNavigationRailOnLeft: Boolean = false,
+    focusTargetId: String? = null,
 ) {
     val shape = RoundedCornerShape(50)
     Row(
@@ -193,6 +195,7 @@ internal fun TvActionButton(
                     enabled = enabled,
                     shape = shape,
                     focusToNavigationRailOnLeft = focusToNavigationRailOnLeft,
+                    focusTargetId = focusTargetId,
                 ).padding(horizontal = 24.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
@@ -290,6 +293,7 @@ internal fun TvMediaCard(
     previewSoundEnabled: Boolean = true,
     previewProgress: Float = 0f,
     previewSurfaceTestTag: String? = null,
+    focusTargetId: String? = null,
 ) {
     val shape = RoundedCornerShape(18.dp)
     var focused by remember { mutableStateOf(false) }
@@ -330,6 +334,7 @@ internal fun TvMediaCard(
                         onFocusChanged?.invoke(it)
                     },
                     focusToNavigationRailOnLeft = focusToNavigationRailOnLeft,
+                    focusTargetId = focusTargetId,
                 ).background(TvSurface, shape),
     ) {
         Box(
@@ -513,6 +518,7 @@ internal fun tvOutlinedTextFieldColors() =
 
 internal val LocalTvNavigationRailOpener = staticCompositionLocalOf<(() -> Unit)?> { null }
 internal val LocalTvScreenEntryFocusRequester = staticCompositionLocalOf<FocusRequester?> { null }
+
 internal data class TvFocusContext(
     val coordinator: TvFocusCoordinator<FocusRequester>,
     val routeKey: String,
@@ -521,10 +527,13 @@ internal data class TvFocusContext(
 internal val LocalTvFocusContext = staticCompositionLocalOf<TvFocusContext?> { null }
 
 @Composable
-internal fun Modifier.tvScreenEntryFocus(enabled: Boolean = true): Modifier {
+internal fun Modifier.tvScreenEntryFocus(
+    enabled: Boolean = true,
+    focusTargetId: String,
+): Modifier {
     val requester = LocalTvScreenEntryFocusRequester.current
     return if (enabled && requester != null) {
-        tvFocusTarget(requester, fallback = true, focusTargetId = "route-entry").focusRequester(requester)
+        tvFocusTarget(requester, fallback = true, focusTargetId = focusTargetId).focusRequester(requester)
     } else {
         this
     }
@@ -534,20 +543,41 @@ internal fun Modifier.tvScreenEntryFocus(enabled: Boolean = true): Modifier {
 internal fun Modifier.tvFocusTarget(
     requester: FocusRequester,
     fallback: Boolean = false,
-    focusTargetId: Any? = null,
+    focusTargetId: String,
 ): Modifier {
     val focusContext = LocalTvFocusContext.current
-    val restorationTargetId = focusTargetId ?: currentCompositeKeyHashCode
-    DisposableEffect(focusContext, restorationTargetId, requester, fallback) {
-        focusContext?.coordinator?.register(focusContext.routeKey, restorationTargetId, requester, fallback)
-        onDispose {
-            focusContext?.coordinator?.unregister(focusContext.routeKey, restorationTargetId, requester)
+    if (focusContext != null) {
+        DisposableEffect(focusContext, focusTargetId, requester, fallback) {
+            focusContext.coordinator.register(focusContext.routeKey, focusTargetId, requester, fallback)
+            onDispose {
+                focusContext.coordinator.unregister(focusContext.routeKey, focusTargetId, requester)
+            }
         }
     }
     return onFocusChanged { state ->
         if (state.isFocused) {
-            focusContext?.coordinator?.rememberFocused(focusContext.routeKey, restorationTargetId, requester)
+            focusContext?.coordinator?.rememberFocused(focusContext.routeKey, focusTargetId, requester)
         }
+    }
+}
+
+@Composable
+internal fun TvRouteFocusMaterializer(
+    ownerId: String,
+    targetIds: Set<String>,
+    fallbackTargetIds: Set<String>,
+    materialize: suspend (String) -> Boolean,
+) {
+    val focusContext = LocalTvFocusContext.current ?: return
+    val currentMaterialize = rememberUpdatedState(materialize)
+    DisposableEffect(focusContext, ownerId, targetIds, fallbackTargetIds) {
+        focusContext.coordinator.registerMaterializer(
+            routeKey = focusContext.routeKey,
+            ownerId = ownerId,
+            targetIds = targetIds,
+            fallbackTargetIds = fallbackTargetIds,
+        ) { targetId -> currentMaterialize.value(targetId) }
+        onDispose { focusContext.coordinator.unregisterMaterializer(focusContext.routeKey, ownerId) }
     }
 }
 

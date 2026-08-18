@@ -1,34 +1,111 @@
 package dev.jellystack.design.tv
 
+import kotlinx.coroutines.async
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class TvFocusCoordinatorTest {
     @Test
-    fun initialFocusWaitsForAFrameAndLateTargetAttachment() =
+    fun restorationWaitsForLateMaterializerRegistration() =
+        runTest {
+            val coordinator = TvFocusCoordinator<String>(attachmentTimeoutMillis = 1_000)
+            val restoration = async { coordinator.restoreFocus("rail", preferredTargetId = "rail:settings") { true } }
+            runCurrent()
+            assertFalse(restoration.isCompleted)
+
+            coordinator.registerMaterializer(
+                routeKey = "rail",
+                ownerId = "rail-items",
+                targetIds = setOf("rail:settings", "rail:home"),
+                fallbackTargetIds = setOf("rail:home"),
+            ) { targetId ->
+                coordinator.register("rail", targetId = targetId, target = "$targetId-requester")
+                true
+            }
+
+            assertEquals(TvFocusRestoration.Focused("rail:settings-requester"), restoration.await())
+        }
+
+    @Test
+    fun rememberedOffscreenTargetIsMaterializedBeforeFallbackFocus() =
         runTest {
             val coordinator = TvFocusCoordinator<String>()
             val events = mutableListOf<String>()
+            coordinator.register("home", targetId = "hero", target = "hero-requester", fallback = true)
+            coordinator.register("home", targetId = "card:20", target = "old-card-requester")
+            coordinator.rememberFocused("home", targetId = "card:20", target = "old-card-requester")
+            coordinator.unregister("home", targetId = "card:20", target = "old-card-requester")
+            coordinator.registerMaterializer(
+                routeKey = "home",
+                ownerId = "home-lists",
+                targetIds = setOf("hero", "card:20"),
+                fallbackTargetIds = setOf("hero"),
+            ) { targetId ->
+                events += "materialize:$targetId"
+                coordinator.register("home", targetId = targetId, target = "new-card-requester")
+                true
+            }
 
-            val focused =
-                coordinator.restoreContentFocus(
-                    routeKey = "home",
-                    awaitFrame = {
-                        events += "frame"
-                        coordinator.register("home", "hero", fallback = true)
-                    },
-                    requestFocus = {
+            val result =
+                coordinator.restoreFocus("home") { requester ->
+                    events += "focus:$requester"
+                    true
+                }
+
+            assertEquals(TvFocusRestoration.Focused("new-card-requester"), result)
+            assertEquals(listOf("materialize:card:20", "focus:new-card-requester"), events)
+        }
+
+    @Test
+    fun materializationWaitsForTargetRegistrationWithoutFocusingFallback() =
+        runTest {
+            val coordinator = TvFocusCoordinator<String>(attachmentTimeoutMillis = 1_000)
+            val focused = mutableListOf<String>()
+            coordinator.register("home", targetId = "hero", target = "hero-requester", fallback = true)
+            coordinator.register("home", targetId = "card:20", target = "old-card-requester")
+            coordinator.rememberFocused("home", targetId = "card:20", target = "old-card-requester")
+            coordinator.unregister("home", targetId = "card:20", target = "old-card-requester")
+            coordinator.registerMaterializer("home", "home-lists", setOf("hero", "card:20"), setOf("hero")) { true }
+
+            val restoration =
+                async {
+                    coordinator.restoreFocus("home") { requester ->
+                        focused += requester
+                        true
+                    }
+                }
+            runCurrent()
+
+            assertFalse(restoration.isCompleted)
+            assertTrue(focused.isEmpty())
+            coordinator.register("home", targetId = "card:20", target = "attached-card-requester")
+
+            assertEquals(TvFocusRestoration.Focused("attached-card-requester"), restoration.await())
+            assertEquals(listOf("attached-card-requester"), focused)
+        }
+
+    @Test
+    fun initialFocusWaitsForLateTargetAttachment() =
+        runTest {
+            val coordinator = TvFocusCoordinator<String>()
+            val events = mutableListOf<String>()
+            val restoration =
+                async {
+                    coordinator.restoreFocus("home") {
                         events += "focus:$it"
                         true
-                    },
-                )
+                    }
+                }
+            runCurrent()
+            coordinator.register("home", "hero", fallback = true)
 
-            assertEquals("hero", focused)
-            assertEquals(listOf("frame", "focus:hero"), events)
+            assertEquals(TvFocusRestoration.Focused("hero"), restoration.await())
+            assertEquals(listOf("focus:hero"), events)
         }
 
     @Test
@@ -42,8 +119,8 @@ class TvFocusCoordinatorTest {
             coordinator.rememberFocused("home", "continue-3")
             coordinator.rememberFocused("settings", "audio")
 
-            assertEquals("continue-3", coordinator.restoreContentFocus("home", {}, { true }))
-            assertEquals("audio", coordinator.restoreContentFocus("settings", {}, { true }))
+            assertEquals(TvFocusRestoration.Focused("continue-3"), coordinator.restoreFocus("home") { true })
+            assertEquals(TvFocusRestoration.Focused("audio"), coordinator.restoreFocus("settings") { true })
         }
 
     @Test
@@ -57,7 +134,26 @@ class TvFocusCoordinatorTest {
             coordinator.register("settings", targetId = "entry", target = "new-entry", fallback = true)
             coordinator.register("settings", targetId = "audio-control", target = "new-audio")
 
-            assertEquals("new-audio", coordinator.restoreContentFocus("settings", {}, { true }))
+            assertEquals(TvFocusRestoration.Focused("new-audio"), coordinator.restoreFocus("settings") { true })
+        }
+
+    @Test
+    fun settingsServerActionMemorySurvivesMultiServerReorder() =
+        runTest {
+            val coordinator = TvFocusCoordinator<String>()
+            val serverA = tvSettingsServerActionTargetId("server-a", "remove")
+            val serverB = tvSettingsServerActionTargetId("server-b", "remove")
+            coordinator.register("settings:root", serverA, "old-a")
+            coordinator.register("settings:root", serverB, "old-b")
+            coordinator.rememberFocused("settings:root", serverB, "old-b")
+            coordinator.unregister("settings:root", serverA, "old-a")
+            coordinator.unregister("settings:root", serverB, "old-b")
+
+            listOf(serverB to "new-b", serverA to "new-a").forEach { (targetId, requester) ->
+                coordinator.register("settings:root", targetId, requester)
+            }
+
+            assertEquals(TvFocusRestoration.Focused("new-b"), coordinator.restoreFocus("settings:root") { true })
         }
 
     @Test
@@ -70,20 +166,16 @@ class TvFocusCoordinatorTest {
             val attempted = mutableListOf<String>()
 
             val focused =
-                coordinator.restoreContentFocus(
-                    routeKey = "library:movies",
-                    awaitFrame = {},
-                    requestFocus = {
-                        attempted += it
-                        it == "first"
-                    },
-                )
+                coordinator.restoreFocus("library:movies") {
+                    attempted += it
+                    it == "first"
+                }
 
-            assertEquals("first", focused)
+            assertEquals(TvFocusRestoration.Focused("first"), focused)
             assertEquals(listOf("remembered", "first"), attempted)
 
             coordinator.unregister("library:movies", "remembered")
-            assertEquals("first", coordinator.restoreContentFocus("library:movies", {}, { true }))
+            assertEquals(TvFocusRestoration.Focused("first"), coordinator.restoreFocus("library:movies") { true })
         }
 
     @Test
@@ -102,26 +194,20 @@ class TvFocusCoordinatorTest {
     }
 
     @Test
-    fun restoreRetriesOnlyWithinBoundAndNeverRequestsDetachedTargets() =
+    fun failedAttachedTargetReturnsBoundedFailure() =
         runTest {
-            val coordinator = TvFocusCoordinator<String>(maxRestoreAttempts = 2)
+            val coordinator = TvFocusCoordinator<String>()
             coordinator.register("discover", "connect", fallback = true)
-            var frames = 0
             var requests = 0
 
             val focused =
-                coordinator.restoreContentFocus(
-                    routeKey = "discover",
-                    awaitFrame = { frames += 1 },
-                    requestFocus = {
-                        requests += 1
-                        false
-                    },
-                )
+                coordinator.restoreFocus("discover") {
+                    requests += 1
+                    false
+                }
 
-            assertNull(focused)
-            assertEquals(2, frames)
-            assertEquals(2, requests)
+            assertEquals(TvFocusRestoration.Failed, focused)
+            assertEquals(1, requests)
         }
 
     @Test
@@ -147,6 +233,8 @@ class TvFocusCoordinatorTest {
         assertEquals("settings:playback", TvRoute.Settings("playback").focusRouteKey())
         assertEquals("discover", TvRoute.Discover.focusRouteKey())
         assertEquals("search", TvRoute.Search.focusRouteKey())
+        assertEquals(tvRailTargetId(TvRoute.Library()), tvRailTargetId(TvRoute.Library("movies")))
+        assertEquals(tvRailTargetId(TvRoute.Settings()), tvRailTargetId(TvRoute.Settings("playback")))
     }
 
     @Test
@@ -165,9 +253,12 @@ class TvFocusCoordinatorTest {
             coordinator.register("library:empty", "empty-placeholder", fallback = true)
             coordinator.register("library:error", "retry", fallback = true)
 
-            assertEquals("empty-placeholder", coordinator.restoreContentFocus("library:empty", {}, { true }))
+            assertEquals(
+                TvFocusRestoration.Focused("empty-placeholder"),
+                coordinator.restoreFocus("library:empty") { true },
+            )
             coordinator.openRail()
             coordinator.closeRail()
-            assertEquals("retry", coordinator.restoreContentFocus("library:error", {}, { true }))
+            assertEquals(TvFocusRestoration.Focused("retry"), coordinator.restoreFocus("library:error") { true })
         }
 }

@@ -65,8 +65,9 @@ internal fun moveTvHomeCarouselManually(
     state: TvHomeCarouselState,
     direction: TvHomeCarouselDirection,
 ): TvHomeCarouselManualMove {
-    val selectedId = reconcileTvHomeCarouselSelection(candidateIds, state.selectedId)
-        ?: return TvHomeCarouselManualMove(state.copy(selectedId = null))
+    val selectedId =
+        reconcileTvHomeCarouselSelection(candidateIds, state.selectedId)
+            ?: return TvHomeCarouselManualMove(state.copy(selectedId = null))
     val selectedIndex = candidateIds.indexOf(selectedId)
     return when (direction) {
         TvHomeCarouselDirection.PREVIOUS ->
@@ -291,7 +292,8 @@ internal class TvHomeVerticalFocusCoordinator(
             rows.firstOrNull { it.id == destination.id }
                 ?: rows.minByOrNull { kotlin.math.abs(it.lazyColumnIndex - destination.lazyColumnIndex) }
                 ?: return null
-        return copy(destination = row.destination(destination.horizontalIndex))
+        val stableItemIndex = row.itemIds.indexOf(destination.firstItemId).takeIf { it >= 0 }
+        return copy(destination = row.destination(stableItemIndex ?: destination.horizontalIndex))
     }
 }
 

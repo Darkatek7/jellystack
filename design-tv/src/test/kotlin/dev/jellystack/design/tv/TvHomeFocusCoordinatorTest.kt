@@ -177,6 +177,26 @@ class TvHomeFocusCoordinatorTest {
     }
 
     @Test
+    fun pendingMoveFollowsStableCardIdWhenItemsAreInsertedBeforeIt() {
+        val coordinator = TvHomeVerticalFocusCoordinator(rows)
+        val pending =
+            coordinator.beginMove(
+                TvHomeFocusOrigin.Row("portrait", "portrait-2"),
+                TvHomeVerticalDirection.DOWN,
+            )!!
+
+        val reconciled =
+            coordinator.replaceRows(
+                rows.map { row ->
+                    if (row.id == "landscape") row.copy(itemIds = listOf("inserted") + row.itemIds) else row
+                },
+            )
+
+        assertEquals(pending.requestId, reconciled?.requestId)
+        assertEquals(TvHomeFocusDestination.Row("landscape", 3, "landscape-2", 2), reconciled?.destination)
+    }
+
+    @Test
     fun acceptedMoveCancelsPreviewBeforeItIsDispatched() {
         val coordinator = TvHomeVerticalFocusCoordinator(rows)
         val events = mutableListOf<String>()

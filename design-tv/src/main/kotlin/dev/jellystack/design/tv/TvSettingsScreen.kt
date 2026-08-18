@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.OutlinedTextField
@@ -31,6 +32,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -86,6 +88,47 @@ internal fun TvSettingsScreen(
     var showJellyfinConnect by remember { mutableStateOf(false) }
     var showSeerrConnect by remember { mutableStateOf(false) }
     var choiceDialog by remember { mutableStateOf<TvChoiceDialogState?>(null) }
+    val listState = rememberLazyListState()
+    val settingTargetIds =
+        listOf(
+            "language",
+            "quality",
+            "audio-language",
+            "subtitle-language",
+            "subtitle-mode",
+            "subtitle-size",
+            "subtitle-background",
+            "autoplay",
+            "resume",
+            "seek-back",
+            "seek-forward",
+            "playback-speed",
+            "stats",
+            "home-sections",
+            "trailer-previews",
+            "trailer-preview-sound",
+        ).map(::tvSettingsControlTargetId)
+    val serverActionTargetIds =
+        buildList {
+            servers.forEach { add(tvSettingsServerActionTargetId(it.id, "remove")) }
+            add(tvSettingsServerActionTargetId(jellyfinServer?.id ?: "new:jellyfin", "manage"))
+            add(tvSettingsServerActionTargetId(seerrServer?.id ?: "new:seerr", "manage"))
+        }
+    val targetLocations =
+        buildMap {
+            settingTargetIds.forEach { put(it, 2) }
+            serverActionTargetIds.forEach { put(it, 4) }
+        }
+    TvRouteFocusMaterializer(
+        ownerId = "settings-list",
+        targetIds = targetLocations.keys,
+        fallbackTargetIds = setOf(settingTargetIds.first()),
+    ) { targetId ->
+        targetLocations[targetId]?.let { index ->
+            listState.scrollToItem(index)
+            true
+        } ?: false
+    }
 
     fun showChoices(
         title: String,
@@ -111,6 +154,7 @@ internal fun TvSettingsScreen(
         return
     }
     LazyColumn(
+        state = listState,
         modifier = modifier.fillMaxSize(),
         contentPadding = TvScreenPadding,
         verticalArrangement = Arrangement.spacedBy(18.dp),
@@ -124,6 +168,7 @@ internal fun TvSettingsScreen(
                     settings.appLanguage.label(strings),
                     focusToNavigationRailOnLeft = true,
                     screenEntry = true,
+                    focusTargetId = tvSettingsControlTargetId("language"),
                 ) {
                     showChoices(
                         strings.language,
@@ -134,7 +179,11 @@ internal fun TvSettingsScreen(
                         },
                     )
                 }
-                TvSettingTile(strings.quality, settings.wifiStreamingQuality.label(strings)) {
+                TvSettingTile(
+                    strings.quality,
+                    settings.wifiStreamingQuality.label(strings),
+                    focusTargetId = tvSettingsControlTargetId("quality"),
+                ) {
                     showChoices(
                         strings.quality,
                         tvQualityOptions().map { value ->
@@ -144,7 +193,11 @@ internal fun TvSettingsScreen(
                         },
                     )
                 }
-                TvSettingTile(strings.audioLanguage, settings.preferredAudioLanguage ?: strings.serverDefault) {
+                TvSettingTile(
+                    strings.audioLanguage,
+                    settings.preferredAudioLanguage ?: strings.serverDefault,
+                    focusTargetId = tvSettingsControlTargetId("audio-language"),
+                ) {
                     showChoices(
                         strings.audioLanguage,
                         preferredLanguageOptions(strings, settings.preferredAudioLanguage) {
@@ -156,6 +209,7 @@ internal fun TvSettingsScreen(
                     strings.subtitleLanguage,
                     settings.preferredSubtitleLanguage ?: strings.serverDefault,
                     focusToNavigationRailOnLeft = true,
+                    focusTargetId = tvSettingsControlTargetId("subtitle-language"),
                 ) {
                     showChoices(
                         strings.subtitleLanguage,
@@ -164,7 +218,11 @@ internal fun TvSettingsScreen(
                         },
                     )
                 }
-                TvSettingTile(strings.subtitleMode, settings.subtitleMode.label(strings)) {
+                TvSettingTile(
+                    strings.subtitleMode,
+                    settings.subtitleMode.label(strings),
+                    focusTargetId = tvSettingsControlTargetId("subtitle-mode"),
+                ) {
                     showChoices(
                         strings.subtitleMode,
                         SubtitleMode.entries.map { value ->
@@ -172,7 +230,11 @@ internal fun TvSettingsScreen(
                         },
                     )
                 }
-                TvSettingTile(strings.subtitleSize, settings.subtitleTextSize.label(strings)) {
+                TvSettingTile(
+                    strings.subtitleSize,
+                    settings.subtitleTextSize.label(strings),
+                    focusTargetId = tvSettingsControlTargetId("subtitle-size"),
+                ) {
                     showChoices(
                         strings.subtitleSize,
                         SubtitleTextSize.entries.map { value ->
@@ -186,6 +248,7 @@ internal fun TvSettingsScreen(
                     strings.subtitleBackground,
                     settings.subtitleBackground.label(strings),
                     focusToNavigationRailOnLeft = true,
+                    focusTargetId = tvSettingsControlTargetId("subtitle-background"),
                 ) {
                     showChoices(
                         strings.subtitleBackground,
@@ -196,7 +259,11 @@ internal fun TvSettingsScreen(
                         },
                     )
                 }
-                TvSettingTile(strings.autoplay, settings.autoplayNextMode.label(strings)) {
+                TvSettingTile(
+                    strings.autoplay,
+                    settings.autoplayNextMode.label(strings),
+                    focusTargetId = tvSettingsControlTargetId("autoplay"),
+                ) {
                     showChoices(
                         strings.autoplay,
                         AutoplayNextMode.entries.map { value ->
@@ -206,7 +273,11 @@ internal fun TvSettingsScreen(
                         },
                     )
                 }
-                TvSettingTile(strings.resume, settings.resumeMode.label(strings)) {
+                TvSettingTile(
+                    strings.resume,
+                    settings.resumeMode.label(strings),
+                    focusTargetId = tvSettingsControlTargetId("resume"),
+                ) {
                     showChoices(
                         strings.resume,
                         ResumeMode.entries.map { value ->
@@ -218,6 +289,7 @@ internal fun TvSettingsScreen(
                     strings.seekBack,
                     "${settings.seekBackSeconds}s",
                     focusToNavigationRailOnLeft = true,
+                    focusTargetId = tvSettingsControlTargetId("seek-back"),
                 ) {
                     showChoices(
                         strings.seekBack,
@@ -226,7 +298,11 @@ internal fun TvSettingsScreen(
                         },
                     )
                 }
-                TvSettingTile(strings.seekForward, "${settings.seekForwardSeconds}s") {
+                TvSettingTile(
+                    strings.seekForward,
+                    "${settings.seekForwardSeconds}s",
+                    focusTargetId = tvSettingsControlTargetId("seek-forward"),
+                ) {
                     showChoices(
                         strings.seekForward,
                         tvSeekOptions().map { value ->
@@ -234,7 +310,11 @@ internal fun TvSettingsScreen(
                         },
                     )
                 }
-                TvSettingTile(strings.playbackSpeed, "${settings.defaultPlaybackSpeed}x") {
+                TvSettingTile(
+                    strings.playbackSpeed,
+                    "${settings.defaultPlaybackSpeed}x",
+                    focusTargetId = tvSettingsControlTargetId("playback-speed"),
+                ) {
                     showChoices(
                         strings.playbackSpeed,
                         tvSpeedOptions().map { value ->
@@ -248,18 +328,21 @@ internal fun TvSettingsScreen(
                     strings.statsForNerds,
                     if (settings.statsForNerdsEnabled) strings.on else strings.off,
                     focusToNavigationRailOnLeft = true,
+                    focusTargetId = tvSettingsControlTargetId("stats"),
                 ) {
                     repository.setStatsForNerdsEnabled(!settings.statsForNerdsEnabled)
                 }
                 TvSettingTile(
                     strings.homeSections,
                     if (settings.useServerHomeSections) strings.on else strings.off,
+                    focusTargetId = tvSettingsControlTargetId("home-sections"),
                 ) {
                     repository.setUseServerHomeSections(!settings.useServerHomeSections)
                 }
                 TvSettingTile(
                     strings.trailerPreviews,
                     if (settings.trailerPreviewsEnabled) strings.on else strings.off,
+                    focusTargetId = tvSettingsControlTargetId("trailer-previews"),
                 ) {
                     repository.setTrailerPreviewsEnabled(!settings.trailerPreviewsEnabled)
                 }
@@ -268,6 +351,7 @@ internal fun TvSettingsScreen(
                     if (settings.trailerPreviewSoundEnabled) strings.on else strings.off,
                     focusToNavigationRailOnLeft = true,
                     enabled = settings.trailerPreviewsEnabled,
+                    focusTargetId = tvSettingsControlTargetId("trailer-preview-sound"),
                 ) {
                     repository.setTrailerPreviewSoundEnabled(!settings.trailerPreviewSoundEnabled)
                 }
@@ -280,21 +364,24 @@ internal fun TvSettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 servers.forEach { server ->
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(server.name, color = TvText, fontSize = 21.sp, fontWeight = FontWeight.SemiBold)
-                            Text("${server.type.name.label()}  •  ${strings.connected}", color = TvTextMuted)
+                    key(server.id) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(server.name, color = TvText, fontSize = 21.sp, fontWeight = FontWeight.SemiBold)
+                                Text("${server.type.name.label()}  •  ${strings.connected}", color = TvTextMuted)
+                            }
+                            TvActionButton(
+                                strings.remove,
+                                {
+                                    scope.launch {
+                                        serverRepository.remove(server.id)
+                                        onServersChanged()
+                                    }
+                                },
+                                focusToNavigationRailOnLeft = true,
+                                focusTargetId = tvSettingsServerActionTargetId(server.id, "remove"),
+                            )
                         }
-                        TvActionButton(
-                            strings.remove,
-                            {
-                                scope.launch {
-                                    serverRepository.remove(server.id)
-                                    onServersChanged()
-                                }
-                            },
-                            focusToNavigationRailOnLeft = true,
-                        )
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -303,11 +390,14 @@ internal fun TvSettingsScreen(
                         { showJellyfinConnect = true },
                         primary = jellyfinServer == null,
                         focusToNavigationRailOnLeft = true,
+                        focusTargetId =
+                            tvSettingsServerActionTargetId(jellyfinServer?.id ?: "new:jellyfin", "manage"),
                     )
                     TvActionButton(
                         if (seerrServer == null) strings.addSeerr else strings.manageSeerr,
                         { showSeerrConnect = true },
                         primary = seerrServer == null,
+                        focusTargetId = tvSettingsServerActionTargetId(seerrServer?.id ?: "new:seerr", "manage"),
                     )
                 }
             }
@@ -402,11 +492,12 @@ private fun TvSettingTile(
     focusToNavigationRailOnLeft: Boolean = false,
     screenEntry: Boolean = false,
     enabled: Boolean = true,
+    focusTargetId: String,
     onClick: () -> Unit,
 ) {
     Column(
         Modifier
-            .tvScreenEntryFocus(screenEntry)
+            .tvScreenEntryFocus(screenEntry, focusTargetId)
             .width(330.dp)
             .height(112.dp)
             .graphicsLayer { alpha = if (enabled) 1f else 0.46f }
@@ -416,6 +507,7 @@ private fun TvSettingTile(
                 enabled = enabled,
                 shape = RoundedCornerShape(20.dp),
                 focusToNavigationRailOnLeft = focusToNavigationRailOnLeft,
+                focusTargetId = focusTargetId,
             ).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {

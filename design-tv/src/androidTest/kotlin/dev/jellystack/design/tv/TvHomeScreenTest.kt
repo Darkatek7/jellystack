@@ -1,7 +1,11 @@
 package dev.jellystack.design.tv
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.LocalContext
@@ -28,8 +32,10 @@ import dev.jellystack.core.jellyfin.HomeSectionViewMode
 import dev.jellystack.core.jellyfin.HomeSectionsState
 import dev.jellystack.core.jellyfin.JellyfinHomeState
 import dev.jellystack.core.jellyfin.JellyfinItem
+import dev.jellystack.core.jellyfin.JellyfinLibrary
 import dev.jellystack.core.preferences.AppLanguage
 import dev.jellystack.players.AndroidPlayerEngine
+import kotlinx.coroutines.delay
 import kotlinx.datetime.Clock
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -42,6 +48,127 @@ import kotlin.time.Duration.Companion.days
 class TvHomeScreenTest {
     @get:Rule
     val composeRule = createComposeRule()
+
+    @Test
+    fun recreatedHomeRestoresExactOffscreenCard() {
+        lateinit var engine: AndroidPlayerEngine
+        val shown = androidx.compose.runtime.mutableStateOf(true)
+        val preferred = androidx.compose.runtime.mutableStateOf<String?>(tvHomeCardTargetId("plugin:row-4", "row-4-item-10"))
+        val sections =
+            HomeSectionsState.Ready(
+                sections =
+                    (0..4).map { row ->
+                        HomeSection(
+                            id = "row-$row",
+                            title = "Row $row",
+                            viewMode = HomeSectionViewMode.LANDSCAPE,
+                            displayTitle = true,
+                            showDetailsMenu = false,
+                            items = (0..11).map { column -> homeSectionItem(item("row-$row-item-$column", "Row $row item $column")) },
+                        )
+                    },
+                imageBaseUrl = "",
+                imageAccessToken = "",
+            )
+        composeRule.setContent {
+            val context = LocalContext.current
+            engine = remember(context) { AndroidPlayerEngine(context) }
+            RestorableHomeHost(shown.value, preferred.value, sections, engine)
+        }
+
+        composeRule.onNodeWithContentDescription("Row 4 item 10").assertIsFocused()
+        composeRule.runOnIdle {
+            preferred.value = null
+            shown.value = false
+        }
+        composeRule.runOnIdle { shown.value = true }
+        composeRule.onNodeWithContentDescription("Row 4 item 10").assertIsFocused()
+        composeRule.runOnIdle(engine::release)
+    }
+
+    @Test
+    fun verticalMoveMaterializesPreservedOffscreenColumn() {
+        lateinit var engine: AndroidPlayerEngine
+        val preferred = androidx.compose.runtime.mutableStateOf<String?>(tvHomeCardTargetId("plugin:row-0", "row-0-item-10"))
+        val sections =
+            HomeSectionsState.Ready(
+                sections =
+                    (0..1).map { row ->
+                        HomeSection(
+                            id = "row-$row",
+                            title = "Row $row",
+                            viewMode = HomeSectionViewMode.LANDSCAPE,
+                            displayTitle = true,
+                            showDetailsMenu = false,
+                            items = (0..11).map { column -> homeSectionItem(item("row-$row-item-$column", "Row $row item $column")) },
+                        )
+                    },
+                imageBaseUrl = "",
+                imageAccessToken = "",
+            )
+        composeRule.setContent {
+            val context = LocalContext.current
+            engine = remember(context) { AndroidPlayerEngine(context) }
+            RestorableHomeHost(true, preferred.value, sections, engine)
+        }
+
+        composeRule
+            .onNodeWithContentDescription("Row 0 item 10")
+            .assertIsFocused()
+            .performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.onNodeWithContentDescription("Row 1 item 10").assertIsFocused()
+        composeRule.runOnIdle(engine::release)
+    }
+
+    @Test
+    fun recreatedLibraryRestoresExactOffscreenGridCard() {
+        val shown = androidx.compose.runtime.mutableStateOf(true)
+        val preferred = androidx.compose.runtime.mutableStateOf<String?>(tvLibraryTargetId("library-27"))
+        val libraries =
+            (0..31).map { index ->
+                JellyfinLibrary("library-$index", "Library $index", null, index.toLong(), null)
+            }
+        composeRule.setContent { RestorableLibraryHost(shown.value, preferred.value, libraries) }
+
+        composeRule.onNodeWithContentDescription("Library 27, 27 items").assertIsFocused()
+        composeRule.runOnIdle {
+            preferred.value = null
+            shown.value = false
+        }
+        composeRule.runOnIdle { shown.value = true }
+        composeRule.onNodeWithContentDescription("Library 27, 27 items").assertIsFocused()
+    }
+
+    @Test
+    fun delayedRailCompositionCompletesOnRequestedItem() {
+        composeRule.setContent { RailRestorationHarness(expanded = true, selectedAvailable = true, delayedSelected = true) }
+
+        composeRule.waitUntil(2_000) {
+            composeRule.onAllNodes(hasContentDescription("Rail selected")).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithContentDescription("Rail selected").assertIsFocused()
+    }
+
+    @Test
+    fun unavailableRailSelectionUsesDeterministicHomeFallback() {
+        composeRule.setContent { RailRestorationHarness(expanded = true, selectedAvailable = false, delayedSelected = false) }
+
+        composeRule.onNodeWithContentDescription("Rail home").assertIsFocused()
+    }
+
+    @Test
+    fun closingRailRestoresExactContentTarget() {
+        val expanded = androidx.compose.runtime.mutableStateOf(false)
+        composeRule.setContent {
+            RailRestorationHarness(expanded = expanded.value, selectedAvailable = true, delayedSelected = false)
+        }
+
+        composeRule.onNodeWithContentDescription("Content exact").assertIsFocused()
+        composeRule.runOnIdle { expanded.value = true }
+        composeRule.onNodeWithContentDescription("Rail selected").assertIsFocused()
+        composeRule.runOnIdle { expanded.value = false }
+        composeRule.onNodeWithContentDescription("Content exact").assertIsFocused()
+    }
 
     @Test
     fun loadingHomeStillRendersBrandedHeroAsFirstSlot() {
@@ -612,7 +739,7 @@ class TvHomeScreenTest {
             .assertIsFocused()
             .performKeyInput { pressKey(Key.DirectionDown) }
         composeRule
-            .onAllNodes(cardWithDescription("Local first"))[0]
+            .onAllNodes(cardWithDescription("Local second"))[0]
             .assertIsFocused()
             .performKeyInput { pressKey(Key.DirectionDown) }
 
@@ -695,6 +822,156 @@ class TvHomeScreenTest {
         )
 
     @androidx.compose.runtime.Composable
+    private fun RestorableHomeHost(
+        shown: Boolean,
+        preferredTargetId: String?,
+        sections: HomeSectionsState,
+        engine: AndroidPlayerEngine,
+    ) {
+        val coordinator = remember { TvFocusCoordinator<FocusRequester>() }
+        val entryFocusRequester = remember { FocusRequester() }
+        if (shown) {
+            CompositionLocalProvider(
+                LocalTvScreenEntryFocusRequester provides entryFocusRequester,
+                LocalTvFocusContext provides TvFocusContext(coordinator, "home"),
+            ) {
+                JellystackTvTheme {
+                    TvHomeScreen(
+                        state =
+                            JellyfinHomeState(
+                                recentMovies =
+                                    listOf(
+                                        item(
+                                            "hero",
+                                            "Hero",
+                                            dateCreated = (Clock.System.now() - 1.days).toString(),
+                                        ),
+                                    ),
+                            ),
+                        homeSections = sections,
+                        strings = TvStrings.current(AppLanguage.ENGLISH),
+                        autoCycle = false,
+                        intervalSeconds = 10,
+                        railOpen = false,
+                        trailerPreviewState = TvTrailerPreviewState.Idle,
+                        focusMemory = remember { TvFocusMemory() },
+                        onRefresh = {},
+                        onPreviewFocus = { _, _ -> },
+                        onPreviewBlur = { _, _ -> },
+                        onCancelPreview = {},
+                        trailerPreviewEngine = engine,
+                        previewSoundEnabled = false,
+                        previewProgress = 0f,
+                        onPlayItem = {},
+                        onItem = {},
+                        onLibrary = {},
+                        onSeerrItem = {},
+                    )
+                }
+            }
+            androidx.compose.runtime.LaunchedEffect(shown, preferredTargetId) {
+                coordinator.restoreFocus(
+                    routeKey = "home",
+                    preferredTargetId = preferredTargetId,
+                    requestFocus = { requester -> runCatching { requester.requestFocus() }.getOrDefault(false) },
+                )
+            }
+        }
+    }
+
+    @androidx.compose.runtime.Composable
+    private fun RestorableLibraryHost(
+        shown: Boolean,
+        preferredTargetId: String?,
+        libraries: List<JellyfinLibrary>,
+    ) {
+        val route = TvRoute.Library()
+        val routeKey = route.focusRouteKey(emptyList())
+        val coordinator = remember { TvFocusCoordinator<FocusRequester>() }
+        val entryFocusRequester = remember { FocusRequester() }
+        if (shown) {
+            CompositionLocalProvider(
+                LocalTvScreenEntryFocusRequester provides entryFocusRequester,
+                LocalTvFocusContext provides TvFocusContext(coordinator, routeKey),
+            ) {
+                JellystackTvTheme {
+                    TvLibraryScreen(
+                        route = route,
+                        state = JellyfinHomeState(libraries = libraries),
+                        strings = TvStrings.current(AppLanguage.ENGLISH),
+                        focusMemory = remember { TvFocusMemory() },
+                        onSelectLibrary = {},
+                        onOpenItem = {},
+                        onOpenContainer = {},
+                        onLoadMore = {},
+                        onRetry = {},
+                    )
+                }
+            }
+            androidx.compose.runtime.LaunchedEffect(shown, preferredTargetId) {
+                coordinator.restoreFocus(
+                    routeKey = routeKey,
+                    preferredTargetId = preferredTargetId,
+                    requestFocus = { requester -> runCatching { requester.requestFocus() }.getOrDefault(false) },
+                )
+            }
+        }
+    }
+
+    @androidx.compose.runtime.Composable
+    private fun RailRestorationHarness(
+        expanded: Boolean,
+        selectedAvailable: Boolean,
+        delayedSelected: Boolean,
+    ) {
+        val coordinator = remember { TvFocusCoordinator<FocusRequester>(attachmentTimeoutMillis = 500) }
+        val contentRoute = "test-content"
+        val contentTarget = "content:exact"
+        val selectedTarget = tvRailTargetId(TvRoute.Settings())
+        val homeTarget = tvRailTargetId(TvRoute.Home)
+        var showSelected by remember { mutableStateOf(expanded && selectedAvailable && !delayedSelected) }
+        Column {
+            CompositionLocalProvider(LocalTvFocusContext provides TvFocusContext(coordinator, contentRoute)) {
+                TvRouteFocusMaterializer(
+                    ownerId = "test-content",
+                    targetIds = setOf(contentTarget),
+                    fallbackTargetIds = setOf(contentTarget),
+                ) { true }
+                TvActionButton("Content exact", {}, focusTargetId = contentTarget)
+            }
+            if (expanded) {
+                CompositionLocalProvider(LocalTvFocusContext provides TvFocusContext(coordinator, TV_FOCUS_RAIL_ROUTE)) {
+                    TvRouteFocusMaterializer(
+                        ownerId = "test-rail",
+                        targetIds = setOf(selectedTarget, homeTarget),
+                        fallbackTargetIds = setOf(homeTarget),
+                    ) { targetId ->
+                        when (targetId) {
+                            selectedTarget -> {
+                                if (!selectedAvailable) return@TvRouteFocusMaterializer false
+                                if (delayedSelected) delay(100)
+                                showSelected = true
+                                true
+                            }
+                            homeTarget -> true
+                            else -> false
+                        }
+                    }
+                    TvActionButton("Rail home", {}, focusTargetId = homeTarget)
+                    if (showSelected) TvActionButton("Rail selected", {}, focusTargetId = selectedTarget)
+                }
+            }
+        }
+        androidx.compose.runtime.LaunchedEffect(expanded, selectedAvailable, delayedSelected) {
+            coordinator.restoreFocus(
+                routeKey = if (expanded) TV_FOCUS_RAIL_ROUTE else contentRoute,
+                preferredTargetId = if (expanded) selectedTarget else null,
+                requestFocus = { requester -> runCatching { requester.requestFocus() }.getOrDefault(false) },
+            )
+        }
+    }
+
+    @androidx.compose.runtime.Composable
     private fun TestHomeScreen(
         state: JellyfinHomeState,
         sections: HomeSectionsState,
@@ -713,11 +990,10 @@ class TvHomeScreenTest {
     ) {
         val entryFocusRequester = remember { FocusRequester() }
         val focusCoordinator = remember { TvFocusCoordinator<FocusRequester>() }
-        androidx.compose.runtime.LaunchedEffect(provideEntryFocus, focusCoordinator.registrationRevision) {
-            if (provideEntryFocus && focusCoordinator.needsContentRestoration("home")) {
-                focusCoordinator.restoreContentFocus(
+        androidx.compose.runtime.LaunchedEffect(provideEntryFocus) {
+            if (provideEntryFocus) {
+                focusCoordinator.restoreFocus(
                     routeKey = "home",
-                    awaitFrame = { androidx.compose.runtime.withFrameNanos { } },
                     requestFocus = { requester -> runCatching { requester.requestFocus() }.getOrDefault(false) },
                 )
             }

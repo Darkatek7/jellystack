@@ -37,6 +37,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -57,11 +58,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -98,10 +99,46 @@ import dev.jellystack.players.AndroidPlayerEngine
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.datetime.Clock
 import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
 
 private const val TV_HOME_HERO_HEIGHT_DP = 360
+private const val TV_FOCUS_MATERIALIZATION_TIMEOUT_MS = 1_000L
+
+private data class TvLazyFocusLocation(
+    val verticalIndex: Int,
+    val rowId: String? = null,
+    val horizontalIndex: Int? = null,
+)
+
+@Composable
+private fun rememberTvLazyRowStates(rowIds: List<String>): Map<String, LazyListState> {
+    val states = linkedMapOf<String, LazyListState>()
+    for (rowId in rowIds) {
+        key(rowId) { states[rowId] = rememberLazyListState() }
+    }
+    return states
+}
+
+private suspend fun materializeTvLazyTarget(
+    outerState: LazyListState,
+    rowStates: Map<String, LazyListState>,
+    location: TvLazyFocusLocation,
+): Boolean {
+    outerState.scrollToItem(location.verticalIndex)
+    val rowId = location.rowId ?: return true
+    val horizontalIndex = location.horizontalIndex ?: return true
+    val rowState = rowStates[rowId] ?: return false
+    val rowAttached =
+        withTimeoutOrNull(TV_FOCUS_MATERIALIZATION_TIMEOUT_MS) {
+            snapshotFlow { rowState.layoutInfo.totalItemsCount }.first { it > horizontalIndex }
+            true
+        } ?: false
+    if (!rowAttached) return false
+    rowState.scrollToItem(horizontalIndex)
+    return true
+}
 
 internal fun tvHomeHeroHeightDp(): Int = TV_HOME_HERO_HEIGHT_DP
 
@@ -171,41 +208,91 @@ internal fun TvHomeScreen(
             }
         }
     val homeListState = rememberLazyListState()
-    val entryFocusRequester = LocalTvScreenEntryFocusRequester.current
+    val focusContext = LocalTvFocusContext.current
     val openNavigationRail = LocalTvNavigationRailOpener.current
     val heroCarouselFocusRequester = remember { FocusRequester() }
     val heroPrimaryFocusRequester = remember { FocusRequester() }
-    val cardFocusTargetRegistry = remember { TvHomeFocusTargetRegistry(::FocusRequester) }
-    val cardFocusRequesters = cardFocusTargetRegistry.reconcile(focusRows)
+    val homeRowIds =
+        buildList {
+            addAll(focusRows.map { it.id })
+            if (homeSections !is HomeSectionsState.Ready && "libraries" !in this) add("libraries")
+        }
+    val rowListStates = rememberTvLazyRowStates(homeRowIds)
+    val errorLazyColumnIndex =
+        1 +
+            if (homeSections is HomeSectionsState.Ready) {
+                visibleSections.size
+            } else {
+                (if (state.continueWatching.isNotEmpty()) 1 else 0) +
+                    (if (state.nextUp.isNotEmpty()) 1 else 0) +
+                    1
+            }
+    val homeFocusLocations =
+        buildMap {
+            put(TV_HOME_HERO_TARGET, TvLazyFocusLocation(verticalIndex = 0))
+            put(TV_HOME_PRIMARY_TARGET, TvLazyFocusLocation(verticalIndex = 0))
+            put(TV_HOME_DETAILS_TARGET, TvLazyFocusLocation(verticalIndex = 0))
+            focusRows.forEach { row ->
+                row.itemIds.forEachIndexed { index, itemId ->
+                    put(
+                        tvHomeCardTargetId(row.id, itemId),
+                        TvLazyFocusLocation(row.lazyColumnIndex, row.id, index),
+                    )
+                }
+            }
+            if (state.errorMessage != null && heroCandidates.isNotEmpty()) {
+                put(TV_HOME_RETRY_TARGET, TvLazyFocusLocation(errorLazyColumnIndex))
+            }
+        }
+    val homeFallbackTarget = if (heroCandidates.isNotEmpty()) TV_HOME_HERO_TARGET else TV_HOME_PRIMARY_TARGET
+    TvRouteFocusMaterializer(
+        ownerId = "home-lists",
+        targetIds = homeFocusLocations.keys,
+        fallbackTargetIds = setOf(homeFallbackTarget),
+    ) { targetId ->
+        homeFocusLocations[targetId]?.let { materializeTvLazyTarget(homeListState, rowListStates, it) } ?: false
+    }
     val verticalFocusCoordinator = remember { TvHomeVerticalFocusCoordinator(focusRows) }
     var pendingFocusMove by remember { mutableStateOf<TvHomeFocusMove?>(null) }
     LaunchedEffect(focusRows) {
         val reconciled = verticalFocusCoordinator.replaceRows(focusRows)
         if (reconciled != pendingFocusMove) pendingFocusMove = reconciled
     }
-    LaunchedEffect(pendingFocusMove) {
+    LaunchedEffect(pendingFocusMove, focusRows) {
         val move = pendingFocusMove ?: return@LaunchedEffect
+        val coordinator = focusContext?.coordinator ?: return@LaunchedEffect
+
+        suspend fun requestTarget(targetId: String): Boolean =
+            coordinator.restoreFocus(
+                routeKey = focusContext.routeKey,
+                preferredTargetId = targetId,
+                includeFallback = false,
+                requestFocus = { requester -> runCatching { requester.requestFocus() }.getOrDefault(false) },
+            ) is TvFocusRestoration.Focused
         val focused =
             when (val destination = move.destination) {
                 TvHomeFocusDestination.HeroCarousel -> {
-                    homeListState.scrollToItem(0)
-                    heroCarouselFocusRequester.requestFocusAfterFrame()
+                    requestTarget(TV_HOME_HERO_TARGET)
                 }
                 TvHomeFocusDestination.HeroPrimary -> {
-                    homeListState.scrollToItem(0)
-                    heroPrimaryFocusRequester.requestFocusAfterFrame()
+                    requestTarget(TV_HOME_PRIMARY_TARGET)
                 }
                 is TvHomeFocusDestination.Row -> {
-                    homeListState.scrollToItem(destination.lazyColumnIndex)
-                    snapshotFlow {
-                        homeListState.layoutInfo.visibleItemsInfo.any { it.index == destination.lazyColumnIndex }
-                    }.first { it }
-                    cardFocusRequesters[destination.id]?.get(destination.firstItemId)?.requestFocusAfterFrame() == true
+                    val row = focusRows.firstOrNull { it.id == destination.id }
+                    val targetIndex =
+                        row?.itemIds?.indexOf(destination.firstItemId)?.takeIf { it >= 0 }
+                            ?: destination.horizontalIndex
+                    row
+                        ?.itemIds
+                        ?.indices
+                        ?.sortedBy { index -> kotlin.math.abs(index - targetIndex) }
+                        ?.any { index -> requestTarget(tvHomeCardTargetId(row.id, row.itemIds[index])) }
+                        ?: false
                 }
             }
-        val completed = focused || entryFocusRequester?.requestFocusAfterFrame() == true
-        if (completed) verticalFocusCoordinator.acceptCompletion(move.requestId)
-        if (pendingFocusMove?.requestId == move.requestId) pendingFocusMove = null
+        if (focused && verticalFocusCoordinator.acceptCompletion(move.requestId)) {
+            if (pendingFocusMove?.requestId == move.requestId) pendingFocusMove = null
+        }
     }
     val onVerticalMove: (TvHomeFocusOrigin, TvHomeVerticalDirection, JellyfinItem?) -> Unit =
         { origin, direction, previewItem ->
@@ -350,7 +437,7 @@ internal fun TvHomeScreen(
                         trailerPreviewEngine = trailerPreviewEngine,
                         previewSoundEnabled = previewSoundEnabled,
                         previewProgress = previewProgress,
-                        cardFocusRequesters = cardFocusRequesters[rowId].orEmpty(),
+                        listState = rowListStates.getValue(rowId),
                         onVerticalMove = { itemId, item, direction ->
                             onVerticalMove(TvHomeFocusOrigin.Row(rowId, itemId), direction, item)
                         },
@@ -372,7 +459,8 @@ internal fun TvHomeScreen(
                             trailerPreviewEngine = trailerPreviewEngine,
                             previewSoundEnabled = previewSoundEnabled,
                             previewProgress = previewProgress,
-                            cardFocusRequesters = cardFocusRequesters["continue"].orEmpty(),
+                            listState = rowListStates.getValue("continue"),
+                            focusTargetId = { itemId -> tvHomeCardTargetId("continue", itemId) },
                             onVerticalMove = { item, direction ->
                                 onVerticalMove(TvHomeFocusOrigin.Row("continue", item.id), direction, item)
                             },
@@ -393,7 +481,8 @@ internal fun TvHomeScreen(
                             trailerPreviewEngine = trailerPreviewEngine,
                             previewSoundEnabled = previewSoundEnabled,
                             previewProgress = previewProgress,
-                            cardFocusRequesters = cardFocusRequesters["next"].orEmpty(),
+                            listState = rowListStates.getValue("next"),
+                            focusTargetId = { itemId -> tvHomeCardTargetId("next", itemId) },
                             onVerticalMove = { item, direction ->
                                 onVerticalMove(TvHomeFocusOrigin.Row("next", item.id), direction, item)
                             },
@@ -407,7 +496,7 @@ internal fun TvHomeScreen(
                         strings.myMedia,
                         focusMemory,
                         onLibrary,
-                        cardFocusRequesters = cardFocusRequesters["libraries"].orEmpty(),
+                        listState = rowListStates.getValue("libraries"),
                         onVerticalMove = { libraryId, direction ->
                             onVerticalMove(TvHomeFocusOrigin.Row("libraries", libraryId), direction, null)
                         },
@@ -421,6 +510,7 @@ internal fun TvHomeScreen(
                     "${strings.retry}: $message",
                     onRefresh,
                     focusToNavigationRailOnLeft = true,
+                    focusTargetId = TV_HOME_RETRY_TARGET,
                 )
             }
         }
@@ -484,9 +574,9 @@ private fun TvHeroCarousel(
                     width = if (carouselFocused) 2.dp else 0.5.dp,
                     color = if (carouselFocused) TvPurple else TvText.copy(alpha = 0.08f),
                     shape = shape,
-                ).tvFocusTarget(carouselFocusRequester, focusTargetId = "home:hero-carousel")
+                ).tvFocusTarget(carouselFocusRequester, focusTargetId = TV_HOME_HERO_TARGET)
                 .focusRequester(carouselFocusRequester)
-                .tvScreenEntryFocus()
+                .tvScreenEntryFocus(focusTargetId = TV_HOME_HERO_TARGET)
                 .onFocusChanged { focusState ->
                     carouselFocused = focusState.isFocused
                     heroFocused = focusState.hasFocus
@@ -563,6 +653,7 @@ private fun TvHeroCarousel(
                         .tvHomeVerticalFocus(onActionVerticalMove)
                         .onFocusChanged { onPrimaryFocusChanged(it.isFocused) },
                 focusToNavigationRailOnLeft = true,
+                focusTargetId = TV_HOME_PRIMARY_TARGET,
             )
             TvActionButton(
                 label = strings.details,
@@ -573,6 +664,7 @@ private fun TvHeroCarousel(
                         .width(156.dp)
                         .tvHomeVerticalFocus(onActionVerticalMove)
                         .onFocusChanged { onDetailsFocusChanged(it.isFocused) },
+                focusTargetId = TV_HOME_DETAILS_TARGET,
             )
         }
     }
@@ -759,9 +851,10 @@ private fun TvEmptyHomeHero(
                     Modifier
                         .width(180.dp)
                         .focusRequester(primaryFocusRequester)
-                        .tvScreenEntryFocus()
+                        .tvScreenEntryFocus(focusTargetId = TV_HOME_PRIMARY_TARGET)
                         .tvHomeVerticalFocus(onVerticalMove),
                 focusToNavigationRailOnLeft = true,
+                focusTargetId = TV_HOME_PRIMARY_TARGET,
             )
         }
     }
@@ -805,21 +898,11 @@ private fun TvJellyfinRow(
     previewSoundEnabled: Boolean = true,
     previewProgress: Float = 0f,
     routeKey: String = "home",
+    listState: LazyListState,
+    focusTargetId: (String) -> String,
     screenEntry: Boolean = false,
-    cardFocusRequesters: Map<String, FocusRequester> = emptyMap(),
     onVerticalMove: (JellyfinItem, TvHomeVerticalDirection) -> Unit = { _, _ -> },
 ) {
-    val focusContext = LocalTvFocusContext.current
-    val snapshot = focusMemory.restore(routeKey)?.takeIf { it.rowKey == title }
-    val listState = rememberLazyListState(initialFirstVisibleItemIndex = snapshot?.horizontalIndex ?: 0)
-    val focusRequester = remember(title) { FocusRequester() }
-    val restoreId = focusMemory.resolveItem(routeKey, items.map { it.id }).takeIf { snapshot != null }
-    LaunchedEffect(restoreId, items.map { it.id }) {
-        if (restoreId != null && focusContext?.coordinator?.isRailVisible != true) {
-            listState.scrollToItem(items.indexOfFirst { it.id == restoreId }.coerceAtLeast(0))
-            focusRequester.requestFocusAfterFrame()
-        }
-    }
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         TvSectionTitle(title)
         LazyRow(
@@ -830,6 +913,7 @@ private fun TvJellyfinRow(
                     .PaddingValues(6.dp),
         ) {
             itemsIndexed(items, key = { _, item -> item.id }) { index, item ->
+                val targetId = focusTargetId(item.id)
                 val displayItem = displayItemsById[item.id] ?: item
                 val artwork = resolveTvJellyfinArtwork(displayItem, landscape)
                 TvMediaCard(
@@ -855,15 +939,9 @@ private fun TvJellyfinRow(
                     previewSurfaceTestTag = "tv-media-card-preview-surface-${item.id}",
                     modifier =
                         Modifier
-                            .tvScreenEntryFocus(screenEntry && index == 0)
-                            .then(
-                                if (item.id in cardFocusRequesters) {
-                                    Modifier.focusRequester(cardFocusRequesters.getValue(item.id))
-                                } else {
-                                    Modifier
-                                },
-                            ).tvHomeVerticalFocus { direction -> onVerticalMove(item, direction) }
-                            .then(if (item.id == restoreId) Modifier.focusRequester(focusRequester) else Modifier),
+                            .tvScreenEntryFocus(screenEntry && index == 0, targetId)
+                            .tvHomeVerticalFocus { direction -> onVerticalMove(item, direction) },
+                    focusTargetId = targetId,
                     focusToNavigationRailOnLeft = index == 0,
                 )
             }
@@ -878,23 +956,12 @@ private fun TvLibraryRow(
     title: String,
     focusMemory: TvFocusMemory,
     onLibrary: (JellyfinLibrary) -> Unit,
+    listState: LazyListState,
     screenEntry: Boolean = false,
-    cardFocusRequesters: Map<String, FocusRequester> = emptyMap(),
     onVerticalMove: (String, TvHomeVerticalDirection) -> Unit = { _, _ -> },
 ) {
     if (libraries.isEmpty()) return
-    val focusContext = LocalTvFocusContext.current
     val rowKey = "libraries"
-    val snapshot = focusMemory.restore("home")?.takeIf { it.rowKey == rowKey }
-    val listState = rememberLazyListState(initialFirstVisibleItemIndex = snapshot?.horizontalIndex ?: 0)
-    val focusRequester = remember { FocusRequester() }
-    val restoreId = focusMemory.resolveItem("home", libraries.map { it.id }).takeIf { snapshot != null }
-    LaunchedEffect(restoreId, libraries.map { it.id }) {
-        if (restoreId != null && focusContext?.coordinator?.isRailVisible != true) {
-            listState.scrollToItem(libraries.indexOfFirst { it.id == restoreId }.coerceAtLeast(0))
-            focusRequester.requestFocusAfterFrame()
-        }
-    }
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         TvSectionTitle(title)
         LazyRow(
@@ -905,6 +972,7 @@ private fun TvLibraryRow(
                     .PaddingValues(6.dp),
         ) {
             itemsIndexed(libraries, key = { _, it -> it.id }) { index, library ->
+                val targetId = tvHomeCardTargetId(rowKey, library.id)
                 TvMediaCard(
                     title = library.name,
                     subtitle = library.itemCount?.let { "$it items" },
@@ -913,15 +981,9 @@ private fun TvLibraryRow(
                     onFocused = { focusMemory.remember("home", "libraries", library.id, horizontalIndex = index) },
                     modifier =
                         Modifier
-                            .tvScreenEntryFocus(screenEntry && index == 0)
-                            .then(
-                                if (library.id in cardFocusRequesters) {
-                                    Modifier.focusRequester(cardFocusRequesters.getValue(library.id))
-                                } else {
-                                    Modifier
-                                },
-                            ).tvHomeVerticalFocus { direction -> onVerticalMove(library.id, direction) }
-                            .then(if (library.id == restoreId) Modifier.focusRequester(focusRequester) else Modifier),
+                            .tvScreenEntryFocus(screenEntry && index == 0, targetId)
+                            .tvHomeVerticalFocus { direction -> onVerticalMove(library.id, direction) },
+                    focusTargetId = targetId,
                     focusToNavigationRailOnLeft = index == 0,
                 )
             }
@@ -943,21 +1005,11 @@ private fun TvHomeSectionRow(
     trailerPreviewEngine: AndroidPlayerEngine,
     previewSoundEnabled: Boolean,
     previewProgress: Float,
+    listState: LazyListState,
     screenEntry: Boolean = false,
-    cardFocusRequesters: Map<String, FocusRequester> = emptyMap(),
     onVerticalMove: (String, JellyfinItem?, TvHomeVerticalDirection) -> Unit = { _, _, _ -> },
 ) {
-    val focusContext = LocalTvFocusContext.current
-    val snapshot = focusMemory.restore("home")?.takeIf { it.rowKey == section.id }
-    val listState = rememberLazyListState(initialFirstVisibleItemIndex = snapshot?.horizontalIndex ?: 0)
-    val focusRequester = remember(section.id) { FocusRequester() }
-    val restoreId = focusMemory.resolveItem("home", section.items.map { it.id }).takeIf { snapshot != null }
-    LaunchedEffect(restoreId, section.items.map { it.id }) {
-        if (restoreId != null && focusContext?.coordinator?.isRailVisible != true) {
-            listState.scrollToItem(section.items.indexOfFirst { it.id == restoreId }.coerceAtLeast(0))
-            focusRequester.requestFocusAfterFrame()
-        }
-    }
+    val rowId = "plugin:${section.id}"
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         TvSectionTitle(section.title)
         LazyRow(
@@ -968,6 +1020,7 @@ private fun TvHomeSectionRow(
                     .PaddingValues(6.dp),
         ) {
             itemsIndexed(section.items, key = { _, it -> it.id }) { index, item ->
+                val targetId = tvHomeCardTargetId(rowId, item.id)
                 val previewItem = item.jellyfinItem?.takeIf { item.action == HomeSectionAction.JELLYFIN }
                 TvMediaCard(
                     title = item.name,
@@ -990,15 +1043,9 @@ private fun TvHomeSectionRow(
                     previewSurfaceTestTag = previewItem?.let { "tv-media-card-preview-surface-${it.id}" },
                     modifier =
                         Modifier
-                            .tvScreenEntryFocus(screenEntry && index == 0)
-                            .then(
-                                if (item.id in cardFocusRequesters) {
-                                    Modifier.focusRequester(cardFocusRequesters.getValue(item.id))
-                                } else {
-                                    Modifier
-                                },
-                            ).tvHomeVerticalFocus { direction -> onVerticalMove(item.id, previewItem, direction) }
-                            .then(if (item.id == restoreId) Modifier.focusRequester(focusRequester) else Modifier),
+                            .tvScreenEntryFocus(screenEntry && index == 0, targetId)
+                            .tvHomeVerticalFocus { direction -> onVerticalMove(item.id, previewItem, direction) },
+                    focusTargetId = targetId,
                     focusToNavigationRailOnLeft = index == 0,
                     onClick = {
                         when (item.action) {
@@ -1040,18 +1087,37 @@ internal fun TvLibraryScreen(
     modifier: Modifier = Modifier,
 ) {
     LaunchedEffect(route.libraryId) { route.libraryId?.let(onSelectLibrary) }
-    val focusContext = LocalTvFocusContext.current
     val routeKey = route.focusRouteKey(state.browsePath.map { it.id })
-    val visibleIds = if (route.libraryId == null) state.libraries.map { it.id } else state.libraryItems.map { it.id }
-    val snapshot = focusMemory.restore(routeKey)
-    val restoreId = focusMemory.resolveItem(routeKey, visibleIds).takeIf { snapshot != null }
-    val focusRequester = remember(routeKey) { FocusRequester() }
-    val gridState = rememberLazyGridState(initialFirstVisibleItemIndex = snapshot?.verticalIndex ?: 0)
-    LaunchedEffect(restoreId, visibleIds) {
-        if (restoreId != null && focusContext?.coordinator?.isRailVisible != true) {
-            gridState.scrollToItem((snapshot?.verticalIndex ?: 0).coerceAtLeast(0))
-            focusRequester.requestFocusAfterFrame()
+    val gridState = rememberLazyGridState()
+    val itemTargetIds =
+        if (route.libraryId == null) {
+            state.libraries.map { tvLibraryTargetId(it.id) }
+        } else {
+            state.libraryItems.map { tvLibraryTargetId(it.id) }
         }
+    val terminalTarget =
+        when {
+            route.libraryId == null && state.libraries.isEmpty() -> TV_LIBRARY_EMPTY_TARGET
+            route.libraryId != null && (state.isLibraryLoading || state.isPageLoading) && state.libraryItems.isEmpty() ->
+                TV_LIBRARY_LOADING_TARGET
+            route.libraryId != null && state.errorMessage != null && state.libraryItems.isEmpty() -> TV_LIBRARY_RETRY_TARGET
+            route.libraryId != null && state.libraryItems.isEmpty() -> TV_LIBRARY_EMPTY_TARGET
+            else -> null
+        }
+    val locations =
+        buildMap {
+            itemTargetIds.forEachIndexed { index, targetId -> put(targetId, index + 1) }
+            terminalTarget?.let { put(it, itemTargetIds.size + 1) }
+        }
+    TvRouteFocusMaterializer(
+        ownerId = "library-grid:$routeKey",
+        targetIds = locations.keys,
+        fallbackTargetIds = setOfNotNull(itemTargetIds.firstOrNull(), terminalTarget),
+    ) { targetId ->
+        locations[targetId]?.let { index ->
+            gridState.scrollToItem(index)
+            true
+        } ?: false
     }
     LaunchedEffect(
         route.libraryId,
@@ -1096,6 +1162,7 @@ internal fun TvLibraryScreen(
         }
         if (route.libraryId == null) {
             gridItemsIndexed(state.libraries, key = { _, library -> library.id }) { index, library ->
+                val targetId = tvLibraryTargetId(library.id)
                 TvMediaCard(
                     title = library.name,
                     subtitle = library.itemCount?.let { "$it items" },
@@ -1104,19 +1171,23 @@ internal fun TvLibraryScreen(
                     onFocused = { focusMemory.remember(routeKey, "libraries", library.id, index + 1, index) },
                     modifier =
                         Modifier
-                            .tvScreenEntryFocus(index == 0)
-                            .then(if (library.id == restoreId) Modifier.focusRequester(focusRequester) else Modifier),
+                            .tvScreenEntryFocus(index == 0, targetId),
+                    focusTargetId = targetId,
                     fillWidth = true,
                     focusToNavigationRailOnLeft = isTvGridLeftEdge(index, 4),
                 )
             }
             if (state.libraries.isEmpty()) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
-                    TvFocusPlaceholder(if (state.isInitialLoading) strings.loading else strings.noResults)
+                    TvFocusPlaceholder(
+                        if (state.isInitialLoading) strings.loading else strings.noResults,
+                        TV_LIBRARY_EMPTY_TARGET,
+                    )
                 }
             }
         } else {
             gridItemsIndexed(state.libraryItems, key = { _, item -> item.id }) { index, item ->
+                val targetId = tvLibraryTargetId(item.id)
                 val artwork = resolveTvJellyfinArtwork(item)
                 TvMediaCard(
                     title = item.name,
@@ -1131,8 +1202,8 @@ internal fun TvLibraryScreen(
                     onFocused = { focusMemory.remember(routeKey, "items", item.id, index + 1, index) },
                     modifier =
                         Modifier
-                            .tvScreenEntryFocus(index == 0)
-                            .then(if (item.id == restoreId) Modifier.focusRequester(focusRequester) else Modifier),
+                            .tvScreenEntryFocus(index == 0, targetId),
+                    focusTargetId = targetId,
                     fillWidth = true,
                     focusToNavigationRailOnLeft = isTvGridLeftEdge(index, 4),
                 )
@@ -1146,7 +1217,13 @@ internal fun TvLibraryScreen(
                                 .height(112.dp)
                                 .then(
                                     if (state.libraryItems.isEmpty()) {
-                                        Modifier.tvScreenEntryFocus().tvReturnToNavigationRailOnLeft().focusable()
+                                        Modifier
+                                            .tvScreenEntryFocus(focusTargetId = TV_LIBRARY_LOADING_TARGET)
+                                            .tvFocusable(
+                                                onClick = {},
+                                                focusToNavigationRailOnLeft = true,
+                                                focusTargetId = TV_LIBRARY_LOADING_TARGET,
+                                            )
                                     } else {
                                         Modifier
                                     },
@@ -1167,14 +1244,18 @@ internal fun TvLibraryScreen(
                         TvActionButton(
                             strings.retry,
                             if (state.libraryItems.isEmpty()) onRetry else onLoadMore,
-                            modifier = Modifier.tvScreenEntryFocus(state.libraryItems.isEmpty()).width(220.dp),
+                            modifier =
+                                Modifier
+                                    .tvScreenEntryFocus(state.libraryItems.isEmpty(), TV_LIBRARY_RETRY_TARGET)
+                                    .width(220.dp),
                             focusToNavigationRailOnLeft = state.libraryItems.isEmpty(),
+                            focusTargetId = TV_LIBRARY_RETRY_TARGET,
                         )
                     }
                 }
             } else if (state.libraryItems.isEmpty()) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
-                    TvFocusPlaceholder(strings.noResults)
+                    TvFocusPlaceholder(strings.noResults, TV_LIBRARY_EMPTY_TARGET)
                 }
             }
         }
@@ -1219,9 +1300,45 @@ internal fun TvSearchScreen(
 ) {
     var query by remember { mutableStateOf("") }
     var source by remember { mutableStateOf(TvSearchSource.ALL) }
+    val queryFocusRequester = remember { FocusRequester() }
     val sourceFocusRequester = remember { FocusRequester() }
     val seerrResults = (requestsState as? JellyseerrRequestsState.Ready)?.searchResults.orEmpty()
-    LazyColumn(modifier.fillMaxSize(), contentPadding = TvScreenPadding, verticalArrangement = Arrangement.spacedBy(24.dp)) {
+    val visibleJellyfin = source != TvSearchSource.SEERR && jellyfinResults.isNotEmpty()
+    val visibleSeerr = source != TvSearchSource.JELLYFIN && seerrResults.isNotEmpty()
+    val outerState = rememberLazyListState()
+    val rowStates = rememberTvLazyRowStates(listOf("jellyfin", "seerr"))
+    val searchLocations =
+        buildMap {
+            put(TV_SEARCH_QUERY_TARGET, TvLazyFocusLocation(0))
+            TvSearchSource.entries.forEach { put(tvSearchSourceTargetId(it.name.lowercase()), TvLazyFocusLocation(0)) }
+            var rowIndex = 1
+            if (query.isNotBlank() && !visibleJellyfin && !visibleSeerr) rowIndex++
+            if (visibleJellyfin) {
+                jellyfinResults.forEachIndexed { index, item ->
+                    put(tvSearchResultTargetId("jellyfin", item.id), TvLazyFocusLocation(rowIndex, "jellyfin", index))
+                }
+                rowIndex++
+            }
+            if (visibleSeerr) {
+                seerrResults.forEachIndexed { index, item ->
+                    put(
+                        tvSearchResultTargetId("seerr", "${item.mediaType}:${item.tmdbId}"),
+                        TvLazyFocusLocation(rowIndex, "seerr", index),
+                    )
+                }
+            }
+        }
+    TvRouteFocusMaterializer(
+        ownerId = "search-lists",
+        targetIds = searchLocations.keys,
+        fallbackTargetIds = setOf(TV_SEARCH_QUERY_TARGET),
+    ) { targetId -> searchLocations[targetId]?.let { materializeTvLazyTarget(outerState, rowStates, it) } ?: false }
+    LazyColumn(
+        state = outerState,
+        modifier = modifier.fillMaxSize(),
+        contentPadding = TvScreenPadding,
+        verticalArrangement = Arrangement.spacedBy(24.dp),
+    ) {
         item {
             Text(strings.search, color = TvText, fontSize = 38.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(16.dp))
@@ -1236,7 +1353,9 @@ internal fun TvSearchScreen(
                 colors = tvOutlinedTextFieldColors(),
                 modifier =
                     Modifier
-                        .tvScreenEntryFocus()
+                        .tvScreenEntryFocus(focusTargetId = TV_SEARCH_QUERY_TARGET)
+                        .tvFocusTarget(queryFocusRequester, focusTargetId = TV_SEARCH_QUERY_TARGET)
+                        .focusRequester(queryFocusRequester)
                         .fillMaxWidth(0.66f)
                         .height(64.dp)
                         .tvReturnToNavigationRailOnLeft()
@@ -1253,20 +1372,50 @@ internal fun TvSearchScreen(
                     modifier = Modifier.focusRequester(sourceFocusRequester),
                     primary = source == TvSearchSource.ALL,
                     focusToNavigationRailOnLeft = true,
+                    focusTargetId = tvSearchSourceTargetId("all"),
                 )
-                TvActionButton("Jellyfin", { source = TvSearchSource.JELLYFIN }, primary = source == TvSearchSource.JELLYFIN)
-                TvActionButton("Seerr", { source = TvSearchSource.SEERR }, primary = source == TvSearchSource.SEERR)
+                TvActionButton(
+                    "Jellyfin",
+                    { source = TvSearchSource.JELLYFIN },
+                    primary = source == TvSearchSource.JELLYFIN,
+                    focusTargetId = tvSearchSourceTargetId("jellyfin"),
+                )
+                TvActionButton(
+                    "Seerr",
+                    { source = TvSearchSource.SEERR },
+                    primary = source == TvSearchSource.SEERR,
+                    focusTargetId = tvSearchSourceTargetId("seerr"),
+                )
             }
         }
-        val visibleJellyfin = source != TvSearchSource.SEERR && jellyfinResults.isNotEmpty()
-        val visibleSeerr = source != TvSearchSource.JELLYFIN && seerrResults.isNotEmpty()
         if (query.isNotBlank() && !visibleJellyfin && !visibleSeerr) item { Text(strings.noResults, color = TvTextMuted) }
         if (visibleJellyfin) {
             item {
-                TvJellyfinRow("Jellyfin", jellyfinResults, homeState, focusMemory, onJellyfinItem, routeKey = "search")
+                TvJellyfinRow(
+                    "Jellyfin",
+                    jellyfinResults,
+                    homeState,
+                    focusMemory,
+                    onJellyfinItem,
+                    routeKey = "search",
+                    listState = rowStates.getValue("jellyfin"),
+                    focusTargetId = { itemId -> tvSearchResultTargetId("jellyfin", itemId) },
+                )
             }
         }
-        if (visibleSeerr) item { TvSeerrRow("Seerr", seerrResults, focusMemory, "search", onSeerrItem) }
+        if (visibleSeerr) {
+            item {
+                TvSeerrRow(
+                    "Seerr",
+                    seerrResults,
+                    focusMemory,
+                    "search",
+                    onSeerrItem,
+                    listState = rowStates.getValue("seerr"),
+                    focusTargetId = { id -> tvSearchResultTargetId("seerr", id) },
+                )
+            }
+        }
     }
 }
 
@@ -1285,7 +1434,63 @@ internal fun TvDiscoverScreen(
         ready?.let { state ->
             JellyseerrRecommendationRail.entries.firstOrNull { rail -> state.rails[rail]?.items?.isNotEmpty() == true }
         }
-    LazyColumn(modifier.fillMaxSize(), contentPadding = TvScreenPadding, verticalArrangement = Arrangement.spacedBy(28.dp)) {
+    val populatedRails =
+        ready
+            ?.let { state ->
+                JellyseerrRecommendationRail.entries.filter { rail -> state.rails[rail]?.items?.isNotEmpty() == true }
+            }.orEmpty()
+    val requestItems = (requests as? JellyseerrRequestsState.Ready)?.requests.orEmpty()
+    val outerState = rememberLazyListState()
+    val rowStates = rememberTvLazyRowStates(populatedRails.map { it.name } + listOf("requests"))
+    val discoverLocations =
+        buildMap {
+            var outerIndex = 1
+            if (ready == null) {
+                put(TV_DISCOVER_CONNECT_TARGET, TvLazyFocusLocation(outerIndex))
+                outerIndex++
+            } else {
+                populatedRails.forEach { rail ->
+                    ready.rails[rail]?.items.orEmpty().forEachIndexed { index, item ->
+                        put(
+                            tvDiscoverItemTargetId(rail.name, "${item.mediaType}:${item.tmdbId}"),
+                            TvLazyFocusLocation(outerIndex, rail.name, index),
+                        )
+                    }
+                    outerIndex++
+                }
+            }
+            if (requestItems.isNotEmpty()) {
+                requestItems.forEachIndexed { index, request ->
+                    put(
+                        tvDiscoverItemTargetId("requests", request.id.toString()),
+                        TvLazyFocusLocation(outerIndex, "requests", index),
+                    )
+                }
+            } else if (ready != null && firstPopulatedRail == null) {
+                put(TV_DISCOVER_EMPTY_TARGET, TvLazyFocusLocation(outerIndex))
+            }
+        }
+    val discoverFallback =
+        when {
+            ready == null -> TV_DISCOVER_CONNECT_TARGET
+            firstPopulatedRail != null ->
+                ready.rails[firstPopulatedRail]?.items?.firstOrNull()?.let {
+                    tvDiscoverItemTargetId(firstPopulatedRail.name, "${it.mediaType}:${it.tmdbId}")
+                }
+            requestItems.isNotEmpty() -> tvDiscoverItemTargetId("requests", requestItems.first().id.toString())
+            else -> TV_DISCOVER_EMPTY_TARGET
+        }
+    TvRouteFocusMaterializer(
+        ownerId = "discover-lists",
+        targetIds = discoverLocations.keys,
+        fallbackTargetIds = setOfNotNull(discoverFallback),
+    ) { targetId -> discoverLocations[targetId]?.let { materializeTvLazyTarget(outerState, rowStates, it) } ?: false }
+    LazyColumn(
+        state = outerState,
+        modifier = modifier.fillMaxSize(),
+        contentPadding = TvScreenPadding,
+        verticalArrangement = Arrangement.spacedBy(28.dp),
+    ) {
         item { Text(strings.discover, color = TvText, fontSize = 38.sp, fontWeight = FontWeight.Bold) }
         if (ready == null) {
             item {
@@ -1294,9 +1499,10 @@ internal fun TvDiscoverScreen(
                     TvActionButton(
                         "${strings.settings}: Seerr",
                         onConnectSeerr,
-                        modifier = Modifier.tvScreenEntryFocus(),
+                        modifier = Modifier.tvScreenEntryFocus(focusTargetId = TV_DISCOVER_CONNECT_TARGET),
                         primary = true,
                         focusToNavigationRailOnLeft = true,
+                        focusTargetId = TV_DISCOVER_CONNECT_TARGET,
                     )
                 }
             }
@@ -1311,20 +1517,25 @@ internal fun TvDiscoverScreen(
                             focusMemory,
                             "discover",
                             onItem,
+                            listState = rowStates.getValue(rail.name),
+                            focusTargetId = { id -> tvDiscoverItemTargetId(rail.name, id) },
                             screenEntry = rail == firstPopulatedRail,
                         )
                     }
                 }
             }
         }
-        val requestItems = (requests as? JellyseerrRequestsState.Ready)?.requests.orEmpty()
         if (requestItems.isNotEmpty()) {
             item("requests") {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     TvSectionTitle(strings.requests)
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                    LazyRow(
+                        state = rowStates.getValue("requests"),
+                        horizontalArrangement = Arrangement.spacedBy(18.dp),
+                    ) {
                         itemsIndexed(requestItems, key = { _, request -> request.id }) { index, request ->
                             val item = request.toSearchItem()
+                            val targetId = tvDiscoverItemTargetId("requests", request.id.toString())
                             TvMediaCard(
                                 title = request.title ?: request.originalTitle ?: "Request ${request.id}",
                                 subtitle =
@@ -1334,7 +1545,8 @@ internal fun TvDiscoverScreen(
                                     ).joinToString(" - "),
                                 imageUrl = tmdbImageUrl(request.backdropPath ?: request.posterPath, request.backdropPath != null),
                                 onClick = { item?.let(onItem) },
-                                modifier = Modifier.tvScreenEntryFocus(firstPopulatedRail == null && index == 0),
+                                modifier = Modifier.tvScreenEntryFocus(firstPopulatedRail == null && index == 0, targetId),
+                                focusTargetId = targetId,
                                 focusToNavigationRailOnLeft = index == 0,
                             )
                         }
@@ -1342,29 +1554,23 @@ internal fun TvDiscoverScreen(
                 }
             }
         } else if (ready != null && firstPopulatedRail == null) {
-            item("empty") { TvFocusPlaceholder(strings.noResults) }
+            item("empty") { TvFocusPlaceholder(strings.noResults, TV_DISCOVER_EMPTY_TARGET) }
         }
     }
 }
 
-private suspend fun FocusRequester.requestFocusAfterFrame(): Boolean {
-    repeat(2) {
-        withFrameNanos { }
-        if (runCatching { requestFocus() }.getOrDefault(false)) return true
-    }
-    return false
-}
-
 @Composable
-private fun TvFocusPlaceholder(label: String) {
+private fun TvFocusPlaceholder(
+    label: String,
+    focusTargetId: String,
+) {
     Box(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .height(112.dp)
-                .tvScreenEntryFocus()
-                .tvReturnToNavigationRailOnLeft()
-                .focusable(),
+                .tvScreenEntryFocus(focusTargetId = focusTargetId)
+                .tvFocusable(onClick = {}, focusToNavigationRailOnLeft = true, focusTargetId = focusTargetId),
         contentAlignment = Alignment.Center,
     ) {
         Text(label, color = TvTextMuted, fontSize = 18.sp)
@@ -1378,20 +1584,11 @@ private fun TvSeerrRow(
     focusMemory: TvFocusMemory,
     routeKey: String,
     onItem: (JellyseerrSearchItem) -> Unit,
+    listState: LazyListState,
+    focusTargetId: (String) -> String,
     screenEntry: Boolean = false,
 ) {
-    val focusContext = LocalTvFocusContext.current
     val ids = items.map { "${it.mediaType}:${it.tmdbId}" }
-    val snapshot = focusMemory.restore(routeKey)?.takeIf { it.rowKey == title }
-    val listState = rememberLazyListState(initialFirstVisibleItemIndex = snapshot?.horizontalIndex ?: 0)
-    val focusRequester = remember(routeKey, title) { FocusRequester() }
-    val restoreId = focusMemory.resolveItem(routeKey, ids).takeIf { snapshot != null }
-    LaunchedEffect(restoreId, ids) {
-        if (restoreId != null && focusContext?.coordinator?.isRailVisible != true) {
-            listState.scrollToItem(ids.indexOf(restoreId).coerceAtLeast(0))
-            focusRequester.requestFocusAfterFrame()
-        }
-    }
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         TvSectionTitle(title)
         LazyRow(
@@ -1403,6 +1600,7 @@ private fun TvSeerrRow(
         ) {
             itemsIndexed(items, key = { _, item -> "${item.mediaType}:${item.tmdbId}" }) { index, item ->
                 val id = "${item.mediaType}:${item.tmdbId}"
+                val targetId = focusTargetId(id)
                 TvMediaCard(
                     title = item.title,
                     subtitle = item.releaseYear,
@@ -1411,8 +1609,8 @@ private fun TvSeerrRow(
                     onFocused = { focusMemory.remember(routeKey, title, id, horizontalIndex = index) },
                     modifier =
                         Modifier
-                            .tvScreenEntryFocus(screenEntry && index == 0)
-                            .then(if (id == restoreId) Modifier.focusRequester(focusRequester) else Modifier),
+                            .tvScreenEntryFocus(screenEntry && index == 0, targetId),
+                    focusTargetId = targetId,
                     focusToNavigationRailOnLeft = index == 0,
                 )
             }

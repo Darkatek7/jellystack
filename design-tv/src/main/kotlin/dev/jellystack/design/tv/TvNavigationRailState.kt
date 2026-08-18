@@ -3,11 +3,24 @@ package dev.jellystack.design.tv
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
+
+internal sealed interface TvFocusRestoration<out T> {
+    data class Focused<T>(
+        val target: T,
+    ) : TvFocusRestoration<T>
+
+    data object Failed : TvFocusRestoration<Nothing>
+}
 
 /** Owns route-local content focus and the expanded navigation rail as one deterministic state machine. */
 internal class TvFocusCoordinator<T : Any>(
     initiallyRailVisible: Boolean = false,
-    private val maxRestoreAttempts: Int = 2,
+    private val attachmentTimeoutMillis: Long = 1_000,
 ) {
     private data class TargetRegistration(
         var count: Int,
@@ -23,7 +36,15 @@ internal class TvFocusCoordinator<T : Any>(
         var rememberedId: Any? = null,
     )
 
+    private data class Materializer(
+        val targetIds: Set<String>,
+        val fallbackTargetIds: Set<String>,
+        val materialize: suspend (String) -> Boolean,
+    )
+
     private val routes = mutableMapOf<Any, RouteTargets<T>>()
+    private val materializers = mutableMapOf<Any, LinkedHashMap<String, Materializer>>()
+    private val restorationLocks = mutableMapOf<Any, Mutex>()
 
     var isRailVisible by mutableStateOf(initiallyRailVisible)
         private set
@@ -32,7 +53,7 @@ internal class TvFocusCoordinator<T : Any>(
         private set
 
     init {
-        require(maxRestoreAttempts > 0)
+        require(attachmentTimeoutMillis > 0)
     }
 
     fun register(
@@ -94,6 +115,28 @@ internal class TvFocusCoordinator<T : Any>(
         if (target in route.attached[targetId]?.targets.orEmpty()) route.rememberedId = targetId
     }
 
+    fun registerMaterializer(
+        routeKey: Any,
+        ownerId: String,
+        targetIds: Set<String>,
+        fallbackTargetIds: Set<String> = emptySet(),
+        materialize: suspend (String) -> Boolean,
+    ) {
+        materializers.getOrPut(routeKey) { linkedMapOf() }[ownerId] =
+            Materializer(targetIds, fallbackTargetIds, materialize)
+        registrationRevision += 1
+    }
+
+    fun unregisterMaterializer(
+        routeKey: Any,
+        ownerId: String,
+    ) {
+        val routeMaterializers = materializers[routeKey] ?: return
+        routeMaterializers.remove(ownerId)
+        registrationRevision += 1
+        if (routeMaterializers.isEmpty()) materializers.remove(routeKey)
+    }
+
     fun needsContentRestoration(routeKey: Any): Boolean {
         val route = routes[routeKey] ?: return true
         return route.rememberedId?.let { route.attached[it]?.targets?.isNotEmpty() } != true
@@ -111,40 +154,127 @@ internal class TvFocusCoordinator<T : Any>(
         return true
     }
 
-    suspend fun restoreContentFocus(
+    suspend fun restoreFocus(
         routeKey: Any,
-        awaitFrame: suspend () -> Unit,
+        preferredTargetId: String? = null,
+        includeFallback: Boolean = true,
+        requestFocus: (T) -> Boolean,
+    ): TvFocusRestoration<T> =
+        restorationLocks.getOrPut(routeKey) { Mutex() }.withLock {
+            awaitRouteCapability(routeKey)
+            val rememberedTargetId = preferredTargetId ?: routes[routeKey]?.rememberedId as? String
+            if (rememberedTargetId != null) {
+                materializeIfNeeded(routeKey, rememberedTargetId)
+                focusTarget(routeKey, rememberedTargetId, requestFocus)?.let {
+                    return TvFocusRestoration.Focused(it)
+                }
+            }
+            if (!includeFallback) return TvFocusRestoration.Failed
+            val fallbackIds =
+                buildList {
+                    materializers[routeKey]
+                        ?.values
+                        ?.forEach { addAll(it.fallbackTargetIds) }
+                    routes[routeKey]
+                        ?.attached
+                        ?.filterValues { registration -> registration.targets.values.any { it.fallback } }
+                        ?.keys
+                        ?.filterIsInstance<String>()
+                        ?.let(::addAll)
+                }.distinct()
+            fallbackIds.forEach { targetId ->
+                materializeIfNeeded(routeKey, targetId)
+                focusTarget(routeKey, targetId, requestFocus)?.let {
+                    return TvFocusRestoration.Focused(it)
+                }
+            }
+            return TvFocusRestoration.Failed
+        }
+
+    private suspend fun materializeIfNeeded(
+        routeKey: Any,
+        targetId: String,
+    ): Boolean {
+        if (routes[routeKey]
+                ?.attached
+                ?.get(targetId)
+                ?.targets
+                ?.isNotEmpty() == true
+        ) {
+            return true
+        }
+        var materializer = materializers[routeKey]?.values?.firstOrNull { targetId in it.targetIds }
+        if (materializer == null) {
+            withTimeoutOrNull(attachmentTimeoutMillis) {
+                snapshotFlow { registrationRevision }
+                    .first {
+                        routes[routeKey]
+                            ?.attached
+                            ?.get(targetId)
+                            ?.targets
+                            ?.isNotEmpty() == true ||
+                            materializers[routeKey]?.values?.any { targetId in it.targetIds } == true
+                    }
+            }
+            if (routes[routeKey]
+                    ?.attached
+                    ?.get(targetId)
+                    ?.targets
+                    ?.isNotEmpty() == true
+            ) {
+                return true
+            }
+            materializer = materializers[routeKey]?.values?.firstOrNull { targetId in it.targetIds }
+        }
+        materializer ?: return false
+        if (!materializer.materialize(targetId)) return false
+        return awaitTargetAttachment(routeKey, targetId)
+    }
+
+    private suspend fun awaitRouteCapability(routeKey: Any) {
+        if (routes[routeKey]?.attached?.isNotEmpty() == true || materializers[routeKey]?.isNotEmpty() == true) return
+        withTimeoutOrNull(attachmentTimeoutMillis) {
+            snapshotFlow { registrationRevision }
+                .first {
+                    routes[routeKey]?.attached?.isNotEmpty() == true || materializers[routeKey]?.isNotEmpty() == true
+                }
+        }
+    }
+
+    private suspend fun awaitTargetAttachment(
+        routeKey: Any,
+        targetId: String,
+    ): Boolean =
+        withTimeoutOrNull(attachmentTimeoutMillis) {
+            snapshotFlow { registrationRevision }
+                .first {
+                    routes[routeKey]
+                        ?.attached
+                        ?.get(targetId)
+                        ?.targets
+                        ?.isNotEmpty() == true
+                }
+            true
+        } ?: false
+
+    private fun focusTarget(
+        routeKey: Any,
+        targetId: String,
         requestFocus: (T) -> Boolean,
     ): T? {
-        repeat(maxRestoreAttempts) {
-            awaitFrame()
-            val candidates = focusCandidates(routeKey)
-            candidates.forEach { (targetId, target) ->
-                if (requestFocus(target)) {
-                    rememberFocused(routeKey, targetId, target)
-                    return target
-                }
+        val targets =
+            routes[routeKey]
+                ?.attached
+                ?.get(targetId)
+                ?.targets
+                ?.keys
+                .orEmpty()
+        targets.forEach { target ->
+            if (requestFocus(target)) {
+                rememberFocused(routeKey, targetId, target)
+                return target
             }
         }
         return null
-    }
-
-    private fun focusCandidates(routeKey: Any): List<Pair<Any, T>> {
-        val route = routes[routeKey] ?: return emptyList()
-        val remembered = route.rememberedId?.takeIf { it in route.attached }
-        val candidateIds =
-            buildList {
-                remembered?.let(::add)
-                addAll(
-                    route.attached
-                        .filterValues { registration ->
-                            registration.targets.values.any { it.fallback }
-                        }.keys,
-                )
-                addAll(route.attached.keys)
-            }.distinct()
-        return candidateIds.flatMap { targetId ->
-            route.attached.getValue(targetId).targets.keys.map { target -> targetId to target }
-        }
     }
 }

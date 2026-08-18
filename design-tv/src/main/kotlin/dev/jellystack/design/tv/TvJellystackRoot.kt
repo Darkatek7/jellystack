@@ -37,11 +37,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.unit.dp
@@ -366,7 +364,6 @@ private fun TvAuthenticatedApp(
             currentRoute is TvRoute.Search ||
             currentRoute is TvRoute.Discover ||
             currentRoute is TvRoute.Settings
-    val railFocusRequester = remember { FocusRequester() }
     val contentFocusRequester = remember { FocusRequester() }
     val focusCoordinator = remember { TvFocusCoordinator<FocusRequester>() }
     val currentFocusRouteKey =
@@ -403,33 +400,26 @@ private fun TvAuthenticatedApp(
     LaunchedEffect(showRail, focusCoordinator.isRailVisible, currentFocusRouteKey) {
         if (!showRail) return@LaunchedEffect
         if (focusCoordinator.isRailVisible) {
-            repeat(2) {
-                withFrameNanos { }
-                if (runCatching { railFocusRequester.requestFocus() }.getOrDefault(false)) return@LaunchedEffect
+            val railRestoration =
+                focusCoordinator.restoreFocus(
+                    routeKey = TV_FOCUS_RAIL_ROUTE,
+                    preferredTargetId = tvRailTargetId(currentRoute),
+                    requestFocus = { requester -> runCatching { requester.requestFocus() }.getOrDefault(false) },
+                )
+            if (railRestoration is TvFocusRestoration.Failed) {
+                focusCoordinator.closeRail()
+                focusCoordinator.restoreFocus(
+                    routeKey = currentFocusRouteKey,
+                    requestFocus = { requester -> runCatching { requester.requestFocus() }.getOrDefault(false) },
+                )
             }
         } else {
             val restored =
-                focusCoordinator.restoreContentFocus(
+                focusCoordinator.restoreFocus(
                     routeKey = currentFocusRouteKey,
-                    awaitFrame = { withFrameNanos { } },
                     requestFocus = { requester -> runCatching { requester.requestFocus() }.getOrDefault(false) },
                 )
-            if (restored == null) focusCoordinator.openRail()
-        }
-    }
-    LaunchedEffect(showRail, currentFocusRouteKey, focusCoordinator.registrationRevision) {
-        if (
-            showRail &&
-            !focusCoordinator.isRailVisible &&
-            focusCoordinator.needsContentRestoration(currentFocusRouteKey)
-        ) {
-            val restored =
-                focusCoordinator.restoreContentFocus(
-                    routeKey = currentFocusRouteKey,
-                    awaitFrame = { withFrameNanos { } },
-                    requestFocus = { requester -> runCatching { requester.requestFocus() }.getOrDefault(false) },
-                )
-            if (restored == null) focusCoordinator.openRail()
+            if (restored is TvFocusRestoration.Failed) focusCoordinator.openRail()
         }
     }
     LaunchedEffect(focusCoordinator.isRailVisible, currentRoute) {
@@ -638,17 +628,20 @@ private fun TvAuthenticatedApp(
                         ),
                 )
             }
-            TvNavigationRail(
-                selected = currentRoute,
-                expanded = focusCoordinator.isRailVisible,
-                strings = strings,
-                onSelected = { route ->
-                    selectTopLevel(route)
-                    focusCoordinator.closeRail()
-                },
-                selectedItemFocusRequester = railFocusRequester,
-                onDismiss = { focusCoordinator.closeRail() },
-            )
+            CompositionLocalProvider(
+                LocalTvFocusContext provides TvFocusContext(focusCoordinator, TV_FOCUS_RAIL_ROUTE),
+            ) {
+                TvNavigationRail(
+                    selected = currentRoute,
+                    expanded = focusCoordinator.isRailVisible,
+                    strings = strings,
+                    onSelected = { route ->
+                        selectTopLevel(route)
+                        focusCoordinator.closeRail()
+                    },
+                    onDismiss = { focusCoordinator.closeRail() },
+                )
+            }
         }
         (autoplayState as? TvAutoplayState.Countdown)?.let { countdown ->
             TvAutoplayPrompt(
@@ -667,7 +660,6 @@ private fun TvNavigationRail(
     expanded: Boolean,
     strings: TvStrings,
     onSelected: (TvRoute) -> Unit,
-    selectedItemFocusRequester: FocusRequester,
     onDismiss: () -> Unit,
 ) {
     val width by animateDpAsState(if (expanded) 226.dp else 72.dp, label = "tv-rail-width")
@@ -679,6 +671,11 @@ private fun TvNavigationRail(
             Triple(TvRoute.Discover as TvRoute, strings.discover, Icons.Default.Explore),
             Triple(TvRoute.Settings() as TvRoute, strings.settings, Icons.Default.Settings),
         )
+    TvRouteFocusMaterializer(
+        ownerId = "navigation-rail",
+        targetIds = entries.map { tvRailTargetId(it.first) }.toSet(),
+        fallbackTargetIds = setOf(tvRailTargetId(TvRoute.Home)),
+    ) { true }
     Column(
         modifier =
             Modifier
@@ -690,10 +687,10 @@ private fun TvNavigationRail(
     ) {
         entries.forEachIndexed { index, (route, label, icon) ->
             val isSelected = selected.sameTopLevel(route)
+            val targetId = tvRailTargetId(route)
             Row(
                 Modifier
                     .width(width - 20.dp)
-                    .then(if (isSelected) Modifier.focusRequester(selectedItemFocusRequester) else Modifier)
                     .onPreviewKeyEvent { event ->
                         if (
                             isSelected &&
@@ -715,6 +712,7 @@ private fun TvNavigationRail(
                         shape =
                             androidx.compose.foundation.shape
                                 .RoundedCornerShape(18.dp),
+                        focusTargetId = targetId.takeIf { expanded },
                     ).padding(horizontal = 14.dp, vertical = 15.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(16.dp),

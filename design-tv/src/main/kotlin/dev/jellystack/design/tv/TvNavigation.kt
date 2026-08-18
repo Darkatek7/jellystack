@@ -71,6 +71,55 @@ internal fun TvRoute.focusRouteKey(libraryPath: List<String> = emptyList()): Str
         TvRoute.Player -> "player"
     }
 
+internal fun tvSettingsServerActionTargetId(
+    serverIdentity: String,
+    actionKey: String,
+): String = "settings:server:$serverIdentity:action:$actionKey"
+
+internal const val TV_FOCUS_RAIL_ROUTE = "navigation-rail"
+internal const val TV_HOME_HERO_TARGET = "home:hero"
+internal const val TV_HOME_PRIMARY_TARGET = "home:hero:primary"
+internal const val TV_HOME_DETAILS_TARGET = "home:hero:details"
+internal const val TV_HOME_RETRY_TARGET = "home:retry"
+internal const val TV_SEARCH_QUERY_TARGET = "search:query"
+internal const val TV_DISCOVER_CONNECT_TARGET = "discover:connect"
+internal const val TV_DISCOVER_EMPTY_TARGET = "discover:empty"
+internal const val TV_LIBRARY_LOADING_TARGET = "library:loading"
+internal const val TV_LIBRARY_RETRY_TARGET = "library:retry"
+internal const val TV_LIBRARY_EMPTY_TARGET = "library:empty"
+
+internal fun tvHomeCardTargetId(
+    rowId: String,
+    itemId: String,
+): String = "home:row:$rowId:item:$itemId"
+
+internal fun tvLibraryTargetId(itemId: String): String = "library:item:$itemId"
+
+internal fun tvSearchSourceTargetId(source: String): String = "search:source:$source"
+
+internal fun tvSearchResultTargetId(
+    source: String,
+    itemId: String,
+): String = "search:$source:item:$itemId"
+
+internal fun tvDiscoverItemTargetId(
+    railId: String,
+    itemId: String,
+): String = "discover:rail:$railId:item:$itemId"
+
+internal fun tvSettingsControlTargetId(controlKey: String): String = "settings:control:$controlKey"
+
+internal fun tvRailTargetId(route: TvRoute): String =
+    "rail:" +
+        when (route) {
+            TvRoute.Home -> TvRoute.Home.focusRouteKey()
+            is TvRoute.Library -> TvRoute.Library().focusRouteKey()
+            TvRoute.Search -> TvRoute.Search.focusRouteKey()
+            TvRoute.Discover -> TvRoute.Discover.focusRouteKey()
+            is TvRoute.Settings -> TvRoute.Settings().focusRouteKey()
+            else -> route.focusRouteKey()
+        }
+
 internal enum class TvBackAction { POP_LIBRARY_PATH, POP_ROUTE, CLOSE_RAIL, OPEN_RAIL }
 
 internal fun tvBackAction(
