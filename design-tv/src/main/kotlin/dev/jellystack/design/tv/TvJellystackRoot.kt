@@ -418,31 +418,39 @@ private fun TvAuthenticatedApp(
                                         trailerPreviewCoordinator.invalidateCache()
                                         browseCoordinator.bootstrap(true)
                                     },
-                                    onPreviewFocus = { item ->
+                                    onPreviewFocus = { owner, item ->
                                         if (jellyfinServerKey != null) {
                                             trailerPreviewCoordinator.focus(
-                                                TvTrailerPreviewTarget(
-                                                    serverKey = jellyfinServerKey,
-                                                    itemId = item.id,
-                                                    isEpisode = item.type.equals("Episode", true),
-                                                    seriesId = item.seriesId,
+                                                TvTrailerPreviewRequest(
+                                                    owner = owner,
+                                                    target =
+                                                        TvTrailerPreviewTarget(
+                                                            serverKey = jellyfinServerKey,
+                                                            itemId = item.id,
+                                                            isEpisode = item.type.equals("Episode", true),
+                                                            seriesId = item.seriesId,
+                                                        ),
                                                 ),
                                             )
                                         }
                                     },
-                                    onPreviewBlur = { item ->
+                                    onPreviewBlur = { owner, item ->
                                         if (jellyfinServerKey != null) {
                                             trailerPreviewCoordinator.clearFocus(
-                                                TvTrailerPreviewTarget(
-                                                    serverKey = jellyfinServerKey,
-                                                    itemId = item.id,
-                                                    isEpisode = item.type.equals("Episode", true),
-                                                    seriesId = item.seriesId,
+                                                TvTrailerPreviewRequest(
+                                                    owner = owner,
+                                                    target =
+                                                        TvTrailerPreviewTarget(
+                                                            serverKey = jellyfinServerKey,
+                                                            itemId = item.id,
+                                                            isEpisode = item.type.equals("Episode", true),
+                                                            seriesId = item.seriesId,
+                                                        ),
                                                 ),
                                             )
                                         }
                                     },
-                                    onCancelPreview = { trailerPreviewCoordinator.clearFocus() },
+                                    onCancelPreview = trailerPreviewCoordinator::clearFocus,
                                     trailerPreviewEngine = trailerPreviewEngine,
                                     previewSoundEnabled = settings.trailerPreviewSoundEnabled,
                                     previewProgress = trailerPreviewProgress,

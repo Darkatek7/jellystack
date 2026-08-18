@@ -61,6 +61,7 @@ import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -272,6 +273,7 @@ internal fun TvMediaCard(
     previewEngine: AndroidPlayerEngine? = null,
     previewSoundEnabled: Boolean = true,
     previewProgress: Float = 0f,
+    previewSurfaceTestTag: String? = null,
 ) {
     val shape = RoundedCornerShape(18.dp)
     var focused by remember { mutableStateOf(false) }
@@ -329,6 +331,7 @@ internal fun TvMediaCard(
                 previewEngine = previewEngine,
                 previewSoundEnabled = previewSoundEnabled,
                 previewProgress = previewProgress,
+                previewSurfaceTestTag = previewSurfaceTestTag,
             )
         }
     }
@@ -343,11 +346,15 @@ private fun BoxScope.TvMediaCardContent(
     previewEngine: AndroidPlayerEngine?,
     previewSoundEnabled: Boolean,
     previewProgress: Float,
+    previewSurfaceTestTag: String?,
 ) {
     if (previewing && previewEngine != null) {
         TvTrailerPreviewSurface(
             previewEngine = previewEngine,
-            modifier = Modifier.fillMaxSize(),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .then(previewSurfaceTestTag?.let { Modifier.testTag(it) } ?: Modifier),
         )
     } else if (imageUrl != null) {
         AsyncImage(

@@ -46,12 +46,13 @@ class TvHomeCarouselSelectionTest {
     @Test
     fun previewStatesNeverPauseAutoCycle() {
         val target = TvTrailerPreviewTarget("server", "item", isEpisode = false, seriesId = null)
+        val request = TvTrailerPreviewRequest(TvTrailerPreviewOwner.HERO, target)
         val states =
             listOf(
                 TvTrailerPreviewState.Idle,
-                TvTrailerPreviewState.Armed(target),
-                TvTrailerPreviewState.Playing(target),
-                TvTrailerPreviewState.Unavailable(target),
+                TvTrailerPreviewState.Armed(request),
+                TvTrailerPreviewState.Playing(request),
+                TvTrailerPreviewState.Unavailable(request),
             )
 
         states.forEach { state ->
@@ -157,12 +158,28 @@ class TvHomeCarouselSelectionTest {
     fun heroPreviewOnlyRendersForActiveActionItem() {
         val active = TvTrailerPreviewTarget("server", "episode", isEpisode = true, seriesId = "series")
         val other = active.copy(itemId = "other")
+        val activeHero = TvTrailerPreviewRequest(TvTrailerPreviewOwner.HERO, active)
+        val otherHero = TvTrailerPreviewRequest(TvTrailerPreviewOwner.HERO, other)
+        val activeCard = TvTrailerPreviewRequest(TvTrailerPreviewOwner.CARD, active)
 
-        assertTrue(TvTrailerPreviewState.Playing(active).showsTvHomeHeroPreview("episode"))
-        assertFalse(TvTrailerPreviewState.Playing(other).showsTvHomeHeroPreview("episode"))
-        assertFalse(TvTrailerPreviewState.Armed(active).showsTvHomeHeroPreview("episode"))
-        assertFalse(TvTrailerPreviewState.Unavailable(active).showsTvHomeHeroPreview("episode"))
-        assertFalse(TvTrailerPreviewState.Idle.showsTvHomeHeroPreview("episode"))
+        assertTrue(TvTrailerPreviewState.Playing(activeHero).showsTvHomeHeroPreview("episode", heroFocused = true))
+        assertFalse(TvTrailerPreviewState.Playing(activeHero).showsTvHomeHeroPreview("episode", heroFocused = false))
+        assertFalse(TvTrailerPreviewState.Playing(otherHero).showsTvHomeHeroPreview("episode", heroFocused = true))
+        assertFalse(TvTrailerPreviewState.Playing(activeCard).showsTvHomeHeroPreview("episode", heroFocused = true))
+        assertFalse(TvTrailerPreviewState.Armed(activeHero).showsTvHomeHeroPreview("episode", heroFocused = true))
+        assertFalse(TvTrailerPreviewState.Unavailable(activeHero).showsTvHomeHeroPreview("episode", heroFocused = true))
+        assertFalse(TvTrailerPreviewState.Idle.showsTvHomeHeroPreview("episode", heroFocused = true))
+    }
+
+    @Test
+    fun cardPreviewOnlyRendersForCardOwner() {
+        val target = TvTrailerPreviewTarget("server", "same", isEpisode = false, seriesId = null)
+        val card = TvTrailerPreviewRequest(TvTrailerPreviewOwner.CARD, target)
+        val hero = TvTrailerPreviewRequest(TvTrailerPreviewOwner.HERO, target)
+
+        assertTrue(TvTrailerPreviewState.Playing(card).showsTvMediaCardPreview("same"))
+        assertFalse(TvTrailerPreviewState.Playing(hero).showsTvMediaCardPreview("same"))
+        assertFalse(TvTrailerPreviewState.Armed(card).showsTvMediaCardPreview("same"))
     }
 
     private fun item(

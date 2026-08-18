@@ -304,6 +304,7 @@ class TvHomeScreenTest {
         val railOpen = androidx.compose.runtime.mutableStateOf(true)
         val previewState = androidx.compose.runtime.mutableStateOf<TvTrailerPreviewState>(TvTrailerPreviewState.Idle)
         val target = TvTrailerPreviewTarget("server", "preview", isEpisode = false, seriesId = null)
+        val request = TvTrailerPreviewRequest(TvTrailerPreviewOwner.HERO, target)
         val first = item("first", "First hero", dateCreated = (Clock.System.now() - 1.days).toString())
         val second = item("second", "Second hero", dateCreated = (Clock.System.now() - 2.days).toString())
         composeRule.mainClock.autoAdvance = false
@@ -326,11 +327,11 @@ class TvHomeScreenTest {
         composeRule.onAllNodesWithText("First hero", useUnmergedTree = true).assertCountEquals(1)
         composeRule.runOnIdle {
             railOpen.value = false
-            previewState.value = TvTrailerPreviewState.Armed(target)
+            previewState.value = TvTrailerPreviewState.Armed(request)
         }
         composeRule.mainClock.advanceTimeBy(8_240)
         composeRule.onAllNodesWithText("Second hero", useUnmergedTree = true).assertCountEquals(1)
-        composeRule.runOnIdle { previewState.value = TvTrailerPreviewState.Playing(target) }
+        composeRule.runOnIdle { previewState.value = TvTrailerPreviewState.Playing(request) }
         composeRule.mainClock.advanceTimeBy(8_240)
         composeRule.onAllNodesWithText("First hero", useUnmergedTree = true).assertCountEquals(1)
         composeRule.runOnIdle(engine::release)
@@ -350,7 +351,10 @@ class TvHomeScreenTest {
             )
         val previewState =
             TvTrailerPreviewState.Playing(
-                TvTrailerPreviewTarget("server", "episode", isEpisode = true, seriesId = "series"),
+                TvTrailerPreviewRequest(
+                    TvTrailerPreviewOwner.HERO,
+                    TvTrailerPreviewTarget("server", "episode", isEpisode = true, seriesId = "series"),
+                ),
             )
         composeRule.setContent {
             val context = LocalContext.current
@@ -360,7 +364,10 @@ class TvHomeScreenTest {
                 sections = HomeSectionsState.Unavailable,
                 engine = engine,
                 trailerPreviewState = previewState,
-                onPreviewFocus = { previewTargets += it.id },
+                onPreviewFocus = { owner, item ->
+                    assertEquals(TvTrailerPreviewOwner.HERO, owner)
+                    previewTargets += item.id
+                },
             )
         }
 
@@ -384,8 +391,8 @@ class TvHomeScreenTest {
                 state = JellyfinHomeState(recentMovies = listOf(hero), continueWatching = listOf(rowItem)),
                 sections = HomeSectionsState.Unavailable,
                 engine = engine,
-                onPreviewFocus = { previewEvents += "focus:${it.id}" },
-                onCancelPreview = { previewEvents += "clear" },
+                onPreviewFocus = { owner, item -> previewEvents += "focus:$owner:${item.id}" },
+                onCancelPreview = { owner -> previewEvents += "clear:$owner" },
             )
         }
 
@@ -394,7 +401,120 @@ class TvHomeScreenTest {
         composeRule.onAllNodes(cardWithDescription("Row item"))[0].assertIsFocused()
 
         composeRule.runOnIdle {
-            assertEquals("focus:row", previewEvents.last())
+            assertEquals("focus:CARD:row", previewEvents.last())
+            engine.release()
+        }
+    }
+
+    @Test
+    fun focusedRowCardPreviewSurvivesHeroTimerExpiry() {
+        lateinit var engine: AndroidPlayerEngine
+        val previewState = androidx.compose.runtime.mutableStateOf<TvTrailerPreviewState>(TvTrailerPreviewState.Idle)
+        val clearedOwners = mutableListOf<TvTrailerPreviewOwner>()
+        val first = item("first", "First hero", dateCreated = (Clock.System.now() - 1.days).toString())
+        val second = item("second", "Second hero", dateCreated = (Clock.System.now() - 2.days).toString())
+        val rowItem = item("row", "Row item")
+        composeRule.mainClock.autoAdvance = false
+        composeRule.setContent {
+            val context = LocalContext.current
+            engine = remember(context) { AndroidPlayerEngine(context) }
+            TestHomeScreen(
+                state = JellyfinHomeState(recentMovies = listOf(first, second), continueWatching = listOf(rowItem)),
+                sections = HomeSectionsState.Unavailable,
+                engine = engine,
+                autoCycle = true,
+                intervalSeconds = 6,
+                trailerPreviewState = previewState.value,
+                onPreviewFocus = { owner, item ->
+                    previewState.value =
+                        TvTrailerPreviewState.Playing(
+                            TvTrailerPreviewRequest(
+                                owner,
+                                TvTrailerPreviewTarget("server", item.id, isEpisode = false, seriesId = null),
+                            ),
+                        )
+                },
+                onCancelPreview = { owner ->
+                    clearedOwners += owner
+                    val current = previewState.value as? TvTrailerPreviewState.Playing
+                    if (current?.request?.owner == owner) previewState.value = TvTrailerPreviewState.Idle
+                },
+            )
+        }
+
+        composeRule.onNodeWithTag("tv-home-hero-carousel").performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.onNodeWithContentDescription("Play").performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.onAllNodes(cardWithDescription("Row item"))[0].assertIsFocused()
+        composeRule.runOnIdle { clearedOwners.clear() }
+
+        composeRule.mainClock.advanceTimeBy(6_240)
+        composeRule.onAllNodesWithText("Second hero", useUnmergedTree = true).assertCountEquals(1)
+        composeRule.runOnIdle {
+            val playing = previewState.value as TvTrailerPreviewState.Playing
+            assertEquals(TvTrailerPreviewOwner.CARD, playing.request.owner)
+            assertEquals("row", playing.request.target.itemId)
+            assertEquals(listOf(TvTrailerPreviewOwner.HERO), clearedOwners)
+            engine.release()
+        }
+    }
+
+    @Test
+    fun sameItemInHeroAndRowRendersOnlyTheOwnedSurface() {
+        lateinit var engine: AndroidPlayerEngine
+        val same = item("same", "Same item", dateCreated = (Clock.System.now() - 1.days).toString())
+        val target = TvTrailerPreviewTarget("server", same.id, isEpisode = false, seriesId = null)
+        val previewState =
+            androidx.compose.runtime.mutableStateOf<TvTrailerPreviewState>(
+                TvTrailerPreviewState.Playing(TvTrailerPreviewRequest(TvTrailerPreviewOwner.CARD, target)),
+            )
+        composeRule.setContent {
+            val context = LocalContext.current
+            engine = remember(context) { AndroidPlayerEngine(context) }
+            TestHomeScreen(
+                state = JellyfinHomeState(recentMovies = listOf(same), continueWatching = listOf(same)),
+                sections = HomeSectionsState.Unavailable,
+                engine = engine,
+                provideEntryFocus = false,
+                trailerPreviewState = previewState.value,
+            )
+        }
+
+        composeRule.onNodeWithTag("tv-home-hero-preview-surface", useUnmergedTree = true).assertDoesNotExist()
+        composeRule.onNodeWithTag("tv-media-card-preview-surface-same", useUnmergedTree = true).assertExists()
+
+        composeRule.runOnIdle {
+            previewState.value =
+                TvTrailerPreviewState.Playing(TvTrailerPreviewRequest(TvTrailerPreviewOwner.HERO, target))
+        }
+        composeRule.onNodeWithTag("tv-home-hero-carousel").performSemanticsAction(SemanticsActions.RequestFocus)
+        composeRule.onNodeWithTag("tv-home-hero-preview-surface", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithTag("tv-media-card-preview-surface-same", useUnmergedTree = true).assertDoesNotExist()
+        composeRule.runOnIdle(engine::release)
+    }
+
+    @Test
+    fun manualHeroSlideChangeClearsAndRearmsHeroOwner() {
+        lateinit var engine: AndroidPlayerEngine
+        val events = mutableListOf<String>()
+        val first = item("first", "First hero", dateCreated = (Clock.System.now() - 1.days).toString())
+        val second = item("second", "Second hero", dateCreated = (Clock.System.now() - 2.days).toString())
+        composeRule.setContent {
+            val context = LocalContext.current
+            engine = remember(context) { AndroidPlayerEngine(context) }
+            TestHomeScreen(
+                state = JellyfinHomeState(recentMovies = listOf(first, second)),
+                sections = HomeSectionsState.Unavailable,
+                engine = engine,
+                onPreviewFocus = { owner, item -> events += "focus:$owner:${item.id}" },
+                onCancelPreview = { owner -> events += "clear:$owner" },
+            )
+        }
+        composeRule.runOnIdle { events.clear() }
+
+        composeRule.onNodeWithTag("tv-home-hero-carousel").performKeyInput { pressKey(Key.DirectionRight) }
+
+        composeRule.runOnIdle {
+            assertEquals(listOf("clear:HERO", "focus:HERO:second"), events)
             engine.release()
         }
     }
@@ -475,7 +595,7 @@ class TvHomeScreenTest {
                 state = JellyfinHomeState(),
                 sections = HomeSectionsState.Ready(listOf(externalRow, localRow), "", ""),
                 engine = engine,
-                onCancelPreview = { previewCancellations += 1 },
+                onCancelPreview = { _ -> previewCancellations += 1 },
             )
         }
 
@@ -579,8 +699,9 @@ class TvHomeScreenTest {
         state: JellyfinHomeState,
         sections: HomeSectionsState,
         engine: AndroidPlayerEngine,
-        onCancelPreview: () -> Unit = {},
-        onPreviewFocus: (JellyfinItem) -> Unit = {},
+        onCancelPreview: (TvTrailerPreviewOwner) -> Unit = {},
+        onPreviewFocus: (TvTrailerPreviewOwner, JellyfinItem) -> Unit = { _, _ -> },
+        onPreviewBlur: (TvTrailerPreviewOwner, JellyfinItem) -> Unit = { _, _ -> },
         onOpenNavigationRail: () -> Unit = {},
         onPlayItem: (JellyfinItem) -> Unit = {},
         onItem: (JellyfinItem) -> Unit = {},
@@ -607,7 +728,7 @@ class TvHomeScreenTest {
                     focusMemory = TvFocusMemory(),
                     onRefresh = {},
                     onPreviewFocus = onPreviewFocus,
-                    onPreviewBlur = {},
+                    onPreviewBlur = onPreviewBlur,
                     onCancelPreview = onCancelPreview,
                     trailerPreviewEngine = engine,
                     previewSoundEnabled = false,

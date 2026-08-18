@@ -109,8 +109,19 @@ internal fun shouldAutoCycleTvHomeCarousel(
 
 internal fun SpotlightCandidate.tvHomeTrailerPreviewItem() = actionItem
 
-internal fun TvTrailerPreviewState.showsTvHomeHeroPreview(itemId: String): Boolean =
-    this is TvTrailerPreviewState.Playing && target.itemId == itemId
+internal fun TvTrailerPreviewState.showsTvHomeHeroPreview(
+    itemId: String,
+    heroFocused: Boolean,
+): Boolean =
+    heroFocused &&
+        this is TvTrailerPreviewState.Playing &&
+        request.owner == TvTrailerPreviewOwner.HERO &&
+        request.target.itemId == itemId
+
+internal fun TvTrailerPreviewState.showsTvMediaCardPreview(itemId: String): Boolean =
+    this is TvTrailerPreviewState.Playing &&
+        request.owner == TvTrailerPreviewOwner.CARD &&
+        request.target.itemId == itemId
 
 internal fun tvHomeCarouselIntervalMillis(intervalSeconds: Int): Long = intervalSeconds.toLong() * 1_000L
 

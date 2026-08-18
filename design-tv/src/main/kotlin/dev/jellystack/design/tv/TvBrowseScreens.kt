@@ -120,9 +120,9 @@ internal fun TvHomeScreen(
     trailerPreviewState: TvTrailerPreviewState,
     focusMemory: TvFocusMemory,
     onRefresh: () -> Unit,
-    onPreviewFocus: (JellyfinItem) -> Unit,
-    onPreviewBlur: (JellyfinItem) -> Unit,
-    onCancelPreview: () -> Unit,
+    onPreviewFocus: (TvTrailerPreviewOwner, JellyfinItem) -> Unit,
+    onPreviewBlur: (TvTrailerPreviewOwner, JellyfinItem) -> Unit,
+    onCancelPreview: (TvTrailerPreviewOwner) -> Unit,
     trailerPreviewEngine: AndroidPlayerEngine,
     previewSoundEnabled: Boolean,
     previewProgress: Float,
@@ -212,14 +212,21 @@ internal fun TvHomeScreen(
     }
     val onVerticalMove: (TvHomeFocusOrigin, TvHomeVerticalDirection, JellyfinItem?) -> Unit =
         { origin, direction, previewItem ->
+            val previewOwner =
+                when (origin) {
+                    TvHomeFocusOrigin.HeroCarousel,
+                    TvHomeFocusOrigin.HeroActions,
+                    -> TvTrailerPreviewOwner.HERO
+                    is TvHomeFocusOrigin.Row -> TvTrailerPreviewOwner.CARD
+                }
             val move =
                 verticalFocusCoordinator.beginMove(
                     origin = origin,
                     direction = direction,
-                    onAccepted = onCancelPreview,
+                    onAccepted = { onCancelPreview(previewOwner) },
                 )
             if (move != null) {
-                previewItem?.let(onPreviewBlur)
+                previewItem?.let { onPreviewBlur(TvTrailerPreviewOwner.CARD, it) }
                 pendingFocusMove = move
             }
         }
@@ -251,11 +258,11 @@ internal fun TvHomeScreen(
     }
     LaunchedEffect(heroHasFocus, activePreviewItem?.id) {
         if (heroHasFocus && activePreviewItem != null) {
-            onPreviewFocus(activePreviewItem)
+            onPreviewFocus(TvTrailerPreviewOwner.HERO, activePreviewItem)
         }
     }
     DisposableEffect(Unit) {
-        onDispose(onCancelPreview)
+        onDispose { onCancelPreview(TvTrailerPreviewOwner.HERO) }
     }
     val actionButtonFocused = heroPrimaryFocused || heroDetailsFocused
     val heroFocus =
@@ -275,7 +282,7 @@ internal fun TvHomeScreen(
             )
         ) {
             delay(tvHomeCarouselIntervalMillis(intervalSeconds))
-            onCancelPreview()
+            onCancelPreview(TvTrailerPreviewOwner.HERO)
             carouselDirection = TvHomeCarouselDirection.NEXT
             carouselState = advanceTvHomeCarouselAutomatically(candidateIds, carouselState)
         }
@@ -303,7 +310,7 @@ internal fun TvHomeScreen(
                     previewProgress = previewProgress,
                     onCarouselFocusChanged = { heroContainerFocused = it },
                     onHeroFocusChanged = { hasFocus ->
-                        if (heroHasFocus && !hasFocus) onCancelPreview()
+                        if (heroHasFocus && !hasFocus) onCancelPreview(TvTrailerPreviewOwner.HERO)
                         heroHasFocus = hasFocus
                     },
                     onPrimaryFocusChanged = { heroPrimaryFocused = it },
@@ -313,7 +320,7 @@ internal fun TvHomeScreen(
                         if (move.openNavigationRail) {
                             openNavigationRail?.invoke()
                         } else if (move.state != carouselState) {
-                            onCancelPreview()
+                            onCancelPreview(TvTrailerPreviewOwner.HERO)
                             carouselDirection = direction
                             carouselState = move.state
                         }
@@ -346,8 +353,8 @@ internal fun TvHomeScreen(
                         focusMemory = focusMemory,
                         onItem = onItem,
                         onSeerrItem = onSeerrItem,
-                        onPreviewFocus = onPreviewFocus,
-                        onPreviewBlur = onPreviewBlur,
+                        onPreviewFocus = { onPreviewFocus(TvTrailerPreviewOwner.CARD, it) },
+                        onPreviewBlur = { onPreviewBlur(TvTrailerPreviewOwner.CARD, it) },
                         trailerPreviewState = trailerPreviewState,
                         trailerPreviewEngine = trailerPreviewEngine,
                         previewSoundEnabled = previewSoundEnabled,
@@ -368,8 +375,8 @@ internal fun TvHomeScreen(
                             state,
                             focusMemory,
                             onItem,
-                            onPreviewFocus = onPreviewFocus,
-                            onPreviewBlur = onPreviewBlur,
+                            onPreviewFocus = { onPreviewFocus(TvTrailerPreviewOwner.CARD, it) },
+                            onPreviewBlur = { onPreviewBlur(TvTrailerPreviewOwner.CARD, it) },
                             trailerPreviewState = trailerPreviewState,
                             trailerPreviewEngine = trailerPreviewEngine,
                             previewSoundEnabled = previewSoundEnabled,
@@ -389,8 +396,8 @@ internal fun TvHomeScreen(
                             state,
                             focusMemory,
                             onItem,
-                            onPreviewFocus = onPreviewFocus,
-                            onPreviewBlur = onPreviewBlur,
+                            onPreviewFocus = { onPreviewFocus(TvTrailerPreviewOwner.CARD, it) },
+                            onPreviewBlur = { onPreviewBlur(TvTrailerPreviewOwner.CARD, it) },
                             trailerPreviewState = trailerPreviewState,
                             trailerPreviewEngine = trailerPreviewEngine,
                             previewSoundEnabled = previewSoundEnabled,
@@ -470,6 +477,7 @@ private fun TvHeroCarousel(
 ) {
     val shape = RoundedCornerShape(20.dp)
     var carouselFocused by remember { mutableStateOf(false) }
+    var heroFocused by remember { mutableStateOf(false) }
     val registerContentFocus = LocalTvContentFocusRegistrar.current
     Box(
         modifier =
@@ -486,6 +494,7 @@ private fun TvHeroCarousel(
                 .tvScreenEntryFocus()
                 .onFocusChanged { focusState ->
                     carouselFocused = focusState.isFocused
+                    heroFocused = focusState.hasFocus
                     onCarouselFocusChanged(focusState.isFocused)
                     onHeroFocusChanged(focusState.hasFocus)
                     if (focusState.isFocused) registerContentFocus?.invoke(carouselFocusRequester)
@@ -539,6 +548,7 @@ private fun TvHeroCarousel(
                 trailerPreviewEngine = trailerPreviewEngine,
                 previewSoundEnabled = previewSoundEnabled,
                 previewProgress = previewProgress,
+                heroFocused = heroFocused,
             )
         }
         Row(
@@ -584,9 +594,10 @@ private fun TvHeroSlide(
     trailerPreviewEngine: AndroidPlayerEngine,
     previewSoundEnabled: Boolean,
     previewProgress: Float,
+    heroFocused: Boolean,
 ) {
     val item = candidate.displayItem
-    val previewing = trailerPreviewState.showsTvHomeHeroPreview(candidate.actionItem.id)
+    val previewing = trailerPreviewState.showsTvHomeHeroPreview(candidate.actionItem.id, heroFocused)
     Box(Modifier.fillMaxSize()) {
         if (previewing) {
             TvTrailerPreviewSurface(
@@ -834,10 +845,11 @@ private fun TvJellyfinRow(
                         onPreviewFocus(item)
                     },
                     onFocusChanged = { focused -> if (!focused) onPreviewBlur(item) },
-                    previewing = trailerPreviewState.isPlaying(item.id),
+                    previewing = trailerPreviewState.showsTvMediaCardPreview(item.id),
                     previewEngine = trailerPreviewEngine,
                     previewSoundEnabled = previewSoundEnabled,
                     previewProgress = previewProgress,
+                    previewSurfaceTestTag = "tv-media-card-preview-surface-${item.id}",
                     modifier =
                         Modifier
                             .tvScreenEntryFocus(screenEntry && index == 0)
@@ -966,10 +978,11 @@ private fun TvHomeSectionRow(
                         previewItem?.let(onPreviewFocus)
                     },
                     onFocusChanged = { focused -> if (!focused) previewItem?.let(onPreviewBlur) },
-                    previewing = previewItem?.let { trailerPreviewState.isPlaying(it.id) } == true,
+                    previewing = previewItem?.let { trailerPreviewState.showsTvMediaCardPreview(it.id) } == true,
                     previewEngine = trailerPreviewEngine,
                     previewSoundEnabled = previewSoundEnabled,
                     previewProgress = previewProgress,
+                    previewSurfaceTestTag = previewItem?.let { "tv-media-card-preview-surface-${it.id}" },
                     modifier =
                         Modifier
                             .tvScreenEntryFocus(screenEntry && index == 0)
@@ -1007,8 +1020,6 @@ private fun TvHomeSectionRow(
         }
     }
 }
-
-private fun TvTrailerPreviewState.isPlaying(itemId: String): Boolean = this is TvTrailerPreviewState.Playing && target.itemId == itemId
 
 @Composable
 internal fun TvLibraryScreen(
