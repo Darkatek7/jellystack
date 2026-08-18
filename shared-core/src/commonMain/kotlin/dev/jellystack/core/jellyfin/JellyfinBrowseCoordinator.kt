@@ -341,6 +341,7 @@ class JellyfinBrowseCoordinator internal constructor(
     }
 
     fun refreshSelectedLibrary() {
+        if (mutableState.value.selectedLibraryId == null) return
         invalidateBrowseLoad()
         launchLibraryPageLoad(page = 0, refresh = true)
     }

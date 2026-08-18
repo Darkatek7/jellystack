@@ -528,6 +528,35 @@ class JellyfinBrowseCoordinatorTest {
         }
 
     @Test
+    fun refreshWithoutSelectedLibraryDoesNotStartLibraryLoading() =
+        runTest {
+            var pageRequests = 0
+            val coordinator =
+                JellyfinBrowseCoordinator(
+                    repository =
+                        FakeBrowseRepository(
+                            libraries = emptyList(),
+                            loadPage = { _, _, _, _, _ ->
+                                pageRequests += 1
+                                LibraryPage(emptyList(), 0)
+                            },
+                        ),
+                    scope = backgroundScope,
+                    favoritesStore = FakeJellyfinFavoritesStore(),
+                    autoBootstrap = false,
+                )
+
+            assertNull(coordinator.state.value.selectedLibraryId)
+            coordinator.refreshSelectedLibrary()
+            assertFalse(coordinator.state.value.isLibraryLoading)
+
+            advanceUntilIdle()
+
+            assertFalse(coordinator.state.value.isLibraryLoading)
+            assertEquals(0, pageRequests)
+        }
+
+    @Test
     fun rapidLibrarySelectionsPublishOnlyLatestPage() =
         runTest {
             val firstRequestStarted = CompletableDeferred<Unit>()
