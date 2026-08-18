@@ -338,10 +338,10 @@ import jellystack_mobile.design.generated.resources.use_different_account
 import jellystack_mobile.design.generated.resources.username
 import jellystack_mobile.design.generated.resources.version_label
 import jellystack_mobile.design.generated.resources.view_changelog
-import jellystack_mobile.design.generated.resources.whats_new_0150_admin
-import jellystack_mobile.design.generated.resources.whats_new_0150_home_sections
-import jellystack_mobile.design.generated.resources.whats_new_0150_playback
-import jellystack_mobile.design.generated.resources.whats_new_0150_syncplay
+import jellystack_mobile.design.generated.resources.whats_new_0160_tv_beta4_focus
+import jellystack_mobile.design.generated.resources.whats_new_0160_tv_beta4_libraries
+import jellystack_mobile.design.generated.resources.whats_new_0160_tv_beta4_spotlight
+import jellystack_mobile.design.generated.resources.whats_new_0160_tv_beta4_trailers
 import jellystack_mobile.design.generated.resources.whats_new_dialog_title
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -379,10 +379,10 @@ private const val OFF_SUBTITLE_TRACK_ID = "__off_subtitle__"
 @Composable
 private fun DefaultWhatsNewHighlights(): List<String> =
     listOf(
-        stringResource(Res.string.whats_new_0150_home_sections),
-        stringResource(Res.string.whats_new_0150_syncplay),
-        stringResource(Res.string.whats_new_0150_playback),
-        stringResource(Res.string.whats_new_0150_admin),
+        stringResource(Res.string.whats_new_0160_tv_beta4_spotlight),
+        stringResource(Res.string.whats_new_0160_tv_beta4_trailers),
+        stringResource(Res.string.whats_new_0160_tv_beta4_libraries),
+        stringResource(Res.string.whats_new_0160_tv_beta4_focus),
     )
 
 internal enum class ServerFormType {

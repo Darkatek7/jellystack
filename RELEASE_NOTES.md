@@ -1,5 +1,12 @@
 # Release Notes
 
+## 0.16.0-tv-beta.4
+
+- Rotate Spotlight automatically through recently added movies and shows.
+- Preview trailers in Spotlight after the existing short pause.
+- Open Movies and Shows libraries without waiting on unrelated Home requests or hanging indefinitely.
+- Restore remote focus predictably across rows, routes, and the sidebar.
+
 ## 0.16.0-tv-beta.3
 
 - Explore Home through a larger, immersive carousel built from recently added Jellyfin media.
