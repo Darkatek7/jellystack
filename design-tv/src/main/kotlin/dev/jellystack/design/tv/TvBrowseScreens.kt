@@ -54,6 +54,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -171,6 +172,7 @@ internal fun TvHomeScreen(
         }
     val homeListState = rememberLazyListState()
     val entryFocusRequester = LocalTvScreenEntryFocusRequester.current
+    val openNavigationRail = LocalTvNavigationRailOpener.current
     val entryFocusGate = remember { TvHomeEntryFocusGate() }
     val heroCarouselFocusRequester = remember { FocusRequester() }
     val heroPrimaryFocusRequester = remember { FocusRequester() }
@@ -227,36 +229,55 @@ internal fun TvHomeScreen(
             entryFocusRequester?.requestFocus()
         }
     }
-    var spotlightItemId by remember { mutableStateOf<String?>(null) }
+    var carouselState by remember { mutableStateOf(TvHomeCarouselState()) }
     var carouselDirection by remember { mutableStateOf(TvHomeCarouselDirection.NEXT) }
-    var heroCarouselFocused by remember { mutableStateOf(false) }
+    var heroContainerFocused by remember { mutableStateOf(false) }
+    var heroHasFocus by remember { mutableStateOf(false) }
     var heroPrimaryFocused by remember { mutableStateOf(false) }
     var heroDetailsFocused by remember { mutableStateOf(false) }
     val candidateIds = heroCandidates.map { it.actionItem.id }
-    val spotlightIndex = heroCandidates.indexOfFirst { it.actionItem.id == spotlightItemId }.takeIf { it >= 0 } ?: 0
+    val spotlightIndex = heroCandidates.indexOfFirst { it.actionItem.id == carouselState.selectedId }.takeIf { it >= 0 } ?: 0
+    val activeCandidate = heroCandidates.getOrNull(spotlightIndex)
+    val activePreviewItem = activeCandidate?.tvHomeTrailerPreviewItem()
     LaunchedEffect(candidateIds) {
-        spotlightItemId = reconcileTvHomeCarouselSelection(candidateIds, spotlightItemId)
+        val selectedId = reconcileTvHomeCarouselSelection(candidateIds, carouselState.selectedId)
+        if (selectedId != carouselState.selectedId) {
+            carouselState =
+                carouselState.copy(
+                    selectedId = selectedId,
+                    intervalRevision = carouselState.intervalRevision + 1,
+                )
+        }
     }
-    val previewActive = trailerPreviewState.blocksTvHomeCarouselAutoCycle()
-    val heroFocusPaused = heroCarouselFocused || heroPrimaryFocused || heroDetailsFocused
-    LaunchedEffect(autoCycle, intervalSeconds, candidateIds, railOpen, previewActive, heroFocusPaused, spotlightItemId) {
+    LaunchedEffect(heroHasFocus, activePreviewItem?.id) {
+        if (heroHasFocus && activePreviewItem != null) {
+            onPreviewFocus(activePreviewItem)
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose(onCancelPreview)
+    }
+    val actionButtonFocused = heroPrimaryFocused || heroDetailsFocused
+    val heroFocus =
+        when {
+            actionButtonFocused -> TvHomeCarouselFocus.ACTION
+            heroContainerFocused -> TvHomeCarouselFocus.CONTAINER
+            else -> TvHomeCarouselFocus.NONE
+        }
+    LaunchedEffect(autoCycle, intervalSeconds, candidateIds, railOpen, actionButtonFocused, carouselState.intervalRevision) {
         if (
             shouldAutoCycleTvHomeCarousel(
                 enabled = autoCycle,
                 candidateCount = candidateIds.size,
                 railOpen = railOpen,
-                previewActive = previewActive,
-                heroFocused = heroFocusPaused,
+                focus = heroFocus,
+                previewState = trailerPreviewState,
             )
         ) {
             delay(tvHomeCarouselIntervalMillis(intervalSeconds))
+            onCancelPreview()
             carouselDirection = TvHomeCarouselDirection.NEXT
-            spotlightItemId =
-                moveTvHomeCarouselSelection(
-                    candidateIds = candidateIds,
-                    currentId = spotlightItemId,
-                    direction = TvHomeCarouselDirection.NEXT,
-                )
+            carouselState = advanceTvHomeCarouselAutomatically(candidateIds, carouselState)
         }
     }
     LazyColumn(
@@ -276,17 +297,26 @@ internal fun TvHomeScreen(
                     state = state,
                     strings = strings,
                     direction = carouselDirection,
-                    onCarouselFocusChanged = { heroCarouselFocused = it },
+                    trailerPreviewState = trailerPreviewState,
+                    trailerPreviewEngine = trailerPreviewEngine,
+                    previewSoundEnabled = previewSoundEnabled,
+                    previewProgress = previewProgress,
+                    onCarouselFocusChanged = { heroContainerFocused = it },
+                    onHeroFocusChanged = { hasFocus ->
+                        if (heroHasFocus && !hasFocus) onCancelPreview()
+                        heroHasFocus = hasFocus
+                    },
                     onPrimaryFocusChanged = { heroPrimaryFocused = it },
                     onDetailsFocusChanged = { heroDetailsFocused = it },
                     onCarouselMove = { direction ->
-                        carouselDirection = direction
-                        spotlightItemId =
-                            moveTvHomeCarouselSelection(
-                                candidateIds = candidateIds,
-                                currentId = spotlightItemId,
-                                direction = direction,
-                            )
+                        val move = moveTvHomeCarouselManually(candidateIds, carouselState, direction)
+                        if (move.openNavigationRail) {
+                            openNavigationRail?.invoke()
+                        } else if (move.state != carouselState) {
+                            onCancelPreview()
+                            carouselDirection = direction
+                            carouselState = move.state
+                        }
                     },
                     onPlay = { onPlayItem(candidate.actionItem) },
                     onDetails = { onItem(candidate.actionItem) },
@@ -422,7 +452,12 @@ private fun TvHeroCarousel(
     state: JellyfinHomeState,
     strings: TvStrings,
     direction: TvHomeCarouselDirection,
+    trailerPreviewState: TvTrailerPreviewState,
+    trailerPreviewEngine: AndroidPlayerEngine,
+    previewSoundEnabled: Boolean,
+    previewProgress: Float,
     onCarouselFocusChanged: (Boolean) -> Unit,
+    onHeroFocusChanged: (Boolean) -> Unit,
     onPrimaryFocusChanged: (Boolean) -> Unit,
     onDetailsFocusChanged: (Boolean) -> Unit,
     onCarouselMove: (TvHomeCarouselDirection) -> Unit,
@@ -452,6 +487,7 @@ private fun TvHeroCarousel(
                 .onFocusChanged { focusState ->
                     carouselFocused = focusState.isFocused
                     onCarouselFocusChanged(focusState.isFocused)
+                    onHeroFocusChanged(focusState.hasFocus)
                     if (focusState.isFocused) registerContentFocus?.invoke(carouselFocusRequester)
                 }.onPreviewKeyEvent { event ->
                     if (!carouselFocused || event.nativeKeyEvent.action != KeyEvent.ACTION_DOWN) {
@@ -499,6 +535,10 @@ private fun TvHeroCarousel(
                 total = total,
                 state = state,
                 strings = strings,
+                trailerPreviewState = trailerPreviewState,
+                trailerPreviewEngine = trailerPreviewEngine,
+                previewSoundEnabled = previewSoundEnabled,
+                previewProgress = previewProgress,
             )
         }
         Row(
@@ -540,15 +580,27 @@ private fun TvHeroSlide(
     total: Int,
     state: JellyfinHomeState,
     strings: TvStrings,
+    trailerPreviewState: TvTrailerPreviewState,
+    trailerPreviewEngine: AndroidPlayerEngine,
+    previewSoundEnabled: Boolean,
+    previewProgress: Float,
 ) {
     val item = candidate.displayItem
+    val previewing = trailerPreviewState.showsTvHomeHeroPreview(candidate.actionItem.id)
     Box(Modifier.fillMaxSize()) {
-        AsyncImage(
-            model = jellyfinImageUrl(state.imageBaseUrl, state.imageAccessToken, resolveTvHeroBackdrop(item), 1800),
-            contentDescription = item.name,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop,
-        )
+        if (previewing) {
+            TvTrailerPreviewSurface(
+                previewEngine = trailerPreviewEngine,
+                modifier = Modifier.fillMaxSize().testTag("tv-home-hero-preview-surface"),
+            )
+        } else {
+            AsyncImage(
+                model = jellyfinImageUrl(state.imageBaseUrl, state.imageAccessToken, resolveTvHeroBackdrop(item), 1800),
+                contentDescription = item.name,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+            )
+        }
         Box(
             Modifier
                 .fillMaxSize()
@@ -567,6 +619,13 @@ private fun TvHeroSlide(
                     ),
                 ),
         )
+        if (previewing) {
+            TvTrailerPreviewChrome(
+                previewSoundEnabled = previewSoundEnabled,
+                previewProgress = previewProgress,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
         Column(
             Modifier
                 .align(Alignment.CenterStart)

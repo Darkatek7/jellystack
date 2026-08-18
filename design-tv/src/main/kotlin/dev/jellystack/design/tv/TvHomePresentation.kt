@@ -17,6 +17,18 @@ internal data class TvHomeHeroPresentation(
 
 internal enum class TvHomeCarouselDirection { PREVIOUS, NEXT }
 
+internal enum class TvHomeCarouselFocus { NONE, CONTAINER, ACTION }
+
+internal data class TvHomeCarouselState(
+    val selectedId: String? = null,
+    val intervalRevision: Long = 0,
+)
+
+internal data class TvHomeCarouselManualMove(
+    val state: TvHomeCarouselState,
+    val openNavigationRail: Boolean = false,
+)
+
 internal fun reconcileTvHomeCarouselSelection(
     candidateIds: List<String>,
     currentId: String?,
@@ -35,22 +47,72 @@ internal fun moveTvHomeCarouselSelection(
     }
 }
 
+internal fun advanceTvHomeCarouselAutomatically(
+    candidateIds: List<String>,
+    state: TvHomeCarouselState,
+): TvHomeCarouselState {
+    val nextId =
+        moveTvHomeCarouselSelection(
+            candidateIds = candidateIds,
+            currentId = state.selectedId,
+            direction = TvHomeCarouselDirection.NEXT,
+        )
+    return state.select(nextId)
+}
+
+internal fun moveTvHomeCarouselManually(
+    candidateIds: List<String>,
+    state: TvHomeCarouselState,
+    direction: TvHomeCarouselDirection,
+): TvHomeCarouselManualMove {
+    val selectedId = reconcileTvHomeCarouselSelection(candidateIds, state.selectedId)
+        ?: return TvHomeCarouselManualMove(state.copy(selectedId = null))
+    val selectedIndex = candidateIds.indexOf(selectedId)
+    return when (direction) {
+        TvHomeCarouselDirection.PREVIOUS ->
+            if (selectedIndex == 0) {
+                TvHomeCarouselManualMove(state.copy(selectedId = selectedId), openNavigationRail = true)
+            } else {
+                TvHomeCarouselManualMove(state.select(candidateIds[selectedIndex - 1]))
+            }
+        TvHomeCarouselDirection.NEXT ->
+            if (selectedIndex == candidateIds.lastIndex) {
+                TvHomeCarouselManualMove(state.copy(selectedId = selectedId))
+            } else {
+                TvHomeCarouselManualMove(state.select(candidateIds[selectedIndex + 1]))
+            }
+    }
+}
+
+private fun TvHomeCarouselState.select(itemId: String?): TvHomeCarouselState =
+    if (selectedId == itemId) this else copy(selectedId = itemId, intervalRevision = intervalRevision + 1)
+
 internal fun shouldAutoCycleTvHomeCarousel(
     enabled: Boolean,
     candidateCount: Int,
     railOpen: Boolean,
-    previewActive: Boolean,
-    heroFocused: Boolean,
+    focus: TvHomeCarouselFocus,
+    previewState: TvTrailerPreviewState,
 ): Boolean {
     val canStart = enabled && candidateCount > 1
-    val paused = railOpen || previewActive || heroFocused
-    return canStart && !paused
+    val previewAllowsRotation =
+        when (previewState) {
+            TvTrailerPreviewState.Idle,
+            is TvTrailerPreviewState.Armed,
+            is TvTrailerPreviewState.Playing,
+            is TvTrailerPreviewState.Unavailable,
+            -> true
+        }
+    val paused = railOpen || focus == TvHomeCarouselFocus.ACTION
+    return canStart && previewAllowsRotation && !paused
 }
 
-internal fun TvTrailerPreviewState.blocksTvHomeCarouselAutoCycle(): Boolean =
-    this is TvTrailerPreviewState.Armed || this is TvTrailerPreviewState.Playing
+internal fun SpotlightCandidate.tvHomeTrailerPreviewItem() = actionItem
 
-internal fun tvHomeCarouselIntervalMillis(intervalSeconds: Int): Long = intervalSeconds.coerceAtLeast(6) * 1_000L
+internal fun TvTrailerPreviewState.showsTvHomeHeroPreview(itemId: String): Boolean =
+    this is TvTrailerPreviewState.Playing && target.itemId == itemId
+
+internal fun tvHomeCarouselIntervalMillis(intervalSeconds: Int): Long = intervalSeconds.toLong() * 1_000L
 
 internal fun buildTvHomeHeroPresentation(
     state: JellyfinHomeState,

@@ -345,10 +345,8 @@ private fun BoxScope.TvMediaCardContent(
     previewProgress: Float,
 ) {
     if (previewing && previewEngine != null) {
-        AndroidView(
-            factory = { previewEngine.createVideoSurface(it) },
-            update = previewEngine::updateVideoSurface,
-            onRelease = previewEngine::releaseVideoSurface,
+        TvTrailerPreviewSurface(
+            previewEngine = previewEngine,
             modifier = Modifier.fillMaxSize(),
         )
     } else if (imageUrl != null) {
@@ -373,6 +371,48 @@ private fun BoxScope.TvMediaCardContent(
             ),
     )
     if (previewing) {
+        TvTrailerPreviewChrome(
+            previewSoundEnabled = previewSoundEnabled,
+            previewProgress = previewProgress,
+            modifier = Modifier.fillMaxSize(),
+        )
+    }
+    Column(
+        modifier = Modifier.align(Alignment.BottomStart).padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Text(
+            title,
+            color = TvText,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 18.sp,
+        )
+        subtitle?.let { Text(it, color = TvTextMuted, fontSize = 14.sp, maxLines = 1) }
+    }
+}
+
+@Composable
+internal fun TvTrailerPreviewSurface(
+    previewEngine: AndroidPlayerEngine,
+    modifier: Modifier = Modifier,
+) {
+    AndroidView(
+        factory = { previewEngine.createVideoSurface(it) },
+        update = previewEngine::updateVideoSurface,
+        onRelease = previewEngine::releaseVideoSurface,
+        modifier = modifier,
+    )
+}
+
+@Composable
+internal fun TvTrailerPreviewChrome(
+    previewSoundEnabled: Boolean,
+    previewProgress: Float,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier) {
         Row(
             Modifier
                 .align(Alignment.TopStart)
@@ -390,28 +430,14 @@ private fun BoxScope.TvMediaCardContent(
                 modifier = Modifier.size(16.dp),
             )
         }
-    }
-    if (previewing && previewProgress > 0f) {
-        LinearProgressIndicator(
-            progress = { previewProgress.coerceIn(0f, 1f) },
-            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp),
-            color = TvPurple,
-            trackColor = Color.White.copy(alpha = 0.22f),
-        )
-    }
-    Column(
-        modifier = Modifier.align(Alignment.BottomStart).padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        Text(
-            title,
-            color = TvText,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 18.sp,
-        )
-        subtitle?.let { Text(it, color = TvTextMuted, fontSize = 14.sp, maxLines = 1) }
+        if (previewProgress > 0f) {
+            LinearProgressIndicator(
+                progress = { previewProgress.coerceIn(0f, 1f) },
+                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp),
+                color = TvPurple,
+                trackColor = Color.White.copy(alpha = 0.22f),
+            )
+        }
     }
 }
 
