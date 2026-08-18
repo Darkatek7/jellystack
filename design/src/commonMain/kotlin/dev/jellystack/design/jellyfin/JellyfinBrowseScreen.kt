@@ -498,6 +498,7 @@ internal fun JellyfinBrowseScreen(
                         !state.endReached &&
                         !state.isPageLoading &&
                         !state.isLibraryLoading &&
+                        state.libraryErrorMessage == null &&
                         state.libraryItems.isNotEmpty(),
                 onLoadMore = onLoadMore,
             )
@@ -975,7 +976,12 @@ internal fun JellyfinBrowseScreen(
 
         LoadMoreListener(
             listState = listState,
-            shouldLoadMore = !state.endReached && !state.isPageLoading && !state.isLibraryLoading && state.libraryItems.isNotEmpty(),
+            shouldLoadMore =
+                !state.endReached &&
+                    !state.isPageLoading &&
+                    !state.isLibraryLoading &&
+                    state.libraryErrorMessage == null &&
+                    state.libraryItems.isNotEmpty(),
             onLoadMore = onLoadMore,
         )
 

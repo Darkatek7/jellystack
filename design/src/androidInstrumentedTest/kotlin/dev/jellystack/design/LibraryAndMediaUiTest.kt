@@ -228,15 +228,18 @@ class LibraryAndMediaUiTest {
     fun retainedItemsFirstPageErrorRetryDispatchesRefresh() {
         var refreshRequests = 0
         var nextPageRequests = 0
-        val retained = movieItem("retained", "Retained movie", "2026-06-28T12:00:00Z")
+        val retained =
+            (0 until 24).map { index ->
+                movieItem("retained-$index", "Retained movie $index", "2026-06-28T12:00:00Z")
+            }
         composeRule.setContent {
             JellystackTheme(isDarkTheme = false) {
                 JellyfinBrowseScreen(
                     state =
                         JellyfinHomeState(
                             selectedLibraryId = "lib-movies",
-                            libraryItems = listOf(retained),
-                            endReached = true,
+                            libraryItems = retained,
+                            endReached = false,
                             libraryErrorMessage = "Refresh failed",
                             libraryErrorKind = LibraryLoadErrorKind.FIRST_PAGE,
                         ),
@@ -255,6 +258,13 @@ class LibraryAndMediaUiTest {
             }
         }
 
+        composeRule.onNodeWithText("Retained movie 0").assertExists()
+        composeRule.onNodeWithTag(LibraryCardTestTags.GRID).performScrollToIndex(25)
+        composeRule.runOnIdle {
+            assertEquals(0, refreshRequests)
+            assertEquals(0, nextPageRequests)
+        }
+        composeRule.onNodeWithText("Refresh failed").assertExists()
         composeRule.onNodeWithText("Retry").performClick()
         composeRule.runOnIdle {
             assertEquals(1, refreshRequests)
@@ -266,15 +276,18 @@ class LibraryAndMediaUiTest {
     fun laterPageErrorRetryDispatchesLoadMore() {
         var refreshRequests = 0
         var nextPageRequests = 0
-        val retained = movieItem("retained", "Retained movie", "2026-06-28T12:00:00Z")
+        val retained =
+            (0 until 24).map { index ->
+                movieItem("retained-$index", "Retained movie $index", "2026-06-28T12:00:00Z")
+            }
         composeRule.setContent {
             JellystackTheme(isDarkTheme = false) {
                 JellyfinBrowseScreen(
                     state =
                         JellyfinHomeState(
                             selectedLibraryId = "lib-movies",
-                            libraryItems = listOf(retained),
-                            endReached = true,
+                            libraryItems = retained,
+                            endReached = false,
                             libraryErrorMessage = "Paging failed",
                             libraryErrorKind = LibraryLoadErrorKind.NEXT_PAGE,
                         ),
@@ -293,6 +306,13 @@ class LibraryAndMediaUiTest {
             }
         }
 
+        composeRule.onNodeWithText("Retained movie 0").assertExists()
+        composeRule.onNodeWithTag(LibraryCardTestTags.GRID).performScrollToIndex(25)
+        composeRule.runOnIdle {
+            assertEquals(0, refreshRequests)
+            assertEquals(0, nextPageRequests)
+        }
+        composeRule.onNodeWithText("Paging failed").assertExists()
         composeRule.onNodeWithText("Retry").performClick()
         composeRule.runOnIdle {
             assertEquals(0, refreshRequests)
