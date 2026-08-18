@@ -13,8 +13,12 @@ import io.ktor.http.headersOf
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,6 +29,7 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 import kotlin.test.Test
@@ -467,10 +472,58 @@ class JellyfinBrowseCoordinatorTest {
             pageRequestStarted.await()
 
             assertEquals(listOf("cached-item"), coordinator.state.value.libraryItems.map { it.id })
-            assertFalse(coordinator.state.value.isLibraryLoading)
+            assertTrue(coordinator.state.value.isLibraryLoading)
 
             releasePage.complete(Unit)
             val refreshed = awaitState(coordinator) { it.libraryItems.map { item -> item.id } == listOf("refreshed-item") }
+            assertFalse(refreshed.isLibraryLoading)
+        }
+
+    @Test
+    fun nextPageCannotReplaceActiveFirstPageRefresh() =
+        runTest {
+            val refreshStarted = CompletableDeferred<Unit>()
+            val releaseRefresh = CompletableDeferred<Unit>()
+            var pageRequests = 0
+            val initialItems = listOf(favoriteJellyfinItem("initial-1"), favoriteJellyfinItem("initial-2"))
+            val refreshedItems = listOf(favoriteJellyfinItem("refreshed-1"), favoriteJellyfinItem("refreshed-2"))
+            val repository =
+                FakeBrowseRepository(
+                    loadPage = { _, page, _, _, _ ->
+                        pageRequests += 1
+                        when (pageRequests) {
+                            1 -> LibraryPage(initialItems, 2)
+                            2 -> {
+                                refreshStarted.complete(Unit)
+                                releaseRefresh.await()
+                                LibraryPage(refreshedItems, 2)
+                            }
+                            else -> LibraryPage(listOf(favoriteJellyfinItem("unexpected-page-$page")), 3)
+                        }
+                    },
+                )
+            val coordinator =
+                JellyfinBrowseCoordinator(
+                    repository = repository,
+                    scope = backgroundScope,
+                    favoritesStore = FakeJellyfinFavoritesStore(),
+                    pageSize = 2,
+                    autoBootstrap = false,
+                )
+            coordinator.selectLibrary("lib-1")
+            awaitState(coordinator) { it.libraryItems == initialItems }
+
+            coordinator.refreshSelectedLibrary()
+            assertEquals(initialItems, coordinator.state.value.libraryItems)
+            assertTrue(coordinator.state.value.isLibraryLoading)
+            coordinator.loadNextPage()
+            refreshStarted.await()
+            advanceUntilIdle()
+            assertEquals(2, pageRequests)
+
+            releaseRefresh.complete(Unit)
+            val refreshed = awaitState(coordinator) { it.libraryItems == refreshedItems }
+            assertEquals(0, refreshed.currentPage)
             assertFalse(refreshed.isLibraryLoading)
         }
 
@@ -515,6 +568,62 @@ class JellyfinBrowseCoordinatorTest {
         }
 
     @Test
+    fun staleMetadataLookupCannotRestoreOlderSelection() =
+        runTest {
+            val firstMetadataLookupStarted = CompletableDeferred<Unit>()
+            val firstMetadataLookupReturned = CompletableDeferred<Unit>()
+            val releaseFirstMetadataLookup = MutableStateFlow(false)
+            val metadataLookups = MutableStateFlow(0)
+            val repository =
+                FakeBrowseRepository(
+                    loadPage = { libraryId, _, _, _, _ ->
+                        LibraryPage(listOf(favoriteJellyfinItem("$libraryId-item")), 1)
+                    },
+                    loadServerBaseUrl = {
+                        if (metadataLookups.updateAndGet { it + 1 } == 1) {
+                            firstMetadataLookupStarted.complete(Unit)
+                            while (!releaseFirstMetadataLookup.value) {
+                                // Model a synchronous metadata provider that cannot observe coroutine cancellation.
+                            }
+                            firstMetadataLookupReturned.complete(Unit)
+                        }
+                        "https://demo.jellyfin.org"
+                    },
+                )
+            val coordinatorScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val coordinator =
+                JellyfinBrowseCoordinator(
+                    repository = repository,
+                    scope = coordinatorScope,
+                    favoritesStore = FakeJellyfinFavoritesStore(),
+                    autoBootstrap = false,
+                )
+            try {
+                coordinator.selectLibrary("lib-1")
+                firstMetadataLookupStarted.await()
+                coordinator.selectLibrary("lib-2")
+                awaitState(coordinator) { it.libraryItems.map { item -> item.id } == listOf("lib-2-item") }
+                val staleSelection =
+                    async(Dispatchers.Default, start = CoroutineStart.UNDISPATCHED) {
+                        withTimeoutOrNull(1_000) {
+                            coordinator.state.first { it.selectedLibraryId == "lib-1" }
+                        }
+                    }
+
+                releaseFirstMetadataLookup.value = true
+                firstMetadataLookupReturned.await()
+
+                assertNull(staleSelection.await())
+                assertEquals("lib-2", coordinator.state.value.selectedLibraryId)
+                assertEquals(listOf("lib-2-item"), coordinator.state.value.libraryItems.map { it.id })
+                assertFalse(coordinator.state.value.isLibraryLoading)
+            } finally {
+                releaseFirstMetadataLookup.value = true
+                coordinatorScope.cancel()
+            }
+        }
+
+    @Test
     fun firstPageFailureClearsLibraryLoading() =
         runTest {
             val pageRequestStarted = CompletableDeferred<Unit>()
@@ -541,6 +650,27 @@ class JellyfinBrowseCoordinatorTest {
 
             releaseFailure.complete(Unit)
             val failed = awaitState(coordinator) { it.errorMessage == "boom" }
+            assertFalse(failed.isLibraryLoading)
+            assertFalse(failed.isPageLoading)
+        }
+
+    @Test
+    fun metadataFailureClearsLibraryLoading() =
+        runTest {
+            val coordinator =
+                JellyfinBrowseCoordinator(
+                    repository =
+                        FakeBrowseRepository(
+                            loadServerBaseUrl = { error("metadata boom") },
+                        ),
+                    scope = backgroundScope,
+                    favoritesStore = FakeJellyfinFavoritesStore(),
+                    autoBootstrap = false,
+                )
+
+            coordinator.selectLibrary("lib-1")
+
+            val failed = awaitState(coordinator) { it.errorMessage == "metadata boom" }
             assertFalse(failed.isLibraryLoading)
             assertFalse(failed.isPageLoading)
         }
@@ -1028,6 +1158,8 @@ class JellyfinBrowseCoordinatorTest {
             { _, _, _, _, _ -> LibraryPage(emptyList(), 0) },
         private val loadRecentShows: suspend (String, Int) -> List<JellyfinItem> = { _, _ -> emptyList() },
         private val loadRecentMovies: suspend (String, Int) -> List<JellyfinItem> = { _, _ -> emptyList() },
+        private val loadServerBaseUrl: suspend () -> String? = { "https://demo.jellyfin.org" },
+        private val loadAccessToken: suspend () -> String? = { "dummy-token" },
     ) : JellyfinBrowseRepositoryApi {
         override suspend fun refreshLibraries(): List<JellyfinLibrary> = libraries
 
@@ -1086,9 +1218,9 @@ class JellyfinBrowseCoordinatorTest {
             limit: Int,
         ): List<JellyfinItem> = loadRecentMovies(libraryId, limit)
 
-        override suspend fun currentServerBaseUrl(): String? = "https://demo.jellyfin.org"
+        override suspend fun currentServerBaseUrl(): String? = loadServerBaseUrl()
 
-        override suspend fun currentAccessToken(): String? = "dummy-token"
+        override suspend fun currentAccessToken(): String? = loadAccessToken()
 
         override suspend fun currentApi(): JellyfinBrowseApi? = null
 

@@ -89,13 +89,27 @@ fun JellyfinItem.isBrowseContainer(): Boolean =
             "collectionfolder",
         )
 
-class JellyfinBrowseCoordinator(
+class JellyfinBrowseCoordinator internal constructor(
     private val repository: JellyfinBrowseRepositoryApi,
     private val scope: CoroutineScope,
     private val favoritesStore: JellyfinFavoritesStoreApi,
     private val pageSize: Int = 30,
     private val autoBootstrap: Boolean = true,
 ) {
+    constructor(
+        repository: JellyfinBrowseRepository,
+        scope: CoroutineScope,
+        favoritesStore: JellyfinFavoritesStoreApi,
+        pageSize: Int = 30,
+        autoBootstrap: Boolean = true,
+    ) : this(
+        repository = repository as JellyfinBrowseRepositoryApi,
+        scope = scope,
+        favoritesStore = favoritesStore,
+        pageSize = pageSize,
+        autoBootstrap = autoBootstrap,
+    )
+
     private val mutableFavorites = MutableStateFlow<Set<String>>(favoritesStore.snapshot())
     val favorites: StateFlow<Set<String>> = mutableFavorites.asStateFlow()
 
@@ -409,6 +423,13 @@ class JellyfinBrowseCoordinator(
     ) {
         val expectedGeneration = browseLoadGeneration
         browseLoadJob?.cancel()
+        mutableState.update {
+            it.copy(
+                isLibraryLoading = page == 0,
+                isPageLoading = page > 0,
+                errorMessage = null,
+            )
+        }
         browseLoadJob =
             scope.launch {
                 loadLibraryPage(
@@ -436,17 +457,21 @@ class JellyfinBrowseCoordinator(
                 mutableState.value.selectedLibraryId ?: return
             }
         val stateBefore = mutableState.value
-        val imageBaseUrl = repository.currentServerBaseUrl()
-        val imageAccessToken = repository.currentAccessToken()
-        mutableState.value =
-            stateBefore.copy(
-                isLibraryLoading = page == 0 && stateBefore.libraryItems.isEmpty(),
-                isPageLoading = page > 0,
-                errorMessage = null,
-                imageBaseUrl = imageBaseUrl,
-                imageAccessToken = imageAccessToken,
-            )
+        var imageBaseUrl = stateBefore.imageBaseUrl
+        var imageAccessToken = stateBefore.imageAccessToken
         try {
+            imageBaseUrl = repository.currentServerBaseUrl()
+            if (expectedGeneration != browseLoadGeneration) return
+            imageAccessToken = repository.currentAccessToken()
+            if (expectedGeneration != browseLoadGeneration) return
+            mutableState.value =
+                stateBefore.copy(
+                    isLibraryLoading = page == 0,
+                    isPageLoading = page > 0,
+                    errorMessage = null,
+                    imageBaseUrl = imageBaseUrl,
+                    imageAccessToken = imageAccessToken,
+                )
             val requestPage: suspend () -> LibraryPage = {
                 stateBefore.browsePath.lastOrNull()?.let { parent ->
                     repository.loadChildrenPage(

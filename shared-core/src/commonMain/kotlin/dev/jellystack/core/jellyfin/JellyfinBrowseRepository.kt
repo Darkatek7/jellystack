@@ -53,7 +53,7 @@ internal fun libraryQueryForCollectionType(collectionType: String?): LibraryQuer
         else -> LibraryQuery(includeItemTypes = null, recursive = false)
     }
 
-interface JellyfinBrowseRepositoryApi {
+internal interface JellyfinBrowseRepositoryApi {
     suspend fun refreshLibraries(): List<JellyfinLibrary>
 
     suspend fun listLibraries(): List<JellyfinLibrary>
