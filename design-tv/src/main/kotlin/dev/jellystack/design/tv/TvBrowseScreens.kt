@@ -269,28 +269,8 @@ internal fun TvHomeScreen(
                 includeFallback = false,
                 requestFocus = { requester -> runCatching { requester.requestFocus() }.getOrDefault(false) },
             ) is TvFocusRestoration.Focused
-        val focused =
-            when (val destination = move.destination) {
-                TvHomeFocusDestination.HeroCarousel -> {
-                    requestTarget(TV_HOME_HERO_TARGET)
-                }
-                TvHomeFocusDestination.HeroPrimary -> {
-                    requestTarget(TV_HOME_PRIMARY_TARGET)
-                }
-                is TvHomeFocusDestination.Row -> {
-                    val row = focusRows.firstOrNull { it.id == destination.id }
-                    val targetIndex =
-                        row?.itemIds?.indexOf(destination.firstItemId)?.takeIf { it >= 0 }
-                            ?: destination.horizontalIndex
-                    row
-                        ?.itemIds
-                        ?.indices
-                        ?.sortedBy { index -> kotlin.math.abs(index - targetIndex) }
-                        ?.any { index -> requestTarget(tvHomeCardTargetId(row.id, row.itemIds[index])) }
-                        ?: false
-                }
-            }
-        if (focused && verticalFocusCoordinator.acceptCompletion(move.requestId)) {
+        val completion = verticalFocusCoordinator.completeMove(move.requestId, ::requestTarget)
+        if (completion != null) {
             if (pendingFocusMove?.requestId == move.requestId) pendingFocusMove = null
         }
     }
@@ -1096,19 +1076,14 @@ internal fun TvLibraryScreen(
             state.libraryItems.map { tvLibraryTargetId(it.id) }
         }
     val terminalTarget =
-        when {
-            route.libraryId == null && state.libraries.isEmpty() -> TV_LIBRARY_EMPTY_TARGET
-            route.libraryId != null && (state.isLibraryLoading || state.isPageLoading) && state.libraryItems.isEmpty() ->
-                TV_LIBRARY_LOADING_TARGET
-            route.libraryId != null && state.errorMessage != null && state.libraryItems.isEmpty() -> TV_LIBRARY_RETRY_TARGET
-            route.libraryId != null && state.libraryItems.isEmpty() -> TV_LIBRARY_EMPTY_TARGET
-            else -> null
-        }
-    val locations =
-        buildMap {
-            itemTargetIds.forEachIndexed { index, targetId -> put(targetId, index + 1) }
-            terminalTarget?.let { put(it, itemTargetIds.size + 1) }
-        }
+        tvLibraryTerminalFocusTarget(
+            libraryId = route.libraryId,
+            itemCount = itemTargetIds.size,
+            isLibraryLoading = state.isLibraryLoading,
+            isPageLoading = state.isPageLoading,
+            hasError = state.errorMessage != null,
+        )
+    val locations = tvLibraryGridFocusLocations(itemTargetIds, terminalTarget)
     TvRouteFocusMaterializer(
         ownerId = "library-grid:$routeKey",
         targetIds = locations.keys,
@@ -1248,7 +1223,7 @@ internal fun TvLibraryScreen(
                                 Modifier
                                     .tvScreenEntryFocus(state.libraryItems.isEmpty(), TV_LIBRARY_RETRY_TARGET)
                                     .width(220.dp),
-                            focusToNavigationRailOnLeft = state.libraryItems.isEmpty(),
+                            focusToNavigationRailOnLeft = true,
                             focusTargetId = TV_LIBRARY_RETRY_TARGET,
                         )
                     }
@@ -1261,6 +1236,30 @@ internal fun TvLibraryScreen(
         }
     }
 }
+
+internal fun tvLibraryTerminalFocusTarget(
+    libraryId: String?,
+    itemCount: Int,
+    isLibraryLoading: Boolean,
+    isPageLoading: Boolean,
+    hasError: Boolean,
+): String? =
+    when {
+        libraryId == null && itemCount == 0 -> TV_LIBRARY_EMPTY_TARGET
+        libraryId != null && (isLibraryLoading || isPageLoading) && itemCount == 0 -> TV_LIBRARY_LOADING_TARGET
+        libraryId != null && hasError -> TV_LIBRARY_RETRY_TARGET
+        libraryId != null && itemCount == 0 -> TV_LIBRARY_EMPTY_TARGET
+        else -> null
+    }
+
+internal fun tvLibraryGridFocusLocations(
+    itemTargetIds: List<String>,
+    terminalTarget: String?,
+): Map<String, Int> =
+    buildMap {
+        itemTargetIds.forEachIndexed { index, targetId -> put(targetId, index + 1) }
+        terminalTarget?.let { put(it, itemTargetIds.size + 1) }
+    }
 
 internal fun shouldLoadNextLibraryPage(
     lastVisibleIndex: Int,

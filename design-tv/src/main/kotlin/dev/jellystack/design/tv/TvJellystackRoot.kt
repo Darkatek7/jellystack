@@ -37,6 +37,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -84,6 +85,20 @@ import dev.jellystack.players.syncplay.SyncPlayCoordinator
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+@Composable
+internal fun TvRouteFocusScope(
+    focusCoordinator: TvFocusCoordinator<FocusRequester>,
+    routeKey: String,
+    content: @Composable () -> Unit,
+) {
+    val entryFocusRequester = remember(focusCoordinator, routeKey) { FocusRequester() }
+    CompositionLocalProvider(
+        LocalTvScreenEntryFocusRequester provides entryFocusRequester,
+        LocalTvFocusContext provides TvFocusContext(focusCoordinator, routeKey),
+        content = content,
+    )
+}
 
 @Composable
 @OptIn(UnstableApi::class)
@@ -364,8 +379,12 @@ private fun TvAuthenticatedApp(
             currentRoute is TvRoute.Search ||
             currentRoute is TvRoute.Discover ||
             currentRoute is TvRoute.Settings
-    val contentFocusRequester = remember { FocusRequester() }
-    val focusCoordinator = remember { TvFocusCoordinator<FocusRequester>() }
+    val focusCoordinator =
+        remember {
+            TvFocusCoordinator<FocusRequester>(
+                awaitFocusFrame = { withFrameNanos { } },
+            )
+        }
     val currentFocusRouteKey =
         currentRoute.focusRouteKey(
             if (currentRoute is TvRoute.Library) homeState.browsePath.map { it.id } else emptyList(),
@@ -428,8 +447,6 @@ private fun TvAuthenticatedApp(
     Box(Modifier.fillMaxSize()) {
         CompositionLocalProvider(
             LocalTvNavigationRailOpener provides { focusCoordinator.openRail() },
-            LocalTvScreenEntryFocusRequester provides contentFocusRequester,
-            LocalTvFocusContext provides TvFocusContext(focusCoordinator, currentFocusRouteKey),
         ) {
             NavDisplay(
                 backStack = backStack,
@@ -437,179 +454,185 @@ private fun TvAuthenticatedApp(
                 modifier = Modifier.fillMaxSize().padding(start = contentStartPadding),
                 entryProvider = { route ->
                     NavEntry(route) {
-                        when (route) {
-                            TvRoute.Home ->
-                                TvHomeScreen(
-                                    state = homeState,
-                                    homeSections = homeSections,
-                                    strings = strings,
-                                    autoCycle = settings.spotlightAutoCycle,
-                                    intervalSeconds = settings.spotlightIntervalSeconds,
-                                    railOpen = focusCoordinator.isRailVisible,
-                                    trailerPreviewState = trailerPreviewState,
-                                    focusMemory = focusMemory,
-                                    onRefresh = {
-                                        trailerPreviewCoordinator.invalidateCache()
-                                        browseCoordinator.bootstrap(true)
-                                    },
-                                    onPreviewFocus = { owner, item ->
-                                        if (jellyfinServerKey != null) {
-                                            trailerPreviewCoordinator.focus(
-                                                TvTrailerPreviewRequest(
-                                                    owner = owner,
-                                                    target =
-                                                        TvTrailerPreviewTarget(
-                                                            serverKey = jellyfinServerKey,
-                                                            itemId = item.id,
-                                                            isEpisode = item.type.equals("Episode", true),
-                                                            seriesId = item.seriesId,
-                                                        ),
-                                                ),
-                                            )
-                                        }
-                                    },
-                                    onPreviewBlur = { owner, item ->
-                                        if (jellyfinServerKey != null) {
-                                            trailerPreviewCoordinator.clearFocus(
-                                                TvTrailerPreviewRequest(
-                                                    owner = owner,
-                                                    target =
-                                                        TvTrailerPreviewTarget(
-                                                            serverKey = jellyfinServerKey,
-                                                            itemId = item.id,
-                                                            isEpisode = item.type.equals("Episode", true),
-                                                            seriesId = item.seriesId,
-                                                        ),
-                                                ),
-                                            )
-                                        }
-                                    },
-                                    onCancelPreview = trailerPreviewCoordinator::clearFocus,
-                                    trailerPreviewEngine = trailerPreviewEngine,
-                                    previewSoundEnabled = settings.trailerPreviewSoundEnabled,
-                                    previewProgress = trailerPreviewProgress,
-                                    onPlayItem = { item ->
-                                        trailerPreviewCoordinator.clearFocus()
-                                        scope.launch {
-                                            val detail = browseRepository.getItemDetail(item.id) ?: return@launch
-                                            val environment = environmentProvider.current() ?: return@launch
-                                            playbackController.play(PlaybackRequest.from(item, detail), environment)
-                                            playbackController.setPlaybackSpeed(settings.defaultPlaybackSpeed)
-                                            playbackController.setStatsForNerdsEnabled(settings.statsForNerdsEnabled)
-                                            push(TvRoute.Player)
-                                        }
-                                    },
-                                    onItem = {
-                                        trailerPreviewCoordinator.clearFocus()
-                                        push(TvRoute.JellyfinDetail(it.id))
-                                    },
-                                    onLibrary = { push(TvRoute.Library(it.id, it.name)) },
-                                    onSeerrItem = ::openSeerr,
-                                )
-                            is TvRoute.Library ->
-                                TvLibraryScreen(
-                                    route = route,
-                                    state = homeState,
-                                    strings = strings,
-                                    focusMemory = focusMemory,
-                                    onSelectLibrary = { id ->
-                                        val library = homeState.libraries.firstOrNull { it.id == id }
-                                        if (route.libraryId == null) {
-                                            push(TvRoute.Library(id, library?.name))
-                                        } else {
-                                            browseCoordinator.selectLibrary(id)
-                                        }
-                                    },
-                                    onOpenItem = { push(TvRoute.JellyfinDetail(it.id)) },
-                                    onOpenContainer = browseCoordinator::openContainer,
-                                    onLoadMore = browseCoordinator::loadNextPage,
-                                    onRetry = browseCoordinator::refreshSelectedLibrary,
-                                )
-                            TvRoute.Search ->
-                                TvSearchScreen(
-                                    jellyfinResults = jellyfinSearchResults,
-                                    requestsState = requests,
-                                    homeState = homeState,
-                                    strings = strings,
-                                    focusMemory = focusMemory,
-                                    onQueryChanged = { query ->
-                                        requestsCoordinator.search(query)
-                                        jellyfinSearchJob?.cancel()
-                                        if (query.isBlank()) {
-                                            jellyfinSearchResults = emptyList()
-                                        } else {
-                                            jellyfinSearchJob =
-                                                scope.launch {
-                                                    delay(300)
-                                                    jellyfinSearchResults =
-                                                        runCatching { browseRepository.searchItems(query.trim()) }
-                                                            .getOrDefault(emptyList())
-                                                }
-                                        }
-                                    },
-                                    onJellyfinItem = { push(TvRoute.JellyfinDetail(it.id)) },
-                                    onSeerrItem = ::openSeerr,
-                                )
-                            TvRoute.Discover ->
-                                TvDiscoverScreen(
-                                    recommendations,
-                                    requests,
-                                    strings,
-                                    focusMemory,
-                                    ::openSeerr,
-                                    onConnectSeerr = { selectTopLevel(TvRoute.Settings()) },
-                                )
-                            is TvRoute.Settings ->
-                                TvSettingsScreen(
-                                    settings = settings,
-                                    repository = settingsRepository,
-                                    serverRepository = serverRepository,
-                                    connectionCoordinator = koin.get<ServerConnectionCoordinator>(),
-                                    quickConnectCoordinator = koin.get<JellyfinQuickConnectCoordinator>(),
-                                    appVersion = appVersion,
-                                    strings = strings,
-                                    onServersChanged = {
-                                        browseCoordinator.bootstrap(true)
-                                        recommendationsCoordinator.refreshAll()
-                                    },
-                                )
-                            is TvRoute.JellyfinDetail ->
-                                TvJellyfinDetailScreen(
-                                    route = route,
-                                    homeState = homeState,
-                                    repository = browseRepository,
-                                    browseCoordinator = browseCoordinator,
-                                    environmentProvider = environmentProvider,
-                                    playbackController = playbackController,
-                                    trailerResolver = detailTrailerResolver,
-                                    settings = settings,
-                                    strings = strings,
-                                    onOpenItem = { push(TvRoute.JellyfinDetail(it.id)) },
-                                    onPlaybackStarted = { push(TvRoute.Player) },
-                                )
-                            is TvRoute.SeerrDetail -> {
-                                val key = route.mediaType to route.tmdbId
-                                TvSeerrDetailScreen(
-                                    route = route,
-                                    detailState = details[key],
-                                    requestsState = requests,
-                                    requestsCoordinator = requestsCoordinator,
-                                    strings = strings,
-                                    onOpenItem = ::openSeerr,
-                                )
+                        val entryRouteKey =
+                            route.focusRouteKey(
+                                if (route is TvRoute.Library) homeState.browsePath.map { it.id } else emptyList(),
+                            )
+                        TvRouteFocusScope(focusCoordinator, entryRouteKey) {
+                            when (route) {
+                                TvRoute.Home ->
+                                    TvHomeScreen(
+                                        state = homeState,
+                                        homeSections = homeSections,
+                                        strings = strings,
+                                        autoCycle = settings.spotlightAutoCycle,
+                                        intervalSeconds = settings.spotlightIntervalSeconds,
+                                        railOpen = focusCoordinator.isRailVisible,
+                                        trailerPreviewState = trailerPreviewState,
+                                        focusMemory = focusMemory,
+                                        onRefresh = {
+                                            trailerPreviewCoordinator.invalidateCache()
+                                            browseCoordinator.bootstrap(true)
+                                        },
+                                        onPreviewFocus = { owner, item ->
+                                            if (jellyfinServerKey != null) {
+                                                trailerPreviewCoordinator.focus(
+                                                    TvTrailerPreviewRequest(
+                                                        owner = owner,
+                                                        target =
+                                                            TvTrailerPreviewTarget(
+                                                                serverKey = jellyfinServerKey,
+                                                                itemId = item.id,
+                                                                isEpisode = item.type.equals("Episode", true),
+                                                                seriesId = item.seriesId,
+                                                            ),
+                                                    ),
+                                                )
+                                            }
+                                        },
+                                        onPreviewBlur = { owner, item ->
+                                            if (jellyfinServerKey != null) {
+                                                trailerPreviewCoordinator.clearFocus(
+                                                    TvTrailerPreviewRequest(
+                                                        owner = owner,
+                                                        target =
+                                                            TvTrailerPreviewTarget(
+                                                                serverKey = jellyfinServerKey,
+                                                                itemId = item.id,
+                                                                isEpisode = item.type.equals("Episode", true),
+                                                                seriesId = item.seriesId,
+                                                            ),
+                                                    ),
+                                                )
+                                            }
+                                        },
+                                        onCancelPreview = trailerPreviewCoordinator::clearFocus,
+                                        trailerPreviewEngine = trailerPreviewEngine,
+                                        previewSoundEnabled = settings.trailerPreviewSoundEnabled,
+                                        previewProgress = trailerPreviewProgress,
+                                        onPlayItem = { item ->
+                                            trailerPreviewCoordinator.clearFocus()
+                                            scope.launch {
+                                                val detail = browseRepository.getItemDetail(item.id) ?: return@launch
+                                                val environment = environmentProvider.current() ?: return@launch
+                                                playbackController.play(PlaybackRequest.from(item, detail), environment)
+                                                playbackController.setPlaybackSpeed(settings.defaultPlaybackSpeed)
+                                                playbackController.setStatsForNerdsEnabled(settings.statsForNerdsEnabled)
+                                                push(TvRoute.Player)
+                                            }
+                                        },
+                                        onItem = {
+                                            trailerPreviewCoordinator.clearFocus()
+                                            push(TvRoute.JellyfinDetail(it.id))
+                                        },
+                                        onLibrary = { push(TvRoute.Library(it.id, it.name)) },
+                                        onSeerrItem = ::openSeerr,
+                                    )
+                                is TvRoute.Library ->
+                                    TvLibraryScreen(
+                                        route = route,
+                                        state = homeState,
+                                        strings = strings,
+                                        focusMemory = focusMemory,
+                                        onSelectLibrary = { id ->
+                                            val library = homeState.libraries.firstOrNull { it.id == id }
+                                            if (route.libraryId == null) {
+                                                push(TvRoute.Library(id, library?.name))
+                                            } else {
+                                                browseCoordinator.selectLibrary(id)
+                                            }
+                                        },
+                                        onOpenItem = { push(TvRoute.JellyfinDetail(it.id)) },
+                                        onOpenContainer = browseCoordinator::openContainer,
+                                        onLoadMore = browseCoordinator::loadNextPage,
+                                        onRetry = browseCoordinator::refreshSelectedLibrary,
+                                    )
+                                TvRoute.Search ->
+                                    TvSearchScreen(
+                                        jellyfinResults = jellyfinSearchResults,
+                                        requestsState = requests,
+                                        homeState = homeState,
+                                        strings = strings,
+                                        focusMemory = focusMemory,
+                                        onQueryChanged = { query ->
+                                            requestsCoordinator.search(query)
+                                            jellyfinSearchJob?.cancel()
+                                            if (query.isBlank()) {
+                                                jellyfinSearchResults = emptyList()
+                                            } else {
+                                                jellyfinSearchJob =
+                                                    scope.launch {
+                                                        delay(300)
+                                                        jellyfinSearchResults =
+                                                            runCatching { browseRepository.searchItems(query.trim()) }
+                                                                .getOrDefault(emptyList())
+                                                    }
+                                            }
+                                        },
+                                        onJellyfinItem = { push(TvRoute.JellyfinDetail(it.id)) },
+                                        onSeerrItem = ::openSeerr,
+                                    )
+                                TvRoute.Discover ->
+                                    TvDiscoverScreen(
+                                        recommendations,
+                                        requests,
+                                        strings,
+                                        focusMemory,
+                                        ::openSeerr,
+                                        onConnectSeerr = { selectTopLevel(TvRoute.Settings()) },
+                                    )
+                                is TvRoute.Settings ->
+                                    TvSettingsScreen(
+                                        settings = settings,
+                                        repository = settingsRepository,
+                                        serverRepository = serverRepository,
+                                        connectionCoordinator = koin.get<ServerConnectionCoordinator>(),
+                                        quickConnectCoordinator = koin.get<JellyfinQuickConnectCoordinator>(),
+                                        appVersion = appVersion,
+                                        strings = strings,
+                                        onServersChanged = {
+                                            browseCoordinator.bootstrap(true)
+                                            recommendationsCoordinator.refreshAll()
+                                        },
+                                    )
+                                is TvRoute.JellyfinDetail ->
+                                    TvJellyfinDetailScreen(
+                                        route = route,
+                                        homeState = homeState,
+                                        repository = browseRepository,
+                                        browseCoordinator = browseCoordinator,
+                                        environmentProvider = environmentProvider,
+                                        playbackController = playbackController,
+                                        trailerResolver = detailTrailerResolver,
+                                        settings = settings,
+                                        strings = strings,
+                                        onOpenItem = { push(TvRoute.JellyfinDetail(it.id)) },
+                                        onPlaybackStarted = { push(TvRoute.Player) },
+                                    )
+                                is TvRoute.SeerrDetail -> {
+                                    val key = route.mediaType to route.tmdbId
+                                    TvSeerrDetailScreen(
+                                        route = route,
+                                        detailState = details[key],
+                                        requestsState = requests,
+                                        requestsCoordinator = requestsCoordinator,
+                                        strings = strings,
+                                        onOpenItem = ::openSeerr,
+                                    )
+                                }
+                                TvRoute.Player ->
+                                    TvPlaybackScreen(
+                                        controller = playbackController,
+                                        engine = playerEngine,
+                                        syncPlay = syncPlay,
+                                        strings = strings,
+                                        stopPlayback = stopPlayback,
+                                        onClose = {
+                                            stopPlayback()
+                                            backStack.removeLastOrNull()
+                                        },
+                                    )
                             }
-                            TvRoute.Player ->
-                                TvPlaybackScreen(
-                                    controller = playbackController,
-                                    engine = playerEngine,
-                                    syncPlay = syncPlay,
-                                    strings = strings,
-                                    stopPlayback = stopPlayback,
-                                    onClose = {
-                                        stopPlayback()
-                                        backStack.removeLastOrNull()
-                                    },
-                                )
                         }
                     }
                 },

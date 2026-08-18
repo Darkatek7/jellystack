@@ -21,6 +21,8 @@ internal sealed interface TvFocusRestoration<out T> {
 internal class TvFocusCoordinator<T : Any>(
     initiallyRailVisible: Boolean = false,
     private val attachmentTimeoutMillis: Long = 1_000,
+    private val focusRequestAttempts: Int = 3,
+    private val awaitFocusFrame: suspend () -> Unit = {},
 ) {
     private data class TargetRegistration(
         var count: Int,
@@ -54,6 +56,7 @@ internal class TvFocusCoordinator<T : Any>(
 
     init {
         require(attachmentTimeoutMillis > 0)
+        require(focusRequestAttempts > 0)
     }
 
     fun register(
@@ -257,22 +260,25 @@ internal class TvFocusCoordinator<T : Any>(
             true
         } ?: false
 
-    private fun focusTarget(
+    private suspend fun focusTarget(
         routeKey: Any,
         targetId: String,
         requestFocus: (T) -> Boolean,
     ): T? {
-        val targets =
-            routes[routeKey]
-                ?.attached
-                ?.get(targetId)
-                ?.targets
-                ?.keys
-                .orEmpty()
-        targets.forEach { target ->
-            if (requestFocus(target)) {
-                rememberFocused(routeKey, targetId, target)
-                return target
+        repeat(focusRequestAttempts) {
+            awaitFocusFrame()
+            val targets =
+                routes[routeKey]
+                    ?.attached
+                    ?.get(targetId)
+                    ?.targets
+                    ?.keys
+                    .orEmpty()
+            targets.forEach { target ->
+                if (requestFocus(target)) {
+                    rememberFocused(routeKey, targetId, target)
+                    return target
+                }
             }
         }
         return null

@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.LocalContext
@@ -137,6 +138,40 @@ class TvHomeScreenTest {
         }
         composeRule.runOnIdle { shown.value = true }
         composeRule.onNodeWithContentDescription("Library 27, 27 items").assertIsFocused()
+    }
+
+    @Test
+    fun recreatedPagedLibraryErrorRestoresOffscreenRetryAndLeftOpensRail() {
+        val shown = androidx.compose.runtime.mutableStateOf(true)
+        val preferred = androidx.compose.runtime.mutableStateOf<String?>(TV_LIBRARY_RETRY_TARGET)
+        var railOpenRequests = 0
+        val items = (0..31).map { index -> item("library-item-$index", "Library item $index") }
+        composeRule.setContent {
+            RestorablePagedLibraryErrorHost(
+                shown = shown.value,
+                preferredTargetId = preferred.value,
+                items = items,
+                onOpenRail = { railOpenRequests += 1 },
+            )
+        }
+
+        composeRule.waitUntil(2_000) {
+            composeRule.onAllNodes(hasContentDescription("Try again")).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithContentDescription("Try again").assertIsFocused()
+        composeRule.runOnIdle {
+            preferred.value = null
+            shown.value = false
+        }
+        composeRule.runOnIdle { shown.value = true }
+        composeRule.waitUntil(2_000) {
+            composeRule.onAllNodes(hasContentDescription("Try again")).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule
+            .onNodeWithContentDescription("Try again")
+            .assertIsFocused()
+            .performKeyInput { pressKey(Key.DirectionLeft) }
+        composeRule.runOnIdle { assertEquals(1, railOpenRequests) }
     }
 
     @Test
@@ -906,6 +941,54 @@ class TvHomeScreenTest {
                         onLoadMore = {},
                         onRetry = {},
                     )
+                }
+            }
+            androidx.compose.runtime.LaunchedEffect(shown, preferredTargetId) {
+                coordinator.restoreFocus(
+                    routeKey = routeKey,
+                    preferredTargetId = preferredTargetId,
+                    requestFocus = { requester -> runCatching { requester.requestFocus() }.getOrDefault(false) },
+                )
+            }
+        }
+    }
+
+    @androidx.compose.runtime.Composable
+    private fun RestorablePagedLibraryErrorHost(
+        shown: Boolean,
+        preferredTargetId: String?,
+        items: List<JellyfinItem>,
+        onOpenRail: () -> Unit,
+    ) {
+        val route = TvRoute.Library("library", "Library")
+        val routeKey = route.focusRouteKey(emptyList())
+        val coordinator =
+            remember {
+                TvFocusCoordinator<FocusRequester>(
+                    awaitFocusFrame = { withFrameNanos { } },
+                )
+            }
+        if (shown) {
+            CompositionLocalProvider(LocalTvNavigationRailOpener provides onOpenRail) {
+                TvRouteFocusScope(coordinator, routeKey) {
+                    JellystackTvTheme {
+                        TvLibraryScreen(
+                            route = route,
+                            state =
+                                JellyfinHomeState(
+                                    selectedLibraryId = "library",
+                                    libraryItems = items,
+                                    errorMessage = "Paging failed",
+                                ),
+                            strings = TvStrings.current(AppLanguage.ENGLISH),
+                            focusMemory = remember { TvFocusMemory() },
+                            onSelectLibrary = {},
+                            onOpenItem = {},
+                            onOpenContainer = {},
+                            onLoadMore = {},
+                            onRetry = {},
+                        )
+                    }
                 }
             }
             androidx.compose.runtime.LaunchedEffect(shown, preferredTargetId) {

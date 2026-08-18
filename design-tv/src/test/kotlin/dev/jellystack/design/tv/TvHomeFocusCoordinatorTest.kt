@@ -1,8 +1,10 @@
 package dev.jellystack.design.tv
 
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -243,4 +245,92 @@ class TvHomeFocusCoordinatorTest {
         assertEquals(TvHomeFocusDestination.HeroCarousel, move?.destination)
         assertEquals(1, cancellations)
     }
+
+    @Test
+    fun transientHomeTargetRejectionRetriesAndCompletesTheMove() =
+        runTest {
+            val vertical = TvHomeVerticalFocusCoordinator(rows)
+            val move =
+                vertical.beginMove(
+                    TvHomeFocusOrigin.Row("portrait", "portrait-1"),
+                    TvHomeVerticalDirection.DOWN,
+                )!!
+            val targetId = tvHomeCardTargetId("landscape", "landscape-1")
+            var attempts = 0
+            var frames = 0
+            val focus =
+                TvFocusCoordinator<String>(
+                    awaitFocusFrame = { frames += 1 },
+                ).apply {
+                    register("home", targetId = targetId, target = "landscape-requester")
+                }
+
+            val completion =
+                vertical.completeMove(move.requestId) { requestedTargetId ->
+                    focus.restoreFocus(
+                        routeKey = "home",
+                        preferredTargetId = requestedTargetId,
+                        includeFallback = false,
+                    ) { ++attempts == 2 } is TvFocusRestoration.Focused
+                }
+
+            assertEquals(TvHomeFocusCompletion(move.requestId, focused = true), completion)
+            assertEquals(2, attempts)
+            assertEquals(2, frames)
+        }
+
+    @Test
+    fun exhaustedHomeTargetUsesTheDeterministicNearestAttachedCard() =
+        runTest {
+            val vertical = TvHomeVerticalFocusCoordinator(rows)
+            val move =
+                vertical.beginMove(
+                    TvHomeFocusOrigin.Row("portrait", "portrait-1"),
+                    TvHomeVerticalDirection.DOWN,
+                )!!
+            val firstTarget = tvHomeCardTargetId("landscape", "landscape-1")
+            val nearestTarget = tvHomeCardTargetId("landscape", "landscape-2")
+            val attempts = mutableListOf<String>()
+            val focus =
+                TvFocusCoordinator<String>().apply {
+                    register("home", targetId = firstTarget, target = "first")
+                    register("home", targetId = nearestTarget, target = "nearest")
+                }
+
+            val completion =
+                vertical.completeMove(move.requestId) { requestedTargetId ->
+                    focus.restoreFocus(
+                        routeKey = "home",
+                        preferredTargetId = requestedTargetId,
+                        includeFallback = false,
+                    ) { requester ->
+                        attempts += requester
+                        requester == "nearest"
+                    } is TvFocusRestoration.Focused
+                }
+
+            assertEquals(TvHomeFocusCompletion(move.requestId, focused = true), completion)
+            assertEquals(listOf("first", "first", "first", "nearest"), attempts)
+        }
+
+    @Test
+    fun terminalHomeMoveFailureClearsPendingSoTheKeyCanStartANewAttempt() =
+        runTest {
+            val vertical = TvHomeVerticalFocusCoordinator(rows)
+            val first =
+                vertical.beginMove(
+                    TvHomeFocusOrigin.Row("portrait", "portrait-1"),
+                    TvHomeVerticalDirection.DOWN,
+                )!!
+
+            val completion = vertical.completeMove(first.requestId) { false }
+            val repeated =
+                vertical.beginMove(
+                    TvHomeFocusOrigin.Row("portrait", "portrait-1"),
+                    TvHomeVerticalDirection.DOWN,
+                )!!
+
+            assertEquals(TvHomeFocusCompletion(first.requestId, focused = false), completion)
+            assertNotEquals(first.requestId, repeated.requestId)
+        }
 }

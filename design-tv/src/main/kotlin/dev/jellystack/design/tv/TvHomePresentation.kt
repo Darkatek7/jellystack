@@ -204,6 +204,11 @@ internal data class TvHomeFocusMove(
     val destination: TvHomeFocusDestination,
 )
 
+internal data class TvHomeFocusCompletion(
+    val requestId: Long,
+    val focused: Boolean,
+)
+
 internal class TvHomeFocusTargetRegistry<T : Any>(
     private val targetFactory: () -> T,
 ) {
@@ -252,6 +257,33 @@ internal class TvHomeVerticalFocusCoordinator(
         if (pendingMove?.requestId != requestId) return false
         pendingMove = null
         return true
+    }
+
+    suspend fun completeMove(
+        requestId: Long,
+        requestTarget: suspend (String) -> Boolean,
+    ): TvHomeFocusCompletion? {
+        val move = pendingMove?.takeIf { it.requestId == requestId } ?: return null
+        val focused =
+            when (val destination = move.destination) {
+                TvHomeFocusDestination.HeroCarousel -> requestTarget(TV_HOME_HERO_TARGET)
+                TvHomeFocusDestination.HeroPrimary -> requestTarget(TV_HOME_PRIMARY_TARGET)
+                is TvHomeFocusDestination.Row -> {
+                    val row = rows.firstOrNull { it.id == destination.id }
+                    val targetIndex =
+                        row?.itemIds?.indexOf(destination.firstItemId)?.takeIf { it >= 0 }
+                            ?: destination.horizontalIndex
+                    row
+                        ?.itemIds
+                        ?.indices
+                        ?.sortedBy { index -> kotlin.math.abs(index - targetIndex) }
+                        ?.any { index -> requestTarget(tvHomeCardTargetId(row.id, row.itemIds[index])) }
+                        ?: false
+                }
+            }
+        if (pendingMove?.requestId != requestId) return null
+        pendingMove = null
+        return TvHomeFocusCompletion(requestId, focused)
     }
 
     private fun destination(

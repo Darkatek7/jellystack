@@ -172,7 +172,7 @@ class TvFocusCoordinatorTest {
                 }
 
             assertEquals(TvFocusRestoration.Focused("first"), focused)
-            assertEquals(listOf("remembered", "first"), attempted)
+            assertEquals(listOf("remembered", "remembered", "remembered", "first"), attempted)
 
             coordinator.unregister("library:movies", "remembered")
             assertEquals(TvFocusRestoration.Focused("first"), coordinator.restoreFocus("library:movies") { true })
@@ -207,7 +207,60 @@ class TvFocusCoordinatorTest {
                 }
 
             assertEquals(TvFocusRestoration.Failed, focused)
-            assertEquals(1, requests)
+            assertEquals(3, requests)
+        }
+
+    @Test
+    fun transientFocusRejectionWaitsForFramesAndRetriesTheExactTarget() =
+        runTest {
+            val events = mutableListOf<String>()
+            val coordinator =
+                TvFocusCoordinator<String>(
+                    focusRequestAttempts = 3,
+                    awaitFocusFrame = { events += "frame" },
+                )
+            coordinator.register("home", targetId = "card:20", target = "card-requester")
+            coordinator.register("home", targetId = "hero", target = "hero-requester", fallback = true)
+            var exactAttempts = 0
+
+            val focused =
+                coordinator.restoreFocus("home", preferredTargetId = "card:20") { requester ->
+                    events += "focus:$requester"
+                    if (requester == "card-requester") ++exactAttempts == 2 else true
+                }
+
+            assertEquals(TvFocusRestoration.Focused("card-requester"), focused)
+            assertEquals(
+                listOf("frame", "focus:card-requester", "frame", "focus:card-requester"),
+                events,
+            )
+        }
+
+    @Test
+    fun exhaustedExactTargetRetriesUseFallbackOnlyAfterTheBoundedAttempts() =
+        runTest {
+            val attempted = mutableListOf<String>()
+            var frames = 0
+            val coordinator =
+                TvFocusCoordinator<String>(
+                    focusRequestAttempts = 3,
+                    awaitFocusFrame = { frames += 1 },
+                )
+            coordinator.register("library:movies", targetId = "item:20", target = "item-requester")
+            coordinator.register("library:movies", targetId = "first", target = "first-requester", fallback = true)
+
+            val focused =
+                coordinator.restoreFocus("library:movies", preferredTargetId = "item:20") { requester ->
+                    attempted += requester
+                    requester == "first-requester"
+                }
+
+            assertEquals(TvFocusRestoration.Focused("first-requester"), focused)
+            assertEquals(
+                listOf("item-requester", "item-requester", "item-requester", "first-requester"),
+                attempted,
+            )
+            assertEquals(4, frames)
         }
 
     @Test
