@@ -25,6 +25,7 @@ internal enum class TvTrailerPreviewOwner { HERO, CARD }
 internal data class TvTrailerPreviewRequest(
     val owner: TvTrailerPreviewOwner,
     val target: TvTrailerPreviewTarget,
+    val presentationId: String? = null,
 )
 
 internal sealed interface TvTrailerPreviewState {

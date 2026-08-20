@@ -2,9 +2,10 @@
 
 ## 0.16.0-tv-beta.4
 
-- Rotate Spotlight automatically through recently added movies and shows.
-- Preview trailers in Spotlight after the existing short pause.
-- Open Movies and Shows libraries without waiting on unrelated Home requests or hanging indefinitely.
+- Keep Spotlight on the selected item so trailer previews can play without interruption.
+- Show trailer previews only in the exact focused card, even when media appears in multiple rows.
+- Open Home media and Movies or Shows libraries without endless loading.
+- Keep Discover and Upcoming cards in one consistent poster format without focus bouncing.
 - Restore remote focus predictably across rows, routes, and the sidebar.
 
 ## 0.16.0-tv-beta.3

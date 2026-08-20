@@ -4,9 +4,7 @@ package dev.jellystack.design.tv
 
 import android.view.KeyEvent
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -297,20 +295,8 @@ internal fun TvMediaCard(
 ) {
     val shape = RoundedCornerShape(18.dp)
     var focused by remember { mutableStateOf(false) }
-    val targetWidth by
-        animateDpAsState(
-            targetValue =
-                when {
-                    fillWidth -> 250.dp
-                    landscape && focused -> 266.dp
-                    landscape -> 250.dp
-                    focused -> 300.dp
-                    else -> 140.dp
-                },
-            animationSpec = tween(240),
-            label = "tv-card-width",
-        )
-    val aspectRatio = if (landscape || focused) 16f / 9f else 2f / 3f
+    val cardWidth = if (landscape) 250.dp else 140.dp
+    val aspectRatio = if (landscape) 16f / 9f else 2f / 3f
     val bringIntoViewRequester = remember { BringIntoViewRequester() }
     LaunchedEffect(focused) {
         if (focused) {
@@ -321,7 +307,7 @@ internal fun TvMediaCard(
     Column(
         modifier =
             modifier
-                .then(if (fillWidth) Modifier.fillMaxWidth() else Modifier.width(targetWidth))
+                .then(if (fillWidth) Modifier.fillMaxWidth() else Modifier.width(cardWidth))
                 .bringIntoViewRequester(bringIntoViewRequester)
                 .semantics(mergeDescendants = true) {
                     contentDescription = listOfNotNull(title, subtitle).joinToString(", ")

@@ -87,6 +87,22 @@ import dev.jellystack.players.PlaybackController
 import dev.jellystack.players.PlaybackRequest
 import kotlinx.coroutines.launch
 
+internal data class TvJellyfinDetailBase(
+    val item: JellyfinItem,
+    val detail: JellyfinItemDetail,
+)
+
+internal suspend fun loadTvJellyfinDetailBase(
+    itemId: String,
+    initialItem: JellyfinItem?,
+    cachedItem: suspend (String) -> JellyfinItem?,
+    loadDetail: suspend (String) -> JellyfinItemDetail?,
+): TvJellyfinDetailBase {
+    val item = initialItem ?: cachedItem(itemId) ?: error("Media item is unavailable.")
+    val detail = loadDetail(itemId) ?: error("Media details are unavailable.")
+    return TvJellyfinDetailBase(item, detail)
+}
+
 @Composable
 internal fun TvDetailFocusLayout(
     routeKey: String,
@@ -167,6 +183,7 @@ internal fun TvDetailFocusLayout(
 @Composable
 internal fun TvJellyfinDetailScreen(
     route: TvRoute.JellyfinDetail,
+    initialItem: JellyfinItem?,
     homeState: JellyfinHomeState,
     repository: JellyfinBrowseRepository,
     browseCoordinator: JellyfinBrowseCoordinator,
@@ -186,33 +203,49 @@ internal fun TvJellyfinDetailScreen(
     var similar by remember(route.itemId) { mutableStateOf<List<JellyfinItem>>(emptyList()) }
     var trailer by remember(route.itemId) { mutableStateOf<DetailTrailerSource?>(null) }
     var error by remember(route.itemId) { mutableStateOf<String?>(null) }
+    var loadRevision by remember(route.itemId) { mutableStateOf(0) }
     val uriHandler = LocalUriHandler.current
-    LaunchedEffect(route.itemId) {
+    LaunchedEffect(route.itemId, initialItem, loadRevision) {
+        error = null
         runCatching {
-            val loadedItem = repository.cachedItem(route.itemId)
-            val loadedDetail = repository.getItemDetail(route.itemId)
+            val loaded =
+                loadTvJellyfinDetailBase(
+                    itemId = route.itemId,
+                    initialItem = initialItem,
+                    cachedItem = repository::cachedItem,
+                    loadDetail = repository::getItemDetail,
+                )
+            val loadedItem = loaded.item
+            val loadedDetail = loaded.detail
             item = loadedItem
             detail = loadedDetail
-            if (loadedItem?.type.equals("Series", true)) episodes = repository.refreshEpisodesForSeries(route.itemId)
+            if (loadedItem.type.equals("Series", true)) episodes = repository.refreshEpisodesForSeries(route.itemId)
             similar = repository.fetchSimilarItems(route.itemId, 12)
-            if (loadedItem != null && loadedDetail != null) {
-                trailer =
-                    trailerResolver.resolve(
-                        DetailTrailerContext(
-                            itemId = loadedItem.id,
-                            isEpisode = loadedItem.type.equals("Episode", true),
-                            isSeries = loadedItem.type.equals("Series", true),
-                            seriesId = loadedItem.seriesId,
-                            detail = loadedDetail,
-                        ),
-                    )
-            }
+            trailer =
+                trailerResolver.resolve(
+                    DetailTrailerContext(
+                        itemId = loadedItem.id,
+                        isEpisode = loadedItem.type.equals("Episode", true),
+                        isSeries = loadedItem.type.equals("Series", true),
+                        seriesId = loadedItem.seriesId,
+                        detail = loadedDetail,
+                    ),
+                )
         }.onFailure { error = it.message }
     }
     val currentItem = item
     val currentDetail = detail
     if (currentItem == null || currentDetail == null) {
-        error?.let { TvLoading(it, modifier) } ?: TvLoading(strings.loading, modifier)
+        error?.let { message ->
+            Column(
+                modifier = modifier.fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+            ) {
+                Text(message, color = TvTextMuted)
+                TvActionButton(strings.retry, onClick = { loadRevision += 1 }, primary = true)
+            }
+        } ?: TvLoading(strings.loading, modifier)
         return
     }
     val heroId = if (currentItem.type.equals("Episode", true)) currentItem.seriesId ?: currentItem.id else currentItem.id

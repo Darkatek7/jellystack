@@ -150,6 +150,25 @@ class TvTrailerPreviewControllerTest {
         }
 
     @Test
+    fun staleDuplicateCardCleanupDoesNotClearTheFocusedCardInstance() =
+        runTest {
+            val player = FakePreviewPlayer()
+            val controller = TvTrailerPreviewController(this, { source("trailer") }, player)
+            val oldCard = request(TvTrailerPreviewOwner.CARD, "same").copy(presentationId = "continue:same")
+            val focusedCard = request(TvTrailerPreviewOwner.CARD, "same").copy(presentationId = "latest:same")
+
+            controller.focus(oldCard)
+            controller.focus(focusedCard)
+            controller.clearFocus(oldCard)
+            advanceTimeBy(3_000L)
+            runCurrent()
+
+            assertEquals(focusedCard, assertIs<TvTrailerPreviewState.Playing>(controller.state.value).request)
+            assertEquals(0, player.stops)
+            controller.release()
+        }
+
+    @Test
     fun clearingHeroOwnerDoesNotCancelFocusedCardPreview() =
         runTest {
             val player = FakePreviewPlayer()

@@ -414,10 +414,10 @@
     <string name="whats_new_0150_syncplay">Erstelle SyncPlay-Gruppen oder tritt ihnen bei und schaut gemeinsam.</string>
     <string name="whats_new_0150_playback">Ändere die Wiedergabegeschwindigkeit und prüfe Live-Statistiken.</string>
     <string name="whats_new_0150_admin">Administratoren verwalten Jellyfin und ausstehende Seerr-Anfragen im neuen Admin-Tab.</string>
-    <string name="whats_new_0160_tv_beta4_spotlight">Spotlight wechselt jetzt durch kürzlich hinzugefügte Filme und Serien.</string>
-    <string name="whats_new_0160_tv_beta4_trailers">Trailer-Vorschauen starten im Spotlight nach einer kurzen Pause.</string>
-    <string name="whats_new_0160_tv_beta4_libraries">Film- und Serienbibliotheken laden unabhängig und ohne Hänger.</string>
-    <string name="whats_new_0160_tv_beta4_focus">Fernbedienungsfokus und Position kehren in Zeilen, Ansichten und Seitenleiste zuverlässig zurück.</string>
+    <string name="whats_new_0160_tv_beta4_spotlight">Spotlight bleibt beim ausgewählten Titel, damit Trailer ungestört abspielen.</string>
+    <string name="whats_new_0160_tv_beta4_trailers">Trailer-Vorschauen folgen der exakt fokussierten Karte, auch in doppelten Zeilen.</string>
+    <string name="whats_new_0160_tv_beta4_libraries">Medien von Home sowie Film- und Serienbibliotheken öffnen ohne endloses Laden.</string>
+    <string name="whats_new_0160_tv_beta4_focus">Der Fernbedienungsfokus ist zuverlässiger und Discover-Poster springen nicht mehr.</string>
     <string name="insecure_http_title">Unverschlüsselte Verbindung</string>
     <string name="insecure_http_warning">Dieser Server verwendet unverschlüsseltes HTTP. Zugangsdaten und Medienverkehr können für andere im Netzwerk sichtbar sein. Verwende wenn möglich HTTPS.</string>
     <string name="insecure_http_confirm">Diesen HTTP-Server trotzdem verwenden</string>

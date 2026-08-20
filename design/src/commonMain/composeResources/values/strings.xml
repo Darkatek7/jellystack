@@ -414,10 +414,10 @@
     <string name="whats_new_0150_syncplay">Create or join SyncPlay groups and watch together.</string>
     <string name="whats_new_0150_playback">Change playback speed and inspect live Stats for Nerds.</string>
     <string name="whats_new_0150_admin">Administrators can manage Jellyfin and pending Seerr requests from the new Admin tab.</string>
-    <string name="whats_new_0160_tv_beta4_spotlight">Spotlight now rotates through recently added movies and shows.</string>
-    <string name="whats_new_0160_tv_beta4_trailers">Trailer previews start in Spotlight after a short pause.</string>
-    <string name="whats_new_0160_tv_beta4_libraries">Movie and show libraries load independently without hanging.</string>
-    <string name="whats_new_0160_tv_beta4_focus">Remote focus returns predictably across rows, screens, and the sidebar.</string>
+    <string name="whats_new_0160_tv_beta4_spotlight">Spotlight stays on your selected item so trailers can play without interruption.</string>
+    <string name="whats_new_0160_tv_beta4_trailers">Trailer previews follow the exact focused card, even across duplicate rows.</string>
+    <string name="whats_new_0160_tv_beta4_libraries">Home media and movie or show libraries open without endless loading.</string>
+    <string name="whats_new_0160_tv_beta4_focus">Remote focus is more reliable, and Discover posters no longer resize or bounce.</string>
     <string name="insecure_http_title">Unencrypted connection</string>
     <string name="insecure_http_warning">This server uses unencrypted HTTP. Credentials and media traffic may be visible to others on the network. Use HTTPS whenever possible.</string>
     <string name="insecure_http_confirm">Use this HTTP server anyway</string>

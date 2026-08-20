@@ -33,6 +33,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -60,6 +61,7 @@ import dev.jellystack.core.jellyfin.JellyfinBrowseCoordinator
 import dev.jellystack.core.jellyfin.JellyfinBrowseRepository
 import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
 import dev.jellystack.core.jellyfin.JellyfinFavoritesStoreApi
+import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.JellyfinSessionRepository
 import dev.jellystack.core.jellyfin.JellyfinSessionState
 import dev.jellystack.core.jellyfin.JellyfinSyncPlayAccess
@@ -282,6 +284,7 @@ private fun TvAuthenticatedApp(
         .collectAsStateWithLifecycle()
     val focusMemory = remember { TvFocusMemory() }
     val backStack = remember { mutableStateListOf<TvRoute>(TvRoute.Home) }
+    val detailSourceItems = remember { mutableStateMapOf<String, JellyfinItem>() }
     var jellyfinSearchResults by remember { mutableStateOf(emptyList<dev.jellystack.core.jellyfin.JellyfinItem>()) }
     var jellyfinSearchJob by remember { mutableStateOf<Job?>(null) }
     val autoplayCoordinator =
@@ -314,6 +317,11 @@ private fun TvAuthenticatedApp(
 
     fun push(route: TvRoute) {
         if (backStack.lastOrNull() != route) backStack.add(route)
+    }
+
+    fun openJellyfinDetail(item: JellyfinItem) {
+        detailSourceItems[item.id] = item
+        push(TvRoute.JellyfinDetail(item.id))
     }
 
     fun selectTopLevel(route: TvRoute) {
@@ -465,20 +473,18 @@ private fun TvAuthenticatedApp(
                                         state = homeState,
                                         homeSections = homeSections,
                                         strings = strings,
-                                        autoCycle = settings.spotlightAutoCycle,
-                                        intervalSeconds = settings.spotlightIntervalSeconds,
-                                        railOpen = focusCoordinator.isRailVisible,
                                         trailerPreviewState = trailerPreviewState,
                                         focusMemory = focusMemory,
                                         onRefresh = {
                                             trailerPreviewCoordinator.invalidateCache()
                                             browseCoordinator.bootstrap(true)
                                         },
-                                        onPreviewFocus = { owner, item ->
+                                        onPreviewFocus = { owner, item, presentationId ->
                                             if (jellyfinServerKey != null) {
                                                 trailerPreviewCoordinator.focus(
                                                     TvTrailerPreviewRequest(
                                                         owner = owner,
+                                                        presentationId = presentationId,
                                                         target =
                                                             TvTrailerPreviewTarget(
                                                                 serverKey = jellyfinServerKey,
@@ -490,11 +496,12 @@ private fun TvAuthenticatedApp(
                                                 )
                                             }
                                         },
-                                        onPreviewBlur = { owner, item ->
+                                        onPreviewBlur = { owner, item, presentationId ->
                                             if (jellyfinServerKey != null) {
                                                 trailerPreviewCoordinator.clearFocus(
                                                     TvTrailerPreviewRequest(
                                                         owner = owner,
+                                                        presentationId = presentationId,
                                                         target =
                                                             TvTrailerPreviewTarget(
                                                                 serverKey = jellyfinServerKey,
@@ -523,8 +530,9 @@ private fun TvAuthenticatedApp(
                                         },
                                         onItem = {
                                             trailerPreviewCoordinator.clearFocus()
-                                            push(TvRoute.JellyfinDetail(it.id))
+                                            openJellyfinDetail(it)
                                         },
+                                        onHomeLibrary = { libraryId, title -> push(TvRoute.Library(libraryId, title)) },
                                         onLibrary = { push(TvRoute.Library(it.id, it.name)) },
                                         onSeerrItem = ::openSeerr,
                                     )
@@ -542,7 +550,7 @@ private fun TvAuthenticatedApp(
                                                 browseCoordinator.selectLibrary(id)
                                             }
                                         },
-                                        onOpenItem = { push(TvRoute.JellyfinDetail(it.id)) },
+                                        onOpenItem = ::openJellyfinDetail,
                                         onOpenContainer = browseCoordinator::openContainer,
                                         onLoadMore = browseCoordinator::loadNextPage,
                                         onRetry = browseCoordinator::refreshSelectedLibrary,
@@ -569,7 +577,7 @@ private fun TvAuthenticatedApp(
                                                     }
                                             }
                                         },
-                                        onJellyfinItem = { push(TvRoute.JellyfinDetail(it.id)) },
+                                        onJellyfinItem = ::openJellyfinDetail,
                                         onSeerrItem = ::openSeerr,
                                     )
                                 TvRoute.Discover ->
@@ -598,6 +606,7 @@ private fun TvAuthenticatedApp(
                                 is TvRoute.JellyfinDetail ->
                                     TvJellyfinDetailScreen(
                                         route = route,
+                                        initialItem = detailSourceItems[route.itemId],
                                         homeState = homeState,
                                         repository = browseRepository,
                                         browseCoordinator = browseCoordinator,
@@ -606,7 +615,7 @@ private fun TvAuthenticatedApp(
                                         trailerResolver = detailTrailerResolver,
                                         settings = settings,
                                         strings = strings,
-                                        onOpenItem = { push(TvRoute.JellyfinDetail(it.id)) },
+                                        onOpenItem = ::openJellyfinDetail,
                                         onPlaybackStarted = { push(TvRoute.Player) },
                                     )
                                 is TvRoute.SeerrDetail -> {

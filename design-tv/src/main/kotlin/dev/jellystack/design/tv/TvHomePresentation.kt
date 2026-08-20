@@ -3,6 +3,7 @@ package dev.jellystack.design.tv
 import dev.jellystack.core.jellyfin.HomeSectionAction
 import dev.jellystack.core.jellyfin.HomeSectionsState
 import dev.jellystack.core.jellyfin.JellyfinHomeState
+import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.SpotlightCandidate
 import dev.jellystack.core.jellyfin.buildLatestSpotlightCandidates
 import dev.jellystack.core.jellyfin.buildSpotlightCandidates
@@ -17,11 +18,8 @@ internal data class TvHomeHeroPresentation(
 
 internal enum class TvHomeCarouselDirection { PREVIOUS, NEXT }
 
-internal enum class TvHomeCarouselFocus { NONE, CONTAINER, ACTION }
-
 internal data class TvHomeCarouselState(
     val selectedId: String? = null,
-    val intervalRevision: Long = 0,
 )
 
 internal data class TvHomeCarouselManualMove(
@@ -33,32 +31,6 @@ internal fun reconcileTvHomeCarouselSelection(
     candidateIds: List<String>,
     currentId: String?,
 ): String? = currentId?.takeIf { it in candidateIds } ?: candidateIds.firstOrNull()
-
-internal fun moveTvHomeCarouselSelection(
-    candidateIds: List<String>,
-    currentId: String?,
-    direction: TvHomeCarouselDirection,
-): String? {
-    val selectedId = reconcileTvHomeCarouselSelection(candidateIds, currentId) ?: return null
-    val selectedIndex = candidateIds.indexOf(selectedId)
-    return when (direction) {
-        TvHomeCarouselDirection.NEXT -> candidateIds[(selectedIndex + 1) % candidateIds.size]
-        TvHomeCarouselDirection.PREVIOUS -> candidateIds[(selectedIndex - 1 + candidateIds.size) % candidateIds.size]
-    }
-}
-
-internal fun advanceTvHomeCarouselAutomatically(
-    candidateIds: List<String>,
-    state: TvHomeCarouselState,
-): TvHomeCarouselState {
-    val nextId =
-        moveTvHomeCarouselSelection(
-            candidateIds = candidateIds,
-            currentId = state.selectedId,
-            direction = TvHomeCarouselDirection.NEXT,
-        )
-    return state.select(nextId)
-}
 
 internal fun moveTvHomeCarouselManually(
     candidateIds: List<String>,
@@ -85,28 +57,7 @@ internal fun moveTvHomeCarouselManually(
     }
 }
 
-private fun TvHomeCarouselState.select(itemId: String?): TvHomeCarouselState =
-    if (selectedId == itemId) this else copy(selectedId = itemId, intervalRevision = intervalRevision + 1)
-
-internal fun shouldAutoCycleTvHomeCarousel(
-    enabled: Boolean,
-    candidateCount: Int,
-    railOpen: Boolean,
-    focus: TvHomeCarouselFocus,
-    previewState: TvTrailerPreviewState,
-): Boolean {
-    val canStart = enabled && candidateCount > 1
-    val previewAllowsRotation =
-        when (previewState) {
-            TvTrailerPreviewState.Idle,
-            is TvTrailerPreviewState.Armed,
-            is TvTrailerPreviewState.Playing,
-            is TvTrailerPreviewState.Unavailable,
-            -> true
-        }
-    val paused = railOpen || focus == TvHomeCarouselFocus.ACTION
-    return canStart && previewAllowsRotation && !paused
-}
+private fun TvHomeCarouselState.select(itemId: String?): TvHomeCarouselState = if (selectedId == itemId) this else copy(selectedId = itemId)
 
 internal fun SpotlightCandidate.tvHomeTrailerPreviewItem() = actionItem
 
@@ -119,12 +70,32 @@ internal fun TvTrailerPreviewState.showsTvHomeHeroPreview(
         request.owner == TvTrailerPreviewOwner.HERO &&
         request.target.itemId == itemId
 
-internal fun TvTrailerPreviewState.showsTvMediaCardPreview(itemId: String): Boolean =
+internal fun TvTrailerPreviewState.showsTvMediaCardPreview(
+    itemId: String,
+    presentationId: String?,
+): Boolean =
     this is TvTrailerPreviewState.Playing &&
         request.owner == TvTrailerPreviewOwner.CARD &&
-        request.target.itemId == itemId
+        request.target.itemId == itemId &&
+        request.presentationId == presentationId
 
-internal fun tvHomeCarouselIntervalMillis(intervalSeconds: Int): Long = intervalSeconds.toLong() * 1_000L
+internal sealed interface TvHomeJellyfinDestination {
+    data class Detail(
+        val item: JellyfinItem,
+    ) : TvHomeJellyfinDestination
+
+    data class Library(
+        val libraryId: String,
+        val title: String,
+    ) : TvHomeJellyfinDestination
+}
+
+internal fun tvHomeJellyfinDestination(item: JellyfinItem): TvHomeJellyfinDestination =
+    if (item.type.equals("CollectionFolder", ignoreCase = true)) {
+        TvHomeJellyfinDestination.Library(item.id, item.name)
+    } else {
+        TvHomeJellyfinDestination.Detail(item)
+    }
 
 internal fun buildTvHomeHeroPresentation(
     state: JellyfinHomeState,

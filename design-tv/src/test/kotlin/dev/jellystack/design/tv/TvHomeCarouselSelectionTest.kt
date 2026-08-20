@@ -12,71 +12,6 @@ import kotlin.test.assertTrue
 
 class TvHomeCarouselSelectionTest {
     @Test
-    fun autoCycleIntervalUsesConfiguredValueWithoutChangingIt() {
-        assertEquals(11_000L, tvHomeCarouselIntervalMillis(intervalSeconds = 11))
-        assertEquals(2_000L, tvHomeCarouselIntervalMillis(intervalSeconds = 2))
-    }
-
-    @Test
-    fun containerFocusDoesNotPauseAutoCycle() {
-        assertTrue(
-            shouldAutoCycleTvHomeCarousel(
-                enabled = true,
-                candidateCount = 2,
-                railOpen = false,
-                focus = TvHomeCarouselFocus.CONTAINER,
-                previewState = TvTrailerPreviewState.Idle,
-            ),
-        )
-    }
-
-    @Test
-    fun actionButtonFocusPausesAutoCycle() {
-        assertFalse(
-            shouldAutoCycleTvHomeCarousel(
-                enabled = true,
-                candidateCount = 2,
-                railOpen = false,
-                focus = TvHomeCarouselFocus.ACTION,
-                previewState = TvTrailerPreviewState.Idle,
-            ),
-        )
-    }
-
-    @Test
-    fun previewStatesNeverPauseAutoCycle() {
-        val target = TvTrailerPreviewTarget("server", "item", isEpisode = false, seriesId = null)
-        val request = TvTrailerPreviewRequest(TvTrailerPreviewOwner.HERO, target)
-        val states =
-            listOf(
-                TvTrailerPreviewState.Idle,
-                TvTrailerPreviewState.Armed(request),
-                TvTrailerPreviewState.Playing(request),
-                TvTrailerPreviewState.Unavailable(request),
-            )
-
-        states.forEach { state ->
-            assertTrue(
-                shouldAutoCycleTvHomeCarousel(
-                    enabled = true,
-                    candidateCount = 2,
-                    railOpen = false,
-                    focus = TvHomeCarouselFocus.NONE,
-                    previewState = state,
-                ),
-                "Preview state $state must not block carousel rotation",
-            )
-        }
-    }
-
-    @Test
-    fun autoCycleStillRequiresEnablementMultipleCandidatesAndClosedRail() {
-        assertFalse(shouldAutoCycleTvHomeCarousel(false, 2, false, TvHomeCarouselFocus.NONE, TvTrailerPreviewState.Idle))
-        assertFalse(shouldAutoCycleTvHomeCarousel(true, 1, false, TvHomeCarouselFocus.NONE, TvTrailerPreviewState.Idle))
-        assertFalse(shouldAutoCycleTvHomeCarousel(true, 2, true, TvHomeCarouselFocus.NONE, TvTrailerPreviewState.Idle))
-    }
-
-    @Test
     fun reconcileReturnsNullForAnEmptyCandidateList() {
         assertNull(reconcileTvHomeCarouselSelection(emptyList(), currentId = "current"))
     }
@@ -90,18 +25,8 @@ class TvHomeCarouselSelectionTest {
     }
 
     @Test
-    fun automaticNextWrapsFromLastCandidateToFirst() {
-        val state = TvHomeCarouselState(selectedId = "last", intervalRevision = 4)
-
-        val advanced = advanceTvHomeCarouselAutomatically(listOf("first", "second", "last"), state)
-
-        assertEquals("first", advanced.selectedId)
-        assertEquals(5, advanced.intervalRevision)
-    }
-
-    @Test
     fun manualPreviousClampsAtFirstAndRequestsNavigationRail() {
-        val state = TvHomeCarouselState(selectedId = "first", intervalRevision = 7)
+        val state = TvHomeCarouselState(selectedId = "first")
 
         val result =
             moveTvHomeCarouselManually(
@@ -116,7 +41,7 @@ class TvHomeCarouselSelectionTest {
 
     @Test
     fun manualNextClampsAtLastWithoutOpeningNavigationRail() {
-        val state = TvHomeCarouselState(selectedId = "last", intervalRevision = 3)
+        val state = TvHomeCarouselState(selectedId = "last")
 
         val result =
             moveTvHomeCarouselManually(
@@ -130,8 +55,8 @@ class TvHomeCarouselSelectionTest {
     }
 
     @Test
-    fun successfulManualMoveRestartsCarouselInterval() {
-        val state = TvHomeCarouselState(selectedId = "first", intervalRevision = 9)
+    fun successfulManualMoveSelectsTheAdjacentItem() {
+        val state = TvHomeCarouselState(selectedId = "first")
 
         val result =
             moveTvHomeCarouselManually(
@@ -141,7 +66,6 @@ class TvHomeCarouselSelectionTest {
             )
 
         assertEquals("second", result.state.selectedId)
-        assertEquals(10, result.state.intervalRevision)
         assertFalse(result.openNavigationRail)
     }
 
@@ -172,14 +96,15 @@ class TvHomeCarouselSelectionTest {
     }
 
     @Test
-    fun cardPreviewOnlyRendersForCardOwner() {
+    fun cardPreviewOnlyRendersForExactCardInstance() {
         val target = TvTrailerPreviewTarget("server", "same", isEpisode = false, seriesId = null)
-        val card = TvTrailerPreviewRequest(TvTrailerPreviewOwner.CARD, target)
+        val card = TvTrailerPreviewRequest(TvTrailerPreviewOwner.CARD, target, presentationId = "continue:same")
         val hero = TvTrailerPreviewRequest(TvTrailerPreviewOwner.HERO, target)
 
-        assertTrue(TvTrailerPreviewState.Playing(card).showsTvMediaCardPreview("same"))
-        assertFalse(TvTrailerPreviewState.Playing(hero).showsTvMediaCardPreview("same"))
-        assertFalse(TvTrailerPreviewState.Armed(card).showsTvMediaCardPreview("same"))
+        assertTrue(TvTrailerPreviewState.Playing(card).showsTvMediaCardPreview("same", "continue:same"))
+        assertFalse(TvTrailerPreviewState.Playing(card).showsTvMediaCardPreview("same", "latest:same"))
+        assertFalse(TvTrailerPreviewState.Playing(hero).showsTvMediaCardPreview("same", "continue:same"))
+        assertFalse(TvTrailerPreviewState.Armed(card).showsTvMediaCardPreview("same", "continue:same"))
     }
 
     private fun item(
