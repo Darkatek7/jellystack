@@ -80,10 +80,17 @@ import dev.jellystack.core.server.ServerRepository
 import dev.jellystack.core.server.ServerType
 import dev.jellystack.players.AndroidPlayerEngine
 import dev.jellystack.players.PlaybackController
+import dev.jellystack.players.PlaybackContinuationCoordinator
+import dev.jellystack.players.PlaybackContinuationTarget
 import dev.jellystack.players.PlaybackRequest
+import dev.jellystack.players.PlaybackSeekAdapter
+import dev.jellystack.players.PlaybackSegmentCoordinator
+import dev.jellystack.players.PlaybackSegmentModeProvider
 import dev.jellystack.players.PlaybackStartPolicy
 import dev.jellystack.players.PlaybackState
 import dev.jellystack.players.syncplay.SyncPlayCoordinator
+import dev.jellystack.network.ClientConfig
+import dev.jellystack.network.NetworkClientFactory
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -287,30 +294,54 @@ private fun TvAuthenticatedApp(
     val detailSourceItems = remember { mutableStateMapOf<String, JellyfinItem>() }
     var jellyfinSearchResults by remember { mutableStateOf(emptyList<dev.jellystack.core.jellyfin.JellyfinItem>()) }
     var jellyfinSearchJob by remember { mutableStateOf<Job?>(null) }
-    val autoplayCoordinator =
-        remember(playbackController, browseRepository, environmentProvider, settingsRepository) {
-            TvAutoplayCoordinator(
+    val segmentHttpClient = remember { NetworkClientFactory.create(ClientConfig(installLogging = false)) }
+    val segmentCoordinator =
+        remember(playbackController, syncPlay, environmentProvider, settingsRepository, segmentHttpClient) {
+            PlaybackSegmentCoordinator(
+                scope = scope,
+                segmentService = TvJellyfinMediaSegmentsService(environmentProvider, segmentHttpClient),
+                modeProvider = PlaybackSegmentModeProvider { type -> settingsRepository.settings.value.segmentSkipMode(type) },
+                seekAdapter =
+                    PlaybackSeekAdapter { positionMs ->
+                        routeTvSegmentSeek(
+                            positionMs = positionMs,
+                            syncPlayActive = syncPlay.state.value.currentGroup != null,
+                            requestSyncSeek = syncPlay::requestSeek,
+                            requestLocalSeek = playbackController::seekTo,
+                        )
+                    },
+            )
+        }
+    val continuationCoordinator =
+        remember(playbackController, syncPlay, browseRepository, environmentProvider, settingsRepository) {
+            PlaybackContinuationCoordinator(
                 scope = scope,
                 modeProvider = { settingsRepository.settings.value.autoplayNextMode },
                 resolveNext = resolve@{ mediaId, seriesId ->
-                    val resolvedSeriesId = seriesId ?: return@resolve null
-                    val cached = browseRepository.episodesForSeries(resolvedSeriesId)
-                    val episodes = if (cached.isEmpty()) browseRepository.refreshEpisodesForSeries(resolvedSeriesId) else cached
+                    val cached = browseRepository.episodesForSeries(seriesId)
+                    val episodes = if (cached.isEmpty()) browseRepository.refreshEpisodesForSeries(seriesId) else cached
                     val next = selectNextTvEpisode(episodes, mediaId) ?: return@resolve null
                     val detail = browseRepository.getItemDetail(next.id) ?: return@resolve null
                     val environment = environmentProvider.current() ?: return@resolve null
-                    TvAutoplayTarget(next.id, next.episodeTitle ?: next.name) {
-                        playbackController.play(
-                            PlaybackRequest.from(next, detail, startPolicy = PlaybackStartPolicy.RESTART),
-                            environment,
+                    PlaybackContinuationTarget(next.id, next.episodeTitle ?: next.name) {
+                        routeTvPlayNext(
+                            syncPlayActive = syncPlay.state.value.currentGroup != null,
+                            requestSyncNext = syncPlay::requestNext,
+                            requestLocalNext = {
+                                playbackController.play(
+                                    PlaybackRequest.from(next, detail, startPolicy = PlaybackStartPolicy.RESTART),
+                                    environment,
+                                )
+                                playbackController.setPlaybackSpeed(settingsRepository.settings.value.defaultPlaybackSpeed)
+                                playbackController.setStatsForNerdsEnabled(settingsRepository.settings.value.statsForNerdsEnabled)
+                            },
                         )
-                        playbackController.setPlaybackSpeed(settingsRepository.settings.value.defaultPlaybackSpeed)
-                        playbackController.setStatsForNerdsEnabled(settingsRepository.settings.value.statsForNerdsEnabled)
                     }
                 },
             )
         }
-    val autoplayState by autoplayCoordinator.state.collectAsStateWithLifecycle()
+    val segmentState by segmentCoordinator.state.collectAsStateWithLifecycle()
+    val continuationState by continuationCoordinator.state.collectAsStateWithLifecycle()
     val syncPlayAccess =
         (sessionState as? JellyfinSessionState.Ready)?.capabilities?.syncPlayAccess
             ?: JellyfinSyncPlayAccess.NONE
@@ -352,7 +383,10 @@ private fun TvAuthenticatedApp(
     LaunchedEffect(syncPlayAccess) {
         syncPlay.updateAccess(syncPlayAccess)
     }
-    LaunchedEffect(playbackState) { autoplayCoordinator.onPlaybackState(playbackState) }
+    LaunchedEffect(playbackState) {
+        segmentCoordinator.onPlaybackState(playbackState)
+        continuationCoordinator.onPlaybackState(playbackState)
+    }
     LaunchedEffect(settings.trailerPreviewsEnabled) {
         trailerPreviewCoordinator.setEnabled(settings.trailerPreviewsEnabled)
     }
@@ -366,7 +400,7 @@ private fun TvAuthenticatedApp(
     }
     LaunchedEffect(serverRepository.currentServers()) { trailerPreviewCoordinator.invalidateCache() }
     LaunchedEffect(lifecycleState) {
-        autoplayCoordinator.setForeground(lifecycleState.isAtLeast(Lifecycle.State.STARTED))
+        continuationCoordinator.setForeground(lifecycleState.isAtLeast(Lifecycle.State.STARTED))
         if (!lifecycleState.isAtLeast(Lifecycle.State.STARTED)) trailerPreviewCoordinator.clearFocus()
     }
     DisposableEffect(Unit) {
@@ -374,7 +408,9 @@ private fun TvAuthenticatedApp(
             browseCoordinator.shutdown()
             requestsCoordinator.shutdown()
             syncPlay.close()
-            autoplayCoordinator.release()
+            segmentCoordinator.release()
+            continuationCoordinator.release()
+            segmentHttpClient.close()
             trailerPreviewCoordinator.release()
         }
     }
@@ -634,6 +670,10 @@ private fun TvAuthenticatedApp(
                                         controller = playbackController,
                                         engine = playerEngine,
                                         syncPlay = syncPlay,
+                                        segmentState = segmentState,
+                                        continuationState = continuationState,
+                                        onSkipSegment = segmentCoordinator::skip,
+                                        onPlayNext = continuationCoordinator::playNext,
                                         strings = strings,
                                         stopPlayback = stopPlayback,
                                         onClose = {
@@ -675,12 +715,12 @@ private fun TvAuthenticatedApp(
                 )
             }
         }
-        (autoplayState as? TvAutoplayState.Countdown)?.let { countdown ->
+        tvAutoplayPromptModel(continuationState)?.let { prompt ->
             TvAutoplayPrompt(
-                state = countdown,
+                model = prompt,
                 strings = strings,
-                onPlayNow = autoplayCoordinator::playNow,
-                onCancel = autoplayCoordinator::cancel,
+                onPlayNow = continuationCoordinator::playNext,
+                onCancel = continuationCoordinator::cancelAutoplay,
             )
         }
     }

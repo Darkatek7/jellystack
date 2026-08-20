@@ -1,63 +1,26 @@
 package dev.jellystack.design.tv
 
 import dev.jellystack.core.jellyfin.JellyfinItem
-import dev.jellystack.core.preferences.AutoplayNextMode
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.test.advanceTimeBy
-import kotlinx.coroutines.test.runCurrent
-import kotlinx.coroutines.test.runTest
+import dev.jellystack.players.PlaybackContinuationState
+import dev.jellystack.players.PlaybackContinuationTarget
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertIs
 import kotlin.test.assertNull
 
-@OptIn(ExperimentalCoroutinesApi::class)
 class TvAutoplayCoordinatorTest {
     @Test
-    fun countdownStartsTargetExactlyOnceAndCanBeCancelled() =
-        runTest {
-            var plays = 0
-            val coordinator = coordinator { target { plays += 1 } }
+    fun autoplayPromptIsDerivedFromTheSharedContinuationState() {
+        val target = PlaybackContinuationTarget("episode-2", "Next") {}
 
-            coordinator.onPlaybackCompleted("episode-1", "series")
-            coordinator.onPlaybackCompleted("episode-1", "series")
-            runCurrent()
-            assertIs<TvAutoplayState.Countdown>(coordinator.state.value)
-
-            advanceTimeBy(10_000L)
-            runCurrent()
-            assertEquals(1, plays)
-
-            coordinator.onPlaybackCompleted("episode-2", "series")
-            runCurrent()
-            coordinator.cancel()
-            advanceTimeBy(20_000L)
-            runCurrent()
-            assertEquals(1, plays)
-        }
-
-    @Test
-    fun backgroundPausesCountdownAndImmediateModeSkipsIt() =
-        runTest {
-            var plays = 0
-            val countdown = coordinator { target { plays += 1 } }
-            countdown.onPlaybackCompleted("episode-1", "series")
-            runCurrent()
-            countdown.setForeground(false)
-            advanceTimeBy(20_000L)
-            runCurrent()
-            assertEquals(0, plays)
-            countdown.setForeground(true)
-            advanceTimeBy(10_000L)
-            runCurrent()
-            assertEquals(1, plays)
-
-            val immediate = coordinator(AutoplayNextMode.IMMEDIATE) { target { plays += 1 } }
-            immediate.onPlaybackCompleted("episode-3", "series")
-            runCurrent()
-            assertEquals(2, plays)
-            assertEquals(TvAutoplayState.Idle, immediate.state.value)
-        }
+        assertEquals(
+            TvAutoplayPromptModel("Next", 7),
+            tvAutoplayPromptModel(
+                PlaybackContinuationState(nextTarget = target, countdownSecondsRemaining = 7),
+            ),
+        )
+        assertNull(tvAutoplayPromptModel(PlaybackContinuationState(nextTarget = target)))
+        assertNull(tvAutoplayPromptModel(PlaybackContinuationState(countdownSecondsRemaining = 7)))
+    }
 
     @Test
     fun nextEpisodeSelectionIsChronologicalAcrossSeasons() {
@@ -73,13 +36,6 @@ class TvAutoplayCoordinatorTest {
         assertNull(selectNextTvEpisode(episodes, "s2e1"))
         assertNull(selectNextTvEpisode(episodes, "missing"))
     }
-
-    private fun kotlinx.coroutines.test.TestScope.coordinator(
-        mode: AutoplayNextMode = AutoplayNextMode.COUNTDOWN,
-        resolve: suspend () -> TvAutoplayTarget?,
-    ) = TvAutoplayCoordinator(this, { mode }) { _, _ -> resolve() }
-
-    private fun target(play: suspend () -> Unit) = TvAutoplayTarget("episode-2", "Next", play)
 
     private fun episode(
         id: String,

@@ -56,6 +56,7 @@ import dev.jellystack.core.preferences.AppSettings
 import dev.jellystack.core.preferences.AppSettingsRepository
 import dev.jellystack.core.preferences.AutoplayNextMode
 import dev.jellystack.core.preferences.ResumeMode
+import dev.jellystack.core.preferences.SegmentSkipMode
 import dev.jellystack.core.preferences.StreamingQualityPreference
 import dev.jellystack.core.preferences.SubtitleBackground
 import dev.jellystack.core.preferences.SubtitleMode
@@ -66,6 +67,7 @@ import dev.jellystack.core.server.SeerrLoginCredentials
 import dev.jellystack.core.server.SeerrServerInput
 import dev.jellystack.core.server.ServerConnectionCoordinator
 import dev.jellystack.core.server.ServerRepository
+import dev.jellystack.players.PlaybackSegmentType
 import kotlinx.coroutines.launch
 
 @Composable
@@ -89,7 +91,7 @@ internal fun TvSettingsScreen(
     var showSeerrConnect by remember { mutableStateOf(false) }
     var choiceDialog by remember { mutableStateOf<TvChoiceDialogState?>(null) }
     val listState = rememberLazyListState()
-    val settingTargetIds =
+    val primarySettingTargetIds =
         listOf(
             "language",
             "quality",
@@ -108,6 +110,7 @@ internal fun TvSettingsScreen(
             "trailer-previews",
             "trailer-preview-sound",
         ).map(::tvSettingsControlTargetId)
+    val segmentSettingTargetIds = PlaybackSegmentType.entries.map(::tvSettingsSegmentControlTargetId)
     val serverActionTargetIds =
         buildList {
             servers.forEach { add(tvSettingsServerActionTargetId(it.id, "remove")) }
@@ -116,13 +119,14 @@ internal fun TvSettingsScreen(
         }
     val targetLocations =
         buildMap {
-            settingTargetIds.forEach { put(it, 2) }
-            serverActionTargetIds.forEach { put(it, 4) }
+            primarySettingTargetIds.forEach { put(it, 2) }
+            segmentSettingTargetIds.forEach { put(it, 3) }
+            serverActionTargetIds.forEach { put(it, 5) }
         }
     TvRouteFocusMaterializer(
         ownerId = "settings-list",
         targetIds = targetLocations.keys,
-        fallbackTargetIds = setOf(settingTargetIds.first()),
+        fallbackTargetIds = setOf(primarySettingTargetIds.first()),
     ) { targetId ->
         targetLocations[targetId]?.let { index ->
             listState.scrollToItem(index)
@@ -357,6 +361,13 @@ internal fun TvSettingsScreen(
                 }
             }
         }
+        item {
+            TvSegmentSkipSettings(
+                settings = settings,
+                strings = strings,
+                onModeSelected = { type, mode -> repository.setSegmentSkipMode(type, mode) },
+            )
+        }
         item { TvSectionTitle(strings.connections) }
         item {
             Column(
@@ -418,6 +429,48 @@ internal fun TvSettingsScreen(
                 onServersChanged()
             },
         )
+    }
+    choiceDialog?.let { dialog ->
+        TvChoiceDialog(dialog, cancelLabel = strings.cancel, onDismiss = { choiceDialog = null }) { option ->
+            option.onSelect()
+            choiceDialog = null
+        }
+    }
+}
+
+@Composable
+internal fun TvSegmentSkipSettings(
+    settings: AppSettings,
+    strings: TvStrings,
+    onModeSelected: (PlaybackSegmentType, SegmentSkipMode) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var choiceDialog by remember { mutableStateOf<TvChoiceDialogState?>(null) }
+    val models = tvSegmentSkipSettingModels(settings, strings, onModeSelected)
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        TvSectionTitle(strings.segmentSkipping)
+        Text(strings.serverSegmentExplanation, color = TvTextMuted, fontSize = 17.sp)
+        TvSettingsGrid {
+            models.forEachIndexed { index, model ->
+                TvSettingTile(
+                    title = model.title,
+                    value = model.mode.label(strings),
+                    focusToNavigationRailOnLeft = index == 0 || index == 3,
+                    focusTargetId = tvSettingsSegmentControlTargetId(model.type),
+                ) {
+                    choiceDialog =
+                        TvChoiceDialogState(
+                            title = model.title,
+                            options =
+                                SegmentSkipMode.entries.map { mode ->
+                                    TvChoiceOption(mode.label(strings), mode == model.mode) {
+                                        model.onModeSelected(mode)
+                                    }
+                                },
+                        )
+                }
+            }
+        }
     }
     choiceDialog?.let { dialog ->
         TvChoiceDialog(dialog, cancelLabel = strings.cancel, onDismiss = { choiceDialog = null }) { option ->
@@ -493,10 +546,11 @@ private fun TvSettingTile(
     screenEntry: Boolean = false,
     enabled: Boolean = true,
     focusTargetId: String,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
     Column(
-        Modifier
+        modifier
             .tvScreenEntryFocus(screenEntry, focusTargetId)
             .width(330.dp)
             .height(112.dp)
@@ -707,6 +761,29 @@ private fun AutoplayNextMode.label(strings: TvStrings): String =
         AutoplayNextMode.COUNTDOWN -> strings.countdown
         AutoplayNextMode.IMMEDIATE -> strings.immediate
     }
+
+private fun SegmentSkipMode.label(strings: TvStrings): String =
+    when (this) {
+        SegmentSkipMode.OFF -> strings.off
+        SegmentSkipMode.SHOW_BUTTON -> strings.showSkipButton
+        SegmentSkipMode.AUTO_SKIP -> strings.skipAutomatically
+    }
+
+private fun AppSettingsRepository.setSegmentSkipMode(
+    type: PlaybackSegmentType,
+    mode: SegmentSkipMode,
+) {
+    when (type) {
+        PlaybackSegmentType.INTRO -> setIntroSkipMode(mode)
+        PlaybackSegmentType.RECAP -> setRecapSkipMode(mode)
+        PlaybackSegmentType.OUTRO -> setOutroSkipMode(mode)
+        PlaybackSegmentType.PREVIEW -> setPreviewSkipMode(mode)
+        PlaybackSegmentType.COMMERCIAL -> setCommercialSkipMode(mode)
+    }
+}
+
+private fun tvSettingsSegmentControlTargetId(type: PlaybackSegmentType): String =
+    tvSettingsControlTargetId("segment-${type.name.lowercase()}")
 
 private fun ResumeMode.label(strings: TvStrings): String =
     when (this) {

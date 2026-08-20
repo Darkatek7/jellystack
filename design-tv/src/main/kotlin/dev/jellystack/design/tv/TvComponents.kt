@@ -98,8 +98,10 @@ internal fun Modifier.tvFocusable(
     onFocusChanged: ((Boolean) -> Unit)? = null,
     focusToNavigationRailOnLeft: Boolean = false,
     focusTargetId: String? = null,
+    providedFocusRequester: FocusRequester? = null,
 ): Modifier {
-    val restorationRequester = remember { FocusRequester() }
+    val rememberedFocusRequester = remember { FocusRequester() }
+    val restorationRequester = providedFocusRequester ?: rememberedFocusRequester
     val focusContext = LocalTvFocusContext.current
     if (focusContext != null && focusTargetId != null) {
         DisposableEffect(focusContext, focusTargetId, restorationRequester) {
@@ -177,6 +179,8 @@ internal fun TvActionButton(
     enabled: Boolean = true,
     focusToNavigationRailOnLeft: Boolean = false,
     focusTargetId: String? = null,
+    focusRequester: FocusRequester? = null,
+    onFocusChanged: ((Boolean) -> Unit)? = null,
 ) {
     val shape = RoundedCornerShape(50)
     Row(
@@ -194,6 +198,8 @@ internal fun TvActionButton(
                     shape = shape,
                     focusToNavigationRailOnLeft = focusToNavigationRailOnLeft,
                     focusTargetId = focusTargetId,
+                    providedFocusRequester = focusRequester,
+                    onFocusChanged = onFocusChanged,
                 ).padding(horizontal = 24.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,

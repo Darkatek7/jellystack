@@ -31,14 +31,18 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -48,6 +52,9 @@ import androidx.media3.common.util.UnstableApi
 import androidx.tv.material3.Text
 import dev.jellystack.players.AndroidPlayerEngine
 import dev.jellystack.players.PlaybackController
+import dev.jellystack.players.PlaybackContinuationState
+import dev.jellystack.players.PlaybackSegmentAction
+import dev.jellystack.players.PlaybackSegmentState
 import dev.jellystack.players.PlaybackState
 import dev.jellystack.players.syncplay.SyncPlayCoordinator
 import kotlinx.coroutines.delay
@@ -58,6 +65,10 @@ internal fun TvPlaybackScreen(
     controller: PlaybackController,
     engine: AndroidPlayerEngine,
     syncPlay: SyncPlayCoordinator,
+    segmentState: PlaybackSegmentState,
+    continuationState: PlaybackContinuationState,
+    onSkipSegment: (PlaybackSegmentAction) -> Unit,
+    onPlayNext: () -> Unit,
     strings: TvStrings,
     stopPlayback: () -> Unit,
     onClose: () -> Unit,
@@ -65,12 +76,28 @@ internal fun TvPlaybackScreen(
 ) {
     val state by controller.state.collectAsStateWithLifecycle()
     val syncState by syncPlay.state.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
     var controlsVisible by remember { mutableStateOf(true) }
     var navigation by remember { mutableStateOf(TvPlayerPanelNavigation.closed()) }
     var interactionGeneration by remember { mutableStateOf(0) }
     val playerFocusRequester = remember { FocusRequester() }
     val controlsFocusRequester = remember { FocusRequester() }
+    val actionEntryFocusRequester = remember { FocusRequester() }
     val active = state as? PlaybackState.Active
+    val promptCoordinator = remember(scope) { TvPlaybackPromptCoordinator(scope) }
+    val promptState by promptCoordinator.state.collectAsStateWithLifecycle()
+    val playbackActions =
+        tvPlaybackActionModels(
+            segmentState = segmentState,
+            continuationState = continuationState,
+            isEpisode = active?.metadata?.seriesId != null,
+            strings = strings,
+        )
+    val standaloneActions = playbackActions.filter { it.id in promptState.visibleActionIds }
+
+    LaunchedEffect(playbackActions.map { it.id }) {
+        promptCoordinator.onActionsChanged(playbackActions.map { it.id })
+    }
 
     LaunchedEffect(controlsVisible, navigation.current, interactionGeneration) {
         if (controlsVisible && navigation.current == TvPlayerPanel.NONE) {
@@ -84,6 +111,14 @@ internal fun TvPlaybackScreen(
         }
     }
     DisposableEffect(engine) { onDispose(stopPlayback) }
+    DisposableEffect(promptCoordinator) { onDispose(promptCoordinator::release) }
+
+    val activatePlaybackAction: (TvPlaybackActionModel) -> Unit = { action ->
+        when (action.kind) {
+            TvPlaybackActionKind.SEGMENT_SKIP -> action.segmentAction?.let(onSkipSegment)
+            TvPlaybackActionKind.PLAY_NEXT -> onPlayNext()
+        }
+    }
 
     Box(
         modifier =
@@ -187,10 +222,27 @@ internal fun TvPlaybackScreen(
                 strings = strings,
                 controller = controller,
                 controlsFocusRequester = controlsFocusRequester,
+                actionEntryFocusRequester = actionEntryFocusRequester,
+                actions = playbackActions,
+                onAction = activatePlaybackAction,
                 onAudio = { navigation = TvPlayerPanelNavigation.closed().openQuick(TvPlayerPanel.AUDIO) },
                 onSubtitles = { navigation = TvPlayerPanelNavigation.closed().openQuick(TvPlayerPanel.SUBTITLES) },
                 onMore = { navigation = navigation.openMore() },
                 modifier = Modifier.align(Alignment.BottomCenter),
+            )
+        }
+        if (active != null && !controlsVisible) {
+            TvPlaybackActions(
+                actions = standaloneActions,
+                fallbackFocusRequester = playerFocusRequester,
+                entryFocusRequester = actionEntryFocusRequester,
+                onAction = activatePlaybackAction,
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomEnd)
+                        .fillMaxWidth()
+                        .padding(horizontal = 42.dp, vertical = 132.dp)
+                        .testTag(TV_PLAYBACK_ACTIONS_STANDALONE_TAG),
             )
         }
         if (active != null && navigation.current != TvPlayerPanel.NONE) {
@@ -245,6 +297,9 @@ private fun TvPlayerControls(
     strings: TvStrings,
     controller: PlaybackController,
     controlsFocusRequester: FocusRequester,
+    actionEntryFocusRequester: FocusRequester,
+    actions: List<TvPlaybackActionModel>,
+    onAction: (TvPlaybackActionModel) -> Unit,
     onAudio: () -> Unit,
     onSubtitles: () -> Unit,
     onMore: () -> Unit,
@@ -258,7 +313,14 @@ private fun TvPlayerControls(
             ).padding(start = 42.dp, end = 42.dp, top = 86.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        TvProgress(active.positionMs, active.durationMs)
+        TvPlaybackActions(
+            actions = actions,
+            fallbackFocusRequester = controlsFocusRequester,
+            entryFocusRequester = actionEntryFocusRequester,
+            onAction = onAction,
+            modifier = Modifier.fillMaxWidth().testTag(TV_PLAYBACK_ACTIONS_CONTROLS_TAG),
+        )
+        TvProgress(active.positionMs, active.durationMs, Modifier.testTag(TV_PLAYBACK_TIMELINE_TAG))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
             Row(Modifier.weight(1f), horizontalArrangement = Arrangement.Start) {
                 TvPlayerIconButton(Icons.AutoMirrored.Filled.VolumeUp, strings.audio, onAudio)
@@ -273,7 +335,15 @@ private fun TvPlayerControls(
                     if (active.isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
                     if (active.isPaused) strings.play else strings.pause,
                     { if (active.isPaused) controller.resume() else controller.pause() },
-                    Modifier.focusRequester(controlsFocusRequester),
+                    Modifier
+                        .focusRequester(controlsFocusRequester)
+                        .then(
+                            if (actions.isNotEmpty()) {
+                                Modifier.focusProperties { up = actionEntryFocusRequester }
+                            } else {
+                                Modifier
+                            },
+                        ),
                     size = 78.dp,
                     iconSize = 42.dp,
                 )
@@ -296,15 +366,62 @@ private fun TvPlayerControls(
 private fun TvProgress(
     position: Long,
     duration: Long?,
+    modifier: Modifier = Modifier,
 ) {
     val fraction = if (duration != null && duration > 0) (position.toFloat() / duration).coerceIn(0f, 1f) else 0f
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Box(Modifier.fillMaxWidth().height(5.dp).background(Color.White.copy(alpha = 0.25f), RoundedCornerShape(50))) {
             Box(Modifier.fillMaxWidth(fraction).height(5.dp).background(TvPurple, RoundedCornerShape(50)))
         }
         Text("${position.formatDuration()}  /  ${duration?.formatDuration() ?: "--:--"}", color = TvTextMuted)
     }
 }
+
+@Composable
+internal fun TvPlaybackActions(
+    actions: List<TvPlaybackActionModel>,
+    fallbackFocusRequester: FocusRequester,
+    entryFocusRequester: FocusRequester,
+    onAction: (TvPlaybackActionModel) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val requesters = remember { mutableMapOf<String, FocusRequester>() }
+    var lastFocusedActionId by remember { mutableStateOf<String?>(null) }
+    val actionIds = actions.map { it.id }
+    LaunchedEffect(actionIds) {
+        val focusedId = lastFocusedActionId
+        if (focusedId != null && focusedId !in actionIds) {
+            withFrameNanos { }
+            runCatching { fallbackFocusRequester.requestFocus() }
+            lastFocusedActionId = null
+        }
+    }
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        actions.forEachIndexed { index, action ->
+            val requester = if (index == 0) entryFocusRequester else requesters.getOrPut(action.id) { FocusRequester() }
+            TvActionButton(
+                label = action.label,
+                onClick = { onAction(action) },
+                modifier =
+                    Modifier
+                        .testTag(action.id)
+                        .focusProperties { down = fallbackFocusRequester },
+                primary = true,
+                focusTargetId = action.id,
+                focusRequester = requester,
+                onFocusChanged = { focused -> if (focused) lastFocusedActionId = action.id },
+            )
+        }
+    }
+}
+
+internal const val TV_PLAYBACK_ACTIONS_CONTROLS_TAG = "tv-playback-actions-controls"
+internal const val TV_PLAYBACK_ACTIONS_STANDALONE_TAG = "tv-playback-actions-standalone"
+internal const val TV_PLAYBACK_TIMELINE_TAG = "tv-playback-timeline"
 
 private fun Long.formatDuration(): String {
     val totalSeconds = this / 1_000L

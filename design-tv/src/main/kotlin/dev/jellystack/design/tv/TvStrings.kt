@@ -153,6 +153,21 @@ internal data class TvStrings(
     val jellyfinConnectionFailed: String,
     val manageJellyfin: String,
     val manageSeerr: String,
+    val segmentSkipping: String,
+    val serverSegmentExplanation: String,
+    val introSegments: String,
+    val recapSegments: String,
+    val outroSegments: String,
+    val previewSegments: String,
+    val commercialSegments: String,
+    val showSkipButton: String,
+    val skipAutomatically: String,
+    val skipIntro: String,
+    val skipRecap: String,
+    val skipPreview: String,
+    val skipCommercial: String,
+    val skipCredits: String,
+    val playNextEpisode: String,
 ) {
     companion object {
         fun current(language: AppLanguage): TvStrings {
@@ -316,6 +331,22 @@ internal data class TvStrings(
                 jellyfinConnectionFailed = "Could not connect to Jellyfin.",
                 manageJellyfin = "Manage Jellyfin",
                 manageSeerr = "Manage Seerr",
+                segmentSkipping = "Segment skipping",
+                serverSegmentExplanation =
+                    "Uses segment markers supplied by your Jellyfin server. Availability depends on your server and media.",
+                introSegments = "Intros",
+                recapSegments = "Recaps",
+                outroSegments = "Credits",
+                previewSegments = "Previews",
+                commercialSegments = "Commercials",
+                showSkipButton = "Show skip button",
+                skipAutomatically = "Skip automatically",
+                skipIntro = "Skip intro",
+                skipRecap = "Skip recap",
+                skipPreview = "Skip preview",
+                skipCommercial = "Skip commercial",
+                skipCredits = "Skip credits",
+                playNextEpisode = "Play next episode",
             )
 
         private val German =
@@ -473,6 +504,22 @@ internal data class TvStrings(
                 jellyfinConnectionFailed = "Die Verbindung zu Jellyfin ist fehlgeschlagen.",
                 manageJellyfin = "Jellyfin verwalten",
                 manageSeerr = "Seerr verwalten",
+                segmentSkipping = "Segmente überspringen",
+                serverSegmentExplanation =
+                    "Verwendet Segmentmarkierungen deines Jellyfin-Servers. Die Verfügbarkeit hängt von Server und Medium ab.",
+                introSegments = "Intros",
+                recapSegments = "Rückblicke",
+                outroSegments = "Abspann",
+                previewSegments = "Vorschauen",
+                commercialSegments = "Werbung",
+                showSkipButton = "Schaltfläche anzeigen",
+                skipAutomatically = "Automatisch überspringen",
+                skipIntro = "Intro überspringen",
+                skipRecap = "Rückblick überspringen",
+                skipPreview = "Vorschau überspringen",
+                skipCommercial = "Werbung überspringen",
+                skipCredits = "Abspann überspringen",
+                playNextEpisode = "Nächste Folge abspielen",
             )
     }
 }
