@@ -256,6 +256,38 @@ class PlaybackContinuationCoordinatorTest {
         }
 
     @Test
+    fun pendingResolutionUsesModeSampledAtCompletionEvenIfProviderChanges() =
+        runTest {
+            var mode = AutoplayNextMode.IMMEDIATE
+            var plays = 0
+            val pending = CompletableDeferred<PlaybackContinuationTarget?>()
+            val coordinator =
+                PlaybackContinuationCoordinator(
+                    scope = this,
+                    modeProvider = { mode },
+                    resolveNext = { _, _ -> pending.await() },
+                )
+
+            coordinator.onPlaybackState(active("episode", phase = PlaybackPhase.Ready))
+            runCurrent()
+            coordinator.onPlaybackState(active("episode", phase = PlaybackPhase.Ended))
+            runCurrent()
+
+            mode = AutoplayNextMode.COUNTDOWN
+            pending.complete(target { plays += 1 })
+            runCurrent()
+
+            assertEquals(1, plays)
+            assertNull(coordinator.state.value.nextTarget)
+            assertNull(coordinator.state.value.countdownSecondsRemaining)
+
+            coordinator.onPlaybackState(active("episode", phase = PlaybackPhase.Ended))
+            advanceTimeBy(20_000)
+            runCurrent()
+            assertEquals(1, plays)
+        }
+
+    @Test
     fun localToCastHandoffKeepsPreparedTargetWithoutResolvingAgain() =
         runTest {
             var resolutions = 0
