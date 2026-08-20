@@ -40,6 +40,8 @@ class PlaybackContinuationCoordinator(
     private var resolutionJob: Job? = null
     private var countdownJob: Job? = null
     private var playJob: Job? = null
+    private var observationKind = ContinuationObservationKind.NONE
+    private var lastActivePhase: PlaybackPhase? = null
 
     fun onPlaybackState(playbackState: PlaybackState) {
         when (playbackState) {
@@ -81,22 +83,48 @@ class PlaybackContinuationCoordinator(
     private fun observeActive(active: PlaybackState.Active) {
         val seriesId = active.metadata?.seriesId
         if (active.mediaKind != PlaybackMediaKind.VIDEO || seriesId == null) {
-            prepareMedia(active.mediaId)
+            observeIneligibleActive(active.mediaId, active.phase)
             return
         }
-        if (currentMediaId != active.mediaId || currentSeriesId != seriesId) {
+        val startsNewSession =
+            currentMediaId != active.mediaId ||
+                currentSeriesId != seriesId ||
+                observationKind == ContinuationObservationKind.NONE ||
+                observationKind == ContinuationObservationKind.INELIGIBLE_ACTIVE ||
+                (
+                    observationKind == ContinuationObservationKind.ELIGIBLE_ACTIVE &&
+                        lastActivePhase == PlaybackPhase.Ended &&
+                        active.phase != PlaybackPhase.Ended
+                )
+        if (startsNewSession) {
             beginEpisode(active.mediaId, seriesId)
         } else if (!resolutionStarted) {
             startResolution(active.mediaId, seriesId)
         }
         if (active.phase == PlaybackPhase.Ended) onPlaybackCompleted(active.mediaId)
+        observationKind = ContinuationObservationKind.ELIGIBLE_ACTIVE
+        lastActivePhase = active.phase
     }
 
     private fun prepareMedia(mediaId: String) {
-        if (currentMediaId == mediaId && currentSeriesId == null) return
+        if (currentMediaId == mediaId && observationKind == ContinuationObservationKind.PREPARING) return
         clearCurrentWork()
         currentMediaId = mediaId
+        observationKind = ContinuationObservationKind.PREPARING
         mutableState.value = PlaybackContinuationState(mediaId = mediaId)
+    }
+
+    private fun observeIneligibleActive(
+        mediaId: String,
+        phase: PlaybackPhase,
+    ) {
+        if (currentMediaId != mediaId || observationKind != ContinuationObservationKind.INELIGIBLE_ACTIVE) {
+            clearCurrentWork()
+            currentMediaId = mediaId
+            mutableState.value = PlaybackContinuationState(mediaId = mediaId)
+        }
+        observationKind = ContinuationObservationKind.INELIGIBLE_ACTIVE
+        lastActivePhase = phase
     }
 
     private fun beginEpisode(
@@ -193,6 +221,8 @@ class PlaybackContinuationCoordinator(
         resolutionStarted = false
         completionHandled = false
         completionMode = null
+        observationKind = ContinuationObservationKind.NONE
+        lastActivePhase = null
     }
 
     private fun reset() {
@@ -204,4 +234,11 @@ class PlaybackContinuationCoordinator(
         const val COUNTDOWN_SECONDS = 10
         const val COUNTDOWN_TICK_MILLIS = 1_000L
     }
+}
+
+private enum class ContinuationObservationKind {
+    NONE,
+    PREPARING,
+    ELIGIBLE_ACTIVE,
+    INELIGIBLE_ACTIVE,
 }

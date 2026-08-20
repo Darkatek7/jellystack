@@ -65,22 +65,24 @@ class PlaybackSegmentCoordinator(
     private var loadJob: Job? = null
     private var seekJob: Job? = null
     private var generation = 0L
+    private var observationKind = SegmentObservationKind.NONE
+    private var lastActivePhase: PlaybackPhase? = null
 
     fun onPlaybackState(playbackState: PlaybackState) {
         when (playbackState) {
             is PlaybackState.Active -> {
                 if (playbackState.mediaKind != PlaybackMediaKind.VIDEO) {
-                    resetForNonVideo(playbackState.mediaId)
+                    observeNonVideo(playbackState.mediaId)
                     return
                 }
-                observeVideo(playbackState.mediaId, playbackState.positionMs)
+                observeActiveVideo(playbackState.mediaId, playbackState.positionMs, playbackState.phase)
             }
             is PlaybackState.Preparing -> {
                 if (playbackState.mediaKind != PlaybackMediaKind.VIDEO) {
-                    resetForNonVideo(playbackState.mediaId)
+                    observeNonVideo(playbackState.mediaId)
                     return
                 }
-                observeVideo(playbackState.mediaId, 0L)
+                observePreparingVideo(playbackState.mediaId)
             }
             PlaybackState.Stopped -> reset()
             is PlaybackState.PlaybackError -> reset()
@@ -96,16 +98,37 @@ class PlaybackSegmentCoordinator(
         dispatchSeek(action.endPositionMs)
     }
 
-    private fun observeVideo(
+    private fun observePreparingVideo(mediaId: String) {
+        currentPositionMs = 0L
+        if (currentMediaId != mediaId || observationKind != SegmentObservationKind.VIDEO_PREPARING) {
+            startLoad(mediaId)
+        }
+        observationKind = SegmentObservationKind.VIDEO_PREPARING
+        lastActivePhase = null
+    }
+
+    private fun observeActiveVideo(
         mediaId: String,
         positionMs: Long,
+        phase: PlaybackPhase,
     ) {
         currentPositionMs = positionMs
-        if (currentMediaId != mediaId) {
+        val startsNewSession =
+            currentMediaId != mediaId ||
+                observationKind == SegmentObservationKind.NONE ||
+                observationKind == SegmentObservationKind.NON_VIDEO ||
+                (
+                    observationKind == SegmentObservationKind.VIDEO_ACTIVE &&
+                        lastActivePhase == PlaybackPhase.Ended &&
+                        phase != PlaybackPhase.Ended
+                )
+        if (startsNewSession) {
             startLoad(mediaId)
         } else {
             publishDerivedState(isLoading = loadJob?.isActive == true)
         }
+        observationKind = SegmentObservationKind.VIDEO_ACTIVE
+        lastActivePhase = phase
     }
 
     private fun startLoad(mediaId: String) {
@@ -173,10 +196,11 @@ class PlaybackSegmentCoordinator(
         seekJob = scope.launch { seekAdapter.seekTo(positionMs) }
     }
 
-    private fun resetForNonVideo(mediaId: String) {
-        if (currentMediaId == mediaId && segments.isEmpty() && loadJob?.isActive != true) return
+    private fun observeNonVideo(mediaId: String) {
+        if (currentMediaId == mediaId && observationKind == SegmentObservationKind.NON_VIDEO) return
         reset()
         currentMediaId = mediaId
+        observationKind = SegmentObservationKind.NON_VIDEO
         mutableState.value = PlaybackSegmentState(mediaId = mediaId)
     }
 
@@ -190,8 +214,17 @@ class PlaybackSegmentCoordinator(
         currentPositionMs = 0L
         segments = emptyList()
         consumedAutoSegments.clear()
+        observationKind = SegmentObservationKind.NONE
+        lastActivePhase = null
         mutableState.value = PlaybackSegmentState()
     }
+}
+
+private enum class SegmentObservationKind {
+    NONE,
+    VIDEO_PREPARING,
+    VIDEO_ACTIVE,
+    NON_VIDEO,
 }
 
 private fun JellyfinMediaSegmentDto.toPlaybackSegment(expectedItemId: String): PlaybackSegment? {

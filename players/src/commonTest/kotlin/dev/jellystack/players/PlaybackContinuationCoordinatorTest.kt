@@ -180,6 +180,103 @@ class PlaybackContinuationCoordinatorTest {
             assertNull(coordinator.state.value.countdownSecondsRemaining)
         }
 
+    @Test
+    fun sameIdPreparingAndEndedReplayResetPreparedStateAndOldCountdownWithoutStopped() =
+        runTest {
+            var resolutions = 0
+            var plays = 0
+            val coordinator =
+                coordinator(
+                    resolve = { _, _ ->
+                        resolutions += 1
+                        target(mediaId = "next-$resolutions") { plays += 1 }
+                    },
+                )
+
+            coordinator.onPlaybackState(active("episode", phase = PlaybackPhase.Ready))
+            runCurrent()
+            coordinator.onPlaybackState(active("episode", phase = PlaybackPhase.Ended))
+            runCurrent()
+            assertEquals(10, coordinator.state.value.countdownSecondsRemaining)
+
+            coordinator.onPlaybackState(preparing("episode"))
+            coordinator.onPlaybackState(preparing("episode"))
+            advanceTimeBy(20_000)
+            runCurrent()
+            assertEquals(0, plays)
+            assertNull(coordinator.state.value.nextTarget)
+            assertNull(coordinator.state.value.countdownSecondsRemaining)
+
+            coordinator.onPlaybackState(active("episode", phase = PlaybackPhase.Ready))
+            runCurrent()
+            assertEquals(
+                "next-2",
+                coordinator.state.value.nextTarget
+                    ?.mediaId,
+            )
+            coordinator.onPlaybackState(active("episode", phase = PlaybackPhase.Ended))
+            runCurrent()
+            assertEquals(10, coordinator.state.value.countdownSecondsRemaining)
+
+            coordinator.onPlaybackState(active("episode", phase = PlaybackPhase.Ready))
+            runCurrent()
+            advanceTimeBy(20_000)
+            runCurrent()
+
+            assertEquals(3, resolutions)
+            assertEquals(
+                "next-3",
+                coordinator.state.value.nextTarget
+                    ?.mediaId,
+            )
+            assertNull(coordinator.state.value.countdownSecondsRemaining)
+            assertEquals(0, plays)
+        }
+
+    @Test
+    fun completionWhileResolutionIsPendingStartsCountdownWhenTargetArrives() =
+        runTest {
+            var plays = 0
+            val pending = CompletableDeferred<PlaybackContinuationTarget?>()
+            val coordinator = coordinator(resolve = { _, _ -> pending.await() })
+
+            coordinator.onPlaybackState(active("episode", phase = PlaybackPhase.Ready))
+            runCurrent()
+            coordinator.onPlaybackState(active("episode", phase = PlaybackPhase.Ended))
+            runCurrent()
+            assertNull(coordinator.state.value.countdownSecondsRemaining)
+
+            pending.complete(target { plays += 1 })
+            runCurrent()
+            assertEquals(10, coordinator.state.value.countdownSecondsRemaining)
+
+            advanceTimeBy(10_000)
+            runCurrent()
+            assertEquals(1, plays)
+        }
+
+    @Test
+    fun localToCastHandoffKeepsPreparedTargetWithoutResolvingAgain() =
+        runTest {
+            var resolutions = 0
+            val coordinator =
+                coordinator(
+                    resolve = { _, _ ->
+                        resolutions += 1
+                        target {}
+                    },
+                )
+
+            coordinator.onPlaybackState(active("episode", phase = PlaybackPhase.Ready))
+            runCurrent()
+            val prepared = coordinator.state.value.nextTarget
+            coordinator.onPlaybackState(castConnecting("episode"))
+            runCurrent()
+
+            assertEquals(1, resolutions)
+            assertEquals(prepared, coordinator.state.value.nextTarget)
+        }
+
     private fun kotlinx.coroutines.test.TestScope.coordinator(
         mode: AutoplayNextMode = AutoplayNextMode.COUNTDOWN,
         resolve: suspend (String, String) -> PlaybackContinuationTarget?,
@@ -222,6 +319,39 @@ class PlaybackContinuationCoordinatorTest {
                     primaryImageTag = null,
                 ),
             phase = phase,
+        )
+
+    private fun preparing(mediaId: String) =
+        PlaybackState.Preparing(
+            mediaId = mediaId,
+            metadata = null,
+            mediaKind = PlaybackMediaKind.VIDEO,
+        )
+
+    private fun castConnecting(mediaId: String): PlaybackState.Active =
+        PlaybackState.CastConnecting(
+            mediaId = mediaId,
+            localDeviceName = "local",
+            targetDeviceName = "cast",
+            stream = testStream,
+            positionMs = 20_000,
+            durationMs = 60_000,
+            audioTrack = null,
+            subtitleTrack = null,
+            isPaused = false,
+            source = testSource,
+            qualityOptions = emptyList(),
+            selectedQualityId = PlaybackQualityOption.AUTO_ID,
+            metadata =
+                PlaybackMetadata(
+                    title = "Episode",
+                    seriesId = "series",
+                    seriesName = "Series",
+                    episodeName = "Episode",
+                    artworkUrl = null,
+                    primaryImageTag = null,
+                ),
+            phase = PlaybackPhase.Ready,
         )
 
     private class SupersededTargetResolver {

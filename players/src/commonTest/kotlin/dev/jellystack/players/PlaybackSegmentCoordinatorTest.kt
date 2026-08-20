@@ -57,6 +57,7 @@ class PlaybackSegmentCoordinatorTest {
                         segment("negative", "Intro", -1, 1_000),
                         segment("backwards", "Outro", 2_000, 1_000),
                         segment("empty", "Preview", 1_000, 1_000),
+                        segmentTicks("collapsed", "Preview", 1, 9_999),
                         segment("future", "FutureType", 0, 3_000),
                         segment("wrong-item", "Commercial", 0, 3_000, itemId = "other"),
                     ),
@@ -248,6 +249,72 @@ class PlaybackSegmentCoordinatorTest {
             assertEquals(1, service.requests)
         }
 
+    @Test
+    fun sameIdPreparingAndEndedReplayCreateFreshAutoSkipSessionsWithoutStopped() =
+        runTest {
+            val seeks = mutableListOf<Long>()
+            val service = StaticSegmentService(available(segment("intro", "Intro", 1_000, 2_000)))
+            val coordinator = coordinator(service, mode = { SegmentSkipMode.AUTO_SKIP }, seeks = seeks)
+
+            coordinator.onPlaybackState(active("episode", 1_500))
+            runCurrent()
+            assertEquals(listOf(2_000L), seeks)
+
+            coordinator.onPlaybackState(preparing("episode"))
+            coordinator.onPlaybackState(preparing("episode"))
+            runCurrent()
+            coordinator.onPlaybackState(active("episode", 1_500))
+            runCurrent()
+            assertEquals(listOf(2_000L, 2_000L), seeks)
+
+            coordinator.onPlaybackState(active("episode", 2_000, phase = PlaybackPhase.Ended))
+            coordinator.onPlaybackState(active("episode", 1_500, phase = PlaybackPhase.Ready))
+            runCurrent()
+
+            assertEquals(listOf(2_000L, 2_000L, 2_000L), seeks)
+            assertEquals(3, service.requests)
+        }
+
+    @Test
+    fun sameIdNonVideoToVideoTransitionLoadsSegments() =
+        runTest {
+            val service = StaticSegmentService(available(segment("intro", "Intro", 0, 2_000)))
+            val coordinator = coordinator(service)
+
+            coordinator.onPlaybackState(active("episode", 1_000, mediaKind = PlaybackMediaKind.AUDIO))
+            runCurrent()
+            assertEquals(0, service.requests)
+
+            coordinator.onPlaybackState(active("episode", 1_000))
+            runCurrent()
+
+            assertEquals(1, service.requests)
+            assertEquals(
+                listOf(PlaybackSegmentType.INTRO),
+                coordinator.state.value.actions
+                    .map { it.type },
+            )
+        }
+
+    @Test
+    fun localToCastHandoffDoesNotStartANewSegmentSession() =
+        runTest {
+            val service = StaticSegmentService(available(segment("intro", "Intro", 0, 2_000)))
+            val coordinator = coordinator(service)
+
+            coordinator.onPlaybackState(active("episode", 500))
+            runCurrent()
+            coordinator.onPlaybackState(castConnecting("episode", 600))
+            runCurrent()
+
+            assertEquals(1, service.requests)
+            assertEquals(
+                listOf(PlaybackSegmentType.INTRO),
+                coordinator.state.value.actions
+                    .map { it.type },
+            )
+        }
+
     private fun kotlinx.coroutines.test.TestScope.coordinator(
         service: JellyfinMediaSegmentsService,
         mode: (PlaybackSegmentType) -> SegmentSkipMode = { SegmentSkipMode.SHOW_BUTTON },
@@ -274,12 +341,27 @@ class PlaybackSegmentCoordinatorTest {
         endTicks = endMs * 10_000,
     )
 
+    private fun segmentTicks(
+        id: String,
+        type: String,
+        startTicks: Long,
+        endTicks: Long,
+        itemId: String = "episode",
+    ) = JellyfinMediaSegmentDto(
+        id = id,
+        itemId = itemId,
+        type = type,
+        startTicks = startTicks,
+        endTicks = endTicks,
+    )
+
     private fun available(vararg segments: JellyfinMediaSegmentDto) = JellyfinMediaSegmentsResult.Available(segments.toList())
 
     private fun active(
         mediaId: String,
         positionMs: Long,
         mediaKind: PlaybackMediaKind = PlaybackMediaKind.VIDEO,
+        phase: PlaybackPhase = PlaybackPhase.Ready,
     ): PlaybackState.Active =
         PlaybackState.LocalPlayback(
             mediaId = mediaId,
@@ -303,6 +385,43 @@ class PlaybackSegmentCoordinatorTest {
                     primaryImageTag = null,
                 ),
             mediaKind = mediaKind,
+            phase = phase,
+        )
+
+    private fun preparing(mediaId: String) =
+        PlaybackState.Preparing(
+            mediaId = mediaId,
+            metadata = null,
+            mediaKind = PlaybackMediaKind.VIDEO,
+        )
+
+    private fun castConnecting(
+        mediaId: String,
+        positionMs: Long,
+    ): PlaybackState.Active =
+        PlaybackState.CastConnecting(
+            mediaId = mediaId,
+            localDeviceName = "local",
+            targetDeviceName = "cast",
+            stream = testStream,
+            positionMs = positionMs,
+            durationMs = 60_000,
+            audioTrack = null,
+            subtitleTrack = null,
+            isPaused = false,
+            source = testSource,
+            qualityOptions = emptyList(),
+            selectedQualityId = PlaybackQualityOption.AUTO_ID,
+            metadata =
+                PlaybackMetadata(
+                    title = "Episode",
+                    seriesId = "series",
+                    seriesName = "Series",
+                    episodeName = "Episode",
+                    artworkUrl = null,
+                    primaryImageTag = null,
+                ),
+            phase = PlaybackPhase.Ready,
         )
 
     private class StaticSegmentService(
