@@ -417,7 +417,7 @@
     <string name="whats_new_0160_tv_beta4_spotlight">Spotlight bleibt beim ausgewählten Titel, damit Trailer ungestört abspielen.</string>
     <string name="whats_new_0160_tv_beta4_trailers">Trailer-Vorschauen folgen der exakt fokussierten Karte, auch in doppelten Zeilen.</string>
     <string name="whats_new_0160_tv_beta4_libraries">Medien von Home sowie Film- und Serienbibliotheken öffnen ohne endloses Laden.</string>
-    <string name="whats_new_0160_tv_beta4_focus">Der Fernbedienungsfokus ist zuverlässiger und Discover-Poster springen nicht mehr.</string>
+    <string name="whats_new_0160_tv_beta4_focus">Vertikale Navigation startet jede Home-Zeile bei der ersten Karte; Detailseiten bleiben lesbar und scrollbar.</string>
     <string name="insecure_http_title">Unverschlüsselte Verbindung</string>
     <string name="insecure_http_warning">Dieser Server verwendet unverschlüsseltes HTTP. Zugangsdaten und Medienverkehr können für andere im Netzwerk sichtbar sein. Verwende wenn möglich HTTPS.</string>
     <string name="insecure_http_confirm">Diesen HTTP-Server trotzdem verwenden</string>

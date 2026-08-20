@@ -6,7 +6,8 @@
 - Show trailer previews only in the exact focused card, even when media appears in multiple rows.
 - Open Home media and Movies or Shows libraries without endless loading.
 - Keep Discover and Upcoming cards in one consistent poster format without focus bouncing.
-- Restore remote focus predictably across rows, routes, and the sidebar.
+- Start every vertical Home row move at its first card and restore remote focus predictably across routes and the sidebar.
+- Show episode names in readable white text and make Overview, Cast, episodes, and similar media reachable by remote.
 
 ## 0.16.0-tv-beta.3
 

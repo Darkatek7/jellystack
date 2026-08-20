@@ -90,7 +90,7 @@ class TvHomeScreenTest {
     }
 
     @Test
-    fun verticalMoveMaterializesPreservedOffscreenColumn() {
+    fun verticalMoveFromOffscreenColumnTargetsFirstItemInNextRow() {
         lateinit var engine: AndroidPlayerEngine
         val preferred = androidx.compose.runtime.mutableStateOf<String?>(tvHomeCardTargetId("plugin:row-0", "row-0-item-10"))
         val sections =
@@ -119,7 +119,7 @@ class TvHomeScreenTest {
             .onNodeWithContentDescription("Row 0 item 10")
             .assertIsFocused()
             .performKeyInput { pressKey(Key.DirectionDown) }
-        composeRule.onNodeWithContentDescription("Row 1 item 10").assertIsFocused()
+        composeRule.onNodeWithContentDescription("Row 1 item 0").assertIsFocused()
         composeRule.runOnIdle(engine::release)
     }
 
@@ -871,7 +871,7 @@ class TvHomeScreenTest {
             .assertIsFocused()
             .performKeyInput { pressKey(Key.DirectionDown) }
         composeRule
-            .onAllNodes(cardWithDescription("Local second"))[0]
+            .onAllNodes(cardWithDescription("Local first"))[0]
             .assertIsFocused()
             .performKeyInput { pressKey(Key.DirectionDown) }
 

@@ -272,19 +272,12 @@ internal class TvHomeVerticalFocusCoordinator(
                 }
             is TvHomeFocusOrigin.Row -> {
                 val currentIndex = rows.indexOfFirst { it.id == origin.id }
-                val horizontalIndex =
-                    rows
-                        .getOrNull(currentIndex)
-                        ?.itemIds
-                        ?.indexOf(origin.itemId)
-                        ?.takeIf { it >= 0 }
-                        ?: 0
                 if (currentIndex < 0) {
                     null
                 } else if (direction == TvHomeVerticalDirection.UP) {
-                    rows.getOrNull(currentIndex - 1)?.destination(horizontalIndex) ?: TvHomeFocusDestination.HeroPrimary
+                    rows.getOrNull(currentIndex - 1)?.destination() ?: TvHomeFocusDestination.HeroPrimary
                 } else {
-                    rows.getOrNull(currentIndex + 1)?.destination(horizontalIndex)
+                    rows.getOrNull(currentIndex + 1)?.destination()
                 }
             }
         }
@@ -295,8 +288,7 @@ internal class TvHomeVerticalFocusCoordinator(
             rows.firstOrNull { it.id == destination.id }
                 ?: rows.minByOrNull { kotlin.math.abs(it.lazyColumnIndex - destination.lazyColumnIndex) }
                 ?: return null
-        val stableItemIndex = row.itemIds.indexOf(destination.firstItemId).takeIf { it >= 0 }
-        return copy(destination = row.destination(stableItemIndex ?: destination.horizontalIndex))
+        return copy(destination = row.destination())
     }
 }
 

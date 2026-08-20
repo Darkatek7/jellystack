@@ -417,7 +417,7 @@
     <string name="whats_new_0160_tv_beta4_spotlight">Spotlight stays on your selected item so trailers can play without interruption.</string>
     <string name="whats_new_0160_tv_beta4_trailers">Trailer previews follow the exact focused card, even across duplicate rows.</string>
     <string name="whats_new_0160_tv_beta4_libraries">Home media and movie or show libraries open without endless loading.</string>
-    <string name="whats_new_0160_tv_beta4_focus">Remote focus is more reliable, and Discover posters no longer resize or bounce.</string>
+    <string name="whats_new_0160_tv_beta4_focus">Vertical navigation starts each Home row at its first card, and detail pages stay readable and scrollable.</string>
     <string name="insecure_http_title">Unencrypted connection</string>
     <string name="insecure_http_warning">This server uses unencrypted HTTP. Credentials and media traffic may be visible to others on the network. Use HTTPS whenever possible.</string>
     <string name="insecure_http_confirm">Use this HTTP server anyway</string>

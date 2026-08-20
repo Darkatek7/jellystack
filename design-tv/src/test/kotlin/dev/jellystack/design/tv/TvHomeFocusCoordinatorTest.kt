@@ -138,22 +138,22 @@ class TvHomeFocusCoordinatorTest {
     }
 
     @Test
-    fun verticalMovePreservesHorizontalPositionAndClampsAtRowEnd() {
+    fun verticalMoveAlwaysTargetsFirstItemInAdjacentRow() {
         val coordinator = TvHomeVerticalFocusCoordinator(rows)
 
-        val preserved =
+        val down =
             coordinator.beginMove(
                 TvHomeFocusOrigin.Row("portrait", "portrait-2"),
                 TvHomeVerticalDirection.DOWN,
             )
-        val clamped =
+        val up =
             coordinator.beginMove(
                 TvHomeFocusOrigin.Row("landscape", "landscape-3"),
                 TvHomeVerticalDirection.UP,
             )
 
-        assertEquals(TvHomeFocusDestination.Row("landscape", 3, "landscape-2", 1), preserved?.destination)
-        assertEquals(TvHomeFocusDestination.Row("portrait", 1, "portrait-2", 1), clamped?.destination)
+        assertEquals(TvHomeFocusDestination.Row("landscape", 3, "landscape-1", 0), down?.destination)
+        assertEquals(TvHomeFocusDestination.Row("portrait", 1, "portrait-1", 0), up?.destination)
     }
 
     @Test
@@ -179,7 +179,7 @@ class TvHomeFocusCoordinatorTest {
     }
 
     @Test
-    fun pendingMoveFollowsStableCardIdWhenItemsAreInsertedBeforeIt() {
+    fun pendingVerticalMoveRetargetsFirstItemWhenItemsAreInsertedBeforeIt() {
         val coordinator = TvHomeVerticalFocusCoordinator(rows)
         val pending =
             coordinator.beginMove(
@@ -195,7 +195,7 @@ class TvHomeFocusCoordinatorTest {
             )
 
         assertEquals(pending.requestId, reconciled?.requestId)
-        assertEquals(TvHomeFocusDestination.Row("landscape", 3, "landscape-2", 2), reconciled?.destination)
+        assertEquals(TvHomeFocusDestination.Row("landscape", 3, "inserted", 0), reconciled?.destination)
     }
 
     @Test
