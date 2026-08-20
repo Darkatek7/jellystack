@@ -35,6 +35,12 @@ enum class AutoplayNextMode {
     IMMEDIATE,
 }
 
+enum class SegmentSkipMode {
+    OFF,
+    SHOW_BUTTON,
+    AUTO_SKIP,
+}
+
 enum class ResumeMode {
     RESUME,
     ASK,
@@ -68,6 +74,11 @@ data class AppSettings(
     val wifiStreamingQuality: StreamingQualityPreference = StreamingQualityPreference.AUTO,
     val mobileStreamingQuality: StreamingQualityPreference = StreamingQualityPreference.AUTO,
     val autoplayNextMode: AutoplayNextMode = AutoplayNextMode.COUNTDOWN,
+    val introSkipMode: SegmentSkipMode = SegmentSkipMode.SHOW_BUTTON,
+    val recapSkipMode: SegmentSkipMode = SegmentSkipMode.SHOW_BUTTON,
+    val outroSkipMode: SegmentSkipMode = SegmentSkipMode.SHOW_BUTTON,
+    val previewSkipMode: SegmentSkipMode = SegmentSkipMode.OFF,
+    val commercialSkipMode: SegmentSkipMode = SegmentSkipMode.OFF,
     val resumeMode: ResumeMode = ResumeMode.RESUME,
     val seekBackSeconds: Int = 10,
     val seekForwardSeconds: Int = 30,

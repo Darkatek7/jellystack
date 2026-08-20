@@ -25,6 +25,11 @@ class AppSettingsRepositoryTest {
         assertTrue(value.rememberSeriesTracks)
         assertEquals(SubtitleTextSize.SYSTEM, value.subtitleTextSize)
         assertEquals(SubtitleBackground.SYSTEM, value.subtitleBackground)
+        assertEquals(SegmentSkipMode.SHOW_BUTTON, value.introSkipMode)
+        assertEquals(SegmentSkipMode.SHOW_BUTTON, value.recapSkipMode)
+        assertEquals(SegmentSkipMode.SHOW_BUTTON, value.outroSkipMode)
+        assertEquals(SegmentSkipMode.OFF, value.previewSkipMode)
+        assertEquals(SegmentSkipMode.OFF, value.commercialSkipMode)
         assertTrue(value.spotlightAutoCycle)
         assertEquals(6, value.spotlightIntervalSeconds)
         assertTrue(value.useServerHomeSections)
@@ -53,6 +58,11 @@ class AppSettingsRepositoryTest {
         repository.setRememberSeriesTracks(false)
         repository.setSubtitleTextSize(SubtitleTextSize.LARGE)
         repository.setSubtitleBackground(SubtitleBackground.DARK)
+        repository.setIntroSkipMode(SegmentSkipMode.AUTO_SKIP)
+        repository.setRecapSkipMode(SegmentSkipMode.OFF)
+        repository.setOutroSkipMode(SegmentSkipMode.AUTO_SKIP)
+        repository.setPreviewSkipMode(SegmentSkipMode.SHOW_BUTTON)
+        repository.setCommercialSkipMode(SegmentSkipMode.SHOW_BUTTON)
         repository.setSpotlightAutoCycle(false)
         repository.setSpotlightIntervalSeconds(15)
         repository.setUseServerHomeSections(false)
@@ -68,6 +78,11 @@ class AppSettingsRepositoryTest {
         )
         assertEquals(AppLanguage.GERMAN, repository.settings.value.appLanguage)
         assertEquals("deu", repository.settings.value.preferredAudioLanguage)
+        assertEquals(SegmentSkipMode.AUTO_SKIP, repository.settings.value.introSkipMode)
+        assertEquals(SegmentSkipMode.OFF, repository.settings.value.recapSkipMode)
+        assertEquals(SegmentSkipMode.AUTO_SKIP, repository.settings.value.outroSkipMode)
+        assertEquals(SegmentSkipMode.SHOW_BUTTON, repository.settings.value.previewSkipMode)
+        assertEquals(SegmentSkipMode.SHOW_BUTTON, repository.settings.value.commercialSkipMode)
         assertTrue(repository.settings.value.downloadsWifiOnly)
         assertFalse(repository.settings.value.useServerHomeSections)
         assertFalse(repository.settings.value.trailerPreviewsEnabled)
@@ -87,6 +102,11 @@ class AppSettingsRepositoryTest {
                     "settings.spotlight_interval_seconds" to 7,
                     "settings.audio_language" to "  ",
                     "settings.default_playback_speed" to 3f,
+                    "settings.intro_skip_mode" to "BROKEN",
+                    "settings.recap_skip_mode" to "AUTO_SKIP",
+                    "settings.outro_skip_mode" to "BROKEN",
+                    "settings.preview_skip_mode" to "SHOW_BUTTON",
+                    "settings.commercial_skip_mode" to "BROKEN",
                 ),
             )
 
@@ -97,7 +117,25 @@ class AppSettingsRepositoryTest {
         assertEquals(10, value.seekBackSeconds)
         assertEquals(6, value.spotlightIntervalSeconds)
         assertNull(value.preferredAudioLanguage)
+        assertEquals(SegmentSkipMode.SHOW_BUTTON, value.introSkipMode)
+        assertEquals(SegmentSkipMode.AUTO_SKIP, value.recapSkipMode)
+        assertEquals(SegmentSkipMode.SHOW_BUTTON, value.outroSkipMode)
+        assertEquals(SegmentSkipMode.SHOW_BUTTON, value.previewSkipMode)
+        assertEquals(SegmentSkipMode.OFF, value.commercialSkipMode)
         assertEquals(1f, value.defaultPlaybackSpeed)
+    }
+
+    @Test
+    fun segmentSettersChangeOnlyTheirOwnModes() {
+        val repository = AppSettingsRepository(InMemorySettings())
+
+        repository.setIntroSkipMode(SegmentSkipMode.AUTO_SKIP)
+
+        assertEquals(SegmentSkipMode.AUTO_SKIP, repository.settings.value.introSkipMode)
+        assertEquals(SegmentSkipMode.SHOW_BUTTON, repository.settings.value.recapSkipMode)
+        assertEquals(SegmentSkipMode.SHOW_BUTTON, repository.settings.value.outroSkipMode)
+        assertEquals(SegmentSkipMode.OFF, repository.settings.value.previewSkipMode)
+        assertEquals(SegmentSkipMode.OFF, repository.settings.value.commercialSkipMode)
     }
 
     @Test
