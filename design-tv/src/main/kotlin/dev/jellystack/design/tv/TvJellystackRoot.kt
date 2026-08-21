@@ -79,10 +79,12 @@ import dev.jellystack.core.server.ServerConnectionCoordinator
 import dev.jellystack.core.server.ServerRepository
 import dev.jellystack.core.server.ServerType
 import dev.jellystack.core.server.StoredCredential
+import dev.jellystack.network.ClientConfig
+import dev.jellystack.network.NetworkClientFactory
 import dev.jellystack.players.AndroidPlayerEngine
-import dev.jellystack.players.PlaybackController
 import dev.jellystack.players.PlaybackContinuationCoordinator
 import dev.jellystack.players.PlaybackContinuationTarget
+import dev.jellystack.players.PlaybackController
 import dev.jellystack.players.PlaybackRequest
 import dev.jellystack.players.PlaybackSeekAdapter
 import dev.jellystack.players.PlaybackSegmentCoordinator
@@ -90,8 +92,6 @@ import dev.jellystack.players.PlaybackSegmentModeProvider
 import dev.jellystack.players.PlaybackStartPolicy
 import dev.jellystack.players.PlaybackState
 import dev.jellystack.players.syncplay.SyncPlayCoordinator
-import dev.jellystack.network.ClientConfig
-import dev.jellystack.network.NetworkClientFactory
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch

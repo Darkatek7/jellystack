@@ -28,7 +28,10 @@ class TvPlaybackSegmentIntegrationTest {
             coordinator.onPresentationChanged(listOf("segment:intro"), controlsVisible = true)
             advanceTimeBy(5_000L)
             runCurrent()
-            assertTrue(coordinator.state.value.visibleActionIds.isEmpty())
+            assertTrue(
+                coordinator.state.value.visibleActionIds
+                    .isEmpty(),
+            )
 
             coordinator.onPresentationChanged(listOf("segment:intro"), controlsVisible = false)
             assertEquals(setOf("segment:intro"), coordinator.state.value.visibleActionIds)
@@ -39,7 +42,10 @@ class TvPlaybackSegmentIntegrationTest {
 
             advanceTimeBy(1L)
             runCurrent()
-            assertTrue(coordinator.state.value.visibleActionIds.isEmpty())
+            assertTrue(
+                coordinator.state.value.visibleActionIds
+                    .isEmpty(),
+            )
         }
 
     @Test
@@ -63,7 +69,10 @@ class TvPlaybackSegmentIntegrationTest {
             assertEquals(setOf("play-next"), coordinator.state.value.visibleActionIds)
             advanceTimeBy(1L)
             runCurrent()
-            assertTrue(coordinator.state.value.visibleActionIds.isEmpty())
+            assertTrue(
+                coordinator.state.value.visibleActionIds
+                    .isEmpty(),
+            )
         }
 
     @Test

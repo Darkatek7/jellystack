@@ -52,8 +52,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.util.UnstableApi
 import androidx.tv.material3.Text
 import dev.jellystack.players.AndroidPlayerEngine
-import dev.jellystack.players.PlaybackController
 import dev.jellystack.players.PlaybackContinuationState
+import dev.jellystack.players.PlaybackController
 import dev.jellystack.players.PlaybackSegmentAction
 import dev.jellystack.players.PlaybackSegmentState
 import dev.jellystack.players.PlaybackState

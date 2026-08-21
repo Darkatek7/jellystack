@@ -120,22 +120,20 @@ class JellyfinMediaSegmentsApiTest {
         status: HttpStatusCode,
         body: String,
         expectSuccess: Boolean = false,
-    ) =
-        NetworkClientFactory.create(
-            ClientConfig(
-                engine = MockEngine { respondJson(body, status) },
-                installLogging = false,
-                configure = { this.expectSuccess = expectSuccess },
-            ),
-        )
+    ) = NetworkClientFactory.create(
+        ClientConfig(
+            engine = MockEngine { respondJson(body, status) },
+            installLogging = false,
+            configure = { this.expectSuccess = expectSuccess },
+        ),
+    )
 
     private fun MockRequestHandleScope.respondJson(
         body: String,
         status: HttpStatusCode = HttpStatusCode.OK,
-    ) =
-        respond(
-            body,
-            status,
-            headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
-        )
+    ) = respond(
+        body,
+        status,
+        headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+    )
 }

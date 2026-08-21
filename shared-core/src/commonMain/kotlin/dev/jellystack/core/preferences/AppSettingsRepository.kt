@@ -29,8 +29,7 @@ class AppSettingsRepository(
 
     fun setPreviewSkipMode(value: SegmentSkipMode) = update(KEY_PREVIEW_SKIP_MODE, value.name) { copy(previewSkipMode = value) }
 
-    fun setCommercialSkipMode(value: SegmentSkipMode) =
-        update(KEY_COMMERCIAL_SKIP_MODE, value.name) { copy(commercialSkipMode = value) }
+    fun setCommercialSkipMode(value: SegmentSkipMode) = update(KEY_COMMERCIAL_SKIP_MODE, value.name) { copy(commercialSkipMode = value) }
 
     fun setResumeMode(value: ResumeMode) = update(KEY_RESUME_MODE, value.name) { copy(resumeMode = value) }
 

@@ -2,7 +2,6 @@ package dev.jellystack.design.tv
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -10,6 +9,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsFocused
@@ -22,7 +22,6 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.pressKey
-import androidx.compose.ui.input.key.Key
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
 import dev.jellystack.core.preferences.AppLanguage
@@ -59,7 +58,6 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -222,13 +220,22 @@ class TvPlaybackReviewIntegrationTest {
             }
         }
 
-        composeRule.waitUntil { observed[firstIdentity]?.segment?.state?.value?.isLoading == true }
+        composeRule.waitUntil {
+            observed[firstIdentity]
+                ?.segment
+                ?.state
+                ?.value
+                ?.isLoading == true
+        }
         val first = observed.getValue(firstIdentity)
         composeRule.runOnIdle { identity = secondIdentity }
         composeRule.waitUntil {
             observed[secondIdentity]?.let { pair ->
-                pair.segment.state.value.actions.singleOrNull()?.segmentId == "outro-fresh" &&
-                    pair.continuation.state.value.nextTarget?.mediaId == "episode-fresh"
+                pair.segment.state.value.actions
+                    .singleOrNull()
+                    ?.segmentId == "outro-fresh" &&
+                    pair.continuation.state.value.nextTarget
+                        ?.mediaId == "episode-fresh"
             } == true
         }
         val second = observed.getValue(secondIdentity)
@@ -243,8 +250,17 @@ class TvPlaybackReviewIntegrationTest {
         composeRule.runOnIdle {
             assertEquals(PlaybackSegmentState(), first.segment.state.value)
             assertEquals(PlaybackContinuationState(), first.continuation.state.value)
-            assertEquals("outro-fresh", second.segment.state.value.actions.single().segmentId)
-            assertEquals("episode-fresh", second.continuation.state.value.nextTarget?.mediaId)
+            assertEquals(
+                "outro-fresh",
+                second.segment.state.value.actions
+                    .single()
+                    .segmentId,
+            )
+            assertEquals(
+                "episode-fresh",
+                second.continuation.state.value.nextTarget
+                    ?.mediaId,
+            )
             showHost = false
         }
         composeRule.waitForIdle()
