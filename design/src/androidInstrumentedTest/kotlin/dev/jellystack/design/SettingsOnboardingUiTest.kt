@@ -501,7 +501,7 @@ private fun settingsState(): SettingsUiState =
                     health = SettingsConnectionHealth.Ready,
                 ),
             ),
-        appVersion = "0.15.0",
+        appVersion = "0.15.1",
     )
 
 @Composable
