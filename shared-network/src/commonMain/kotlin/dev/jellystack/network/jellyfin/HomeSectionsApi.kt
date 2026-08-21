@@ -29,7 +29,7 @@ class HomeSectionsApi(
             appendIfAbsent(
                 "X-Emby-Authorization",
                 "MediaBrowser Client=\"Jellystack\", Device=\"Android\", " +
-                    "DeviceId=\"${deviceId ?: "unknown"}\", Version=\"0.15.0\"",
+                    "DeviceId=\"${deviceId ?: "unknown"}\", Version=\"$DEFAULT_JELLYSTACK_CLIENT_VERSION\"",
             )
         }
     }

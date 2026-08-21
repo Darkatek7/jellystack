@@ -19,13 +19,15 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 
+internal const val DEFAULT_JELLYSTACK_CLIENT_VERSION = "0.15.1"
+
 /** Authenticated Jellyfin session and administrator endpoints used by capability-gated features. */
 class JellyfinSessionApi(
     private val client: HttpClient,
     private val baseUrl: String,
     private val accessToken: String,
     private val deviceId: String? = null,
-    private val clientVersion: String = "0.15.0",
+    private val clientVersion: String = DEFAULT_JELLYSTACK_CLIENT_VERSION,
 ) {
     private fun HttpRequestBuilder.configure(pathSuffix: String) {
         url {
