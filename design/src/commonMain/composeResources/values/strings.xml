@@ -247,6 +247,16 @@
     <string name="settings_playback">Playback</string>
     <string name="settings_playback_behavior">Video display</string>
     <string name="settings_playback_detail">Video uses immersive playback and follows your current device orientation.</string>
+    <string name="settings_segments_title">Server segments</string>
+    <string name="settings_segments_explanation">Availability and timing come from your Jellyfin server.</string>
+    <string name="settings_segment_intros">Intros</string>
+    <string name="settings_segment_recaps">Recaps</string>
+    <string name="settings_segment_credits">Credits</string>
+    <string name="settings_segment_previews">Previews</string>
+    <string name="settings_segment_commercials">Commercials</string>
+    <string name="settings_segment_mode_off">Off</string>
+    <string name="settings_segment_mode_button">Show skip button</string>
+    <string name="settings_segment_mode_auto">Skip automatically</string>
     <string name="settings_close">Close settings</string>
     <string name="settings_edit">Edit</string>
     <string name="settings_connection_ready">Ready</string>

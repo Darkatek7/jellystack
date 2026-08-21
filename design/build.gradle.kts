@@ -71,6 +71,7 @@ kotlin {
         val commonTest by getting {
             dependencies {
                 implementation(kotlin("test"))
+                implementation(libs.multiplatform.settings)
             }
         }
         val androidMain by getting {

@@ -80,6 +80,7 @@ import androidx.compose.ui.unit.dp
 import dev.jellystack.core.preferences.AppLanguage
 import dev.jellystack.core.preferences.AutoplayNextMode
 import dev.jellystack.core.preferences.ResumeMode
+import dev.jellystack.core.preferences.SegmentSkipMode
 import dev.jellystack.core.preferences.StreamingQualityPreference
 import dev.jellystack.core.preferences.SubtitleBackground
 import dev.jellystack.core.preferences.SubtitleMode
@@ -132,6 +133,16 @@ import jellystack_mobile.design.generated.resources.settings_lock_locked
 import jellystack_mobile.design.generated.resources.settings_no_connections
 import jellystack_mobile.design.generated.resources.settings_playback
 import jellystack_mobile.design.generated.resources.settings_security
+import jellystack_mobile.design.generated.resources.settings_segment_commercials
+import jellystack_mobile.design.generated.resources.settings_segment_credits
+import jellystack_mobile.design.generated.resources.settings_segment_intros
+import jellystack_mobile.design.generated.resources.settings_segment_mode_auto
+import jellystack_mobile.design.generated.resources.settings_segment_mode_button
+import jellystack_mobile.design.generated.resources.settings_segment_mode_off
+import jellystack_mobile.design.generated.resources.settings_segment_previews
+import jellystack_mobile.design.generated.resources.settings_segment_recaps
+import jellystack_mobile.design.generated.resources.settings_segments_explanation
+import jellystack_mobile.design.generated.resources.settings_segments_title
 import jellystack_mobile.design.generated.resources.settings_title
 import jellystack_mobile.design.generated.resources.settings_version
 import jellystack_mobile.design.generated.resources.theme_dark
@@ -648,6 +659,40 @@ private fun PlaybackCard(
     val rewindTitle = l10n("Rewind interval", "Rücksprung")
     val forwardTitle = l10n("Fast-forward interval", "Vorsprung")
     val secondsLabel = l10n("seconds", "Sekunden")
+    val segmentModeLabels =
+        mapOf(
+            SegmentSkipMode.OFF to stringResource(Res.string.settings_segment_mode_off),
+            SegmentSkipMode.SHOW_BUTTON to stringResource(Res.string.settings_segment_mode_button),
+            SegmentSkipMode.AUTO_SKIP to stringResource(Res.string.settings_segment_mode_auto),
+        )
+    val segmentSettings =
+        listOf(
+            Triple(
+                stringResource(Res.string.settings_segment_intros),
+                state.appSettings.introSkipMode,
+                { mode: SegmentSkipMode -> onAction(SettingsAction.SetIntroSkipMode(mode)) },
+            ),
+            Triple(
+                stringResource(Res.string.settings_segment_recaps),
+                state.appSettings.recapSkipMode,
+                { mode: SegmentSkipMode -> onAction(SettingsAction.SetRecapSkipMode(mode)) },
+            ),
+            Triple(
+                stringResource(Res.string.settings_segment_credits),
+                state.appSettings.outroSkipMode,
+                { mode: SegmentSkipMode -> onAction(SettingsAction.SetOutroSkipMode(mode)) },
+            ),
+            Triple(
+                stringResource(Res.string.settings_segment_previews),
+                state.appSettings.previewSkipMode,
+                { mode: SegmentSkipMode -> onAction(SettingsAction.SetPreviewSkipMode(mode)) },
+            ),
+            Triple(
+                stringResource(Res.string.settings_segment_commercials),
+                state.appSettings.commercialSkipMode,
+                { mode: SegmentSkipMode -> onAction(SettingsAction.SetCommercialSkipMode(mode)) },
+            ),
+        )
     SettingsCard(Icons.Filled.Movie, stringResource(Res.string.settings_playback)) {
         QualityRow(l10n("Wi-Fi streaming quality", "WLAN-Streamingqualität"), state.appSettings.wifiStreamingQuality, onShowPicker) {
             onAction(SettingsAction.SetWifiQuality(it))
@@ -668,6 +713,26 @@ private fun PlaybackCard(
                 onShowPicker = onShowPicker,
             ) { onAction(SettingsAction.SetAutoplayNextMode(it)) }
         }
+        HorizontalDivider()
+        Text(stringResource(Res.string.settings_segments_title), style = MaterialTheme.typography.titleMedium)
+        Text(
+            stringResource(Res.string.settings_segments_explanation),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        segmentSettings.forEach { (title, selected, onSelected) ->
+            EnumPickerRow(
+                title = title,
+                selectedLabel = segmentModeLabels.getValue(selected),
+                titleForPicker = title,
+                options = SegmentSkipMode.entries,
+                selected = selected,
+                label = segmentModeLabels::getValue,
+                onShowPicker = onShowPicker,
+                onSelected = onSelected,
+            )
+        }
+        HorizontalDivider()
         EnumPickerRow(
             title = l10n("Resume playback", "Wiedergabe fortsetzen"),
             selectedLabel = resumeLabel(state.appSettings.resumeMode),
@@ -1375,7 +1440,22 @@ private fun sectionIcon(section: SettingsSection): ImageVector =
 
 private fun sectionSearchTerms(section: SettingsSection): List<String> =
     when (section) {
-        SettingsSection.Playback -> listOf("quality", "streaming", "autoplay", "resume", "seek", "Qualität", "Fortsetzen", "Sprung")
+        SettingsSection.Playback ->
+            listOf(
+                "quality",
+                "streaming",
+                "autoplay",
+                "resume",
+                "seek",
+                "segments",
+                "intro",
+                "credits",
+                "Qualität",
+                "Fortsetzen",
+                "Sprung",
+                "Segmente",
+                "Abspann",
+            )
         SettingsSection.AudioSubtitles -> listOf("audio", "subtitle", "language", "Untertitel", "Sprache")
         SettingsSection.AppearanceLanguage ->
             listOf(

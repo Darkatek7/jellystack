@@ -220,6 +220,7 @@ import dev.jellystack.design.settings.SettingsConnectionHealth
 import dev.jellystack.design.settings.SettingsScreen
 import dev.jellystack.design.settings.SettingsSection
 import dev.jellystack.design.settings.SettingsUiState
+import dev.jellystack.design.settings.persistPlaybackSegmentSetting
 import dev.jellystack.design.settings.toSettingsConnectionUi
 import dev.jellystack.design.shell.JellystackShell
 import dev.jellystack.design.shell.JellystackShellAction
@@ -3244,6 +3245,12 @@ fun JellystackRoot(
                                         appSettingsRepository.setMobileStreamingQuality(action.quality)
                                     is SettingsAction.SetAutoplayNextMode ->
                                         appSettingsRepository.setAutoplayNextMode(action.mode)
+                                    is SettingsAction.SetIntroSkipMode,
+                                    is SettingsAction.SetRecapSkipMode,
+                                    is SettingsAction.SetOutroSkipMode,
+                                    is SettingsAction.SetPreviewSkipMode,
+                                    is SettingsAction.SetCommercialSkipMode,
+                                    -> persistPlaybackSegmentSetting(action, appSettingsRepository)
                                     is SettingsAction.SetResumeMode -> appSettingsRepository.setResumeMode(action.mode)
                                     is SettingsAction.SetSeekBackSeconds ->
                                         appSettingsRepository.setSeekBackSeconds(action.seconds)

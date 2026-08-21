@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.jellystack.core.preferences.AppPlatformCapabilities
+import dev.jellystack.core.preferences.SegmentSkipMode
 import dev.jellystack.core.preferences.ThemeMode
 import dev.jellystack.core.preferences.TutorialStep
 import dev.jellystack.core.security.BiometricCapability
@@ -110,6 +111,34 @@ class SettingsOnboardingUiTest {
         composeRule.onNodeWithText("Playback").performClick()
         composeRule.onNodeWithText("Wi-Fi streaming quality").assertIsDisplayed()
         composeRule.onNodeWithText("Mobile streaming quality").assertIsDisplayed()
+    }
+
+    @Test
+    fun playbackSegmentPickersExplainServerDataAndDispatchAllFiveActions() {
+        val actions = mutableListOf<SettingsAction>()
+        composeRule.setContent { playbackSegmentSettingsHarness(actions) }
+
+        composeRule
+            .onNodeWithText("Availability and timing come from your Jellyfin server.")
+            .performScrollTo()
+            .assertIsDisplayed()
+        listOf("Intros", "Recaps", "Credits", "Previews", "Commercials").forEach { title ->
+            composeRule.onNodeWithText(title).performScrollTo().performClick()
+            composeRule.onNodeWithText("Skip automatically").performClick()
+        }
+
+        composeRule.runOnIdle {
+            assertEquals(
+                listOf(
+                    SettingsAction.SetIntroSkipMode(SegmentSkipMode.AUTO_SKIP),
+                    SettingsAction.SetRecapSkipMode(SegmentSkipMode.AUTO_SKIP),
+                    SettingsAction.SetOutroSkipMode(SegmentSkipMode.AUTO_SKIP),
+                    SettingsAction.SetPreviewSkipMode(SegmentSkipMode.AUTO_SKIP),
+                    SettingsAction.SetCommercialSkipMode(SegmentSkipMode.AUTO_SKIP),
+                ),
+                actions,
+            )
+        }
     }
 
     @Test
@@ -389,6 +418,18 @@ private fun compactSettingsHarness() {
                 onAction = { action ->
                     if (action is SettingsAction.SelectSection) state = state.copy(selectedSection = action.section)
                 },
+            )
+        }
+    }
+}
+
+@Composable
+private fun playbackSegmentSettingsHarness(actions: MutableList<SettingsAction>) {
+    JellystackTheme(isDarkTheme = false) {
+        Box(Modifier.requiredSize(width = 411.dp, height = 891.dp)) {
+            SettingsScreen(
+                state = settingsState().copy(selectedSection = SettingsSection.Playback),
+                onAction = actions::add,
             )
         }
     }

@@ -247,6 +247,16 @@
     <string name="settings_playback">Wiedergabe</string>
     <string name="settings_playback_behavior">Videoanzeige</string>
     <string name="settings_playback_detail">Videos werden immersiv wiedergegeben und folgen der aktuellen Ger&#228;teausrichtung.</string>
+    <string name="settings_segments_title">Server-Segmente</string>
+    <string name="settings_segments_explanation">Verf&#252;gbarkeit und Zeitangaben stammen von deinem Jellyfin-Server.</string>
+    <string name="settings_segment_intros">Intros</string>
+    <string name="settings_segment_recaps">R&#252;ckblicke</string>
+    <string name="settings_segment_credits">Abspann</string>
+    <string name="settings_segment_previews">Vorschauen</string>
+    <string name="settings_segment_commercials">Werbung</string>
+    <string name="settings_segment_mode_off">Aus</string>
+    <string name="settings_segment_mode_button">Schaltfl&#228;che zum &#220;berspringen</string>
+    <string name="settings_segment_mode_auto">Automatisch &#252;berspringen</string>
     <string name="settings_close">Einstellungen schlie&#223;en</string>
     <string name="settings_edit">Bearbeiten</string>
     <string name="settings_connection_ready">Bereit</string>

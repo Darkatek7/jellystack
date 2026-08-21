@@ -24,9 +24,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
@@ -73,12 +79,20 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.media3.common.util.UnstableApi
 import app.jellystack.mobile.R
+import app.jellystack.mobile.playback.AndroidPlaybackActionKind
+import app.jellystack.mobile.playback.AndroidPlaybackActionLabels
+import app.jellystack.mobile.playback.AndroidPlaybackActionModel
+import app.jellystack.mobile.playback.AndroidPlaybackPromptCoordinator
+import app.jellystack.mobile.playback.androidPlaybackActionModels
 import dev.jellystack.core.preferences.SubtitleBackground
 import dev.jellystack.core.preferences.SubtitleTextSize
 import dev.jellystack.players.AndroidPlayerEngine
+import dev.jellystack.players.PlaybackContinuationState
 import dev.jellystack.players.PlaybackController
 import dev.jellystack.players.PlaybackMediaKind
 import dev.jellystack.players.PlaybackMetadata
+import dev.jellystack.players.PlaybackSegmentAction
+import dev.jellystack.players.PlaybackSegmentState
 import dev.jellystack.players.PlaybackState
 import dev.jellystack.players.cast.CastConnectionState
 import dev.jellystack.players.cast.CastSessionManager
@@ -100,6 +114,10 @@ fun AndroidPlaybackSurface(
     seekForwardSeconds: Int = 30,
     subtitleTextSize: SubtitleTextSize = SubtitleTextSize.SYSTEM,
     subtitleBackground: SubtitleBackground = SubtitleBackground.SYSTEM,
+    segmentState: PlaybackSegmentState = PlaybackSegmentState(),
+    continuationState: PlaybackContinuationState = PlaybackContinuationState(),
+    onSkipSegment: (PlaybackSegmentAction) -> Unit = {},
+    onPlayNext: () -> Unit = {},
     syncPlayCoordinator: SyncPlayCoordinator? = null,
     canCreateSyncPlay: Boolean = false,
     canJoinSyncPlay: Boolean = false,
@@ -238,6 +256,10 @@ fun AndroidPlaybackSurface(
                         onShowSyncPlay = { syncPlayVisible = true },
                         seekBackSeconds = seekBackSeconds,
                         seekForwardSeconds = seekForwardSeconds,
+                        segmentState = segmentState,
+                        continuationState = continuationState,
+                        onSkipSegment = onSkipSegment,
+                        onPlayNext = onPlayNext,
                     )
                 PlaybackState.Stopped -> Unit
             }
@@ -350,9 +372,44 @@ private fun ActivePlayer(
     onShowSyncPlay: () -> Unit,
     seekBackSeconds: Int,
     seekForwardSeconds: Int,
+    segmentState: PlaybackSegmentState,
+    continuationState: PlaybackContinuationState,
+    onSkipSegment: (PlaybackSegmentAction) -> Unit,
+    onPlayNext: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val remote = castState is CastConnectionState.Connected || castState is CastConnectionState.Connecting
+    val actionLabels =
+        AndroidPlaybackActionLabels(
+            skipIntro = stringResource(R.string.player_skip_intro),
+            skipRecap = stringResource(R.string.player_skip_recap),
+            skipPreview = stringResource(R.string.player_skip_preview),
+            skipCommercial = stringResource(R.string.player_skip_commercial),
+            skipCredits = stringResource(R.string.player_skip_credits),
+            playNextEpisode = stringResource(R.string.player_play_next_episode),
+        )
+    val actions =
+        androidPlaybackActionModels(
+            segmentState = segmentState,
+            continuationState = continuationState,
+            isEpisode = state.metadata?.seriesId != null,
+            playbackPhase = state.phase,
+            labels = actionLabels,
+        )
+    val promptCoordinator = remember { AndroidPlaybackPromptCoordinator(scope) }
+    val promptState by promptCoordinator.state.collectAsState()
+    LaunchedEffect(actions.map(AndroidPlaybackActionModel::id), controlsVisible) {
+        promptCoordinator.onPresentationChanged(actions.map(AndroidPlaybackActionModel::id), controlsVisible)
+    }
+    DisposableEffect(promptCoordinator) {
+        onDispose(promptCoordinator::release)
+    }
+    val presentedActions =
+        if (controlsVisible) {
+            actions
+        } else {
+            actions.filter { it.id in promptState.visibleActionIds }
+        }
     Box(
         modifier =
             Modifier
@@ -416,6 +473,58 @@ private fun ActivePlayer(
                 if (state.statsForNerdsEnabled) {
                     PlaybackStatsPanel(state)
                 }
+            }
+        }
+        if (presentedActions.isNotEmpty()) {
+            AndroidPlaybackActions(
+                actions = presentedActions,
+                onSkipSegment = onSkipSegment,
+                onPlayNext = onPlayNext,
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomEnd)
+                        .windowInsetsPadding(
+                            WindowInsets.systemBars.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
+                        ).padding(end = 16.dp, bottom = 176.dp)
+                        .testTag(
+                            if (controlsVisible) {
+                                AndroidPlaybackTags.ACTIONS_CONTROLS
+                            } else {
+                                AndroidPlaybackTags.ACTIONS_STANDALONE
+                            },
+                        ),
+            )
+        }
+    }
+}
+
+@Composable
+private fun AndroidPlaybackActions(
+    actions: List<AndroidPlaybackActionModel>,
+    onSkipSegment: (PlaybackSegmentAction) -> Unit,
+    onPlayNext: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.End,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        actions.forEach { action ->
+            Button(
+                onClick = {
+                    when (action.kind) {
+                        AndroidPlaybackActionKind.SEGMENT_SKIP -> action.segmentAction?.let(onSkipSegment)
+                        AndroidPlaybackActionKind.PLAY_NEXT -> onPlayNext()
+                    }
+                },
+                modifier =
+                    Modifier
+                        .heightIn(min = 40.dp)
+                        .testTag(action.id)
+                        .semantics { contentDescription = action.label },
+            ) {
+                Text(action.label, maxLines = 1)
             }
         }
     }

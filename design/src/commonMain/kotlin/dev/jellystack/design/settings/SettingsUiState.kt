@@ -3,8 +3,10 @@ package dev.jellystack.design.settings
 import dev.jellystack.core.preferences.AppLanguage
 import dev.jellystack.core.preferences.AppPlatformCapabilities
 import dev.jellystack.core.preferences.AppSettings
+import dev.jellystack.core.preferences.AppSettingsRepository
 import dev.jellystack.core.preferences.AutoplayNextMode
 import dev.jellystack.core.preferences.ResumeMode
+import dev.jellystack.core.preferences.SegmentSkipMode
 import dev.jellystack.core.preferences.StreamingQualityPreference
 import dev.jellystack.core.preferences.SubtitleBackground
 import dev.jellystack.core.preferences.SubtitleMode
@@ -76,6 +78,26 @@ internal sealed interface SettingsAction {
 
     data class SetAutoplayNextMode(
         val mode: AutoplayNextMode,
+    ) : SettingsAction
+
+    data class SetIntroSkipMode(
+        val mode: SegmentSkipMode,
+    ) : SettingsAction
+
+    data class SetRecapSkipMode(
+        val mode: SegmentSkipMode,
+    ) : SettingsAction
+
+    data class SetOutroSkipMode(
+        val mode: SegmentSkipMode,
+    ) : SettingsAction
+
+    data class SetPreviewSkipMode(
+        val mode: SegmentSkipMode,
+    ) : SettingsAction
+
+    data class SetCommercialSkipMode(
+        val mode: SegmentSkipMode,
     ) : SettingsAction
 
     data class SetResumeMode(
@@ -160,3 +182,16 @@ internal sealed interface SettingsAction {
 
     data object Close : SettingsAction
 }
+
+internal fun persistPlaybackSegmentSetting(
+    action: SettingsAction,
+    repository: AppSettingsRepository,
+): Boolean =
+    when (action) {
+        is SettingsAction.SetIntroSkipMode -> repository.setIntroSkipMode(action.mode).let { true }
+        is SettingsAction.SetRecapSkipMode -> repository.setRecapSkipMode(action.mode).let { true }
+        is SettingsAction.SetOutroSkipMode -> repository.setOutroSkipMode(action.mode).let { true }
+        is SettingsAction.SetPreviewSkipMode -> repository.setPreviewSkipMode(action.mode).let { true }
+        is SettingsAction.SetCommercialSkipMode -> repository.setCommercialSkipMode(action.mode).let { true }
+        else -> false
+    }
