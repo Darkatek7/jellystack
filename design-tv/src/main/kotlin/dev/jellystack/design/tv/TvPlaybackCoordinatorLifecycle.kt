@@ -5,6 +5,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import dev.jellystack.players.PlaybackContinuationCoordinator
 import dev.jellystack.players.PlaybackSegmentCoordinator
 import dev.jellystack.players.PlaybackState
@@ -24,11 +27,11 @@ internal data class TvPlaybackCoordinators(
 internal fun rememberTvPlaybackCoordinators(
     identity: TvJellyfinPlaybackIdentity?,
     playbackState: PlaybackState,
-    isForeground: Boolean,
     createSegmentCoordinator: (CoroutineScope) -> PlaybackSegmentCoordinator,
     createContinuationCoordinator: (CoroutineScope) -> PlaybackContinuationCoordinator,
 ): TvPlaybackCoordinators {
     val scope = rememberCoroutineScope()
+    val lifecycleOwner = LocalLifecycleOwner.current
     val coordinators =
         remember(identity) {
             TvPlaybackCoordinators(
@@ -41,11 +44,29 @@ internal fun rememberTvPlaybackCoordinators(
         coordinators.segment.onPlaybackState(playbackState)
         coordinators.continuation.onPlaybackState(playbackState)
     }
-    LaunchedEffect(isForeground, coordinators.continuation) {
-        coordinators.continuation.setForeground(isForeground)
-    }
-    DisposableEffect(coordinators) {
+    DisposableEffect(lifecycleOwner, coordinators) {
+        val lifecycle = lifecycleOwner.lifecycle
+        val observer =
+            LifecycleEventObserver { _, event ->
+                when (event) {
+                    Lifecycle.Event.ON_START,
+                    Lifecycle.Event.ON_RESUME,
+                    -> coordinators.continuation.setForeground(true)
+
+                    Lifecycle.Event.ON_STOP,
+                    Lifecycle.Event.ON_DESTROY,
+                    -> coordinators.continuation.setForeground(false)
+
+                    else -> Unit
+                }
+            }
+        lifecycle.addObserver(observer)
+        coordinators.continuation.setForeground(
+            lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED),
+        )
         onDispose {
+            lifecycle.removeObserver(observer)
+            coordinators.continuation.setForeground(false)
             coordinators.segment.release()
             coordinators.continuation.release()
         }

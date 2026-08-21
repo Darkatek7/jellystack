@@ -320,7 +320,6 @@ private fun TvAuthenticatedApp(
         rememberTvPlaybackCoordinators(
             identity = playbackIdentity,
             playbackState = playbackState,
-            isForeground = lifecycleState.isAtLeast(Lifecycle.State.STARTED),
             createSegmentCoordinator = { coordinatorScope ->
                 PlaybackSegmentCoordinator(
                     scope = coordinatorScope,

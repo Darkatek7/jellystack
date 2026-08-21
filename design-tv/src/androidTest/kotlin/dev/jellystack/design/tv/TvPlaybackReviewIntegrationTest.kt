@@ -2,6 +2,7 @@ package dev.jellystack.design.tv
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -22,6 +23,10 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.pressKey
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
 import dev.jellystack.core.preferences.AppLanguage
@@ -270,6 +275,47 @@ class TvPlaybackReviewIntegrationTest {
         }
     }
 
+    @Test
+    fun lifecycleStopPausesCompletionCountdownAndResumeContinuesIt() {
+        composeRule.mainClock.autoAdvance = false
+        val lifecycleOwner = MutableLifecycleOwner(Lifecycle.State.RESUMED)
+        var observed: TvPlaybackCoordinators? = null
+        composeRule.setContent {
+            CompositionLocalProvider(LocalLifecycleOwner provides lifecycleOwner) {
+                CountdownLifecycleHost(onObserved = { observed = it })
+            }
+        }
+        repeat(3) { composeRule.mainClock.advanceTimeByFrame() }
+        val initial =
+            observed
+                ?.continuation
+                ?.state
+                ?.value
+                ?.countdownSecondsRemaining
+        assertEquals(10, initial)
+
+        composeRule.runOnIdle { lifecycleOwner.currentState = Lifecycle.State.CREATED }
+        composeRule.mainClock.advanceTimeBy(2_000L)
+        val stoppedCountdown =
+            observed
+                ?.continuation
+                ?.state
+                ?.value
+                ?.countdownSecondsRemaining
+
+        composeRule.runOnIdle { lifecycleOwner.currentState = Lifecycle.State.RESUMED }
+        assertEquals(initial, stoppedCountdown)
+        composeRule.mainClock.advanceTimeBy(1_000L)
+        assertEquals(
+            9,
+            observed
+                ?.continuation
+                ?.state
+                ?.value
+                ?.countdownSecondsRemaining,
+        )
+    }
+
     @Composable
     private fun ReviewPlaybackScreen(
         resources: ScreenResources,
@@ -311,7 +357,6 @@ class TvPlaybackReviewIntegrationTest {
             rememberTvPlaybackCoordinators(
                 identity = identity,
                 playbackState = activePlayback(),
-                isForeground = true,
                 createSegmentCoordinator = { scope ->
                     PlaybackSegmentCoordinator(
                         scope = scope,
@@ -344,6 +389,45 @@ class TvPlaybackReviewIntegrationTest {
                 },
             )
         SideEffect { onObserved(coordinators) }
+    }
+
+    @Composable
+    private fun CountdownLifecycleHost(onObserved: (TvPlaybackCoordinators) -> Unit) {
+        val coordinators =
+            rememberTvPlaybackCoordinators(
+                identity = TvJellyfinPlaybackIdentity("server", "user"),
+                playbackState = activePlayback(phase = PlaybackPhase.Ended),
+                createSegmentCoordinator = { scope ->
+                    PlaybackSegmentCoordinator(
+                        scope = scope,
+                        segmentService = StaticSegmentService(JellyfinMediaSegmentsResult.Unavailable),
+                        modeProvider = PlaybackSegmentModeProvider { SegmentSkipMode.OFF },
+                        seekAdapter = PlaybackSeekAdapter {},
+                    )
+                },
+                createContinuationCoordinator = { scope ->
+                    PlaybackContinuationCoordinator(
+                        scope = scope,
+                        modeProvider = { AutoplayNextMode.COUNTDOWN },
+                        resolveNext = { _, _ -> PlaybackContinuationTarget("episode-2", "Next") {} },
+                    )
+                },
+            )
+        SideEffect { onObserved(coordinators) }
+    }
+
+    private class MutableLifecycleOwner(
+        initialState: Lifecycle.State,
+    ) : LifecycleOwner {
+        private val registry = LifecycleRegistry.createUnsafe(this).apply { currentState = initialState }
+
+        override val lifecycle: Lifecycle = registry
+
+        var currentState: Lifecycle.State
+            get() = registry.currentState
+            set(value) {
+                registry.currentState = value
+            }
     }
 
     private class ScreenResources {
