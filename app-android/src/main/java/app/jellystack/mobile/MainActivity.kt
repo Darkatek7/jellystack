@@ -48,8 +48,6 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.os.LocaleListCompat
 import androidx.core.view.WindowCompat
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.util.UnstableApi
 import androidx.mediarouter.media.MediaRouteSelector
@@ -66,7 +64,10 @@ import app.jellystack.mobile.playback.AndroidJellyfinPlaybackIdentity
 import app.jellystack.mobile.playback.AndroidNetworkClassifier
 import app.jellystack.mobile.playback.AndroidPlaybackCommandRouter
 import app.jellystack.mobile.playback.androidAutoplayPromptModel
+import app.jellystack.mobile.playback.createAndroidPlaybackContinuationTarget
+import app.jellystack.mobile.playback.createAndroidPlaybackSegmentCoordinator
 import app.jellystack.mobile.playback.rememberAndroidPlaybackCoordinators
+import app.jellystack.mobile.playback.rememberAndroidPlaybackRootBindings
 import app.jellystack.mobile.playback.segmentSkipMode
 import app.jellystack.mobile.playback.selectNextEpisode
 import app.jellystack.mobile.ui.AndroidPlaybackSurface
@@ -108,13 +109,10 @@ import dev.jellystack.players.AndroidPlayerEngine
 import dev.jellystack.players.JellyfinPlaybackSourceResolver
 import dev.jellystack.players.NetworkJellyfinPlaybackInfoService
 import dev.jellystack.players.PlaybackContinuationCoordinator
-import dev.jellystack.players.PlaybackContinuationTarget
 import dev.jellystack.players.PlaybackController
 import dev.jellystack.players.PlaybackNetworkClass
 import dev.jellystack.players.PlaybackPreferencesProvider
 import dev.jellystack.players.PlaybackRequest
-import dev.jellystack.players.PlaybackSeekAdapter
-import dev.jellystack.players.PlaybackSegmentCoordinator
 import dev.jellystack.players.PlaybackSegmentModeProvider
 import dev.jellystack.players.PlaybackStartPolicy
 import dev.jellystack.players.SettingsPlaybackProgressStore
@@ -602,8 +600,6 @@ private fun JellystackApp(
     DisposableEffect(syncPlayCoordinator) {
         onDispose(syncPlayCoordinator::close)
     }
-    val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateFlow
-        .collectAsStateWithLifecycle()
     val segmentHttpClient = remember { NetworkClientFactory.create(ClientConfig(installLogging = false)) }
     DisposableEffect(segmentHttpClient) {
         onDispose(segmentHttpClient::close)
@@ -621,16 +617,15 @@ private fun JellystackApp(
         rememberAndroidPlaybackCoordinators(
             identity = playbackIdentity,
             playbackState = playbackState,
-            isForeground = lifecycleState.isAtLeast(Lifecycle.State.STARTED),
             createSegmentCoordinator = { coordinatorScope ->
-                PlaybackSegmentCoordinator(
+                createAndroidPlaybackSegmentCoordinator(
                     scope = coordinatorScope,
                     segmentService = AndroidJellyfinMediaSegmentsService(environmentProvider, segmentHttpClient),
                     modeProvider =
                         PlaybackSegmentModeProvider { type ->
                             appSettingsRepository.settings.value.segmentSkipMode(type)
                         },
-                    seekAdapter = PlaybackSeekAdapter(playbackCommandRouter::seekTo),
+                    commandRouter = playbackCommandRouter,
                 )
             },
             createContinuationCoordinator = { coordinatorScope ->
@@ -643,8 +638,11 @@ private fun JellystackApp(
                         val next = selectNextEpisode(episodes, mediaId) ?: return@resolve null
                         val detail = browseRepository.getItemDetail(next.id) ?: return@resolve null
                         val playbackEnvironment = environmentProvider.current() ?: return@resolve null
-                        PlaybackContinuationTarget(next.id, next.episodeTitle ?: next.name) {
-                            playbackCommandRouter.playNext {
+                        createAndroidPlaybackContinuationTarget(
+                            mediaId = next.id,
+                            title = next.episodeTitle ?: next.name,
+                            commandRouter = playbackCommandRouter,
+                            requestPlaybackNext = {
                                 environment.controller.play(
                                     PlaybackRequest.from(
                                         item = next,
@@ -653,16 +651,13 @@ private fun JellystackApp(
                                     ),
                                     playbackEnvironment,
                                 )
-                            }
-                        }
+                            },
+                        )
                     },
                 )
             },
         )
-    val segmentCoordinator = playbackCoordinators.segment
-    val continuationCoordinator = playbackCoordinators.continuation
-    val segmentState by segmentCoordinator.state.collectAsStateWithLifecycle()
-    val continuationState by continuationCoordinator.state.collectAsStateWithLifecycle()
+    val playbackBindings = rememberAndroidPlaybackRootBindings(playbackCoordinators)
     DisposableEffect(environment.controller, environment.downloadManager, environment.castManager) {
         onEnvironmentChanged(environment)
         onDispose {
@@ -740,10 +735,10 @@ private fun JellystackApp(
                 seekForwardSeconds = appSettings.seekForwardSeconds,
                 subtitleTextSize = appSettings.subtitleTextSize,
                 subtitleBackground = appSettings.subtitleBackground,
-                segmentState = segmentState,
-                continuationState = continuationState,
-                onSkipSegment = segmentCoordinator::skip,
-                onPlayNext = continuationCoordinator::playNext,
+                segmentState = playbackBindings.segmentState,
+                continuationState = playbackBindings.continuationState,
+                onSkipSegment = playbackBindings.onSkipSegment,
+                onPlayNext = playbackBindings.onPlayNext,
                 syncPlayCoordinator = syncPlayCoordinator,
                 canCreateSyncPlay =
                     (sessionState as? JellyfinSessionState.Ready)?.capabilities?.canCreateSyncPlay == true,
@@ -751,12 +746,12 @@ private fun JellystackApp(
                     (sessionState as? JellyfinSessionState.Ready)?.capabilities?.canJoinSyncPlay == true,
             )
         }
-        androidAutoplayPromptModel(continuationState)?.let { prompt ->
+        androidAutoplayPromptModel(playbackBindings.continuationState)?.let { prompt ->
             JellystackTheme(isDarkTheme = resolvedDarkTheme) {
                 AutoplayNextPrompt(
                     pending = prompt,
-                    onCancel = continuationCoordinator::cancelAutoplay,
-                    onPlayNow = continuationCoordinator::playNext,
+                    onCancel = playbackCoordinators.continuation::cancelAutoplay,
+                    onPlayNow = playbackBindings.onPlayNext,
                     modifier = Modifier.align(Alignment.BottomCenter),
                 )
             }

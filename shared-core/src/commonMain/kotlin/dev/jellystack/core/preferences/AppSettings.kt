@@ -101,6 +101,7 @@ data class AppSettings(
 data class AppPlatformCapabilities(
     val appLanguageSelection: Boolean = false,
     val autoplayNextEpisode: Boolean = false,
+    val mediaSegmentSkipping: Boolean = false,
     val meteredDownloadPolicy: Boolean = false,
     val subtitleAppearance: Boolean = false,
     val isTelevision: Boolean = false,
@@ -114,6 +115,7 @@ data class AppPlatformCapabilities(
             AppPlatformCapabilities(
                 appLanguageSelection = true,
                 autoplayNextEpisode = true,
+                mediaSegmentSkipping = true,
                 meteredDownloadPolicy = true,
                 subtitleAppearance = true,
                 supportsCast = true,
@@ -126,6 +128,7 @@ data class AppPlatformCapabilities(
             AppPlatformCapabilities(
                 appLanguageSelection = true,
                 autoplayNextEpisode = true,
+                mediaSegmentSkipping = true,
                 subtitleAppearance = true,
                 isTelevision = true,
             )

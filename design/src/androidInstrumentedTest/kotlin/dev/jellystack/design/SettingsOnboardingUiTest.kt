@@ -142,6 +142,35 @@ class SettingsOnboardingUiTest {
     }
 
     @Test
+    fun unsupportedPlatformHidesPlaybackSegmentSettings() {
+        val actions = mutableListOf<SettingsAction>()
+        composeRule.setContent {
+            playbackSegmentSettingsHarness(
+                actions = actions,
+                capabilities = AppPlatformCapabilities(),
+            )
+        }
+
+        composeRule
+            .onNodeWithText("Availability and timing come from your Jellyfin server.")
+            .assertDoesNotExist()
+        listOf("Intros", "Recaps", "Credits", "Previews", "Commercials").forEach { title ->
+            composeRule.onNodeWithText(title).assertDoesNotExist()
+        }
+    }
+
+    @Test
+    fun unsupportedPlatformSearchDoesNotExposeSegmentSettings() {
+        composeRule.setContent {
+            compactSettingsHarness(capabilities = AppPlatformCapabilities())
+        }
+
+        composeRule.onNodeWithText("Search settings").performTextInput("segments")
+
+        composeRule.onNodeWithText("Playback").assertDoesNotExist()
+    }
+
+    @Test
     fun compactSettingsHubOmitsConnectedBannerButKeepsConnections() {
         composeRule.setContent { compactSettingsHarness() }
 
@@ -409,8 +438,16 @@ private fun settingsOpenedFromRequestsHarness() {
 }
 
 @Composable
-private fun compactSettingsHarness() {
-    var state by remember { mutableStateOf(settingsState().copy(selectedSection = null)) }
+private fun compactSettingsHarness(capabilities: AppPlatformCapabilities = AppPlatformCapabilities.Android) {
+    var state by
+        remember {
+            mutableStateOf(
+                settingsState().copy(
+                    selectedSection = null,
+                    platformCapabilities = capabilities,
+                ),
+            )
+        }
     JellystackTheme(isDarkTheme = false) {
         Box(Modifier.requiredSize(width = 411.dp, height = 891.dp)) {
             SettingsScreen(
@@ -424,11 +461,18 @@ private fun compactSettingsHarness() {
 }
 
 @Composable
-private fun playbackSegmentSettingsHarness(actions: MutableList<SettingsAction>) {
+private fun playbackSegmentSettingsHarness(
+    actions: MutableList<SettingsAction>,
+    capabilities: AppPlatformCapabilities = AppPlatformCapabilities.Android,
+) {
     JellystackTheme(isDarkTheme = false) {
         Box(Modifier.requiredSize(width = 411.dp, height = 891.dp)) {
             SettingsScreen(
-                state = settingsState().copy(selectedSection = SettingsSection.Playback),
+                state =
+                    settingsState().copy(
+                        selectedSection = SettingsSection.Playback,
+                        platformCapabilities = capabilities,
+                    ),
                 onAction = actions::add,
             )
         }

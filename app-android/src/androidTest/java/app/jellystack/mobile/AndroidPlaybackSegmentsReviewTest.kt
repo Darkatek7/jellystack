@@ -17,12 +17,16 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
+import androidx.lifecycle.Lifecycle
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.jellystack.mobile.playback.AndroidJellyfinPlaybackIdentity
 import app.jellystack.mobile.playback.AndroidPlaybackCommandRouter
 import app.jellystack.mobile.playback.AndroidPlaybackCoordinators
 import app.jellystack.mobile.playback.androidAutoplayPromptModel
+import app.jellystack.mobile.playback.createAndroidPlaybackContinuationTarget
+import app.jellystack.mobile.playback.createAndroidPlaybackSegmentCoordinator
 import app.jellystack.mobile.playback.rememberAndroidPlaybackCoordinators
+import app.jellystack.mobile.playback.rememberAndroidPlaybackRootBindings
 import app.jellystack.mobile.ui.AndroidPlaybackSurface
 import app.jellystack.mobile.ui.AndroidPlaybackTags
 import dev.jellystack.core.preferences.AutoplayNextMode
@@ -245,6 +249,44 @@ class AndroidPlaybackSegmentsReviewTest {
     }
 
     @Test
+    fun activityStopPausesCompletionCountdownAndResumeContinuesIt() {
+        composeRule.mainClock.autoAdvance = false
+        var observed: AndroidPlaybackCoordinators? = null
+        setTestContent {
+            CountdownLifecycleHost(onObserved = { observed = it })
+        }
+        repeat(3) { composeRule.mainClock.advanceTimeByFrame() }
+        val initial =
+            observed
+                ?.continuation
+                ?.state
+                ?.value
+                ?.countdownSecondsRemaining
+        assertEquals(10, initial)
+
+        composeRule.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
+        composeRule.mainClock.advanceTimeBy(2_000L)
+        val stoppedCountdown =
+            observed
+                ?.continuation
+                ?.state
+                ?.value
+                ?.countdownSecondsRemaining
+
+        composeRule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+        assertEquals(initial, stoppedCountdown)
+        composeRule.mainClock.advanceTimeBy(1_000L)
+        assertEquals(
+            9,
+            observed
+                ?.continuation
+                ?.state
+                ?.value
+                ?.countdownSecondsRemaining,
+        )
+    }
+
+    @Test
     fun commandRouterUsesLiveCastControllerAndSyncPlayPaths() {
         val cast = CastSessionManagerFake()
         val controller = PlaybackController(castSessionManager = cast)
@@ -277,10 +319,145 @@ class AndroidPlaybackSegmentsReviewTest {
         controller.release()
     }
 
+    @Test
+    fun physicalSegmentActionsUseLiveProductionRoutingChain() {
+        val resources = ScreenResources()
+        setPlaybackState(resources.controller, activePlayback(), includeSession = true)
+        val syncEvents = mutableListOf<String>()
+        var coordinatorPlayback by mutableStateOf(activePlayback())
+        var syncPlayActive = false
+        runBlocking {
+            resources.cast.emitState(CastConnectionState.Connected("Living Room", castSnapshot()))
+        }
+        composeRule.waitUntil { resources.controller.state.value is PlaybackState.CastPlayback }
+        resources.cast.clearCommands()
+
+        setTestContent {
+            RoutedPlaybackRoot(
+                resources = resources,
+                playbackState = coordinatorPlayback,
+                isSyncPlayActive = { syncPlayActive },
+                onSyncSeek = { syncEvents += "seek:$it" },
+                onSyncNext = { syncEvents += "next" },
+                onPlaybackNext = { resources.controller.seekTo(5_000L) },
+            )
+        }
+        composeRule.onNodeWithContentDescription("Skip intro").performTouchInput { click() }
+        composeRule.waitUntil {
+            resources.cast.commands.contains(CastSessionManagerFake.Command.Seek(20_000L))
+        }
+
+        composeRule.runOnIdle { syncPlayActive = true }
+        composeRule.onNodeWithContentDescription("Skip intro").performTouchInput { click() }
+        composeRule.onNodeWithContentDescription("Play next episode").performTouchInput { click() }
+        composeRule.waitUntil { syncEvents == listOf("seek:20000", "next") }
+
+        composeRule.runOnIdle {
+            syncPlayActive = false
+            coordinatorPlayback = activePlayback(mediaId = "episode-2")
+        }
+        composeRule.onNodeWithContentDescription("Play next episode").performTouchInput { click() }
+        composeRule.waitUntil {
+            resources.cast.commands.contains(CastSessionManagerFake.Command.Seek(5_000L))
+        }
+
+        composeRule.runOnIdle {
+            assertEquals(
+                listOf(
+                    CastSessionManagerFake.Command.Seek(20_000L),
+                    CastSessionManagerFake.Command.Seek(5_000L),
+                ),
+                resources.cast.commands,
+            )
+            resources.release()
+        }
+    }
+
     private fun setTestContent(content: @Composable () -> Unit) {
         composeRule.activityRule.scenario.onActivity { activity ->
             activity.setContent { content() }
         }
+    }
+
+    @Composable
+    private fun RoutedPlaybackRoot(
+        resources: ScreenResources,
+        playbackState: PlaybackState.Active,
+        isSyncPlayActive: () -> Boolean,
+        onSyncSeek: (Long) -> Unit,
+        onSyncNext: () -> Unit,
+        onPlaybackNext: () -> Unit,
+    ) {
+        val commandRouter =
+            remember(resources.controller) {
+                AndroidPlaybackCommandRouter(
+                    isSyncPlayActive = isSyncPlayActive,
+                    requestSyncSeek = onSyncSeek,
+                    requestPlaybackSeek = resources.controller::seekTo,
+                    requestSyncNext = onSyncNext,
+                )
+            }
+        val coordinators =
+            rememberAndroidPlaybackCoordinators(
+                identity = AndroidJellyfinPlaybackIdentity("server", "user"),
+                playbackState = playbackState,
+                createSegmentCoordinator = { scope ->
+                    createAndroidPlaybackSegmentCoordinator(
+                        scope = scope,
+                        segmentService = OverlappingSegmentService(),
+                        modeProvider = PlaybackSegmentModeProvider { SegmentSkipMode.SHOW_BUTTON },
+                        commandRouter = commandRouter,
+                    )
+                },
+                createContinuationCoordinator = { scope ->
+                    PlaybackContinuationCoordinator(
+                        scope = scope,
+                        modeProvider = { AutoplayNextMode.OFF },
+                        resolveNext = { mediaId, _ ->
+                            createAndroidPlaybackContinuationTarget(
+                                mediaId = "$mediaId-next",
+                                title = "Next",
+                                commandRouter = commandRouter,
+                                requestPlaybackNext = onPlaybackNext,
+                            )
+                        },
+                    )
+                },
+            )
+        val bindings = rememberAndroidPlaybackRootBindings(coordinators)
+        ReviewPlaybackSurface(
+            resources = resources,
+            playbackState = playbackState,
+            segmentState = bindings.segmentState,
+            continuationState = bindings.continuationState,
+            onSkipSegment = bindings.onSkipSegment,
+            onPlayNext = bindings.onPlayNext,
+        )
+    }
+
+    @Composable
+    private fun CountdownLifecycleHost(onObserved: (AndroidPlaybackCoordinators) -> Unit) {
+        val coordinators =
+            rememberAndroidPlaybackCoordinators(
+                identity = AndroidJellyfinPlaybackIdentity("server", "user"),
+                playbackState = activePlayback(phase = PlaybackPhase.Ended),
+                createSegmentCoordinator = { scope ->
+                    PlaybackSegmentCoordinator(
+                        scope = scope,
+                        segmentService = StaticSegmentService(JellyfinMediaSegmentsResult.Unavailable),
+                        modeProvider = PlaybackSegmentModeProvider { SegmentSkipMode.OFF },
+                        seekAdapter = PlaybackSeekAdapter {},
+                    )
+                },
+                createContinuationCoordinator = { scope ->
+                    PlaybackContinuationCoordinator(
+                        scope = scope,
+                        modeProvider = { AutoplayNextMode.COUNTDOWN },
+                        resolveNext = { _, _ -> PlaybackContinuationTarget("episode-2", "Next") {} },
+                    )
+                },
+            )
+        SideEffect { onObserved(coordinators) }
     }
 
     @Composable
@@ -324,7 +501,6 @@ class AndroidPlaybackSegmentsReviewTest {
             rememberAndroidPlaybackCoordinators(
                 identity = identity,
                 playbackState = activePlayback(),
-                isForeground = true,
                 createSegmentCoordinator = { scope ->
                     PlaybackSegmentCoordinator(
                         scope = scope,
@@ -359,9 +535,10 @@ class AndroidPlaybackSegmentsReviewTest {
         SideEffect { onObserved(coordinators) }
     }
 
-    private class ScreenResources {
-        val controller = PlaybackController()
-        val cast = CastSessionManagerFake()
+    private class ScreenResources(
+        val cast: CastSessionManagerFake = CastSessionManagerFake(),
+        val controller: PlaybackController = PlaybackController(castSessionManager = cast),
+    ) {
         var engine: AndroidPlayerEngine? = null
 
         fun release() {
@@ -385,6 +562,16 @@ class AndroidPlaybackSegmentsReviewTest {
         private val result: JellyfinMediaSegmentsResult,
     ) : JellyfinMediaSegmentsService {
         override suspend fun fetchSegments(itemId: String): JellyfinMediaSegmentsResult = result
+    }
+
+    private class OverlappingSegmentService : JellyfinMediaSegmentsService {
+        override suspend fun fetchSegments(itemId: String): JellyfinMediaSegmentsResult =
+            JellyfinMediaSegmentsResult.Available(
+                listOf(
+                    JellyfinMediaSegmentDto("intro-live", itemId, "Intro", 0L, 200_000_000L),
+                    JellyfinMediaSegmentDto("outro-live", itemId, "Outro", 0L, 900_000_000L),
+                ),
+            )
     }
 
     private companion object {
@@ -415,11 +602,12 @@ class AndroidPlaybackSegmentsReviewTest {
             )
 
         fun activePlayback(
+            mediaId: String = "episode",
             positionMs: Long = 10_000L,
             phase: PlaybackPhase = PlaybackPhase.Ready,
         ): PlaybackState.Active =
             PlaybackState.LocalPlayback(
-                mediaId = "episode",
+                mediaId = mediaId,
                 deviceName = "test",
                 stream = stream,
                 positionMs = positionMs,

@@ -78,6 +78,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.intl.Locale
 import androidx.compose.ui.unit.dp
 import dev.jellystack.core.preferences.AppLanguage
+import dev.jellystack.core.preferences.AppPlatformCapabilities
 import dev.jellystack.core.preferences.AutoplayNextMode
 import dev.jellystack.core.preferences.ResumeMode
 import dev.jellystack.core.preferences.SegmentSkipMode
@@ -452,7 +453,7 @@ private fun SettingsHub(
     val matchesQuery: (SettingsSection) -> Boolean = { section ->
         query.isBlank() ||
             localizedSectionLabels.getValue(section).contains(query, ignoreCase = true) ||
-            sectionSearchTerms(section).any { it.contains(query, ignoreCase = true) }
+            sectionSearchTerms(section, state.platformCapabilities).any { it.contains(query, ignoreCase = true) }
     }
     val visibleMain = mainSections.filter(matchesQuery)
     val visibleCompact = compactSections.filter(matchesQuery)
@@ -714,25 +715,27 @@ private fun PlaybackCard(
             ) { onAction(SettingsAction.SetAutoplayNextMode(it)) }
         }
         HorizontalDivider()
-        Text(stringResource(Res.string.settings_segments_title), style = MaterialTheme.typography.titleMedium)
-        Text(
-            stringResource(Res.string.settings_segments_explanation),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        segmentSettings.forEach { (title, selected, onSelected) ->
-            EnumPickerRow(
-                title = title,
-                selectedLabel = segmentModeLabels.getValue(selected),
-                titleForPicker = title,
-                options = SegmentSkipMode.entries,
-                selected = selected,
-                label = segmentModeLabels::getValue,
-                onShowPicker = onShowPicker,
-                onSelected = onSelected,
+        if (state.platformCapabilities.mediaSegmentSkipping) {
+            Text(stringResource(Res.string.settings_segments_title), style = MaterialTheme.typography.titleMedium)
+            Text(
+                stringResource(Res.string.settings_segments_explanation),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            segmentSettings.forEach { (title, selected, onSelected) ->
+                EnumPickerRow(
+                    title = title,
+                    selectedLabel = segmentModeLabels.getValue(selected),
+                    titleForPicker = title,
+                    options = SegmentSkipMode.entries,
+                    selected = selected,
+                    label = segmentModeLabels::getValue,
+                    onShowPicker = onShowPicker,
+                    onSelected = onSelected,
+                )
+            }
+            HorizontalDivider()
         }
-        HorizontalDivider()
         EnumPickerRow(
             title = l10n("Resume playback", "Wiedergabe fortsetzen"),
             selectedLabel = resumeLabel(state.appSettings.resumeMode),
@@ -1438,24 +1441,18 @@ private fun sectionIcon(section: SettingsSection): ImageVector =
         SettingsSection.About -> Icons.Filled.Info
     }
 
-private fun sectionSearchTerms(section: SettingsSection): List<String> =
+private fun sectionSearchTerms(
+    section: SettingsSection,
+    capabilities: AppPlatformCapabilities,
+): List<String> =
     when (section) {
         SettingsSection.Playback ->
-            listOf(
-                "quality",
-                "streaming",
-                "autoplay",
-                "resume",
-                "seek",
-                "segments",
-                "intro",
-                "credits",
-                "Qualität",
-                "Fortsetzen",
-                "Sprung",
-                "Segmente",
-                "Abspann",
-            )
+            buildList {
+                addAll(listOf("quality", "streaming", "autoplay", "resume", "seek", "Qualität", "Fortsetzen", "Sprung"))
+                if (capabilities.mediaSegmentSkipping) {
+                    addAll(listOf("segments", "intro", "credits", "Segmente", "Abspann"))
+                }
+            }
         SettingsSection.AudioSubtitles -> listOf("audio", "subtitle", "language", "Untertitel", "Sprache")
         SettingsSection.AppearanceLanguage ->
             listOf(

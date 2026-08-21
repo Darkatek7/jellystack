@@ -7,8 +7,12 @@ import dev.jellystack.network.jellyfin.JellyfinMediaSegmentsApi
 import dev.jellystack.network.jellyfin.JellyfinMediaSegmentsResult
 import dev.jellystack.network.jellyfin.JellyfinMediaSegmentsService
 import dev.jellystack.players.PlaybackContinuationState
+import dev.jellystack.players.PlaybackContinuationTarget
 import dev.jellystack.players.PlaybackPhase
+import dev.jellystack.players.PlaybackSeekAdapter
 import dev.jellystack.players.PlaybackSegmentAction
+import dev.jellystack.players.PlaybackSegmentCoordinator
+import dev.jellystack.players.PlaybackSegmentModeProvider
 import dev.jellystack.players.PlaybackSegmentState
 import dev.jellystack.players.PlaybackSegmentType
 import io.ktor.client.HttpClient
@@ -55,6 +59,29 @@ internal class AndroidPlaybackCommandRouter(
         if (isSyncPlayActive()) requestSyncNext() else requestPlaybackNext()
     }
 }
+
+internal fun createAndroidPlaybackSegmentCoordinator(
+    scope: CoroutineScope,
+    segmentService: JellyfinMediaSegmentsService,
+    modeProvider: PlaybackSegmentModeProvider,
+    commandRouter: AndroidPlaybackCommandRouter,
+): PlaybackSegmentCoordinator =
+    PlaybackSegmentCoordinator(
+        scope = scope,
+        segmentService = segmentService,
+        modeProvider = modeProvider,
+        seekAdapter = PlaybackSeekAdapter(commandRouter::seekTo),
+    )
+
+internal fun createAndroidPlaybackContinuationTarget(
+    mediaId: String,
+    title: String,
+    commandRouter: AndroidPlaybackCommandRouter,
+    requestPlaybackNext: suspend () -> Unit,
+): PlaybackContinuationTarget =
+    PlaybackContinuationTarget(mediaId, title) {
+        commandRouter.playNext(requestPlaybackNext)
+    }
 
 internal class AndroidJellyfinMediaSegmentsService(
     private val environmentProvider: JellyfinEnvironmentProvider,
