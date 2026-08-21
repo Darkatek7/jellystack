@@ -14,6 +14,31 @@ import kotlin.test.assertEquals
 
 class JellyfinClientVersionFactoryTest {
     @Test
+    fun browseFactoryUsesTheActiveAppVersion() =
+        runTest {
+            val authorization = mutableListOf<String>()
+            val engine =
+                MockEngine { request ->
+                    authorization += request.headers["X-Emby-Authorization"].orEmpty()
+                    respond(
+                        content = ByteReadChannel("""{"Items":[]}"""),
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                    )
+                }
+            val client = NetworkClientFactory.create(ClientConfig(engine = engine, maxRetries = 0))
+            val factory = defaultJellyfinBrowseApiFactory { client }
+
+            factory(environment("0.15.1")).fetchLibraries("user")
+            factory(environment("0.16.0-tv-beta.4")).fetchLibraries("user")
+
+            assertEquals(
+                listOf("0.15.1", "0.16.0-tv-beta.4"),
+                authorization.map(::authorizationVersion),
+            )
+            client.close()
+        }
+
+    @Test
     fun sessionFactoryUsesTheActiveAppVersion() =
         runTest {
             val authorization = mutableListOf<String>()
