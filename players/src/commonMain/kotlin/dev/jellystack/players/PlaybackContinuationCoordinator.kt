@@ -13,7 +13,7 @@ import kotlinx.coroutines.launch
 data class PlaybackContinuationTarget(
     val mediaId: String,
     val title: String,
-    val play: suspend () -> Unit,
+    internal val play: suspend () -> Unit,
 )
 
 data class PlaybackContinuationState(

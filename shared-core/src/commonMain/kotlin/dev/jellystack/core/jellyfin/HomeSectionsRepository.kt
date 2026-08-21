@@ -260,5 +260,13 @@ fun defaultHomeSectionsApiFactory(
     clientProvider: () -> HttpClient = { NetworkClientFactory.create(ClientConfig(installLogging = false)) },
 ): HomeSectionsApiFactory {
     val client by lazy(clientProvider)
-    return { environment -> HomeSectionsApi(client, environment.baseUrl, environment.accessToken, environment.deviceId) }
+    return { environment ->
+        HomeSectionsApi(
+            client = client,
+            baseUrl = environment.baseUrl,
+            accessToken = environment.accessToken,
+            deviceId = environment.deviceId,
+            clientVersion = environment.clientVersion,
+        )
+    }
 }
