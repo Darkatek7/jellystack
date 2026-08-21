@@ -78,6 +78,7 @@ import dev.jellystack.core.server.JellyfinQuickConnectCoordinator
 import dev.jellystack.core.server.ServerConnectionCoordinator
 import dev.jellystack.core.server.ServerRepository
 import dev.jellystack.core.server.ServerType
+import dev.jellystack.core.server.StoredCredential
 import dev.jellystack.players.AndroidPlayerEngine
 import dev.jellystack.players.PlaybackController
 import dev.jellystack.players.PlaybackContinuationCoordinator
@@ -280,6 +281,17 @@ private fun TvAuthenticatedApp(
     val details by recommendationsCoordinator.details.collectAsStateWithLifecycle()
     val settings by settingsRepository.settings.collectAsStateWithLifecycle()
     val playbackState by playbackController.state.collectAsStateWithLifecycle()
+    val syncPlayState by syncPlay.state.collectAsStateWithLifecycle()
+    val activeJellyfinServer by
+        serverRepository
+            .observeActiveServer(ServerType.JELLYFIN)
+            .collectAsStateWithLifecycle(initialValue = serverRepository.activeServer(ServerType.JELLYFIN))
+    val playbackIdentity =
+        activeJellyfinServer?.let { server ->
+            (server.credentials as? StoredCredential.Jellyfin)?.let { credential ->
+                TvJellyfinPlaybackIdentity(serverKey = server.id, userId = credential.userId)
+            }
+        }
     val trailerPreviewState by trailerPreviewCoordinator.state.collectAsStateWithLifecycle()
     val trailerPlaybackState by trailerPreviewPlaybackController.state.collectAsStateWithLifecycle()
     val trailerPreviewProgress =
@@ -295,51 +307,54 @@ private fun TvAuthenticatedApp(
     var jellyfinSearchResults by remember { mutableStateOf(emptyList<dev.jellystack.core.jellyfin.JellyfinItem>()) }
     var jellyfinSearchJob by remember { mutableStateOf<Job?>(null) }
     val segmentHttpClient = remember { NetworkClientFactory.create(ClientConfig(installLogging = false)) }
-    val segmentCoordinator =
-        remember(playbackController, syncPlay, environmentProvider, settingsRepository, segmentHttpClient) {
-            PlaybackSegmentCoordinator(
-                scope = scope,
-                segmentService = TvJellyfinMediaSegmentsService(environmentProvider, segmentHttpClient),
-                modeProvider = PlaybackSegmentModeProvider { type -> settingsRepository.settings.value.segmentSkipMode(type) },
-                seekAdapter =
-                    PlaybackSeekAdapter { positionMs ->
-                        routeTvSegmentSeek(
-                            positionMs = positionMs,
-                            syncPlayActive = syncPlay.state.value.currentGroup != null,
-                            requestSyncSeek = syncPlay::requestSeek,
-                            requestLocalSeek = playbackController::seekTo,
-                        )
-                    },
+    val playbackCommandRouter =
+        remember(playbackController, syncPlay) {
+            TvPlaybackCommandRouter(
+                isSyncPlayActive = { syncPlay.state.value.currentGroup != null },
+                requestSyncSeek = syncPlay::requestSeek,
+                requestLocalSeek = playbackController::seekTo,
+                requestSyncNext = syncPlay::requestNext,
             )
         }
-    val continuationCoordinator =
-        remember(playbackController, syncPlay, browseRepository, environmentProvider, settingsRepository) {
-            PlaybackContinuationCoordinator(
-                scope = scope,
-                modeProvider = { settingsRepository.settings.value.autoplayNextMode },
-                resolveNext = resolve@{ mediaId, seriesId ->
-                    val cached = browseRepository.episodesForSeries(seriesId)
-                    val episodes = if (cached.isEmpty()) browseRepository.refreshEpisodesForSeries(seriesId) else cached
-                    val next = selectNextTvEpisode(episodes, mediaId) ?: return@resolve null
-                    val detail = browseRepository.getItemDetail(next.id) ?: return@resolve null
-                    val environment = environmentProvider.current() ?: return@resolve null
-                    PlaybackContinuationTarget(next.id, next.episodeTitle ?: next.name) {
-                        routeTvPlayNext(
-                            syncPlayActive = syncPlay.state.value.currentGroup != null,
-                            requestSyncNext = syncPlay::requestNext,
-                            requestLocalNext = {
+    val playbackCoordinators =
+        rememberTvPlaybackCoordinators(
+            identity = playbackIdentity,
+            playbackState = playbackState,
+            isForeground = lifecycleState.isAtLeast(Lifecycle.State.STARTED),
+            createSegmentCoordinator = { coordinatorScope ->
+                PlaybackSegmentCoordinator(
+                    scope = coordinatorScope,
+                    segmentService = TvJellyfinMediaSegmentsService(environmentProvider, segmentHttpClient),
+                    modeProvider = PlaybackSegmentModeProvider { type -> settingsRepository.settings.value.segmentSkipMode(type) },
+                    seekAdapter = PlaybackSeekAdapter(playbackCommandRouter::seekTo),
+                )
+            },
+            createContinuationCoordinator = { coordinatorScope ->
+                PlaybackContinuationCoordinator(
+                    scope = coordinatorScope,
+                    modeProvider = { settingsRepository.settings.value.autoplayNextMode },
+                    resolveNext = resolve@{ mediaId, seriesId ->
+                        val cached = browseRepository.episodesForSeries(seriesId)
+                        val episodes = if (cached.isEmpty()) browseRepository.refreshEpisodesForSeries(seriesId) else cached
+                        val next = selectNextTvEpisode(episodes, mediaId) ?: return@resolve null
+                        val detail = browseRepository.getItemDetail(next.id) ?: return@resolve null
+                        val environment = environmentProvider.current() ?: return@resolve null
+                        PlaybackContinuationTarget(next.id, next.episodeTitle ?: next.name) {
+                            playbackCommandRouter.playNext {
                                 playbackController.play(
                                     PlaybackRequest.from(next, detail, startPolicy = PlaybackStartPolicy.RESTART),
                                     environment,
                                 )
                                 playbackController.setPlaybackSpeed(settingsRepository.settings.value.defaultPlaybackSpeed)
                                 playbackController.setStatsForNerdsEnabled(settingsRepository.settings.value.statsForNerdsEnabled)
-                            },
-                        )
-                    }
-                },
-            )
-        }
+                            }
+                        }
+                    },
+                )
+            },
+        )
+    val segmentCoordinator = playbackCoordinators.segment
+    val continuationCoordinator = playbackCoordinators.continuation
     val segmentState by segmentCoordinator.state.collectAsStateWithLifecycle()
     val continuationState by continuationCoordinator.state.collectAsStateWithLifecycle()
     val syncPlayAccess =
@@ -383,10 +398,6 @@ private fun TvAuthenticatedApp(
     LaunchedEffect(syncPlayAccess) {
         syncPlay.updateAccess(syncPlayAccess)
     }
-    LaunchedEffect(playbackState) {
-        segmentCoordinator.onPlaybackState(playbackState)
-        continuationCoordinator.onPlaybackState(playbackState)
-    }
     LaunchedEffect(settings.trailerPreviewsEnabled) {
         trailerPreviewCoordinator.setEnabled(settings.trailerPreviewsEnabled)
     }
@@ -400,7 +411,6 @@ private fun TvAuthenticatedApp(
     }
     LaunchedEffect(serverRepository.currentServers()) { trailerPreviewCoordinator.invalidateCache() }
     LaunchedEffect(lifecycleState) {
-        continuationCoordinator.setForeground(lifecycleState.isAtLeast(Lifecycle.State.STARTED))
         if (!lifecycleState.isAtLeast(Lifecycle.State.STARTED)) trailerPreviewCoordinator.clearFocus()
     }
     DisposableEffect(Unit) {
@@ -408,8 +418,6 @@ private fun TvAuthenticatedApp(
             browseCoordinator.shutdown()
             requestsCoordinator.shutdown()
             syncPlay.close()
-            segmentCoordinator.release()
-            continuationCoordinator.release()
             segmentHttpClient.close()
             trailerPreviewCoordinator.release()
         }
@@ -670,6 +678,8 @@ private fun TvAuthenticatedApp(
                                         controller = playbackController,
                                         engine = playerEngine,
                                         syncPlay = syncPlay,
+                                        playbackState = playbackState,
+                                        syncState = syncPlayState,
                                         segmentState = segmentState,
                                         continuationState = continuationState,
                                         onSkipSegment = segmentCoordinator::skip,
@@ -715,14 +725,12 @@ private fun TvAuthenticatedApp(
                 )
             }
         }
-        tvAutoplayPromptModel(continuationState)?.let { prompt ->
-            TvAutoplayPrompt(
-                model = prompt,
-                strings = strings,
-                onPlayNow = continuationCoordinator::playNext,
-                onCancel = continuationCoordinator::cancelAutoplay,
-            )
-        }
+        TvPlaybackCompletionPrompt(
+            continuationState = continuationState,
+            strings = strings,
+            onPlayNow = continuationCoordinator::playNext,
+            onCancel = continuationCoordinator::cancelAutoplay,
+        )
     }
 }
 

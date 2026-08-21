@@ -7,6 +7,7 @@ import dev.jellystack.network.jellyfin.JellyfinMediaSegmentsApi
 import dev.jellystack.network.jellyfin.JellyfinMediaSegmentsResult
 import dev.jellystack.network.jellyfin.JellyfinMediaSegmentsService
 import dev.jellystack.players.PlaybackContinuationState
+import dev.jellystack.players.PlaybackPhase
 import dev.jellystack.players.PlaybackSegmentAction
 import dev.jellystack.players.PlaybackSegmentState
 import dev.jellystack.players.PlaybackSegmentType
@@ -50,41 +51,52 @@ internal class TvPlaybackPromptCoordinator(
     val state: StateFlow<TvPlaybackPromptState> = mutableState.asStateFlow()
 
     private var currentActionIds: Set<String> = emptySet()
-    private var expiryJob: Job? = null
+    private val presentedActionIds = mutableSetOf<String>()
+    private val expiryJobs = mutableMapOf<String, Job>()
 
-    fun onActionsChanged(actionIds: List<String>) {
+    fun onPresentationChanged(
+        actionIds: List<String>,
+        controlsVisible: Boolean,
+    ) {
         val updatedIds = actionIds.toCollection(linkedSetOf())
-        val enteredIds = updatedIds - currentActionIds
+        val removedIds = currentActionIds - updatedIds
+        removedIds.forEach { actionId ->
+            expiryJobs.remove(actionId)?.cancel()
+            presentedActionIds -= actionId
+        }
         currentActionIds = updatedIds
-        when {
-            updatedIds.isEmpty() -> {
-                expiryJob?.cancel()
-                expiryJob = null
-                mutableState.value = TvPlaybackPromptState()
-            }
-            enteredIds.isNotEmpty() -> {
-                expiryJob?.cancel()
-                mutableState.value = TvPlaybackPromptState(updatedIds)
-                expiryJob =
-                    scope.launch {
-                        delay(STANDALONE_PROMPT_MILLIS)
-                        mutableState.value = TvPlaybackPromptState()
-                    }
-            }
-            else -> {
-                mutableState.value =
-                    mutableState.value.copy(
-                        visibleActionIds = mutableState.value.visibleActionIds.intersect(updatedIds),
-                    )
-            }
+        mutableState.value =
+            TvPlaybackPromptState(
+                visibleActionIds = mutableState.value.visibleActionIds.intersect(updatedIds),
+            )
+        if (!controlsVisible) {
+            updatedIds.filterNot(presentedActionIds::contains).forEach(::startStandaloneWindow)
         }
     }
 
     fun release() {
-        expiryJob?.cancel()
-        expiryJob = null
+        expiryJobs.values.forEach(Job::cancel)
+        expiryJobs.clear()
+        presentedActionIds.clear()
         currentActionIds = emptySet()
         mutableState.value = TvPlaybackPromptState()
+    }
+
+    private fun startStandaloneWindow(actionId: String) {
+        presentedActionIds += actionId
+        mutableState.value =
+            TvPlaybackPromptState(
+                visibleActionIds = mutableState.value.visibleActionIds + actionId,
+            )
+        expiryJobs[actionId] =
+            scope.launch {
+                delay(STANDALONE_PROMPT_MILLIS)
+                expiryJobs.remove(actionId)
+                mutableState.value =
+                    TvPlaybackPromptState(
+                        visibleActionIds = mutableState.value.visibleActionIds - actionId,
+                    )
+            }
     }
 
     private companion object {
@@ -110,9 +122,11 @@ internal fun tvPlaybackActionModels(
     segmentState: PlaybackSegmentState,
     continuationState: PlaybackContinuationState,
     isEpisode: Boolean,
+    playbackPhase: PlaybackPhase,
     strings: TvStrings,
-): List<TvPlaybackActionModel> =
-    buildList {
+): List<TvPlaybackActionModel> {
+    if (playbackPhase == PlaybackPhase.Ended) return emptyList()
+    return buildList {
         segmentState.actions.forEach { action ->
             add(
                 TvPlaybackActionModel(
@@ -135,6 +149,7 @@ internal fun tvPlaybackActionModels(
             )
         }
     }
+}
 
 internal fun routeTvSegmentSeek(
     positionMs: Long,
@@ -151,6 +166,30 @@ internal suspend fun routeTvPlayNext(
     requestLocalNext: suspend () -> Unit,
 ) {
     if (syncPlayActive) requestSyncNext() else requestLocalNext()
+}
+
+internal class TvPlaybackCommandRouter(
+    private val isSyncPlayActive: () -> Boolean,
+    private val requestSyncSeek: (Long) -> Unit,
+    private val requestLocalSeek: (Long) -> Unit,
+    private val requestSyncNext: () -> Unit,
+) {
+    fun seekTo(positionMs: Long) {
+        routeTvSegmentSeek(
+            positionMs = positionMs,
+            syncPlayActive = isSyncPlayActive(),
+            requestSyncSeek = requestSyncSeek,
+            requestLocalSeek = requestLocalSeek,
+        )
+    }
+
+    suspend fun playNext(requestLocalNext: suspend () -> Unit) {
+        routeTvPlayNext(
+            syncPlayActive = isSyncPlayActive(),
+            requestSyncNext = requestSyncNext,
+            requestLocalNext = requestLocalNext,
+        )
+    }
 }
 
 internal fun AppSettings.segmentSkipMode(type: PlaybackSegmentType): SegmentSkipMode =

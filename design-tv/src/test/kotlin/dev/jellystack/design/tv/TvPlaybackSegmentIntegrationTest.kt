@@ -5,6 +5,7 @@ import dev.jellystack.core.preferences.AppSettings
 import dev.jellystack.core.preferences.SegmentSkipMode
 import dev.jellystack.players.PlaybackContinuationState
 import dev.jellystack.players.PlaybackContinuationTarget
+import dev.jellystack.players.PlaybackPhase
 import dev.jellystack.players.PlaybackSegment
 import dev.jellystack.players.PlaybackSegmentAction
 import dev.jellystack.players.PlaybackSegmentState
@@ -20,11 +21,16 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class TvPlaybackSegmentIntegrationTest {
     @Test
-    fun standalonePromptExpiresExactlyEightSecondsAfterActionEntry() =
+    fun standalonePromptGetsFullEightSecondsWhenControlsFirstHide() =
         runTest {
             val coordinator = TvPlaybackPromptCoordinator(this)
 
-            coordinator.onActionsChanged(listOf("segment:intro"))
+            coordinator.onPresentationChanged(listOf("segment:intro"), controlsVisible = true)
+            advanceTimeBy(5_000L)
+            runCurrent()
+            assertTrue(coordinator.state.value.visibleActionIds.isEmpty())
+
+            coordinator.onPresentationChanged(listOf("segment:intro"), controlsVisible = false)
             assertEquals(setOf("segment:intro"), coordinator.state.value.visibleActionIds)
 
             advanceTimeBy(7_999L)
@@ -37,16 +43,22 @@ class TvPlaybackSegmentIntegrationTest {
         }
 
     @Test
-    fun newlyAvailableActionRestartsPromptWithoutRevivingRemovedActions() =
+    fun delayedActionHasIndependentWindowWithoutExtendingRetainedAction() =
         runTest {
             val coordinator = TvPlaybackPromptCoordinator(this)
 
-            coordinator.onActionsChanged(listOf("segment:outro"))
+            coordinator.onPresentationChanged(listOf("segment:outro"), controlsVisible = false)
             advanceTimeBy(6_000L)
-            coordinator.onActionsChanged(listOf("play-next"))
+            coordinator.onPresentationChanged(listOf("segment:outro", "play-next"), controlsVisible = false)
 
+            assertEquals(setOf("segment:outro", "play-next"), coordinator.state.value.visibleActionIds)
+            advanceTimeBy(1_999L)
+            runCurrent()
+            assertEquals(setOf("segment:outro", "play-next"), coordinator.state.value.visibleActionIds)
+            advanceTimeBy(1L)
+            runCurrent()
             assertEquals(setOf("play-next"), coordinator.state.value.visibleActionIds)
-            advanceTimeBy(7_999L)
+            advanceTimeBy(5_999L)
             runCurrent()
             assertEquals(setOf("play-next"), coordinator.state.value.visibleActionIds)
             advanceTimeBy(1L)
@@ -68,7 +80,14 @@ class TvPlaybackSegmentIntegrationTest {
                 nextTarget = PlaybackContinuationTarget("episode-2", "Episode 2") {},
             )
 
-        val actions = tvPlaybackActionModels(segmentState, continuation, isEpisode = true, strings())
+        val actions =
+            tvPlaybackActionModels(
+                segmentState,
+                continuation,
+                isEpisode = true,
+                playbackPhase = PlaybackPhase.Ready,
+                strings = strings(),
+            )
 
         assertEquals(listOf(TvPlaybackActionKind.SEGMENT_SKIP, TvPlaybackActionKind.PLAY_NEXT), actions.map { it.kind })
         assertEquals(listOf("Skip credits", "Play next episode"), actions.map { it.label })
@@ -79,6 +98,33 @@ class TvPlaybackSegmentIntegrationTest {
             ),
             actions.map { it.id },
         )
+    }
+
+    @Test
+    fun endedPlaybackSuppressesOutroAndPreparedNextActions() {
+        val segmentState =
+            PlaybackSegmentState(
+                mediaId = "episode-1",
+                activeSegments = listOf(outroSegment()),
+                actions = listOf(outroAction()),
+            )
+        val continuation =
+            PlaybackContinuationState(
+                mediaId = "episode-1",
+                nextTarget = PlaybackContinuationTarget("episode-2", "Episode 2") {},
+                countdownSecondsRemaining = 10,
+            )
+
+        val actions =
+            tvPlaybackActionModels(
+                segmentState,
+                continuation,
+                isEpisode = true,
+                playbackPhase = PlaybackPhase.Ended,
+                strings = strings(),
+            )
+
+        assertTrue(actions.isEmpty())
     }
 
     @Test
@@ -94,7 +140,14 @@ class TvPlaybackSegmentIntegrationTest {
                 nextTarget = PlaybackContinuationTarget("episode-2", "Episode 2") {},
             )
 
-        val actions = tvPlaybackActionModels(segmentState, continuation, isEpisode = true, strings())
+        val actions =
+            tvPlaybackActionModels(
+                segmentState,
+                continuation,
+                isEpisode = true,
+                playbackPhase = PlaybackPhase.Ready,
+                strings = strings(),
+            )
 
         assertEquals(listOf(TvPlaybackActionKind.PLAY_NEXT), actions.map { it.kind })
     }
@@ -112,8 +165,24 @@ class TvPlaybackSegmentIntegrationTest {
                 nextTarget = PlaybackContinuationTarget("episode-2", "Episode 2") {},
             )
 
-        assertTrue(tvPlaybackActionModels(segmentState, availableNext, isEpisode = false, strings()).isEmpty())
-        assertTrue(tvPlaybackActionModels(segmentState, PlaybackContinuationState(), isEpisode = true, strings()).isEmpty())
+        assertTrue(
+            tvPlaybackActionModels(
+                segmentState,
+                availableNext,
+                isEpisode = false,
+                playbackPhase = PlaybackPhase.Ready,
+                strings = strings(),
+            ).isEmpty(),
+        )
+        assertTrue(
+            tvPlaybackActionModels(
+                segmentState,
+                PlaybackContinuationState(),
+                isEpisode = true,
+                playbackPhase = PlaybackPhase.Ready,
+                strings = strings(),
+            ).isEmpty(),
+        )
     }
 
     @Test

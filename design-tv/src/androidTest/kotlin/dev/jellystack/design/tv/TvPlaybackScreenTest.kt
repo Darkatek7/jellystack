@@ -145,6 +145,44 @@ class TvPlaybackScreenTest {
     }
 
     @Test
+    fun focusedSecondActionSurvivesFirstRemovalThenFallsBackWhenItDisappears() {
+        var actions by
+            mutableStateOf(
+                listOf(
+                    action("segment:outro", "Skip credits"),
+                    action("play-next", "Play next episode"),
+                ),
+            )
+        composeRule.setContent {
+            val fallback = remember { FocusRequester() }
+            val entry = remember { FocusRequester() }
+            JellystackTvTheme {
+                Column {
+                    TvPlaybackActions(
+                        actions = actions,
+                        fallbackFocusRequester = fallback,
+                        entryFocusRequester = entry,
+                        onAction = {},
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    TvActionButton("Stable control", {}, modifier = Modifier.focusRequester(fallback))
+                }
+            }
+        }
+
+        composeRule
+            .onNodeWithContentDescription("Play next episode")
+            .performSemanticsAction(SemanticsActions.RequestFocus)
+            .assertIsFocused()
+
+        composeRule.runOnIdle { actions = listOf(action("play-next", "Play next episode")) }
+        composeRule.onNodeWithContentDescription("Play next episode").assertIsFocused()
+
+        composeRule.runOnIdle { actions = emptyList() }
+        composeRule.onNodeWithText("Stable control").assertIsFocused()
+    }
+
+    @Test
     fun segmentSettingsExplainServerMarkersAndDispatchAllFivePickers() {
         val strings = TvStrings.current(AppLanguage.ENGLISH)
         val events = mutableListOf<Pair<PlaybackSegmentType, SegmentSkipMode>>()

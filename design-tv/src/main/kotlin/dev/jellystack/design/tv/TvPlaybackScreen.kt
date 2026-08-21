@@ -29,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -57,6 +58,7 @@ import dev.jellystack.players.PlaybackSegmentAction
 import dev.jellystack.players.PlaybackSegmentState
 import dev.jellystack.players.PlaybackState
 import dev.jellystack.players.syncplay.SyncPlayCoordinator
+import dev.jellystack.players.syncplay.SyncPlayUiState
 import kotlinx.coroutines.delay
 
 @OptIn(UnstableApi::class)
@@ -65,6 +67,8 @@ internal fun TvPlaybackScreen(
     controller: PlaybackController,
     engine: AndroidPlayerEngine,
     syncPlay: SyncPlayCoordinator,
+    playbackState: PlaybackState,
+    syncState: SyncPlayUiState,
     segmentState: PlaybackSegmentState,
     continuationState: PlaybackContinuationState,
     onSkipSegment: (PlaybackSegmentAction) -> Unit,
@@ -74,8 +78,6 @@ internal fun TvPlaybackScreen(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val state by controller.state.collectAsStateWithLifecycle()
-    val syncState by syncPlay.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var controlsVisible by remember { mutableStateOf(true) }
     var navigation by remember { mutableStateOf(TvPlayerPanelNavigation.closed()) }
@@ -83,7 +85,7 @@ internal fun TvPlaybackScreen(
     val playerFocusRequester = remember { FocusRequester() }
     val controlsFocusRequester = remember { FocusRequester() }
     val actionEntryFocusRequester = remember { FocusRequester() }
-    val active = state as? PlaybackState.Active
+    val active = playbackState as? PlaybackState.Active
     val promptCoordinator = remember(scope) { TvPlaybackPromptCoordinator(scope) }
     val promptState by promptCoordinator.state.collectAsStateWithLifecycle()
     val playbackActions =
@@ -91,12 +93,16 @@ internal fun TvPlaybackScreen(
             segmentState = segmentState,
             continuationState = continuationState,
             isEpisode = active?.metadata?.seriesId != null,
+            playbackPhase = active?.phase ?: dev.jellystack.players.PlaybackPhase.Ready,
             strings = strings,
         )
     val standaloneActions = playbackActions.filter { it.id in promptState.visibleActionIds }
 
-    LaunchedEffect(playbackActions.map { it.id }) {
-        promptCoordinator.onActionsChanged(playbackActions.map { it.id })
+    LaunchedEffect(playbackActions.map { it.id }, controlsVisible) {
+        promptCoordinator.onPresentationChanged(
+            actionIds = playbackActions.map { it.id },
+            controlsVisible = controlsVisible,
+        )
     }
 
     LaunchedEffect(controlsVisible, navigation.current, interactionGeneration) {
@@ -183,7 +189,7 @@ internal fun TvPlaybackScreen(
             onRelease = engine::releaseVideoSurface,
             modifier = Modifier.fillMaxSize(),
         )
-        when (val playbackState = state) {
+        when (playbackState) {
             is PlaybackState.Preparing -> TvLoading(strings.preparingPlayback)
             is PlaybackState.PlaybackError ->
                 TvPlaybackError(
@@ -378,6 +384,23 @@ private fun TvProgress(
 }
 
 @Composable
+internal fun TvPlaybackCompletionPrompt(
+    continuationState: PlaybackContinuationState,
+    strings: TvStrings,
+    onPlayNow: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    tvAutoplayPromptModel(continuationState)?.let { prompt ->
+        TvAutoplayPrompt(
+            model = prompt,
+            strings = strings,
+            onPlayNow = onPlayNow,
+            onCancel = onCancel,
+        )
+    }
+}
+
+@Composable
 internal fun TvPlaybackActions(
     actions: List<TvPlaybackActionModel>,
     fallbackFocusRequester: FocusRequester,
@@ -390,11 +413,16 @@ internal fun TvPlaybackActions(
     val actionIds = actions.map { it.id }
     LaunchedEffect(actionIds) {
         val focusedId = lastFocusedActionId
-        if (focusedId != null && focusedId !in actionIds) {
+        if (focusedId != null) {
             withFrameNanos { }
-            runCatching { fallbackFocusRequester.requestFocus() }
-            lastFocusedActionId = null
+            if (focusedId in actionIds) {
+                runCatching { requesters[focusedId]?.requestFocus() }
+            } else {
+                runCatching { fallbackFocusRequester.requestFocus() }
+                lastFocusedActionId = null
+            }
         }
+        requesters.keys.retainAll(actionIds.toSet())
     }
     Row(
         modifier = modifier,
@@ -402,19 +430,22 @@ internal fun TvPlaybackActions(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         actions.forEachIndexed { index, action ->
-            val requester = if (index == 0) entryFocusRequester else requesters.getOrPut(action.id) { FocusRequester() }
-            TvActionButton(
-                label = action.label,
-                onClick = { onAction(action) },
-                modifier =
-                    Modifier
-                        .testTag(action.id)
-                        .focusProperties { down = fallbackFocusRequester },
-                primary = true,
-                focusTargetId = action.id,
-                focusRequester = requester,
-                onFocusChanged = { focused -> if (focused) lastFocusedActionId = action.id },
-            )
+            key(action.id) {
+                val requester = requesters.getOrPut(action.id) { FocusRequester() }
+                TvActionButton(
+                    label = action.label,
+                    onClick = { onAction(action) },
+                    modifier =
+                        Modifier
+                            .testTag(action.id)
+                            .then(if (index == 0) Modifier.focusRequester(entryFocusRequester) else Modifier)
+                            .focusProperties { down = fallbackFocusRequester },
+                    primary = true,
+                    focusTargetId = action.id,
+                    focusRequester = requester,
+                    onFocusChanged = { focused -> if (focused) lastFocusedActionId = action.id },
+                )
+            }
         }
     }
 }
