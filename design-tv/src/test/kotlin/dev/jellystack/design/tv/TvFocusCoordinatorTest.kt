@@ -281,7 +281,10 @@ class TvFocusCoordinatorTest {
         assertEquals("home", TvRoute.Home.focusRouteKey())
         assertEquals("library:list", TvRoute.Library().focusRouteKey())
         assertEquals("library:movies", TvRoute.Library("movies").focusRouteKey())
-        assertEquals("library:movies/path:folder/season", TvRoute.Library("movies").focusRouteKey(listOf("folder", "season")))
+        assertEquals(
+            "library:movies/path:folder/season",
+            TvRoute.Library("movies").focusRouteKey(listOf("folder", "season")),
+        )
         assertEquals("settings:root", TvRoute.Settings().focusRouteKey())
         assertEquals("settings:playback", TvRoute.Settings("playback").focusRouteKey())
         assertEquals("discover", TvRoute.Discover.focusRouteKey())

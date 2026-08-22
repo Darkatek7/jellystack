@@ -59,6 +59,7 @@ internal interface TvTrailerPreviewPlayer {
     fun setSoundEnabled(enabled: Boolean)
 }
 
+@Suppress("TooManyFunctions") // small focused API: focus, unfocus, cancel, sound and state accessors
 internal class TvTrailerPreviewController(
     private val scope: CoroutineScope,
     private val resolve: suspend (TvTrailerPreviewTarget) -> DetailTrailerSource.Local?,

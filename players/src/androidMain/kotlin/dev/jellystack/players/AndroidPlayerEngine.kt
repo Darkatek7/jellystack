@@ -12,7 +12,6 @@ import androidx.media3.common.C.COLOR_TRANSFER_HLG
 import androidx.media3.common.C.COLOR_TRANSFER_ST2084
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaItem.SubtitleConfiguration
-import androidx.media3.common.MediaMetadata as Media3MediaMetadata
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -43,6 +42,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.media3.common.MediaMetadata as Media3MediaMetadata
 
 @UnstableApi
 class AndroidPlayerEngine(

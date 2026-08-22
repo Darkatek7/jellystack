@@ -7,8 +7,8 @@ internal data class AndroidAutoplayPromptModel(
     val secondsRemaining: Int,
 )
 
-internal fun androidAutoplayPromptModel(state: PlaybackContinuationState): AndroidAutoplayPromptModel? {
-    val target = state.nextTarget ?: return null
-    val secondsRemaining = state.countdownSecondsRemaining ?: return null
-    return AndroidAutoplayPromptModel(target.title, secondsRemaining)
-}
+internal fun androidAutoplayPromptModel(state: PlaybackContinuationState): AndroidAutoplayPromptModel? =
+    state.nextTarget
+        ?.let { target ->
+            state.countdownSecondsRemaining?.let { seconds -> AndroidAutoplayPromptModel(target.title, seconds) }
+        }

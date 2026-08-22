@@ -36,6 +36,8 @@ internal data class AndroidPlaybackRootBindings(
 )
 
 @Composable
+// ktlint prefers this single-parameter signature on one line even though it exceeds 120 chars.
+@Suppress("MaxLineLength")
 internal fun rememberAndroidPlaybackRootBindings(coordinators: AndroidPlaybackCoordinators): AndroidPlaybackRootBindings {
     val segmentState by coordinators.segment.state.collectAsStateWithLifecycle()
     val continuationState by coordinators.continuation.state.collectAsStateWithLifecycle()

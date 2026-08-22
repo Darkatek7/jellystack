@@ -1,4 +1,4 @@
-@file:Suppress("FunctionName", "FunctionNaming")
+@file:Suppress("FunctionName", "FunctionNaming", "MatchingDeclarationName")
 
 package dev.jellystack.design.tv
 
@@ -24,11 +24,11 @@ internal data class TvAutoplayPromptModel(
     val secondsRemaining: Int,
 )
 
-internal fun tvAutoplayPromptModel(state: PlaybackContinuationState): TvAutoplayPromptModel? {
-    val target = state.nextTarget ?: return null
-    val secondsRemaining = state.countdownSecondsRemaining ?: return null
-    return TvAutoplayPromptModel(target.title, secondsRemaining)
-}
+internal fun tvAutoplayPromptModel(state: PlaybackContinuationState): TvAutoplayPromptModel? =
+    state.nextTarget
+        ?.let { target ->
+            state.countdownSecondsRemaining?.let { seconds -> TvAutoplayPromptModel(target.title, seconds) }
+        }
 
 internal fun selectNextTvEpisode(
     episodes: List<JellyfinItem>,

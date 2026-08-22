@@ -9,13 +9,29 @@ class PlaybackSessionMetadataTest {
     fun artworkPrefersExplicitUrlThenPrimaryTag() {
         val explicit =
             request(
-                metadata = PlaybackMetadata(title = "T", seriesId = null, seriesName = null, episodeName = null, artworkUrl = "https://art/1.jpg", primaryImageTag = null),
+                metadata =
+                    PlaybackMetadata(
+                        title = "T",
+                        seriesId = null,
+                        seriesName = null,
+                        episodeName = null,
+                        artworkUrl = "https://art/1.jpg",
+                        primaryImageTag = null,
+                    ),
             )
         assertEquals("https://art/1.jpg", explicit.artworkUrl("https://jf.example"))
 
         val tagOnly =
             request(
-                metadata = PlaybackMetadata(title = "T", seriesId = null, seriesName = null, episodeName = null, artworkUrl = null, primaryImageTag = "tag-1"),
+                metadata =
+                    PlaybackMetadata(
+                        title = "T",
+                        seriesId = null,
+                        seriesName = null,
+                        episodeName = null,
+                        artworkUrl = null,
+                        primaryImageTag = "tag-1",
+                    ),
             )
         assertEquals("https://jf.example/Items/item-1/Images/Primary?tag=tag-1", tagOnly.artworkUrl("https://jf.example"))
     }
@@ -24,14 +40,30 @@ class PlaybackSessionMetadataTest {
     fun artworkNeedsBaseUrlAndTag() {
         val tagOnly =
             request(
-                metadata = PlaybackMetadata(title = "T", seriesId = null, seriesName = null, episodeName = null, artworkUrl = null, primaryImageTag = "tag-1"),
+                metadata =
+                    PlaybackMetadata(
+                        title = "T",
+                        seriesId = null,
+                        seriesName = null,
+                        episodeName = null,
+                        artworkUrl = null,
+                        primaryImageTag = "tag-1",
+                    ),
             )
         assertNull(tagOnly.artworkUrl(null))
         assertNull(tagOnly.artworkUrl("  "))
 
         val noArtworkAtAll =
             request(
-                metadata = PlaybackMetadata(title = "T", seriesId = null, seriesName = null, episodeName = null, artworkUrl = null, primaryImageTag = null),
+                metadata =
+                    PlaybackMetadata(
+                        title = "T",
+                        seriesId = null,
+                        seriesName = null,
+                        episodeName = null,
+                        artworkUrl = null,
+                        primaryImageTag = null,
+                    ),
             )
         assertNull(noArtworkAtAll.artworkUrl("https://jf.example"))
         assertNull(request(metadata = null).artworkUrl("https://jf.example"))
@@ -60,7 +92,14 @@ class PlaybackSessionMetadataTest {
     @Test
     fun artistLineEmptyForMoviesWithoutSeries() {
         val movie =
-            PlaybackMetadata(title = "Film", seriesId = null, seriesName = null, episodeName = null, artworkUrl = null, primaryImageTag = null)
+            PlaybackMetadata(
+                title = "Film",
+                seriesId = null,
+                seriesName = null,
+                episodeName = null,
+                artworkUrl = null,
+                primaryImageTag = null,
+            )
         assertNull(movie.sessionArtistLine())
         assertNull(movie.copy(seriesName = "  ").sessionArtistLine())
     }

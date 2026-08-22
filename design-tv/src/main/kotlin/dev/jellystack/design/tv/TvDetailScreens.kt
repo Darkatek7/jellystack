@@ -17,9 +17,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -276,18 +276,13 @@ internal fun TvDetailFocusLayout(
             .focusRequester(bodyFocusRequester)
             .testTag("tv-detail-body-focus")
             .onPreviewKeyEvent { event ->
-                if (
-                    event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
-                    event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_UP &&
-                    event.nativeKeyEvent.repeatCount == 0
-                ) {
+                val isInitialDownPress =
+                    event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN && event.nativeKeyEvent.repeatCount == 0
+                if (isInitialDownPress && event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_UP) {
                     focusPrimaryAction()
                     true
-                } else if (
-                    nextBodyItemIndex != null &&
-                    event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
-                    event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_DOWN &&
-                    event.nativeKeyEvent.repeatCount == 0
+                } else if (nextBodyItemIndex != null && isInitialDownPress &&
+                    event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_DOWN
                 ) {
                     focusLowerContent()
                     true
@@ -438,6 +433,7 @@ internal fun TvJellyfinDetailScreen(
     val logoTag = currentItem.seriesLogoImageTag ?: currentDetail.logoImageTag ?: currentItem.logoImageTag ?: currentItem.parentLogoImageTag
     val titlePresentation = tvJellyfinHeroTitlePresentation(currentItem.type, logoTag)
     val hasResumePosition = (currentItem.positionTicks ?: 0L) > 0L
+
     fun startPlayback(startPolicy: PlaybackStartPolicy) {
         scope.launch {
             val environment = environmentProvider.current() ?: return@launch

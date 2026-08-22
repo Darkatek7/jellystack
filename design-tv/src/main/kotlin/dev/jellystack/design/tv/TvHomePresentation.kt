@@ -84,7 +84,7 @@ internal fun moveTvHomeCarouselManually(
     }
 }
 
-private fun TvHomeCarouselState.select(itemId: String?): TvHomeCarouselState = if (selectedId == itemId) this else copy(selectedId = itemId)
+private fun TvHomeCarouselState.select(itemId: String?) = if (selectedId == itemId) this else copy(selectedId = itemId)
 
 internal fun SpotlightCandidate.tvHomeTrailerPreviewItem() = actionItem
 
@@ -244,6 +244,13 @@ internal class TvHomeVerticalFocusCoordinator(
         onAccepted: () -> Unit = {},
     ): TvHomeFocusMove? {
         val destination = destination(origin, direction) ?: return null
+        return existingOrNewMove(destination, onAccepted)
+    }
+
+    private fun existingOrNewMove(
+        destination: TvHomeFocusDestination,
+        onAccepted: () -> Unit,
+    ): TvHomeFocusMove {
         pendingMove?.takeIf { it.destination == destination }?.let { return it }
         pendingMove = null
         onAccepted()
@@ -279,9 +286,16 @@ internal class TvHomeVerticalFocusCoordinator(
                         ?: false
                 }
             }
-        if (pendingMove?.requestId != requestId) return null
+        return completeTvHomeFocusMove(requestId, focused)
+    }
+
+    private fun completeTvHomeFocusMove(
+        requestId: Long,
+        focused: Boolean,
+    ): TvHomeFocusCompletion? {
+        val completed = pendingMove?.takeIf { it.requestId == requestId } ?: return null
         pendingMove = null
-        return TvHomeFocusCompletion(requestId, focused)
+        return TvHomeFocusCompletion(completed.requestId, focused)
     }
 
     private fun destination(
@@ -310,7 +324,14 @@ internal class TvHomeVerticalFocusCoordinator(
         }
 
     private fun TvHomeFocusMove.reconcile(rows: List<TvHomeFocusRow>): TvHomeFocusMove? {
-        val destination = destination as? TvHomeFocusDestination.Row ?: return this
+        val rowDestination = destination as? TvHomeFocusDestination.Row ?: return this
+        return reconcileRowDestination(rowDestination, rows)
+    }
+
+    private fun TvHomeFocusMove.reconcileRowDestination(
+        destination: TvHomeFocusDestination.Row,
+        rows: List<TvHomeFocusRow>,
+    ): TvHomeFocusMove? {
         val row =
             rows.firstOrNull { it.id == destination.id }
                 ?: rows.minByOrNull { kotlin.math.abs(it.lazyColumnIndex - destination.lazyColumnIndex) }

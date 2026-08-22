@@ -362,7 +362,8 @@ internal data class TvStrings(
                 manageSeerr = "Manage Seerr",
                 segmentSkipping = "Segment skipping",
                 serverSegmentExplanation =
-                    "Uses segment markers supplied by your Jellyfin server. Availability depends on your server and media.",
+                    "Uses segment markers supplied by your Jellyfin server. " +
+                        "Availability depends on your server and media.",
                 introSegments = "Intros",
                 recapSegments = "Recaps",
                 outroSegments = "Credits",
@@ -564,7 +565,8 @@ internal data class TvStrings(
                 manageSeerr = "Seerr verwalten",
                 segmentSkipping = "Segmente überspringen",
                 serverSegmentExplanation =
-                    "Verwendet Segmentmarkierungen deines Jellyfin-Servers. Die Verfügbarkeit hängt von Server und Medium ab.",
+                    "Verwendet Segmentmarkierungen deines Jellyfin-Servers. " +
+                        "Die Verfügbarkeit hängt von Server und Medium ab.",
                 introSegments = "Intros",
                 recapSegments = "Rückblicke",
                 outroSegments = "Abspann",

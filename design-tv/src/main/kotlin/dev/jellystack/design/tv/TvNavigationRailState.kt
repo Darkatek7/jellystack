@@ -18,6 +18,7 @@ internal sealed interface TvFocusRestoration<out T> {
 }
 
 /** Owns route-local content focus and the expanded navigation rail as one deterministic state machine. */
+@Suppress("TooManyFunctions") // one coordinator per route; splitting it would hide the state machine
 internal class TvFocusCoordinator<T : Any>(
     initiallyRailVisible: Boolean = false,
     private val attachmentTimeoutMillis: Long = 1_000,
@@ -93,15 +94,14 @@ internal class TvFocusCoordinator<T : Any>(
         targetId: Any,
         target: T,
     ) {
-        val route = routes[routeKey] ?: return
-        val registration = route.attached[targetId] ?: return
+        val registration = routes[routeKey]?.attached?.get(targetId) ?: return
         val targetRegistration = registration.targets[target] ?: return
         targetRegistration.count -= 1
         if (targetRegistration.count <= 0) {
             registration.targets.remove(target)
             registrationRevision += 1
+            if (registration.targets.isEmpty()) routes[routeKey]?.attached?.remove(targetId)
         }
-        if (registration.targets.isEmpty()) route.attached.remove(targetId)
     }
 
     fun rememberFocused(
@@ -197,41 +197,36 @@ internal class TvFocusCoordinator<T : Any>(
     private suspend fun materializeIfNeeded(
         routeKey: Any,
         targetId: String,
-    ): Boolean {
-        if (routes[routeKey]
+    ): Boolean =
+        when {
+            routes[routeKey]
                 ?.attached
                 ?.get(targetId)
                 ?.targets
-                ?.isNotEmpty() == true
-        ) {
-            return true
+                ?.isNotEmpty() == true -> true
+            else ->
+                materializerAwaitingTvTarget(routeKey, targetId)
+                    ?.let { materializer -> materializer.materialize(targetId) }
+                    ?.let { materialized -> materialized && awaitTargetAttachment(routeKey, targetId) }
+                    ?: false
         }
-        var materializer = materializers[routeKey]?.values?.firstOrNull { targetId in it.targetIds }
-        if (materializer == null) {
-            withTimeoutOrNull(attachmentTimeoutMillis) {
-                snapshotFlow { registrationRevision }
-                    .first {
-                        routes[routeKey]
-                            ?.attached
-                            ?.get(targetId)
-                            ?.targets
-                            ?.isNotEmpty() == true ||
-                            materializers[routeKey]?.values?.any { targetId in it.targetIds } == true
-                    }
-            }
-            if (routes[routeKey]
+
+    /** First materializer covering [targetId], waiting up to the attachment timeout for registration. */
+    private suspend fun materializerAwaitingTvTarget(
+        routeKey: Any,
+        targetId: String,
+    ): Materializer? {
+        withTimeoutOrNull(attachmentTimeoutMillis) {
+            snapshotFlow { registrationRevision }.first {
+                routes[routeKey]
                     ?.attached
                     ?.get(targetId)
                     ?.targets
-                    ?.isNotEmpty() == true
-            ) {
-                return true
+                    ?.isNotEmpty() == true ||
+                    materializers[routeKey]?.values?.any { targetId in it.targetIds } == true
             }
-            materializer = materializers[routeKey]?.values?.firstOrNull { targetId in it.targetIds }
         }
-        materializer ?: return false
-        if (!materializer.materialize(targetId)) return false
-        return awaitTargetAttachment(routeKey, targetId)
+        return materializers[routeKey]?.values?.firstOrNull { targetId in it.targetIds }
     }
 
     private suspend fun awaitRouteCapability(routeKey: Any) {

@@ -129,17 +129,25 @@ private suspend fun materializeTvLazyTarget(
     location: TvLazyFocusLocation,
 ): Boolean {
     outerState.scrollToItem(location.verticalIndex)
-    val rowId = location.rowId ?: return true
-    val horizontalIndex = location.horizontalIndex ?: return true
-    val rowState = rowStates[rowId] ?: return false
+    val rowState = location.rowId?.let(rowStates::get)
+    return when {
+        location.rowId == null || location.horizontalIndex == null -> true
+        rowState == null -> false
+        else -> materializeTvRowItem(rowState, requireNotNull(location.horizontalIndex))
+    }
+}
+
+private suspend fun materializeTvRowItem(
+    rowState: LazyListState,
+    horizontalIndex: Int,
+): Boolean {
     val rowAttached =
         withTimeoutOrNull(TV_FOCUS_MATERIALIZATION_TIMEOUT_MS) {
             snapshotFlow { rowState.layoutInfo.totalItemsCount }.first { it > horizontalIndex }
             true
         } ?: false
-    if (!rowAttached) return false
-    rowState.scrollToItem(horizontalIndex)
-    return true
+    if (rowAttached) rowState.scrollToItem(horizontalIndex)
+    return rowAttached
 }
 
 internal fun tvHomeHeroHeightDp(): Int = TV_HOME_HERO_HEIGHT_DP
@@ -1607,7 +1615,6 @@ private fun TvSeerrRow(
     focusTargetId: (String) -> String,
     screenEntry: Boolean = false,
 ) {
-    val ids = items.map { "${it.mediaType}:${it.tmdbId}" }
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         TvSectionTitle(title)
         LazyRow(

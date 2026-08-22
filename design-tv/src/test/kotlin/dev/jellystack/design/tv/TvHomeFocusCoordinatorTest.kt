@@ -12,7 +12,12 @@ import kotlin.test.assertTrue
 class TvHomeFocusCoordinatorTest {
     private val rows =
         listOf(
-            TvHomeFocusRow("portrait", lazyColumnIndex = 1, itemIds = listOf("portrait-1", "portrait-2"), landscape = false),
+            TvHomeFocusRow(
+                "portrait",
+                lazyColumnIndex = 1,
+                itemIds = listOf("portrait-1", "portrait-2"),
+                landscape = false,
+            ),
             TvHomeFocusRow("empty-gap", lazyColumnIndex = 2, itemIds = emptyList(), landscape = true),
             TvHomeFocusRow(
                 "landscape",
@@ -35,7 +40,8 @@ class TvHomeFocusCoordinatorTest {
     fun upTargetsPreviousNonEmptyRowThenHeroFromFirstRow() {
         val coordinator = TvHomeVerticalFocusCoordinator(rows)
 
-        val previous = coordinator.beginMove(TvHomeFocusOrigin.Row("landscape", "landscape-1"), TvHomeVerticalDirection.UP)
+        val previous =
+            coordinator.beginMove(TvHomeFocusOrigin.Row("landscape", "landscape-1"), TvHomeVerticalDirection.UP)
         val hero = coordinator.beginMove(TvHomeFocusOrigin.Row("portrait", "portrait-1"), TvHomeVerticalDirection.UP)
 
         assertEquals(TvHomeFocusDestination.Row("portrait", 1, "portrait-1", 0), previous?.destination)
@@ -73,14 +79,18 @@ class TvHomeFocusCoordinatorTest {
     fun rowDownBoundaryDoesNotStartFocusRequest() {
         val coordinator = TvHomeVerticalFocusCoordinator(rows)
 
-        assertNull(coordinator.beginMove(TvHomeFocusOrigin.Row("landscape", "landscape-1"), TvHomeVerticalDirection.DOWN))
+        val move =
+            coordinator.beginMove(TvHomeFocusOrigin.Row("landscape", "landscape-1"), TvHomeVerticalDirection.DOWN)
+        assertNull(move)
     }
 
     @Test
     fun newerMoveCancelsStaleCompletion() {
         val coordinator = TvHomeVerticalFocusCoordinator(rows)
-        val stale = coordinator.beginMove(TvHomeFocusOrigin.Row("portrait", "portrait-1"), TvHomeVerticalDirection.DOWN)!!
-        val current = coordinator.beginMove(TvHomeFocusOrigin.Row("landscape", "landscape-1"), TvHomeVerticalDirection.UP)!!
+        val stale =
+            coordinator.beginMove(TvHomeFocusOrigin.Row("portrait", "portrait-1"), TvHomeVerticalDirection.DOWN)!!
+        val current =
+            coordinator.beginMove(TvHomeFocusOrigin.Row("landscape", "landscape-1"), TvHomeVerticalDirection.UP)!!
 
         assertFalse(coordinator.acceptCompletion(stale.requestId))
         assertTrue(coordinator.acceptCompletion(current.requestId))
