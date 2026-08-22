@@ -36,6 +36,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -296,6 +297,10 @@ internal fun TvCompactActionButton(
     }
 }
 
+internal enum class TvMediaCardFormat { LANDSCAPE, CAST_PORTRAIT }
+
+internal enum class TvMediaCardArtworkFit { CROP, CONTAIN_PORTRAIT }
+
 @Composable
 internal fun TvMediaCard(
     title: String,
@@ -303,7 +308,8 @@ internal fun TvMediaCard(
     onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
     subtitle: String? = null,
-    landscape: Boolean = true,
+    format: TvMediaCardFormat = TvMediaCardFormat.LANDSCAPE,
+    artworkFit: TvMediaCardArtworkFit = TvMediaCardArtworkFit.CROP,
     fillWidth: Boolean = false,
     focusable: Boolean = true,
     onFocused: (() -> Unit)? = null,
@@ -312,14 +318,14 @@ internal fun TvMediaCard(
     previewing: Boolean = false,
     previewEngine: AndroidPlayerEngine? = null,
     previewSoundEnabled: Boolean = true,
-    previewProgress: Float = 0f,
+    previewProgress: State<Float>? = null,
     previewSurfaceTestTag: String? = null,
     focusTargetId: String? = null,
 ) {
     val shape = RoundedCornerShape(18.dp)
     var focused by remember { mutableStateOf(false) }
-    val cardWidth = if (landscape) 250.dp else 140.dp
-    val aspectRatio = if (landscape) 16f / 9f else 2f / 3f
+    val cardWidth = if (format == TvMediaCardFormat.LANDSCAPE) 250.dp else 140.dp
+    val aspectRatio = if (format == TvMediaCardFormat.LANDSCAPE) 16f / 9f else 2f / 3f
     val bringIntoViewRequester = remember { BringIntoViewRequester() }
     LaunchedEffect(focused) {
         if (focused) {
@@ -364,6 +370,7 @@ internal fun TvMediaCard(
                 title = title,
                 imageUrl = imageUrl,
                 subtitle = subtitle,
+                artworkFit = artworkFit,
                 previewing = previewing,
                 previewEngine = previewEngine,
                 previewSoundEnabled = previewSoundEnabled,
@@ -379,10 +386,11 @@ private fun BoxScope.TvMediaCardContent(
     title: String,
     imageUrl: String?,
     subtitle: String?,
+    artworkFit: TvMediaCardArtworkFit,
     previewing: Boolean,
     previewEngine: AndroidPlayerEngine?,
     previewSoundEnabled: Boolean,
-    previewProgress: Float,
+    previewProgress: State<Float>?,
     previewSurfaceTestTag: String?,
 ) {
     if (previewing && previewEngine != null) {
@@ -392,6 +400,20 @@ private fun BoxScope.TvMediaCardContent(
                 Modifier
                     .fillMaxSize()
                     .then(previewSurfaceTestTag?.let { Modifier.testTag(it) } ?: Modifier),
+        )
+    } else if (imageUrl != null && artworkFit == TvMediaCardArtworkFit.CONTAIN_PORTRAIT) {
+        AsyncImage(
+            model = imageUrl,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize(),
+        )
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.58f)))
+        AsyncImage(
+            model = imageUrl,
+            contentDescription = title,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.fillMaxSize(),
         )
     } else if (imageUrl != null) {
         AsyncImage(
@@ -410,14 +432,20 @@ private fun BoxScope.TvMediaCardContent(
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
-                    listOf(Color.Transparent, Color.Transparent, Color.Black.copy(alpha = 0.82f)),
+                    colorStops =
+                        arrayOf(
+                            0f to Color.Transparent,
+                            0.48f to Color.Transparent,
+                            0.72f to Color.Black.copy(alpha = 0.5f),
+                            1f to Color.Black.copy(alpha = 0.94f),
+                        ),
                 ),
             ),
     )
     if (previewing) {
         TvTrailerPreviewChrome(
             previewSoundEnabled = previewSoundEnabled,
-            previewProgress = previewProgress,
+            previewProgress = previewProgress?.value ?: 0f,
             modifier = Modifier.fillMaxSize(),
         )
     }
@@ -629,7 +657,7 @@ internal fun jellyfinImageUrl(
     itemId: String,
     tag: String?,
     type: String = "Primary",
-    maxWidth: Int = 1000,
+    maxWidth: Int = TvArtworkSize.LANDSCAPE_CARD.maxWidth,
 ): String? {
     if (baseUrl.isNullOrBlank() || itemId.isBlank()) return null
     val tagQuery = tag?.takeIf(String::isNotBlank)?.let { "tag=$it&" }.orEmpty()

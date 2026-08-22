@@ -67,7 +67,7 @@ class TvJellyfinArtworkTest {
 
         val expectedUrl =
             "https://media.example/Items/item-1/Images/Primary" +
-                "?tag=primary-tag&maxWidth=1000&quality=90&api_key=dummy-token"
+                "?tag=primary-tag&maxWidth=500&quality=90&api_key=dummy-token"
         assertEquals(expectedUrl, resolveTvHomeSectionImageUrl(sectionItem, "https://media.example/", "dummy-token"))
     }
 
@@ -87,8 +87,43 @@ class TvJellyfinArtworkTest {
             )
 
         assertEquals(
-            "https://media.example/Items/item-1/Images/Primary?maxWidth=1000&quality=90&api_key=dummy-token",
+            "https://media.example/Items/item-1/Images/Primary?maxWidth=500&quality=90&api_key=dummy-token",
             resolveTvHomeSectionImageUrl(sectionItem, "https://media.example", "dummy-token"),
+        )
+    }
+
+    @Test
+    fun artworkSizePresetsMatchRenderedTvSurfaces() {
+        assertEquals(500, TvArtworkSize.LANDSCAPE_CARD.maxWidth)
+        assertEquals(300, TvArtworkSize.PORTRAIT_CARD.maxWidth)
+        assertEquals(1800, TvArtworkSize.HERO.maxWidth)
+        assertEquals(900, TvArtworkSize.LOGO.maxWidth)
+    }
+
+    @Test
+    fun homeSectionArtworkCanRequestTheCastPortraitPreset() {
+        val localItem = item(type = "Movie", seriesId = null, primaryImageTag = "primary-tag")
+        val sectionItem =
+            HomeSectionItem(
+                id = localItem.id,
+                name = localItem.name,
+                overview = null,
+                productionYear = null,
+                communityRating = null,
+                imageUrl = null,
+                jellyfinItem = localItem,
+                action = HomeSectionAction.JELLYFIN,
+            )
+
+        assertEquals(
+            "https://media.example/Items/item-1/Images/Primary" +
+                "?tag=primary-tag&maxWidth=300&quality=90&api_key=dummy-token",
+            resolveTvHomeSectionImageUrl(
+                sectionItem,
+                "https://media.example/",
+                "dummy-token",
+                TvArtworkSize.PORTRAIT_CARD,
+            ),
         )
     }
 

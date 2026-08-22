@@ -57,6 +57,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -168,7 +169,7 @@ internal fun TvHomeScreen(
     onCancelPreview: (TvTrailerPreviewOwner) -> Unit,
     trailerPreviewEngine: AndroidPlayerEngine,
     previewSoundEnabled: Boolean,
-    previewProgress: Float,
+    previewProgress: State<Float>,
     onPlayItem: (JellyfinItem) -> Unit,
     onItem: (JellyfinItem) -> Unit,
     onHomeLibrary: (String, String) -> Unit,
@@ -197,7 +198,7 @@ internal fun TvHomeScreen(
                                 id = "plugin:${section.id}",
                                 lazyColumnIndex = lazyColumnIndex++,
                                 itemIds = section.items.map { it.id },
-                                landscape = section.viewMode != HomeSectionViewMode.PORTRAIT,
+                                landscape = true,
                             ),
                         )
                     }
@@ -332,7 +333,7 @@ internal fun TvHomeScreen(
         contentPadding = TvScreenPadding,
         verticalArrangement = Arrangement.spacedBy(28.dp),
     ) {
-        item(key = "spotlight") {
+        item(key = "spotlight", contentType = "spotlight") {
             if (heroCandidates.isNotEmpty()) {
                 val candidate = heroCandidates[spotlightIndex.coerceIn(0, heroCandidates.lastIndex)]
                 TvHeroCarousel(
@@ -380,7 +381,11 @@ internal fun TvHomeScreen(
         }
         when (homeSections) {
             is HomeSectionsState.Ready -> {
-                items(visibleSections, key = { "plugin:${it.id}" }) { section ->
+                items(
+                    visibleSections,
+                    key = { "plugin:${it.id}" },
+                    contentType = { "media-row" },
+                ) { section ->
                     val rowId = "plugin:${section.id}"
                     TvHomeSectionRow(
                         section = section,
@@ -518,7 +523,7 @@ private fun TvHeroCarousel(
     trailerPreviewState: TvTrailerPreviewState,
     trailerPreviewEngine: AndroidPlayerEngine,
     previewSoundEnabled: Boolean,
-    previewProgress: Float,
+    previewProgress: State<Float>,
     onHeroFocusChanged: (Boolean) -> Unit,
     onCarouselMove: (TvHomeCarouselDirection) -> Unit,
     onPlay: () -> Unit,
@@ -646,7 +651,7 @@ private fun TvHeroSlide(
     trailerPreviewState: TvTrailerPreviewState,
     trailerPreviewEngine: AndroidPlayerEngine,
     previewSoundEnabled: Boolean,
-    previewProgress: Float,
+    previewProgress: State<Float>,
     heroFocused: Boolean,
 ) {
     val item = candidate.displayItem
@@ -659,7 +664,7 @@ private fun TvHeroSlide(
             )
         } else {
             AsyncImage(
-                model = jellyfinImageUrl(state.imageBaseUrl, state.imageAccessToken, resolveTvHeroBackdrop(item), 1800),
+                model = jellyfinImageUrl(state.imageBaseUrl, state.imageAccessToken, resolveTvHeroBackdrop(item), TvArtworkSize.HERO),
                 contentDescription = item.name,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
@@ -686,7 +691,7 @@ private fun TvHeroSlide(
         if (previewing) {
             TvTrailerPreviewChrome(
                 previewSoundEnabled = previewSoundEnabled,
-                previewProgress = previewProgress,
+                previewProgress = previewProgress.value,
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -714,7 +719,15 @@ private fun TvHeroSlide(
             val logoTag = item.logoImageTag ?: item.parentLogoImageTag
             if (logoTag != null) {
                 AsyncImage(
-                    model = jellyfinImageUrl(state.imageBaseUrl, state.imageAccessToken, item.seriesId ?: item.id, logoTag, "Logo", 900),
+                    model =
+                        jellyfinImageUrl(
+                            state.imageBaseUrl,
+                            state.imageAccessToken,
+                            item.seriesId ?: item.id,
+                            logoTag,
+                            "Logo",
+                            TvArtworkSize.LOGO.maxWidth,
+                        ),
                     contentDescription = item.seriesName ?: item.name,
                     modifier = Modifier.widthIn(max = 420.dp).heightIn(max = 96.dp),
                     contentScale = ContentScale.Fit,
@@ -855,13 +868,12 @@ private fun TvJellyfinRow(
     focusMemory: TvFocusMemory,
     onItem: (JellyfinItem) -> Unit,
     displayItemsById: Map<String, JellyfinItem> = emptyMap(),
-    landscape: Boolean = true,
     onPreviewFocus: (JellyfinItem, String) -> Unit = { _, _ -> },
     onPreviewBlur: (JellyfinItem, String) -> Unit = { _, _ -> },
     trailerPreviewState: TvTrailerPreviewState = TvTrailerPreviewState.Idle,
     trailerPreviewEngine: AndroidPlayerEngine? = null,
     previewSoundEnabled: Boolean = true,
-    previewProgress: Float = 0f,
+    previewProgress: State<Float>? = null,
     routeKey: String = "home",
     listState: LazyListState,
     focusTargetId: (String) -> String,
@@ -877,10 +889,14 @@ private fun TvJellyfinRow(
                 androidx.compose.foundation.layout
                     .PaddingValues(6.dp),
         ) {
-            itemsIndexed(items, key = { _, item -> item.id }) { index, item ->
+            itemsIndexed(
+                items,
+                key = { _, item -> item.id },
+                contentType = { _, _ -> "media-card" },
+            ) { index, item ->
                 val targetId = focusTargetId(item.id)
                 val displayItem = displayItemsById[item.id] ?: item
-                val artwork = resolveTvJellyfinArtwork(displayItem, landscape)
+                val artwork = resolveTvJellyfinArtwork(displayItem)
                 TvMediaCard(
                     title = displayItem.episodeTitle ?: displayItem.name,
                     subtitle = displayItem.subtitleText(),
@@ -891,7 +907,12 @@ private fun TvJellyfinRow(
                             artwork,
                         ),
                     onClick = { onItem(item) },
-                    landscape = landscape,
+                    artworkFit =
+                        if (artwork?.imageType == "Primary") {
+                            TvMediaCardArtworkFit.CONTAIN_PORTRAIT
+                        } else {
+                            TvMediaCardArtworkFit.CROP
+                        },
                     onFocused = {
                         focusMemory.remember(routeKey, title, item.id, horizontalIndex = index)
                         onPreviewFocus(item, targetId)
@@ -936,12 +957,17 @@ private fun TvLibraryRow(
                 androidx.compose.foundation.layout
                     .PaddingValues(6.dp),
         ) {
-            itemsIndexed(libraries, key = { _, it -> it.id }) { index, library ->
+            itemsIndexed(
+                libraries,
+                key = { _, it -> it.id },
+                contentType = { _, _ -> "library-card" },
+            ) { index, library ->
                 val targetId = tvHomeCardTargetId(rowKey, library.id)
                 TvMediaCard(
                     title = library.name,
                     subtitle = library.itemCount?.let { "$it items" },
                     imageUrl = jellyfinImageUrl(state.imageBaseUrl, state.imageAccessToken, library.id, library.primaryImageTag),
+                    artworkFit = TvMediaCardArtworkFit.CONTAIN_PORTRAIT,
                     onClick = { onLibrary(library) },
                     onFocused = { focusMemory.remember("home", "libraries", library.id, horizontalIndex = index) },
                     modifier =
@@ -970,7 +996,7 @@ private fun TvHomeSectionRow(
     trailerPreviewState: TvTrailerPreviewState,
     trailerPreviewEngine: AndroidPlayerEngine,
     previewSoundEnabled: Boolean,
-    previewProgress: Float,
+    previewProgress: State<Float>,
     listState: LazyListState,
     screenEntry: Boolean = false,
     onVerticalMove: (String, JellyfinItem?, TvHomeVerticalDirection) -> Unit = { _, _, _ -> },
@@ -985,7 +1011,11 @@ private fun TvHomeSectionRow(
                 androidx.compose.foundation.layout
                     .PaddingValues(6.dp),
         ) {
-            itemsIndexed(section.items, key = { _, it -> it.id }) { index, item ->
+            itemsIndexed(
+                section.items,
+                key = { _, it -> it.id },
+                contentType = { _, _ -> "media-card" },
+            ) { index, item ->
                 val targetId = tvHomeCardTargetId(rowId, item.id)
                 val previewItem = item.jellyfinItem?.takeIf { item.action == HomeSectionAction.JELLYFIN }
                 TvMediaCard(
@@ -996,7 +1026,17 @@ private fun TvHomeSectionRow(
                             item.communityRating?.let { "★ %.1f".format(it) },
                         ).joinToString("  •  ").ifBlank { null },
                     imageUrl = resolveTvHomeSectionImageUrl(item, imageBaseUrl, imageAccessToken),
-                    landscape = section.viewMode != HomeSectionViewMode.PORTRAIT,
+                    artworkFit =
+                        if (section.viewMode == HomeSectionViewMode.PORTRAIT ||
+                            (
+                                item.imageUrl.isNullOrBlank() &&
+                                    item.jellyfinItem?.let(::resolveTvJellyfinArtwork)?.imageType == "Primary"
+                            )
+                        ) {
+                            TvMediaCardArtworkFit.CONTAIN_PORTRAIT
+                        } else {
+                            TvMediaCardArtworkFit.CROP
+                        },
                     onFocused = {
                         focusMemory.remember("home", section.id, item.id, horizontalIndex = index)
                         previewItem?.let { onPreviewFocus(it, targetId) }
@@ -1129,12 +1169,17 @@ internal fun TvLibraryScreen(
             Text(route.title ?: strings.library, color = TvText, fontSize = 38.sp, fontWeight = FontWeight.Bold)
         }
         if (route.libraryId == null) {
-            gridItemsIndexed(state.libraries, key = { _, library -> library.id }) { index, library ->
+            gridItemsIndexed(
+                state.libraries,
+                key = { _, library -> library.id },
+                contentType = { _, _ -> "library-card" },
+            ) { index, library ->
                 val targetId = tvLibraryTargetId(library.id)
                 TvMediaCard(
                     title = library.name,
                     subtitle = library.itemCount?.let { "$it items" },
                     imageUrl = jellyfinImageUrl(state.imageBaseUrl, state.imageAccessToken, library.id, library.primaryImageTag),
+                    artworkFit = TvMediaCardArtworkFit.CONTAIN_PORTRAIT,
                     onClick = { onSelectLibrary(library.id) },
                     onFocused = { focusMemory.remember(routeKey, "libraries", library.id, index + 1, index) },
                     modifier =
@@ -1154,7 +1199,11 @@ internal fun TvLibraryScreen(
                 }
             }
         } else {
-            gridItemsIndexed(state.libraryItems, key = { _, item -> item.id }) { index, item ->
+            gridItemsIndexed(
+                state.libraryItems,
+                key = { _, item -> item.id },
+                contentType = { _, _ -> "media-card" },
+            ) { index, item ->
                 val targetId = tvLibraryTargetId(item.id)
                 val artwork = resolveTvJellyfinArtwork(item)
                 TvMediaCard(
@@ -1166,6 +1215,12 @@ internal fun TvLibraryScreen(
                             state.imageAccessToken,
                             artwork,
                         ),
+                    artworkFit =
+                        if (artwork?.imageType == "Primary") {
+                            TvMediaCardArtworkFit.CONTAIN_PORTRAIT
+                        } else {
+                            TvMediaCardArtworkFit.CROP
+                        },
                     onClick = { if (item.isBrowseContainer()) onOpenContainer(item) else onOpenItem(item) },
                     onFocused = { focusMemory.remember(routeKey, "items", item.id, index + 1, index) },
                     modifier =
@@ -1544,7 +1599,11 @@ internal fun TvDiscoverScreen(
                         state = rowStates.getValue("requests"),
                         horizontalArrangement = Arrangement.spacedBy(18.dp),
                     ) {
-                        itemsIndexed(requestItems, key = { _, request -> request.id }) { index, request ->
+                        itemsIndexed(
+                            requestItems,
+                            key = { _, request -> request.id },
+                            contentType = { _, _ -> "media-card" },
+                        ) { index, request ->
                             val item = request.toSearchItem()
                             val targetId = tvDiscoverItemTargetId("requests", request.id.toString())
                             TvMediaCard(
@@ -1555,6 +1614,12 @@ internal fun TvDiscoverScreen(
                                         request.availability.standard.label(strings),
                                     ).joinToString(" - "),
                                 imageUrl = tmdbImageUrl(request.backdropPath ?: request.posterPath, request.backdropPath != null),
+                                artworkFit =
+                                    if (request.backdropPath == null && request.posterPath != null) {
+                                        TvMediaCardArtworkFit.CONTAIN_PORTRAIT
+                                    } else {
+                                        TvMediaCardArtworkFit.CROP
+                                    },
                                 onClick = { item?.let(onItem) },
                                 modifier = Modifier.tvScreenEntryFocus(firstPopulatedRail == null && index == 0, targetId),
                                 focusTargetId = targetId,
@@ -1608,15 +1673,24 @@ private fun TvSeerrRow(
                 androidx.compose.foundation.layout
                     .PaddingValues(6.dp),
         ) {
-            itemsIndexed(items, key = { _, item -> "${item.mediaType}:${item.tmdbId}" }) { index, item ->
+            itemsIndexed(
+                items,
+                key = { _, item -> "${item.mediaType}:${item.tmdbId}" },
+                contentType = { _, _ -> "media-card" },
+            ) { index, item ->
                 val id = "${item.mediaType}:${item.tmdbId}"
                 val targetId = focusTargetId(id)
                 TvMediaCard(
                     title = item.title,
                     subtitle = item.releaseYear,
                     imageUrl = tmdbImageUrl(item.posterPath ?: item.backdropPath, backdrop = item.posterPath == null),
+                    artworkFit =
+                        if (item.posterPath != null) {
+                            TvMediaCardArtworkFit.CONTAIN_PORTRAIT
+                        } else {
+                            TvMediaCardArtworkFit.CROP
+                        },
                     onClick = { onItem(item) },
-                    landscape = false,
                     onFocused = { focusMemory.remember(routeKey, title, id, horizontalIndex = index) },
                     modifier =
                         Modifier

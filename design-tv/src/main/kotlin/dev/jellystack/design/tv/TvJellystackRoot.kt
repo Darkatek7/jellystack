@@ -294,11 +294,15 @@ private fun TvAuthenticatedApp(
             }
         }
     val trailerPreviewState by trailerPreviewCoordinator.state.collectAsStateWithLifecycle()
-    val trailerPlaybackState by trailerPreviewPlaybackController.state.collectAsStateWithLifecycle()
-    val trailerPreviewProgress =
-        (trailerPlaybackState as? PlaybackState.Active)?.let { active ->
-            active.durationMs?.takeIf { it > 0L }?.let { active.positionMs.toFloat() / it.toFloat() }
-        } ?: 0f
+    val trailerPreviewProgress = remember { mutableStateOf(0f) }
+    LaunchedEffect(trailerPreviewPlaybackController) {
+        trailerPreviewPlaybackController.state.collect { playbackState ->
+            trailerPreviewProgress.value =
+                (playbackState as? PlaybackState.Active)?.let { active ->
+                    active.durationMs?.takeIf { it > 0L }?.let { active.positionMs.toFloat() / it.toFloat() }
+                } ?: 0f
+        }
+    }
     val sessionState by sessionRepository.state.collectAsStateWithLifecycle()
     val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateFlow
         .collectAsStateWithLifecycle()

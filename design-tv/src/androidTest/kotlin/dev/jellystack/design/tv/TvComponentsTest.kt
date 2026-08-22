@@ -171,7 +171,7 @@ class TvComponentsTest {
     }
 
     @Test
-    fun portraitMediaCardKeepsSameFormatWhenFocused() {
+    fun landscapeMediaCardIsSixteenByNineAndKeepsBoundsWhenFocused() {
         composeRule.mainClock.autoAdvance = false
         composeRule.setContent {
             JellystackTvTheme {
@@ -179,7 +179,7 @@ class TvComponentsTest {
                     title = "Discover item",
                     imageUrl = null,
                     onClick = {},
-                    landscape = false,
+                    format = TvMediaCardFormat.LANDSCAPE,
                 )
             }
         }
@@ -190,12 +190,38 @@ class TvComponentsTest {
         composeRule.mainClock.advanceTimeBy(500)
         val focused = card.getUnclippedBoundsInRoot()
 
+        assertEquals(16f / 9f, (before.right - before.left).value / (before.bottom - before.top).value, 0.05f)
         assertEquals((before.right - before.left).value, (focused.right - focused.left).value, 0.1f)
         assertEquals((before.bottom - before.top).value, (focused.bottom - focused.top).value, 0.1f)
     }
 
     @Test
-    fun upcomingDiscoverRailUsesTheStandardPortraitCardFormat() {
+    fun castPortraitMediaCardIsTwoByThreeAndKeepsBoundsWhenFocused() {
+        composeRule.mainClock.autoAdvance = false
+        composeRule.setContent {
+            JellystackTvTheme {
+                TvMediaCard(
+                    title = "Cast person",
+                    imageUrl = null,
+                    onClick = null,
+                    format = TvMediaCardFormat.CAST_PORTRAIT,
+                )
+            }
+        }
+
+        val card = composeRule.onNodeWithContentDescription("Cast person")
+        val before = card.getUnclippedBoundsInRoot()
+        card.performSemanticsAction(SemanticsActions.RequestFocus)
+        composeRule.mainClock.advanceTimeBy(500)
+        val focused = card.getUnclippedBoundsInRoot()
+
+        assertEquals(2f / 3f, (before.right - before.left).value / (before.bottom - before.top).value, 0.05f)
+        assertEquals((before.right - before.left).value, (focused.right - focused.left).value, 0.1f)
+        assertEquals((before.bottom - before.top).value, (focused.bottom - focused.top).value, 0.1f)
+    }
+
+    @Test
+    fun upcomingDiscoverRailUsesTheStandardLandscapeCardFormat() {
         val item =
             JellyseerrSearchItem(
                 tmdbId = 42,
@@ -238,10 +264,13 @@ class TvComponentsTest {
         }
 
         val bounds = composeRule.onNodeWithContentDescription("Upcoming item, 2026").getUnclippedBoundsInRoot()
+        val width = (bounds.right - bounds.left).value
+        val height = (bounds.bottom - bounds.top).value
         assertTrue(
-            "Discover cards should remain portrait",
-            bounds.bottom - bounds.top > bounds.right - bounds.left,
+            "Discover cards should be 16:9 landscape",
+            width > height,
         )
+        assertEquals(16f / 9f, width / height, 0.05f)
     }
 }
 

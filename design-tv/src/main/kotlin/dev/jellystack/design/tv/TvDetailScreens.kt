@@ -546,7 +546,7 @@ internal fun TvJellyfinDetailScreen(
                         heroId,
                         backdropTag ?: currentDetail.primaryImageTag,
                         if (backdropTag != null) "Backdrop" else "Primary",
-                        1800,
+                        TvArtworkSize.HERO.maxWidth,
                     ),
                 contentDescription = currentDetail.name,
                 modifier = Modifier.fillMaxSize(),
@@ -575,7 +575,7 @@ internal fun TvJellyfinDetailScreen(
                                 logoId,
                                 checkNotNull(logoTag),
                                 "Logo",
-                                700,
+                                TvArtworkSize.LOGO.maxWidth,
                             ),
                         contentDescription = currentDetail.name,
                         modifier = Modifier.widthIn(max = 380.dp).heightIn(max = 120.dp),
@@ -750,11 +750,15 @@ internal fun TvJellyfinDetailScreen(
                 ) {
                     TvSectionTitle(strings.cast)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                        items(currentDetail.people.take(16), key = { it.id }) { person ->
+                        items(
+                            currentDetail.people.take(16),
+                            key = { it.id },
+                            contentType = { "cast-card" },
+                        ) { person ->
                             TvMediaCard(
                                 title = person.name,
                                 subtitle = person.role,
-                                landscape = false,
+                                format = TvMediaCardFormat.CAST_PORTRAIT,
                                 imageUrl =
                                     jellyfinImageUrl(
                                         homeState.imageBaseUrl,
@@ -762,7 +766,7 @@ internal fun TvJellyfinDetailScreen(
                                         person.id,
                                         person.primaryImageTag,
                                         "Primary",
-                                        400,
+                                        TvArtworkSize.PORTRAIT_CARD.maxWidth,
                                     ),
                                 onClick = null,
                                 modifier =
@@ -849,7 +853,8 @@ private fun TvDetailItemRow(
     ) {
         TvSectionTitle(title)
         LazyRow(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-            items(items, key = { it.id }) { item ->
+            items(items, key = { it.id }, contentType = { "media-card" }) { item ->
+                val hasLandscapeArtwork = item.seriesThumbImageTag != null || item.thumbImageTag != null
                 TvMediaCard(
                     title = item.episodeTitle ?: item.name,
                     subtitle =
@@ -863,8 +868,14 @@ private fun TvDetailItemRow(
                             homeState.imageAccessToken,
                             item.seriesId ?: item.id,
                             item.seriesThumbImageTag ?: item.thumbImageTag ?: item.primaryImageTag,
-                            if (item.seriesThumbImageTag != null || item.thumbImageTag != null) "Thumb" else "Primary",
+                            if (hasLandscapeArtwork) "Thumb" else "Primary",
                         ),
+                    artworkFit =
+                        if (hasLandscapeArtwork) {
+                            TvMediaCardArtworkFit.CROP
+                        } else {
+                            TvMediaCardArtworkFit.CONTAIN_PORTRAIT
+                        },
                     onClick = { onOpenItem(item) },
                     modifier = if (item.id == items.first().id) firstItemModifier else Modifier,
                 )
@@ -1010,13 +1021,17 @@ internal fun TvSeerrDetailScreen(
                     Column(Modifier.padding(horizontal = 58.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         TvSectionTitle(strings.cast)
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                            items(detail!!.cast.take(16), key = { it.id }) { person ->
+                            items(
+                                detail!!.cast.take(16),
+                                key = { it.id },
+                                contentType = { "cast-card" },
+                            ) { person ->
                                 TvMediaCard(
                                     person.name,
                                     tmdbImageUrl(person.profilePath),
                                     {},
                                     subtitle = person.character,
-                                    landscape = false,
+                                    format = TvMediaCardFormat.CAST_PORTRAIT,
                                     focusable = false,
                                 )
                             }
@@ -1030,12 +1045,22 @@ internal fun TvSeerrDetailScreen(
                     Column(Modifier.padding(horizontal = 58.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         TvSectionTitle(strings.similar)
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                            items(similar, key = { "${it.mediaType}:${it.tmdbId}" }) { item ->
+                            items(
+                                similar,
+                                key = { "${it.mediaType}:${it.tmdbId}" },
+                                contentType = { "media-card" },
+                            ) { item ->
                                 TvMediaCard(
                                     item.title,
                                     tmdbImageUrl(item.backdropPath ?: item.posterPath, item.backdropPath != null),
                                     { onOpenItem(item) },
                                     subtitle = item.releaseYear,
+                                    artworkFit =
+                                        if (item.backdropPath == null && item.posterPath != null) {
+                                            TvMediaCardArtworkFit.CONTAIN_PORTRAIT
+                                        } else {
+                                            TvMediaCardArtworkFit.CROP
+                                        },
                                 )
                             }
                         }
