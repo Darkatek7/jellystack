@@ -65,6 +65,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -154,7 +155,7 @@ internal fun tvHomeHeroHeightDp(): Int = TV_HOME_HERO_HEIGHT_DP
 
 internal fun tvHomeFirstCardTopDp(): Int = 20 + TV_HOME_HERO_HEIGHT_DP + 28 + 24 + 14 + 6
 
-private enum class TvSearchSource { ALL, JELLYFIN, SEERR }
+internal enum class TvSearchSource { ALL, JELLYFIN, SEERR }
 
 @Composable
 internal fun TvHomeScreen(
@@ -1345,15 +1346,68 @@ internal fun shouldLoadNextLibraryPage(
 
 private const val LIBRARY_PREFETCH_ITEM_COUNT = 8
 
+private data class TvRetryFocusRequest(
+    val revision: Long,
+    val preferredTargetId: String,
+)
+
+private data class TvDiscoverRetryFocusRequest(
+    val revision: Long,
+    val initialTargetId: String,
+)
+
+@Composable
+private fun TvRetryFocusRecovery(request: TvRetryFocusRequest?) {
+    val focusContext = LocalTvFocusContext.current ?: return
+    LaunchedEffect(request) {
+        request ?: return@LaunchedEffect
+        withFrameNanos { }
+        focusContext.coordinator.restoreFocus(
+            routeKey = focusContext.routeKey,
+            preferredTargetId = request.preferredTargetId,
+            requestFocus = { requester -> runCatching { requester.requestFocus() }.getOrDefault(false) },
+        )
+    }
+}
+
+@Composable
+private fun TvDiscoverRetryFocusRecovery(
+    request: TvDiscoverRetryFocusRequest?,
+    currentTargetId: String,
+    isRefreshing: Boolean,
+    onCompleted: (Long) -> Unit,
+) {
+    val focusContext = LocalTvFocusContext.current ?: return
+    var transitionObserved by remember(request?.revision) { mutableStateOf(false) }
+    LaunchedEffect(request?.revision, currentTargetId, isRefreshing) {
+        val activeRequest = request ?: return@LaunchedEffect
+        if (isRefreshing || currentTargetId != activeRequest.initialTargetId) {
+            transitionObserved = true
+        }
+        if (!transitionObserved) return@LaunchedEffect
+        withFrameNanos { }
+        val restoration =
+            focusContext.coordinator.restoreFocus(
+                routeKey = focusContext.routeKey,
+                preferredTargetId = currentTargetId,
+                requestFocus = { requester -> runCatching { requester.requestFocus() }.getOrDefault(false) },
+            )
+        if (!isRefreshing && restoration is TvFocusRestoration.Focused) {
+            onCompleted(activeRequest.revision)
+        }
+    }
+}
+
 @Composable
 internal fun TvSearchScreen(
-    jellyfinResults: List<JellyfinItem>,
+    jellyfinState: TvJellyfinSearchState,
     requestsState: JellyseerrRequestsState,
     homeState: JellyfinHomeState,
     strings: TvStrings,
     focusMemory: TvFocusMemory,
-    isSearching: Boolean = false,
     onQueryChanged: (String) -> Unit,
+    onRetryJellyfin: () -> Unit,
+    onRetrySeerr: (String) -> Unit,
     onJellyfinItem: (JellyfinItem) -> Unit,
     onSeerrItem: (JellyseerrSearchItem) -> Unit,
     modifier: Modifier = Modifier,
@@ -1362,25 +1416,36 @@ internal fun TvSearchScreen(
     var source by rememberSaveable { mutableStateOf(TvSearchSource.ALL) }
     val queryFocusRequester = remember { FocusRequester() }
     val sourceFocusRequester = remember { FocusRequester() }
-    val seerrResults = (requestsState as? JellyseerrRequestsState.Ready)?.searchResults.orEmpty()
-    val visibleJellyfin = source != TvSearchSource.SEERR && jellyfinResults.isNotEmpty()
-    val visibleSeerr = source != TvSearchSource.JELLYFIN && seerrResults.isNotEmpty()
+    var retryFocusRequest by remember { mutableStateOf<TvRetryFocusRequest?>(null) }
+    val presentation = tvSearchPresentation(query, source, jellyfinState, requestsState)
+    val visibleJellyfin = presentation.jellyfinItems.isNotEmpty()
+    val visibleSeerr = presentation.seerrItems.isNotEmpty()
     val outerState = rememberLazyListState()
     val rowStates = rememberTvLazyRowStates(listOf("jellyfin", "seerr"))
+    var nextOuterIndex = 1
+    val searchingIndex = if (presentation.showSearching) nextOuterIndex++ else null
+    val jellyfinFailureIndex = if (presentation.showJellyfinFailure) nextOuterIndex++ else null
+    val jellyfinRowIndex = if (visibleJellyfin) nextOuterIndex++ else null
+    val seerrFailureIndex = if (presentation.showSeerrFailure) nextOuterIndex++ else null
+    val seerrRowIndex = if (visibleSeerr) nextOuterIndex++ else null
+    val emptyIndex = if (presentation.showNoResults) nextOuterIndex else null
     val searchLocations =
         buildMap {
             put(TV_SEARCH_QUERY_TARGET, TvLazyFocusLocation(0))
             TvSearchSource.entries.forEach { put(tvSearchSourceTargetId(it.name.lowercase()), TvLazyFocusLocation(0)) }
-            var rowIndex = 1
-            if (query.isNotBlank() && !visibleJellyfin && !visibleSeerr) rowIndex++
-            if (visibleJellyfin) {
-                jellyfinResults.forEachIndexed { index, item ->
+            jellyfinFailureIndex?.let {
+                put(TV_SEARCH_JELLYFIN_RETRY_TARGET, TvLazyFocusLocation(it))
+            }
+            jellyfinRowIndex?.let { rowIndex ->
+                presentation.jellyfinItems.forEachIndexed { index, item ->
                     put(tvSearchResultTargetId("jellyfin", item.id), TvLazyFocusLocation(rowIndex, "jellyfin", index))
                 }
-                rowIndex++
             }
-            if (visibleSeerr) {
-                seerrResults.forEachIndexed { index, item ->
+            seerrFailureIndex?.let {
+                put(TV_SEARCH_SEERR_RETRY_TARGET, TvLazyFocusLocation(it))
+            }
+            seerrRowIndex?.let { rowIndex ->
+                presentation.seerrItems.forEachIndexed { index, item ->
                     put(
                         tvSearchResultTargetId("seerr", "${item.mediaType}:${item.tmdbId}"),
                         TvLazyFocusLocation(rowIndex, "seerr", index),
@@ -1393,13 +1458,14 @@ internal fun TvSearchScreen(
         targetIds = searchLocations.keys,
         fallbackTargetIds = setOf(TV_SEARCH_QUERY_TARGET),
     ) { targetId -> searchLocations[targetId]?.let { materializeTvLazyTarget(outerState, rowStates, it) } ?: false }
+    TvRetryFocusRecovery(retryFocusRequest)
     LazyColumn(
         state = outerState,
         modifier = modifier.fillMaxSize(),
         contentPadding = TvScreenPadding,
         verticalArrangement = Arrangement.spacedBy(24.dp),
     ) {
-        item {
+        item("header") {
             Text(strings.search, color = TvText, fontSize = 38.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(16.dp))
             OutlinedTextField(
@@ -1448,18 +1514,31 @@ internal fun TvSearchScreen(
                 )
             }
         }
-        val nothingFound = !visibleJellyfin && !visibleSeerr
-        if (query.isNotBlank() && isSearching && nothingFound) {
-            item { Text(strings.searching, color = TvTextMuted) }
+        searchingIndex?.let {
+            item("searching") { Text(strings.searching, color = TvTextMuted) }
         }
-        if (query.isNotBlank() && !isSearching && nothingFound) {
-            item { Text(strings.noResults, color = TvTextMuted) }
+        jellyfinFailureIndex?.let {
+            item("jellyfin-error") {
+                TvSearchSourceFailure(
+                    message = strings.jellyfinSearchFailed,
+                    retryLabel = strings.retry,
+                    focusTargetId = TV_SEARCH_JELLYFIN_RETRY_TARGET,
+                    onRetry = {
+                        onRetryJellyfin()
+                        retryFocusRequest =
+                            TvRetryFocusRequest(
+                                revision = (retryFocusRequest?.revision ?: 0L) + 1L,
+                                preferredTargetId = TV_SEARCH_QUERY_TARGET,
+                            )
+                    },
+                )
+            }
         }
-        if (visibleJellyfin) {
-            item {
+        jellyfinRowIndex?.let {
+            item("jellyfin-results") {
                 TvJellyfinRow(
                     "Jellyfin",
-                    jellyfinResults,
+                    presentation.jellyfinItems,
                     homeState,
                     focusMemory,
                     onJellyfinItem,
@@ -1469,11 +1548,28 @@ internal fun TvSearchScreen(
                 )
             }
         }
-        if (visibleSeerr) {
-            item {
+        seerrFailureIndex?.let {
+            item("seerr-error") {
+                TvSearchSourceFailure(
+                    message = strings.seerrSearchFailed,
+                    retryLabel = strings.retry,
+                    focusTargetId = TV_SEARCH_SEERR_RETRY_TARGET,
+                    onRetry = {
+                        onRetrySeerr(query)
+                        retryFocusRequest =
+                            TvRetryFocusRequest(
+                                revision = (retryFocusRequest?.revision ?: 0L) + 1L,
+                                preferredTargetId = TV_SEARCH_QUERY_TARGET,
+                            )
+                    },
+                )
+            }
+        }
+        seerrRowIndex?.let {
+            item("seerr-results") {
                 TvSeerrRow(
                     "Seerr",
-                    seerrResults,
+                    presentation.seerrItems,
                     focusMemory,
                     "search",
                     onSeerrItem,
@@ -1482,10 +1578,35 @@ internal fun TvSearchScreen(
                 )
             }
         }
+        emptyIndex?.let {
+            item("empty") { Text(strings.noResults, color = TvTextMuted) }
+        }
     }
 }
 
 @Composable
+private fun TvSearchSourceFailure(
+    message: String,
+    retryLabel: String,
+    focusTargetId: String,
+    onRetry: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(message, color = TvTextMuted, modifier = Modifier.weight(1f))
+        TvActionButton(
+            label = retryLabel,
+            onClick = onRetry,
+            focusTargetId = focusTargetId,
+        )
+    }
+}
+
+@Composable
+@Suppress("NestedBlockDepth") // Lazy-list branches mirror the mutually exclusive Discover presentation states.
 internal fun TvDiscoverScreen(
     recommendations: JellyseerrRecommendationsState,
     requests: JellyseerrRequestsState,
@@ -1493,9 +1614,13 @@ internal fun TvDiscoverScreen(
     focusMemory: TvFocusMemory,
     onItem: (JellyseerrSearchItem) -> Unit,
     onConnectSeerr: () -> Unit,
+    onRetry: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val ready = recommendations as? JellyseerrRecommendationsState.Ready
+    val availability = tvDiscoverAvailability(recommendations)
+    val content = availability as? TvDiscoverAvailability.Content
+    val ready = content?.state
+    var retryFocusRequest by remember { mutableStateOf<TvDiscoverRetryFocusRequest?>(null) }
     val firstPopulatedRail =
         ready?.let { state ->
             JellyseerrRecommendationRail.entries.firstOrNull { rail -> state.rails[rail]?.items?.isNotEmpty() == true }
@@ -1511,18 +1636,33 @@ internal fun TvDiscoverScreen(
     val discoverLocations =
         buildMap {
             var outerIndex = 1
-            if (ready == null) {
-                put(TV_DISCOVER_CONNECT_TARGET, TvLazyFocusLocation(outerIndex))
-                outerIndex++
-            } else {
-                populatedRails.forEach { rail ->
-                    ready.rails[rail]?.items.orEmpty().forEachIndexed { index, item ->
-                        put(
-                            tvDiscoverItemTargetId(rail.name, "${item.mediaType}:${item.tmdbId}"),
-                            TvLazyFocusLocation(outerIndex, rail.name, index),
-                        )
-                    }
+            when (availability) {
+                TvDiscoverAvailability.MissingConnection -> {
+                    put(TV_DISCOVER_CONNECT_TARGET, TvLazyFocusLocation(outerIndex))
                     outerIndex++
+                }
+                TvDiscoverAvailability.Loading -> {
+                    put(TV_DISCOVER_LOADING_TARGET, TvLazyFocusLocation(outerIndex))
+                    outerIndex++
+                }
+                is TvDiscoverAvailability.Failure -> {
+                    put(TV_DISCOVER_RETRY_TARGET, TvLazyFocusLocation(outerIndex))
+                    outerIndex++
+                }
+                is TvDiscoverAvailability.Content -> {
+                    if (availability.hasRailFailures) {
+                        put(TV_DISCOVER_RETRY_TARGET, TvLazyFocusLocation(outerIndex))
+                        outerIndex++
+                    }
+                    populatedRails.forEach { rail ->
+                        availability.state.rails[rail]?.items.orEmpty().forEachIndexed { index, item ->
+                            put(
+                                tvDiscoverItemTargetId(rail.name, "${item.mediaType}:${item.tmdbId}"),
+                                TvLazyFocusLocation(outerIndex, rail.name, index),
+                            )
+                        }
+                        outerIndex++
+                    }
                 }
             }
             if (requestItems.isNotEmpty()) {
@@ -1532,61 +1672,118 @@ internal fun TvDiscoverScreen(
                         TvLazyFocusLocation(outerIndex, "requests", index),
                     )
                 }
-            } else if (ready != null && firstPopulatedRail == null) {
+            } else if (
+                availability is TvDiscoverAvailability.Content &&
+                !availability.hasRailFailures &&
+                firstPopulatedRail == null
+            ) {
                 put(TV_DISCOVER_EMPTY_TARGET, TvLazyFocusLocation(outerIndex))
             }
         }
     val discoverFallback =
-        when {
-            ready == null -> TV_DISCOVER_CONNECT_TARGET
-            firstPopulatedRail != null ->
-                ready.rails[firstPopulatedRail]?.items?.firstOrNull()?.let {
-                    tvDiscoverItemTargetId(firstPopulatedRail.name, "${it.mediaType}:${it.tmdbId}")
+        when (availability) {
+            TvDiscoverAvailability.MissingConnection -> TV_DISCOVER_CONNECT_TARGET
+            TvDiscoverAvailability.Loading -> TV_DISCOVER_LOADING_TARGET
+            is TvDiscoverAvailability.Failure -> TV_DISCOVER_RETRY_TARGET
+            is TvDiscoverAvailability.Content ->
+                if (availability.hasRailFailures) {
+                    TV_DISCOVER_RETRY_TARGET
+                } else {
+                    firstPopulatedRail
+                        ?.let { rail ->
+                            availability.state.rails[rail]?.items?.firstOrNull()?.let {
+                                tvDiscoverItemTargetId(rail.name, "${it.mediaType}:${it.tmdbId}")
+                            }
+                        } ?: requestItems.firstOrNull()?.let {
+                        tvDiscoverItemTargetId("requests", it.id.toString())
+                    } ?: TV_DISCOVER_EMPTY_TARGET
                 }
-            requestItems.isNotEmpty() -> tvDiscoverItemTargetId("requests", requestItems.first().id.toString())
-            else -> TV_DISCOVER_EMPTY_TARGET
         }
     TvRouteFocusMaterializer(
         ownerId = "discover-lists",
         targetIds = discoverLocations.keys,
-        fallbackTargetIds = setOfNotNull(discoverFallback),
+        fallbackTargetIds = setOf(discoverFallback),
     ) { targetId -> discoverLocations[targetId]?.let { materializeTvLazyTarget(outerState, rowStates, it) } ?: false }
+    val discoverIsRefreshing =
+        availability is TvDiscoverAvailability.Loading ||
+            ready?.rails?.values?.any { rail -> rail.isLoading } == true
+    TvDiscoverRetryFocusRecovery(
+        request = retryFocusRequest,
+        currentTargetId = discoverFallback,
+        isRefreshing = discoverIsRefreshing,
+        onCompleted = { revision ->
+            if (retryFocusRequest?.revision == revision) retryFocusRequest = null
+        },
+    )
+
+    fun retryAndRestoreFocus() {
+        val initialTargetId = discoverFallback
+        onRetry()
+        retryFocusRequest =
+            TvDiscoverRetryFocusRequest(
+                revision = (retryFocusRequest?.revision ?: 0L) + 1L,
+                initialTargetId = initialTargetId,
+            )
+    }
     LazyColumn(
         state = outerState,
         modifier = modifier.fillMaxSize(),
         contentPadding = TvScreenPadding,
         verticalArrangement = Arrangement.spacedBy(28.dp),
     ) {
-        item { Text(strings.discover, color = TvText, fontSize = 38.sp, fontWeight = FontWeight.Bold) }
-        if (ready == null) {
-            item {
-                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Text(strings.connectSeerrPrompt, color = TvTextMuted)
-                    TvActionButton(
-                        "${strings.settings}: Seerr",
-                        onConnectSeerr,
-                        modifier = Modifier.tvScreenEntryFocus(focusTargetId = TV_DISCOVER_CONNECT_TARGET),
-                        primary = true,
-                        focusToNavigationRailOnLeft = true,
-                        focusTargetId = TV_DISCOVER_CONNECT_TARGET,
+        item("header") { Text(strings.discover, color = TvText, fontSize = 38.sp, fontWeight = FontWeight.Bold) }
+        when (availability) {
+            TvDiscoverAvailability.MissingConnection ->
+                item("connect") {
+                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Text(strings.connectSeerrPrompt, color = TvTextMuted)
+                        TvActionButton(
+                            strings.connectSeerr,
+                            onConnectSeerr,
+                            modifier = Modifier.tvScreenEntryFocus(focusTargetId = TV_DISCOVER_CONNECT_TARGET),
+                            primary = true,
+                            focusToNavigationRailOnLeft = true,
+                            focusTargetId = TV_DISCOVER_CONNECT_TARGET,
+                        )
+                    }
+                }
+            TvDiscoverAvailability.Loading ->
+                item("loading") { TvFocusPlaceholder(strings.loading, TV_DISCOVER_LOADING_TARGET) }
+            is TvDiscoverAvailability.Failure ->
+                item("error") {
+                    TvSearchSourceFailure(
+                        message = strings.discoverLoadFailed,
+                        retryLabel = strings.retry,
+                        focusTargetId = TV_DISCOVER_RETRY_TARGET,
+                        onRetry = ::retryAndRestoreFocus,
                     )
                 }
-            }
-        } else {
-            JellyseerrRecommendationRail.entries.forEach { rail ->
-                val railState = ready.rails[rail]
-                if (railState != null && railState.items.isNotEmpty()) {
-                    item(rail.name) {
-                        TvSeerrRow(
-                            rail.label(strings),
-                            railState.items,
-                            focusMemory,
-                            "discover",
-                            onItem,
-                            listState = rowStates.getValue(rail.name),
-                            focusTargetId = { id -> tvDiscoverItemTargetId(rail.name, id) },
-                            screenEntry = rail == firstPopulatedRail,
+            is TvDiscoverAvailability.Content -> {
+                if (availability.hasRailFailures) {
+                    item("partial-error") {
+                        TvSearchSourceFailure(
+                            message = strings.discoverLoadFailed,
+                            retryLabel = strings.retry,
+                            focusTargetId = TV_DISCOVER_RETRY_TARGET,
+                            onRetry = ::retryAndRestoreFocus,
                         )
+                    }
+                }
+                JellyseerrRecommendationRail.entries.forEach { rail ->
+                    val railState = availability.state.rails[rail]
+                    if (railState != null && railState.items.isNotEmpty()) {
+                        item(rail.name) {
+                            TvSeerrRow(
+                                rail.label(strings),
+                                railState.items,
+                                focusMemory,
+                                "discover",
+                                onItem,
+                                listState = rowStates.getValue(rail.name),
+                                focusTargetId = { id -> tvDiscoverItemTargetId(rail.name, id) },
+                                screenEntry = !availability.hasRailFailures && rail == firstPopulatedRail,
+                            )
+                        }
                     }
                 }
             }
@@ -1621,7 +1818,14 @@ internal fun TvDiscoverScreen(
                                         TvMediaCardArtworkFit.CROP
                                     },
                                 onClick = { item?.let(onItem) },
-                                modifier = Modifier.tvScreenEntryFocus(firstPopulatedRail == null && index == 0, targetId),
+                                modifier =
+                                    Modifier.tvScreenEntryFocus(
+                                        availability is TvDiscoverAvailability.Content &&
+                                            !availability.hasRailFailures &&
+                                            firstPopulatedRail == null &&
+                                            index == 0,
+                                        targetId,
+                                    ),
                                 focusTargetId = targetId,
                                 focusToNavigationRailOnLeft = index == 0,
                             )
@@ -1629,7 +1833,11 @@ internal fun TvDiscoverScreen(
                     }
                 }
             }
-        } else if (ready != null && firstPopulatedRail == null) {
+        } else if (
+            availability is TvDiscoverAvailability.Content &&
+            !availability.hasRailFailures &&
+            firstPopulatedRail == null
+        ) {
             item("empty") { TvFocusPlaceholder(strings.noResults, TV_DISCOVER_EMPTY_TARGET) }
         }
     }

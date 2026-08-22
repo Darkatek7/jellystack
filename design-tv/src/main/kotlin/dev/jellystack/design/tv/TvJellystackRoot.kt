@@ -93,8 +93,6 @@ import dev.jellystack.players.PlaybackSegmentModeProvider
 import dev.jellystack.players.PlaybackStartPolicy
 import dev.jellystack.players.PlaybackState
 import dev.jellystack.players.syncplay.SyncPlayCoordinator
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -313,9 +311,14 @@ private fun TvAuthenticatedApp(
             mutableStateOf(mutableStateListOf(TvRoute.Home))
         }
     val detailSourceItems = remember { mutableStateMapOf<String, JellyfinItem>() }
-    var jellyfinSearchResults by remember { mutableStateOf(emptyList<dev.jellystack.core.jellyfin.JellyfinItem>()) }
-    var jellyfinSearchActive by remember { mutableStateOf(false) }
-    var jellyfinSearchJob by remember { mutableStateOf<Job?>(null) }
+    val jellyfinSearchCoordinator =
+        remember(scope, browseRepository) {
+            TvJellyfinSearchCoordinator(scope = scope, searchItems = browseRepository::searchItems)
+        }
+    val jellyfinSearchState by jellyfinSearchCoordinator.state.collectAsStateWithLifecycle()
+    DisposableEffect(jellyfinSearchCoordinator) {
+        onDispose(jellyfinSearchCoordinator::shutdown)
+    }
     val segmentHttpClient = remember { NetworkClientFactory.create(ClientConfig(installLogging = false)) }
     val playbackCommandRouter =
         remember(playbackController, syncPlay) {
@@ -615,30 +618,17 @@ private fun TvAuthenticatedApp(
                                     )
                                 TvRoute.Search ->
                                     TvSearchScreen(
-                                        jellyfinResults = jellyfinSearchResults,
+                                        jellyfinState = jellyfinSearchState,
                                         requestsState = requests,
                                         homeState = homeState,
                                         strings = strings,
                                         focusMemory = focusMemory,
-                                        isSearching = jellyfinSearchActive,
                                         onQueryChanged = { query ->
                                             requestsCoordinator.search(query)
-                                            jellyfinSearchJob?.cancel()
-                                            if (query.isBlank()) {
-                                                jellyfinSearchActive = false
-                                                jellyfinSearchResults = emptyList()
-                                            } else {
-                                                jellyfinSearchActive = true
-                                                jellyfinSearchJob =
-                                                    scope.launch {
-                                                        delay(300)
-                                                        jellyfinSearchResults =
-                                                            runCatching { browseRepository.searchItems(query.trim()) }
-                                                                .getOrDefault(emptyList())
-                                                        jellyfinSearchActive = false
-                                                    }
-                                            }
+                                            jellyfinSearchCoordinator.search(query)
                                         },
+                                        onRetryJellyfin = jellyfinSearchCoordinator::retry,
+                                        onRetrySeerr = requestsCoordinator::retrySearch,
                                         onJellyfinItem = ::openJellyfinDetail,
                                         onSeerrItem = ::openSeerr,
                                     )
@@ -650,6 +640,7 @@ private fun TvAuthenticatedApp(
                                         focusMemory,
                                         ::openSeerr,
                                         onConnectSeerr = ::openSettingsConnections,
+                                        onRetry = recommendationsCoordinator::refreshAll,
                                     )
                                 is TvRoute.Settings ->
                                     TvSettingsScreen(
