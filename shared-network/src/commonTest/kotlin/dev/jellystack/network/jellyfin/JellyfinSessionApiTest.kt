@@ -12,10 +12,35 @@ import io.ktor.http.headersOf
 import io.ktor.utils.io.ByteReadChannel
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class JellyfinSessionApiTest {
+    @Test
+    fun defaultAuthorizationHeaderUsesCurrentAndroidVersion() =
+        runTest {
+            var authorization = ""
+            val engine =
+                MockEngine { request ->
+                    authorization = request.headers["X-Emby-Authorization"].orEmpty()
+                    respond(
+                        content = ByteReadChannel("""{"Id":"user-1","Name":"Viewer"}"""),
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                    )
+                }
+            val client = NetworkClientFactory.create(ClientConfig(engine = engine, maxRetries = 0))
+            val api = JellyfinSessionApi(client, "https://media.example", "dummy-token")
+
+            api.currentUser()
+
+            assertEquals(
+                "MediaBrowser Client=\"Jellystack\", Device=\"Android\", DeviceId=\"unknown\", Version=\"0.15.1\"",
+                authorization,
+            )
+            client.close()
+        }
+
     @Test
     fun disablingUserPreservesUnknownPolicyFields() =
         runTest {

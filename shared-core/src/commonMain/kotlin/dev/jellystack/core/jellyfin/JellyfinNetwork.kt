@@ -24,7 +24,7 @@ fun defaultJellyfinBrowseApiFactory(
             deviceId = environment.deviceId,
             clientName = "Jellystack",
             deviceName = environment.deviceName,
-            clientVersion = "0.1",
+            clientVersion = environment.clientVersion,
         )
     }
 }

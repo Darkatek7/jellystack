@@ -13,7 +13,13 @@ import io.ktor.http.headersOf
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -24,6 +30,7 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 import kotlin.test.Test
@@ -94,6 +101,227 @@ class JellyfinBrowseCoordinatorTest {
             clientVersion = "1.0",
         )
     }
+
+    @Test
+    fun listLibrariesFailureClearsHomeLoadingAndPublishesOnlyHomeError() =
+        runTest {
+            val coordinator =
+                JellyfinBrowseCoordinator(
+                    repository = FakeBrowseRepository(loadLibraries = { error("library cache boom") }),
+                    scope = backgroundScope,
+                    favoritesStore = FakeJellyfinFavoritesStore(),
+                    autoBootstrap = false,
+                )
+
+            coordinator.bootstrap(forceRefresh = false)
+
+            val failed = awaitState(coordinator) { it.homeErrorMessage == "library cache boom" }
+            assertFalse(failed.isInitialLoading)
+            assertFalse(failed.isHomeLoading)
+            assertNull(failed.libraryErrorMessage)
+        }
+
+    @Test
+    fun cachedStateFailureClearsHomeLoadingAndPublishesOnlyHomeError() =
+        runTest {
+            val coordinator =
+                JellyfinBrowseCoordinator(
+                    repository = FakeBrowseRepository(loadCachedContinueWatching = { error("home cache boom") }),
+                    scope = backgroundScope,
+                    favoritesStore = FakeJellyfinFavoritesStore(),
+                    autoBootstrap = false,
+                )
+
+            coordinator.bootstrap(forceRefresh = false)
+
+            val failed = awaitState(coordinator) { it.homeErrorMessage == "home cache boom" }
+            assertFalse(failed.isInitialLoading)
+            assertFalse(failed.isHomeLoading)
+            assertNull(failed.libraryErrorMessage)
+        }
+
+    @Test
+    fun olderNonCooperativeBootstrapSuccessCannotOverwriteNewerBootstrap() =
+        runTest {
+            val firstStarted = CompletableDeferred<Unit>()
+            val releaseFirst = CompletableDeferred<Unit>()
+            val firstReturned = CompletableDeferred<Unit>()
+            val calls = MutableStateFlow(0)
+            val oldLibraries = listOf(JellyfinLibrary("old", "Old", "movies", null, "old-image"))
+            val newLibraries = listOf(JellyfinLibrary("new", "New", "movies", null, "new-image"))
+            val coordinatorScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val coordinator =
+                JellyfinBrowseCoordinator(
+                    repository =
+                        FakeBrowseRepository(
+                            loadLibraries = {
+                                if (calls.updateAndGet { it + 1 } == 1) {
+                                    firstStarted.complete(Unit)
+                                    withContext(NonCancellable) {
+                                        releaseFirst.await()
+                                        firstReturned.complete(Unit)
+                                        oldLibraries
+                                    }
+                                } else {
+                                    newLibraries
+                                }
+                            },
+                            loadPage = { libraryId, _, _, _, _ ->
+                                LibraryPage(listOf(favoriteJellyfinItem("$libraryId-item")), 1)
+                            },
+                        ),
+                    scope = coordinatorScope,
+                    favoritesStore = FakeJellyfinFavoritesStore(),
+                    autoBootstrap = false,
+                )
+            try {
+                coordinator.bootstrap(forceRefresh = false)
+                firstStarted.await()
+                coordinator.bootstrap(forceRefresh = false)
+                awaitState(coordinator) { !it.isHomeLoading && it.libraries == newLibraries }
+
+                releaseFirst.complete(Unit)
+                firstReturned.await()
+                delay(100)
+
+                assertEquals(newLibraries, coordinator.state.value.libraries)
+                assertEquals("new", coordinator.state.value.selectedLibraryId)
+                assertEquals(
+                    listOf("new-item"),
+                    coordinator.state.value.libraryItems
+                        .map { it.id },
+                )
+                assertNull(coordinator.state.value.homeErrorMessage)
+            } finally {
+                releaseFirst.complete(Unit)
+                coordinatorScope.cancel()
+            }
+        }
+
+    @Test
+    fun olderNonCooperativeBootstrapFailureCannotOverwriteNewerBootstrap() =
+        runTest {
+            val firstStarted = CompletableDeferred<Unit>()
+            val releaseFirst = CompletableDeferred<Unit>()
+            val firstReturned = CompletableDeferred<Unit>()
+            val calls = MutableStateFlow(0)
+            val newLibraries = listOf(JellyfinLibrary("new", "New", "movies", null, "new-image"))
+            val coordinatorScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val coordinator =
+                JellyfinBrowseCoordinator(
+                    repository =
+                        FakeBrowseRepository(
+                            loadLibraries = {
+                                if (calls.updateAndGet { it + 1 } == 1) {
+                                    firstStarted.complete(Unit)
+                                    withContext(NonCancellable) {
+                                        releaseFirst.await()
+                                        firstReturned.complete(Unit)
+                                        error("old bootstrap boom")
+                                    }
+                                } else {
+                                    newLibraries
+                                }
+                            },
+                            loadPage = { _, _, _, _, _ -> LibraryPage(emptyList(), 0) },
+                        ),
+                    scope = coordinatorScope,
+                    favoritesStore = FakeJellyfinFavoritesStore(),
+                    autoBootstrap = false,
+                )
+            try {
+                coordinator.bootstrap(forceRefresh = false)
+                firstStarted.await()
+                coordinator.bootstrap(forceRefresh = false)
+                awaitState(coordinator) { !it.isHomeLoading && it.libraries == newLibraries }
+
+                releaseFirst.complete(Unit)
+                firstReturned.await()
+                delay(100)
+
+                assertEquals(newLibraries, coordinator.state.value.libraries)
+                assertNull(coordinator.state.value.homeErrorMessage)
+                assertFalse(coordinator.state.value.isInitialLoading)
+                assertFalse(coordinator.state.value.isHomeLoading)
+            } finally {
+                releaseFirst.complete(Unit)
+                coordinatorScope.cancel()
+            }
+        }
+
+    @Test
+    fun newerCatalogRefreshOwnsPublicationAgainstNonCooperativeOlderRefresh() =
+        runTest {
+            val firstStarted = CompletableDeferred<Unit>()
+            val releaseFirst = CompletableDeferred<Unit>()
+            val firstReturned = CompletableDeferred<Unit>()
+            val calls = MutableStateFlow(0)
+            val oldLibraries = listOf(JellyfinLibrary("old", "Old", "movies", null, "old-image"))
+            val newLibraries = listOf(JellyfinLibrary("new", "New", "movies", null, "new-image"))
+            val coordinatorScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val coordinator =
+                JellyfinBrowseCoordinator(
+                    repository =
+                        FakeBrowseRepository(
+                            refreshLibraryCatalog = {
+                                if (calls.updateAndGet { it + 1 } == 1) {
+                                    firstStarted.complete(Unit)
+                                    withContext(NonCancellable) {
+                                        releaseFirst.await()
+                                        firstReturned.complete(Unit)
+                                        oldLibraries
+                                    }
+                                } else {
+                                    newLibraries
+                                }
+                            },
+                        ),
+                    scope = coordinatorScope,
+                    favoritesStore = FakeJellyfinFavoritesStore(),
+                    autoBootstrap = false,
+                )
+            try {
+                coordinator.refreshLibraries()
+                firstStarted.await()
+                coordinator.refreshLibraries()
+                awaitState(coordinator) { it.libraries == newLibraries }
+
+                releaseFirst.complete(Unit)
+                firstReturned.await()
+                delay(100)
+
+                assertEquals(newLibraries, coordinator.state.value.libraries)
+                assertNull(coordinator.state.value.homeErrorMessage)
+            } finally {
+                releaseFirst.complete(Unit)
+                coordinatorScope.cancel()
+            }
+        }
+
+    @Test
+    fun homeFailureDoesNotBecomeLibraryErrorWhenSelectedLibrarySucceeds() =
+        runTest {
+            val selectedItem = favoriteJellyfinItem("selected-item")
+            val coordinator =
+                JellyfinBrowseCoordinator(
+                    repository =
+                        FakeBrowseRepository(
+                            loadLibraries = { error("home boom") },
+                            loadPage = { _, _, _, _, _ -> LibraryPage(listOf(selectedItem), 1) },
+                        ),
+                    scope = backgroundScope,
+                    favoritesStore = FakeJellyfinFavoritesStore(),
+                    autoBootstrap = false,
+                )
+
+            coordinator.bootstrap(forceRefresh = false)
+            awaitState(coordinator) { it.homeErrorMessage == "home boom" }
+            coordinator.selectLibrary("lib-1")
+
+            val loaded = awaitState(coordinator) { !it.isLibraryLoading && it.libraryItems == listOf(selectedItem) }
+            assertEquals("home boom", loaded.homeErrorMessage)
+            assertNull(loaded.libraryErrorMessage)
+        }
 
     @Test
     fun bootstrapLoadsLibrariesAndFirstPage() =
@@ -390,13 +618,462 @@ class JellyfinBrowseCoordinatorTest {
             val latestCallsAfterBootstrap = latestCallCount.value
 
             coordinator.selectLibrary("lib-1")
-            val library = awaitState(coordinator) { it.selectedLibraryId == "lib-1" && !it.isInitialLoading }
+            val library = awaitState(coordinator) { it.selectedLibraryId == "lib-1" && !it.isLibraryLoading }
 
             assertFalse(library.isHomeLoading)
             assertEquals(home.recentShows, library.recentShows)
             assertEquals(home.recentMovies, library.recentMovies)
             assertEquals(home.nextUp, library.nextUp)
             assertEquals(latestCallsAfterBootstrap, latestCallCount.value)
+        }
+
+    @Test
+    fun blockedHomeFeedDoesNotDelayLibrarySelection() =
+        runTest {
+            val homeFeedStarted = CompletableDeferred<Unit>()
+            val releaseHomeFeed = CompletableDeferred<Unit>()
+            val selectedLibraryPageStarted = CompletableDeferred<Unit>()
+            val selectedItem = favoriteJellyfinItem("selected-item")
+            val repository =
+                FakeBrowseRepository(
+                    loadPage = { libraryId, _, _, _, _ ->
+                        if (libraryId == "lib-1") {
+                            selectedLibraryPageStarted.complete(Unit)
+                            LibraryPage(listOf(selectedItem), 1)
+                        } else {
+                            LibraryPage(listOf(favoriteJellyfinItem("bootstrap-item")), 1)
+                        }
+                    },
+                    loadRecentShows = { _, _ ->
+                        homeFeedStarted.complete(Unit)
+                        releaseHomeFeed.await()
+                        emptyList()
+                    },
+                )
+            val coordinator =
+                JellyfinBrowseCoordinator(
+                    repository = repository,
+                    scope = backgroundScope,
+                    favoritesStore = FakeJellyfinFavoritesStore(),
+                    pageSize = 2,
+                )
+
+            homeFeedStarted.await()
+            coordinator.selectLibrary("lib-1")
+
+            withTimeout(1_000) { selectedLibraryPageStarted.await() }
+            releaseHomeFeed.complete(Unit)
+            val selected = awaitState(coordinator) { it.selectedLibraryId == "lib-1" && !it.isLibraryLoading }
+            assertEquals(listOf("selected-item"), selected.libraryItems.map { it.id })
+        }
+
+    @Test
+    fun libraryMetadataResumePreservesCompletedHomeFeedState() =
+        runTest {
+            val pageMetadataStarted = CompletableDeferred<Unit>()
+            val releasePageMetadata = CompletableDeferred<Unit>()
+            val metadataLookups = MutableStateFlow(0)
+            val homeItem = favoriteJellyfinItem("home-item")
+            val libraryItem = favoriteJellyfinItem("library-item")
+            val repository =
+                FakeBrowseRepository(
+                    loadPage = { _, _, _, _, _ -> LibraryPage(listOf(libraryItem), 1) },
+                    loadRecentShows = { _, _ ->
+                        pageMetadataStarted.await()
+                        listOf(homeItem)
+                    },
+                    loadServerBaseUrl = {
+                        if (metadataLookups.updateAndGet { it + 1 } == 3) {
+                            pageMetadataStarted.complete(Unit)
+                            releasePageMetadata.await()
+                        }
+                        "https://demo.jellyfin.org"
+                    },
+                )
+            val coordinator =
+                JellyfinBrowseCoordinator(
+                    repository = repository,
+                    scope = backgroundScope,
+                    favoritesStore = FakeJellyfinFavoritesStore(),
+                    autoBootstrap = false,
+                )
+
+            try {
+                coordinator.bootstrap(forceRefresh = true)
+                pageMetadataStarted.await()
+                val homeComplete =
+                    awaitState(coordinator) {
+                        !it.isInitialLoading &&
+                            !it.isHomeLoading &&
+                            it.recentShows == listOf(homeItem)
+                    }
+                assertTrue(homeComplete.isLibraryLoading)
+
+                releasePageMetadata.complete(Unit)
+                val finalState =
+                    awaitState(coordinator) {
+                        !it.isLibraryLoading && it.libraryItems == listOf(libraryItem)
+                    }
+
+                assertFalse(finalState.isInitialLoading)
+                assertFalse(finalState.isHomeLoading)
+                assertEquals(listOf(homeItem), finalState.recentShows)
+                assertEquals(listOf(libraryItem), finalState.libraryItems)
+            } finally {
+                releasePageMetadata.complete(Unit)
+            }
+        }
+
+    @Test
+    fun cachedItemsRemainVisibleDuringLibraryRefresh() =
+        runTest {
+            val cachedItem = favoriteJellyfinItem("cached-item")
+            val refreshedItem = favoriteJellyfinItem("refreshed-item")
+            val pageRequestStarted = CompletableDeferred<Unit>()
+            val releasePage = CompletableDeferred<Unit>()
+            val repository =
+                FakeBrowseRepository(
+                    cachedPages = mapOf("lib-2" to listOf(cachedItem)),
+                    loadPage = { _, _, _, _, _ ->
+                        pageRequestStarted.complete(Unit)
+                        releasePage.await()
+                        LibraryPage(listOf(refreshedItem), 1)
+                    },
+                )
+            val coordinator =
+                JellyfinBrowseCoordinator(
+                    repository = repository,
+                    scope = backgroundScope,
+                    favoritesStore = FakeJellyfinFavoritesStore(),
+                    pageSize = 2,
+                )
+
+            pageRequestStarted.await()
+
+            assertEquals(
+                listOf("cached-item"),
+                coordinator.state.value.libraryItems
+                    .map { it.id },
+            )
+            assertTrue(coordinator.state.value.isLibraryLoading)
+
+            releasePage.complete(Unit)
+            val refreshed = awaitState(coordinator) { it.libraryItems.map { item -> item.id } == listOf("refreshed-item") }
+            assertFalse(refreshed.isLibraryLoading)
+        }
+
+    @Test
+    fun nextPageCannotReplaceActiveFirstPageRefresh() =
+        runTest {
+            val refreshStarted = CompletableDeferred<Unit>()
+            val releaseRefresh = CompletableDeferred<Unit>()
+            var pageRequests = 0
+            val initialItems = listOf(favoriteJellyfinItem("initial-1"), favoriteJellyfinItem("initial-2"))
+            val refreshedItems = listOf(favoriteJellyfinItem("refreshed-1"), favoriteJellyfinItem("refreshed-2"))
+            val repository =
+                FakeBrowseRepository(
+                    loadPage = { _, page, _, _, _ ->
+                        pageRequests += 1
+                        when (pageRequests) {
+                            1 -> LibraryPage(initialItems, 2)
+                            2 -> {
+                                refreshStarted.complete(Unit)
+                                releaseRefresh.await()
+                                LibraryPage(refreshedItems, 2)
+                            }
+                            else -> LibraryPage(listOf(favoriteJellyfinItem("unexpected-page-$page")), 3)
+                        }
+                    },
+                )
+            val coordinator =
+                JellyfinBrowseCoordinator(
+                    repository = repository,
+                    scope = backgroundScope,
+                    favoritesStore = FakeJellyfinFavoritesStore(),
+                    pageSize = 2,
+                    autoBootstrap = false,
+                )
+            coordinator.selectLibrary("lib-1")
+            awaitState(coordinator) { it.libraryItems == initialItems }
+
+            coordinator.refreshSelectedLibrary()
+            assertEquals(initialItems, coordinator.state.value.libraryItems)
+            assertTrue(coordinator.state.value.isLibraryLoading)
+            coordinator.loadNextPage()
+            refreshStarted.await()
+            advanceUntilIdle()
+            assertEquals(2, pageRequests)
+
+            releaseRefresh.complete(Unit)
+            val refreshed = awaitState(coordinator) { it.libraryItems == refreshedItems }
+            assertEquals(0, refreshed.currentPage)
+            assertFalse(refreshed.isLibraryLoading)
+        }
+
+    @Test
+    fun refreshWithoutSelectedLibraryDoesNotStartLibraryLoading() =
+        runTest {
+            var pageRequests = 0
+            val coordinator =
+                JellyfinBrowseCoordinator(
+                    repository =
+                        FakeBrowseRepository(
+                            libraries = emptyList(),
+                            loadPage = { _, _, _, _, _ ->
+                                pageRequests += 1
+                                LibraryPage(emptyList(), 0)
+                            },
+                        ),
+                    scope = backgroundScope,
+                    favoritesStore = FakeJellyfinFavoritesStore(),
+                    autoBootstrap = false,
+                )
+
+            assertNull(coordinator.state.value.selectedLibraryId)
+            coordinator.refreshSelectedLibrary()
+            assertFalse(coordinator.state.value.isLibraryLoading)
+
+            advanceUntilIdle()
+
+            assertFalse(coordinator.state.value.isLibraryLoading)
+            assertEquals(0, pageRequests)
+        }
+
+    @Test
+    fun rapidLibrarySelectionsPublishOnlyLatestPage() =
+        runTest {
+            val firstRequestStarted = CompletableDeferred<Unit>()
+            val releaseFirstRequest = CompletableDeferred<Unit>()
+            val repository =
+                FakeBrowseRepository(
+                    loadPage = { libraryId, _, _, _, _ ->
+                        when (libraryId) {
+                            "lib-1" -> {
+                                firstRequestStarted.complete(Unit)
+                                withContext(NonCancellable) { releaseFirstRequest.await() }
+                                LibraryPage(listOf(favoriteJellyfinItem("stale-item")), 1)
+                            }
+                            else -> LibraryPage(listOf(favoriteJellyfinItem("latest-item")), 1)
+                        }
+                    },
+                )
+            val coordinator =
+                JellyfinBrowseCoordinator(
+                    repository = repository,
+                    scope = backgroundScope,
+                    favoritesStore = FakeJellyfinFavoritesStore(),
+                    pageSize = 2,
+                    autoBootstrap = false,
+                )
+
+            coordinator.selectLibrary("lib-1")
+            firstRequestStarted.await()
+            coordinator.selectLibrary("lib-2")
+
+            val latest = awaitState(coordinator) { it.libraryItems.map { item -> item.id } == listOf("latest-item") }
+            assertEquals("lib-2", latest.selectedLibraryId)
+
+            releaseFirstRequest.complete(Unit)
+            advanceUntilIdle()
+            assertEquals("lib-2", coordinator.state.value.selectedLibraryId)
+            assertEquals(
+                listOf("latest-item"),
+                coordinator.state.value.libraryItems
+                    .map { it.id },
+            )
+        }
+
+    @Test
+    fun staleMetadataLookupCannotRestoreOlderSelection() =
+        runTest {
+            val firstMetadataLookupStarted = CompletableDeferred<Unit>()
+            val firstMetadataLookupReturned = CompletableDeferred<Unit>()
+            val releaseFirstMetadataLookup = MutableStateFlow(false)
+            val metadataLookups = MutableStateFlow(0)
+            val repository =
+                FakeBrowseRepository(
+                    loadPage = { libraryId, _, _, _, _ ->
+                        LibraryPage(listOf(favoriteJellyfinItem("$libraryId-item")), 1)
+                    },
+                    loadServerBaseUrl = {
+                        if (metadataLookups.updateAndGet { it + 1 } == 1) {
+                            firstMetadataLookupStarted.complete(Unit)
+                            while (!releaseFirstMetadataLookup.value) {
+                                // Model a synchronous metadata provider that cannot observe coroutine cancellation.
+                            }
+                            firstMetadataLookupReturned.complete(Unit)
+                        }
+                        "https://demo.jellyfin.org"
+                    },
+                )
+            val coordinatorScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val coordinator =
+                JellyfinBrowseCoordinator(
+                    repository = repository,
+                    scope = coordinatorScope,
+                    favoritesStore = FakeJellyfinFavoritesStore(),
+                    autoBootstrap = false,
+                )
+            try {
+                coordinator.selectLibrary("lib-1")
+                firstMetadataLookupStarted.await()
+                coordinator.selectLibrary("lib-2")
+                awaitState(coordinator) { it.libraryItems.map { item -> item.id } == listOf("lib-2-item") }
+                val staleSelection =
+                    async(Dispatchers.Default, start = CoroutineStart.UNDISPATCHED) {
+                        withTimeoutOrNull(1_000) {
+                            coordinator.state.first { it.selectedLibraryId == "lib-1" }
+                        }
+                    }
+
+                releaseFirstMetadataLookup.value = true
+                firstMetadataLookupReturned.await()
+
+                assertNull(staleSelection.await())
+                assertEquals("lib-2", coordinator.state.value.selectedLibraryId)
+                assertEquals(
+                    listOf("lib-2-item"),
+                    coordinator.state.value.libraryItems
+                        .map { it.id },
+                )
+                assertFalse(coordinator.state.value.isLibraryLoading)
+            } finally {
+                releaseFirstMetadataLookup.value = true
+                coordinatorScope.cancel()
+            }
+        }
+
+    @Test
+    fun firstPageFailureClearsLibraryLoading() =
+        runTest {
+            val pageRequestStarted = CompletableDeferred<Unit>()
+            val releaseFailure = CompletableDeferred<Unit>()
+            val repository =
+                FakeBrowseRepository(
+                    loadPage = { _, _, _, _, _ ->
+                        pageRequestStarted.complete(Unit)
+                        releaseFailure.await()
+                        error("boom")
+                    },
+                )
+            val coordinator =
+                JellyfinBrowseCoordinator(
+                    repository = repository,
+                    scope = backgroundScope,
+                    favoritesStore = FakeJellyfinFavoritesStore(),
+                    autoBootstrap = false,
+                )
+
+            coordinator.selectLibrary("lib-1")
+            pageRequestStarted.await()
+            assertTrue(coordinator.state.value.isLibraryLoading)
+
+            releaseFailure.complete(Unit)
+            val failed = awaitState(coordinator) { it.errorMessage == "boom" }
+            assertFalse(failed.isLibraryLoading)
+            assertFalse(failed.isPageLoading)
+        }
+
+    @Test
+    fun retainedItemsFirstPageFailureRecordsRefreshRetryKind() =
+        runTest {
+            val initialItems = listOf(favoriteJellyfinItem("one"), favoriteJellyfinItem("two"))
+            var requests = 0
+            val coordinator =
+                JellyfinBrowseCoordinator(
+                    repository =
+                        FakeBrowseRepository(
+                            loadPage = { _, _, _, _, _ ->
+                                if (++requests == 1) LibraryPage(initialItems, 2) else error("refresh boom")
+                            },
+                        ),
+                    scope = backgroundScope,
+                    favoritesStore = FakeJellyfinFavoritesStore(),
+                    pageSize = 2,
+                    autoBootstrap = false,
+                )
+            coordinator.selectLibrary("lib-1")
+            awaitState(coordinator) { it.libraryItems == initialItems }
+
+            coordinator.refreshSelectedLibrary()
+
+            val failed = awaitState(coordinator) { it.libraryErrorMessage == "refresh boom" }
+            assertEquals(initialItems, failed.libraryItems)
+            assertEquals(LibraryLoadErrorKind.FIRST_PAGE, failed.libraryErrorKind)
+        }
+
+    @Test
+    fun laterPageFailureRecordsNextPageRetryKindAndRetainsItems() =
+        runTest {
+            val initialItems = listOf(favoriteJellyfinItem("one"), favoriteJellyfinItem("two"))
+            var requests = 0
+            val coordinator =
+                JellyfinBrowseCoordinator(
+                    repository =
+                        FakeBrowseRepository(
+                            loadPage = { _, page, _, _, _ ->
+                                if (++requests == 1) LibraryPage(initialItems, 2) else error("page $page boom")
+                            },
+                        ),
+                    scope = backgroundScope,
+                    favoritesStore = FakeJellyfinFavoritesStore(),
+                    pageSize = 2,
+                    autoBootstrap = false,
+                )
+            coordinator.selectLibrary("lib-1")
+            awaitState(coordinator) { it.libraryItems == initialItems }
+
+            coordinator.loadNextPage()
+
+            val failed = awaitState(coordinator) { it.libraryErrorMessage == "page 1 boom" }
+            assertEquals(initialItems, failed.libraryItems)
+            assertEquals(LibraryLoadErrorKind.NEXT_PAGE, failed.libraryErrorKind)
+        }
+
+    @Test
+    fun metadataFailureClearsLibraryLoading() =
+        runTest {
+            val coordinator =
+                JellyfinBrowseCoordinator(
+                    repository =
+                        FakeBrowseRepository(
+                            loadServerBaseUrl = { error("metadata boom") },
+                        ),
+                    scope = backgroundScope,
+                    favoritesStore = FakeJellyfinFavoritesStore(),
+                    autoBootstrap = false,
+                )
+
+            coordinator.selectLibrary("lib-1")
+
+            val failed = awaitState(coordinator) { it.errorMessage == "metadata boom" }
+            assertFalse(failed.isLibraryLoading)
+            assertFalse(failed.isPageLoading)
+        }
+
+    @Test
+    fun failedLibraryPageIsNotRetriedByCoordinator() =
+        runTest {
+            var pageRequests = 0
+            val repository =
+                FakeBrowseRepository(
+                    loadPage = { _, _, _, _, _ ->
+                        pageRequests += 1
+                        error("single failure")
+                    },
+                )
+            val coordinator =
+                JellyfinBrowseCoordinator(
+                    repository = repository,
+                    scope = backgroundScope,
+                    favoritesStore = FakeJellyfinFavoritesStore(),
+                    autoBootstrap = false,
+                )
+
+            coordinator.selectLibrary("lib-1")
+
+            awaitState(coordinator) { it.errorMessage == "single failure" }
+            assertEquals(1, pageRequests)
         }
 
     @Test
@@ -503,7 +1180,7 @@ class JellyfinBrowseCoordinatorTest {
             coordinator.selectFavorites()
             val favoritesPage =
                 awaitState(coordinator) { state ->
-                    !state.isInitialLoading && state.libraryItems.map { it.id } == listOf("favorite-1")
+                    !state.isLibraryLoading && state.libraryItems.map { it.id } == listOf("favorite-1")
                 }
 
             assertEquals(listOf("favorite-1"), favoritesPage.libraryItems.map { it.id })
@@ -611,7 +1288,7 @@ class JellyfinBrowseCoordinatorTest {
 
             val state =
                 awaitState(coordinator) {
-                    !it.isInitialLoading &&
+                    !it.isLibraryLoading &&
                         it.libraryItems.map { item -> item.id } == listOf("normal-1")
                 }
             assertEquals(
@@ -646,7 +1323,7 @@ class JellyfinBrowseCoordinatorTest {
                 )
             awaitState(coordinator) {
                 it.selectedLibraryId != null &&
-                    !it.isInitialLoading &&
+                    !it.isLibraryLoading &&
                     unfilteredPageRequests.value == 1
             }
             assertEquals(1, unfilteredPageRequests.value)
@@ -656,7 +1333,7 @@ class JellyfinBrowseCoordinatorTest {
             coordinator.refreshFavorites()
             val refreshed =
                 awaitState(coordinator) { state ->
-                    !state.isInitialLoading && state.libraryItems.map { item -> item.id } == listOf("favorite-2")
+                    !state.isLibraryLoading && state.libraryItems.map { item -> item.id } == listOf("favorite-2")
                 }
 
             assertEquals(setOf("favorite-2"), coordinator.favorites.value)
@@ -833,7 +1510,7 @@ class JellyfinBrowseCoordinatorTest {
 
     private suspend fun awaitInitialLoad(coordinator: JellyfinBrowseCoordinator): JellyfinHomeState =
         awaitState(coordinator) {
-            it.selectedLibraryId != null && !it.isInitialLoading
+            it.selectedLibraryId != null && !it.isInitialLoading && !it.isLibraryLoading
         }
 
     private suspend fun awaitState(
@@ -845,6 +1522,89 @@ class JellyfinBrowseCoordinatorTest {
                 coordinator.state.first(predicate)
             }
         }
+
+    private class FakeBrowseRepository(
+        private val libraries: List<JellyfinLibrary> =
+            listOf(
+                JellyfinLibrary("lib-1", "Movies", "movies", null, "movies-image"),
+                JellyfinLibrary("lib-2", "Shows", "tvshows", null, "shows-image"),
+            ),
+        private val cachedPages: Map<String, List<JellyfinItem>> = emptyMap(),
+        private val loadPage: suspend (String, Int, Int, Boolean, String?) -> LibraryPage =
+            { _, _, _, _, _ -> LibraryPage(emptyList(), 0) },
+        private val loadRecentShows: suspend (String, Int) -> List<JellyfinItem> = { _, _ -> emptyList() },
+        private val loadRecentMovies: suspend (String, Int) -> List<JellyfinItem> = { _, _ -> emptyList() },
+        private val loadServerBaseUrl: suspend () -> String? = { "https://demo.jellyfin.org" },
+        private val loadAccessToken: suspend () -> String? = { "dummy-token" },
+        private val loadLibraries: suspend () -> List<JellyfinLibrary> = { libraries },
+        private val refreshLibraryCatalog: suspend () -> List<JellyfinLibrary> = { libraries },
+        private val loadCachedContinueWatching: suspend (Int) -> List<JellyfinItem> = { emptyList() },
+    ) : JellyfinBrowseRepositoryApi {
+        override suspend fun refreshLibraries(): List<JellyfinLibrary> = refreshLibraryCatalog()
+
+        override suspend fun listLibraries(): List<JellyfinLibrary> = loadLibraries()
+
+        override suspend fun cachedContinueWatching(limit: Int): List<JellyfinItem> = loadCachedContinueWatching(limit)
+
+        override suspend fun cachedNextUp(limit: Int): List<JellyfinItem> = emptyList()
+
+        override suspend fun cachedRecentShows(
+            libraryId: String?,
+            limit: Int,
+        ): List<JellyfinItem> = emptyList()
+
+        override suspend fun cachedRecentMovies(
+            libraryId: String?,
+            limit: Int,
+        ): List<JellyfinItem> = emptyList()
+
+        override suspend fun loadLibraryPage(
+            libraryId: String,
+            page: Int,
+            pageSize: Int,
+            refresh: Boolean,
+            filters: String?,
+        ): LibraryPage = loadPage(libraryId, page, pageSize, refresh, filters)
+
+        override suspend fun cachedLibraryPage(
+            libraryId: String,
+            page: Int,
+            pageSize: Int,
+        ): List<JellyfinItem> = cachedPages[libraryId].orEmpty()
+
+        override suspend fun loadChildrenPage(
+            libraryId: String,
+            parentId: String,
+            page: Int,
+            pageSize: Int,
+            refresh: Boolean,
+        ): LibraryPage = loadPage(parentId, page, pageSize, refresh, null)
+
+        override suspend fun refreshContinueWatching(limit: Int): List<JellyfinItem> = emptyList()
+
+        override suspend fun refreshNextUp(
+            limit: Int,
+            libraryId: String?,
+        ): List<JellyfinItem> = emptyList()
+
+        override suspend fun refreshRecentlyAddedShows(
+            libraryId: String,
+            limit: Int,
+        ): List<JellyfinItem> = loadRecentShows(libraryId, limit)
+
+        override suspend fun refreshRecentlyAddedMovies(
+            libraryId: String,
+            limit: Int,
+        ): List<JellyfinItem> = loadRecentMovies(libraryId, limit)
+
+        override suspend fun currentServerBaseUrl(): String? = loadServerBaseUrl()
+
+        override suspend fun currentAccessToken(): String? = loadAccessToken()
+
+        override suspend fun currentApi(): JellyfinBrowseApi? = null
+
+        override suspend fun currentUserId(): String? = "user-123"
+    }
 
     private class InMemoryLibraryStore : JellyfinLibraryStore {
         private val records = mutableListOf<JellyfinLibraryRecord>()

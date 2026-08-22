@@ -128,8 +128,8 @@ android {
         applicationId = "app.jellystack.mobile"
         minSdk = 24
         targetSdk = 36
-        versionCode = 18
-        versionName = "0.15.0"
+        versionCode = 19
+        versionName = "0.15.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         multiDexEnabled = true
     }
@@ -197,6 +197,7 @@ dependencies {
     implementation(libs.androidx.media)
     implementation(libs.androidx.mediarouter)
     implementation(libs.serialization.json)
+    implementation(libs.ktor.client.core)
     implementation(libs.compose.navigation)
     implementation(libs.sqldelight.android)
     implementation(libs.coroutines.android)

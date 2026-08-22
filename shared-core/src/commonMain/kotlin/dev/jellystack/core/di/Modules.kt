@@ -9,6 +9,7 @@ import dev.jellystack.core.jellyfin.JellyfinBrowseRepository
 import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
 import dev.jellystack.core.jellyfin.JellyfinSessionApiFactory
 import dev.jellystack.core.jellyfin.JellyfinSessionRepository
+import dev.jellystack.core.jellyfin.JellystackClientVersionProvider
 import dev.jellystack.core.jellyfin.ServerRepositoryEnvironmentProvider
 import dev.jellystack.core.jellyfin.defaultHomeSectionsApiFactory
 import dev.jellystack.core.jellyfin.defaultJellyfinBrowseApiFactory
@@ -77,7 +78,12 @@ fun coreModule(): Module =
                 activeServerPreferences = get(),
             )
         }
-        single<JellyfinEnvironmentProvider> { ServerRepositoryEnvironmentProvider(get()) }
+        single<JellyfinEnvironmentProvider> {
+            ServerRepositoryEnvironmentProvider(
+                repository = get(),
+                clientVersionProvider = { get<JellystackClientVersionProvider>().versionName() },
+            )
+        }
         single<JellyseerrEnvironmentProvider> { ServerRepositoryJellyseerrEnvironmentProvider(get()) }
         single<JellyfinBrowseApiFactory>(jellyfinBrowseApiFactoryQualifier) { defaultJellyfinBrowseApiFactory() }
         single {

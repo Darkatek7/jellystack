@@ -1,36 +1,50 @@
 package dev.jellystack.design.tv
 
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class TvHomeFocusCoordinatorTest {
     private val rows =
         listOf(
-            TvHomeFocusRow("portrait", lazyColumnIndex = 1, firstItemId = "portrait-1", landscape = false),
-            TvHomeFocusRow("empty-gap", lazyColumnIndex = 2, firstItemId = null, landscape = true),
-            TvHomeFocusRow("landscape", lazyColumnIndex = 3, firstItemId = "landscape-1", landscape = true),
+            TvHomeFocusRow(
+                "portrait",
+                lazyColumnIndex = 1,
+                itemIds = listOf("portrait-1", "portrait-2"),
+                landscape = false,
+            ),
+            TvHomeFocusRow("empty-gap", lazyColumnIndex = 2, itemIds = emptyList(), landscape = true),
+            TvHomeFocusRow(
+                "landscape",
+                lazyColumnIndex = 3,
+                itemIds = listOf("landscape-1", "landscape-2", "landscape-3"),
+                landscape = true,
+            ),
         )
 
     @Test
     fun downTargetsFirstItemInNextNonEmptyRowAcrossMixedLayouts() {
         val coordinator = TvHomeVerticalFocusCoordinator(rows)
 
-        val move = coordinator.beginMove(TvHomeFocusOrigin.Row("portrait"), TvHomeVerticalDirection.DOWN)
+        val move = coordinator.beginMove(TvHomeFocusOrigin.Row("portrait", "portrait-1"), TvHomeVerticalDirection.DOWN)
 
-        assertEquals(TvHomeFocusDestination.Row("landscape", 3, "landscape-1"), move?.destination)
+        assertEquals(TvHomeFocusDestination.Row("landscape", 3, "landscape-1", 0), move?.destination)
     }
 
     @Test
     fun upTargetsPreviousNonEmptyRowThenHeroFromFirstRow() {
         val coordinator = TvHomeVerticalFocusCoordinator(rows)
 
-        val previous = coordinator.beginMove(TvHomeFocusOrigin.Row("landscape"), TvHomeVerticalDirection.UP)
-        val hero = coordinator.beginMove(TvHomeFocusOrigin.Row("portrait"), TvHomeVerticalDirection.UP)
+        val previous =
+            coordinator.beginMove(TvHomeFocusOrigin.Row("landscape", "landscape-1"), TvHomeVerticalDirection.UP)
+        val hero = coordinator.beginMove(TvHomeFocusOrigin.Row("portrait", "portrait-1"), TvHomeVerticalDirection.UP)
 
-        assertEquals(TvHomeFocusDestination.Row("portrait", 1, "portrait-1"), previous?.destination)
+        assertEquals(TvHomeFocusDestination.Row("portrait", 1, "portrait-1", 0), previous?.destination)
         assertEquals(TvHomeFocusDestination.HeroPrimary, hero?.destination)
     }
 
@@ -58,40 +72,140 @@ class TvHomeFocusCoordinatorTest {
         val row = coordinator.beginMove(TvHomeFocusOrigin.HeroActions, TvHomeVerticalDirection.DOWN)
 
         assertEquals(TvHomeFocusDestination.HeroCarousel, carousel?.destination)
-        assertEquals(TvHomeFocusDestination.Row("portrait", 1, "portrait-1"), row?.destination)
+        assertEquals(TvHomeFocusDestination.Row("portrait", 1, "portrait-1", 0), row?.destination)
     }
 
     @Test
     fun rowDownBoundaryDoesNotStartFocusRequest() {
         val coordinator = TvHomeVerticalFocusCoordinator(rows)
 
-        assertNull(coordinator.beginMove(TvHomeFocusOrigin.Row("landscape"), TvHomeVerticalDirection.DOWN))
+        val move =
+            coordinator.beginMove(TvHomeFocusOrigin.Row("landscape", "landscape-1"), TvHomeVerticalDirection.DOWN)
+        assertNull(move)
     }
 
     @Test
     fun newerMoveCancelsStaleCompletion() {
         val coordinator = TvHomeVerticalFocusCoordinator(rows)
-        val stale = coordinator.beginMove(TvHomeFocusOrigin.Row("portrait"), TvHomeVerticalDirection.DOWN)!!
-        val current = coordinator.beginMove(TvHomeFocusOrigin.Row("landscape"), TvHomeVerticalDirection.UP)!!
+        val stale =
+            coordinator.beginMove(TvHomeFocusOrigin.Row("portrait", "portrait-1"), TvHomeVerticalDirection.DOWN)!!
+        val current =
+            coordinator.beginMove(TvHomeFocusOrigin.Row("landscape", "landscape-1"), TvHomeVerticalDirection.UP)!!
 
         assertFalse(coordinator.acceptCompletion(stale.requestId))
         assertTrue(coordinator.acceptCompletion(current.requestId))
     }
 
     @Test
-    fun modelReplacementCancelsPendingRequestAndUsesNewIndices() {
+    fun repeatedMoveBeforeCompletionReusesPendingRequestAndCancelsPreviewOnce() {
         val coordinator = TvHomeVerticalFocusCoordinator(rows)
-        val stale = coordinator.beginMove(TvHomeFocusOrigin.HeroActions, TvHomeVerticalDirection.DOWN)!!
+        var cancellations = 0
 
-        coordinator.replaceRows(
-            listOf(TvHomeFocusRow("new", lazyColumnIndex = 5, firstItemId = "new-1", landscape = false)),
-        )
+        val first =
+            coordinator.beginMove(TvHomeFocusOrigin.Row("portrait", "portrait-1"), TvHomeVerticalDirection.DOWN) {
+                cancellations += 1
+            }
+        val repeated =
+            coordinator.beginMove(TvHomeFocusOrigin.Row("portrait", "portrait-1"), TvHomeVerticalDirection.DOWN) {
+                cancellations += 1
+            }
 
-        assertFalse(coordinator.acceptCompletion(stale.requestId))
-        assertEquals(
-            TvHomeFocusDestination.Row("new", 5, "new-1"),
-            coordinator.beginMove(TvHomeFocusOrigin.HeroActions, TvHomeVerticalDirection.DOWN)?.destination,
-        )
+        assertSame(first, repeated)
+        assertEquals(1, cancellations)
+    }
+
+    @Test
+    fun focusTargetRegistryPreservesStableRequestersAcrossRowRefreshes() {
+        val registry = TvHomeFocusTargetRegistry { Any() }
+        val original = registry.reconcile(rows).getValue("portrait").getValue("portrait-2")
+
+        val refreshed =
+            registry.reconcile(
+                listOf(
+                    rows.first().copy(lazyColumnIndex = 2),
+                    TvHomeFocusRow("new", 3, listOf("new-1"), landscape = true),
+                ),
+            )
+
+        assertSame(original, refreshed.getValue("portrait").getValue("portrait-2"))
+    }
+
+    @Test
+    fun heldVerticalKeyRepeatsAreConsumedWithoutStartingAnotherMove() {
+        assertTrue(shouldHandleTvHomeVerticalKey(repeatCount = 0))
+        assertFalse(shouldHandleTvHomeVerticalKey(repeatCount = 1))
+    }
+
+    @Test
+    fun unrelatedModelReplacementPreservesPendingRequest() {
+        val coordinator = TvHomeVerticalFocusCoordinator(rows)
+        val pending = coordinator.beginMove(TvHomeFocusOrigin.HeroActions, TvHomeVerticalDirection.DOWN)!!
+
+        val reconciled = coordinator.replaceRows(rows.map { it.copy() })
+
+        assertEquals(pending, reconciled)
+        assertTrue(coordinator.acceptCompletion(pending.requestId))
+    }
+
+    @Test
+    fun verticalMoveAlwaysTargetsFirstItemInAdjacentRow() {
+        val coordinator = TvHomeVerticalFocusCoordinator(rows)
+
+        val down =
+            coordinator.beginMove(
+                TvHomeFocusOrigin.Row("portrait", "portrait-2"),
+                TvHomeVerticalDirection.DOWN,
+            )
+        val up =
+            coordinator.beginMove(
+                TvHomeFocusOrigin.Row("landscape", "landscape-3"),
+                TvHomeVerticalDirection.UP,
+            )
+
+        assertEquals(TvHomeFocusDestination.Row("landscape", 3, "landscape-1", 0), down?.destination)
+        assertEquals(TvHomeFocusDestination.Row("portrait", 1, "portrait-1", 0), up?.destination)
+    }
+
+    @Test
+    fun pendingMoveReconcilesToNearestStableTargetWhenAsyncRowsChange() {
+        val coordinator = TvHomeVerticalFocusCoordinator(rows)
+        val pending =
+            coordinator.beginMove(
+                TvHomeFocusOrigin.Row("portrait", "portrait-2"),
+                TvHomeVerticalDirection.DOWN,
+            )!!
+
+        val reconciled =
+            coordinator.replaceRows(
+                listOf(
+                    rows.first(),
+                    TvHomeFocusRow("replacement", 4, listOf("replacement-1"), landscape = true),
+                ),
+            )
+
+        assertEquals(pending.requestId, reconciled?.requestId)
+        assertEquals(TvHomeFocusDestination.Row("replacement", 4, "replacement-1", 0), reconciled?.destination)
+        assertTrue(coordinator.acceptCompletion(pending.requestId))
+    }
+
+    @Test
+    fun pendingVerticalMoveRetargetsFirstItemWhenItemsAreInsertedBeforeIt() {
+        val coordinator = TvHomeVerticalFocusCoordinator(rows)
+        val pending =
+            coordinator.beginMove(
+                TvHomeFocusOrigin.Row("portrait", "portrait-2"),
+                TvHomeVerticalDirection.DOWN,
+            )!!
+
+        val reconciled =
+            coordinator.replaceRows(
+                rows.map { row ->
+                    if (row.id == "landscape") row.copy(itemIds = listOf("inserted") + row.itemIds) else row
+                },
+            )
+
+        assertEquals(pending.requestId, reconciled?.requestId)
+        assertEquals(TvHomeFocusDestination.Row("landscape", 3, "inserted", 0), reconciled?.destination)
     }
 
     @Test
@@ -101,7 +215,7 @@ class TvHomeFocusCoordinatorTest {
 
         val move =
             coordinator.beginMove(
-                origin = TvHomeFocusOrigin.Row("portrait"),
+                origin = TvHomeFocusOrigin.Row("portrait", "portrait-1"),
                 direction = TvHomeVerticalDirection.DOWN,
                 onAccepted = { events += "cancel" },
             )
@@ -117,7 +231,7 @@ class TvHomeFocusCoordinatorTest {
 
         val move =
             coordinator.beginMove(
-                origin = TvHomeFocusOrigin.Row("landscape"),
+                origin = TvHomeFocusOrigin.Row("landscape", "landscape-1"),
                 direction = TvHomeVerticalDirection.DOWN,
                 onAccepted = { cancellations += 1 },
             )
@@ -141,4 +255,92 @@ class TvHomeFocusCoordinatorTest {
         assertEquals(TvHomeFocusDestination.HeroCarousel, move?.destination)
         assertEquals(1, cancellations)
     }
+
+    @Test
+    fun transientHomeTargetRejectionRetriesAndCompletesTheMove() =
+        runTest {
+            val vertical = TvHomeVerticalFocusCoordinator(rows)
+            val move =
+                vertical.beginMove(
+                    TvHomeFocusOrigin.Row("portrait", "portrait-1"),
+                    TvHomeVerticalDirection.DOWN,
+                )!!
+            val targetId = tvHomeCardTargetId("landscape", "landscape-1")
+            var attempts = 0
+            var frames = 0
+            val focus =
+                TvFocusCoordinator<String>(
+                    awaitFocusFrame = { frames += 1 },
+                ).apply {
+                    register("home", targetId = targetId, target = "landscape-requester")
+                }
+
+            val completion =
+                vertical.completeMove(move.requestId) { requestedTargetId ->
+                    focus.restoreFocus(
+                        routeKey = "home",
+                        preferredTargetId = requestedTargetId,
+                        includeFallback = false,
+                    ) { ++attempts == 2 } is TvFocusRestoration.Focused
+                }
+
+            assertEquals(TvHomeFocusCompletion(move.requestId, focused = true), completion)
+            assertEquals(2, attempts)
+            assertEquals(2, frames)
+        }
+
+    @Test
+    fun exhaustedHomeTargetUsesTheDeterministicNearestAttachedCard() =
+        runTest {
+            val vertical = TvHomeVerticalFocusCoordinator(rows)
+            val move =
+                vertical.beginMove(
+                    TvHomeFocusOrigin.Row("portrait", "portrait-1"),
+                    TvHomeVerticalDirection.DOWN,
+                )!!
+            val firstTarget = tvHomeCardTargetId("landscape", "landscape-1")
+            val nearestTarget = tvHomeCardTargetId("landscape", "landscape-2")
+            val attempts = mutableListOf<String>()
+            val focus =
+                TvFocusCoordinator<String>().apply {
+                    register("home", targetId = firstTarget, target = "first")
+                    register("home", targetId = nearestTarget, target = "nearest")
+                }
+
+            val completion =
+                vertical.completeMove(move.requestId) { requestedTargetId ->
+                    focus.restoreFocus(
+                        routeKey = "home",
+                        preferredTargetId = requestedTargetId,
+                        includeFallback = false,
+                    ) { requester ->
+                        attempts += requester
+                        requester == "nearest"
+                    } is TvFocusRestoration.Focused
+                }
+
+            assertEquals(TvHomeFocusCompletion(move.requestId, focused = true), completion)
+            assertEquals(listOf("first", "first", "first", "nearest"), attempts)
+        }
+
+    @Test
+    fun terminalHomeMoveFailureClearsPendingSoTheKeyCanStartANewAttempt() =
+        runTest {
+            val vertical = TvHomeVerticalFocusCoordinator(rows)
+            val first =
+                vertical.beginMove(
+                    TvHomeFocusOrigin.Row("portrait", "portrait-1"),
+                    TvHomeVerticalDirection.DOWN,
+                )!!
+
+            val completion = vertical.completeMove(first.requestId) { false }
+            val repeated =
+                vertical.beginMove(
+                    TvHomeFocusOrigin.Row("portrait", "portrait-1"),
+                    TvHomeVerticalDirection.DOWN,
+                )!!
+
+            assertEquals(TvHomeFocusCompletion(first.requestId, focused = false), completion)
+            assertNotEquals(first.requestId, repeated.requestId)
+        }
 }

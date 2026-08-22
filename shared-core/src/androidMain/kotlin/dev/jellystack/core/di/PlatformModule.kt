@@ -3,6 +3,7 @@ package dev.jellystack.core.di
 import android.content.Context
 import com.russhwolf.settings.Settings
 import com.russhwolf.settings.SharedPreferencesSettings
+import dev.jellystack.core.jellyfin.JellystackClientVersionProvider
 import dev.jellystack.core.security.SecureStoreEngine
 import dev.jellystack.core.security.SecureStoreEngineFactory
 import dev.jellystack.core.security.android.AndroidSecureStoreEngine
@@ -19,6 +20,16 @@ actual fun platformModule() =
             val context = androidContext()
             val preferences = context.getSharedPreferences("jellystack_prefs", Context.MODE_PRIVATE)
             SharedPreferencesSettings(preferences)
+        }
+        single<JellystackClientVersionProvider> {
+            val context = androidContext()
+            JellystackClientVersionProvider {
+                context.packageManager
+                    .getPackageInfo(context.packageName, 0)
+                    .versionName
+                    .orEmpty()
+                    .ifBlank { "unknown" }
+            }
         }
     }
 

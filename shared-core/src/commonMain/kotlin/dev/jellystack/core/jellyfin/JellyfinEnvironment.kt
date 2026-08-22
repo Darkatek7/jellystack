@@ -7,8 +7,13 @@ data class JellyfinEnvironment(
     val userId: String,
     val deviceId: String?,
     val deviceName: String,
+    val clientVersion: String = "unknown",
 )
 
 fun interface JellyfinEnvironmentProvider {
     suspend fun current(): JellyfinEnvironment?
+}
+
+fun interface JellystackClientVersionProvider {
+    fun versionName(): String
 }

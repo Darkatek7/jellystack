@@ -158,6 +158,7 @@ fun defaultJellyfinSessionApiFactory(
             baseUrl = environment.baseUrl,
             accessToken = environment.accessToken,
             deviceId = environment.deviceId,
+            clientVersion = environment.clientVersion,
         )
     }
 }

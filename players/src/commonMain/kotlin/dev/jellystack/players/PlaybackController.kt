@@ -263,6 +263,10 @@ class PlaybackController(
                         ),
                 )
             ensureCurrentPlayAttempt(attemptGeneration)
+            playerEngine.setSessionMetadata(
+                request.metadata,
+                request.artworkUrl(lastEnvironment?.baseUrl),
+            )
             playerEngine.prepare(
                 source = sourceWithPreferences,
                 startPositionMs = startingPosition,
@@ -1263,14 +1267,7 @@ class PlaybackController(
 
     fun currentSession(): PlaybackSession? = session
 
-    private fun artworkUrlFor(session: PlaybackSession): String? {
-        val metadata = session.request.metadata ?: return null
-        val explicitUrl = metadata.artworkUrl
-        if (explicitUrl != null) return explicitUrl
-        val primaryTag = metadata.primaryImageTag ?: return null
-        val environment = lastEnvironment ?: return null
-        return "${environment.baseUrl}/Items/${session.mediaId}/Images/Primary?tag=$primaryTag"
-    }
+    private fun artworkUrlFor(session: PlaybackSession): String? = session.request.artworkUrl(lastEnvironment?.baseUrl)
 
     private fun isRemoteConnected(): Boolean = castState is CastConnectionState.Connected
 

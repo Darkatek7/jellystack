@@ -69,6 +69,27 @@ enum class PlaybackStartPolicy {
     RESTART,
 }
 
+/** Artwork URL for the active session: explicit URL first, then the primary image tag. */
+fun PlaybackRequest.artworkUrl(baseUrl: String?): String? {
+    val metadata = metadata ?: return null
+    metadata.artworkUrl?.let { return it }
+    val tag = metadata.primaryImageTag ?: return null
+    val base = baseUrl?.takeIf(String::isNotBlank) ?: return null
+    return "$base/Items/$mediaId/Images/Primary?tag=$tag"
+}
+
+/** "Series · S1 · E2" style artist line; null when there is nothing beyond the title. */
+internal fun PlaybackMetadata.sessionArtistLine(): String? {
+    val series = seriesName?.takeIf(String::isNotBlank) ?: return null
+    val season = seasonNumber
+    val episode = episodeNumber
+    return if (season != null && episode != null) {
+        "$series · S$season · E$episode"
+    } else {
+        series
+    }
+}
+
 enum class PlaybackMediaKind {
     VIDEO,
     AUDIO,

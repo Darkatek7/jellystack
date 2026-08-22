@@ -22,4 +22,16 @@ class TvFocusMemoryTest {
         assertEquals("movie-3", memory.resolveItem("library:movies", listOf("movie-1", "movie-2", "movie-3")))
         assertNull(memory.resolveItem("missing", emptyList()))
     }
+
+    @Test
+    fun libraryPathsKeepIndependentGridSnapshots() {
+        val memory = TvFocusMemory()
+        val seasonOne = TvRoute.Library("shows").focusRouteKey(listOf("show", "season-1"))
+        val seasonTwo = TvRoute.Library("shows").focusRouteKey(listOf("show", "season-2"))
+        memory.remember(seasonOne, "grid", "episode-2", horizontalIndex = 1)
+        memory.remember(seasonTwo, "grid", "episode-8", horizontalIndex = 7)
+
+        assertEquals("episode-2", memory.restore(seasonOne)?.itemId)
+        assertEquals("episode-8", memory.restore(seasonTwo)?.itemId)
+    }
 }

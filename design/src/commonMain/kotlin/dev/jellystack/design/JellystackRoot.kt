@@ -220,6 +220,7 @@ import dev.jellystack.design.settings.SettingsConnectionHealth
 import dev.jellystack.design.settings.SettingsScreen
 import dev.jellystack.design.settings.SettingsSection
 import dev.jellystack.design.settings.SettingsUiState
+import dev.jellystack.design.settings.persistPlaybackSegmentSetting
 import dev.jellystack.design.settings.toSettingsConnectionUi
 import dev.jellystack.design.shell.JellystackShell
 import dev.jellystack.design.shell.JellystackShellAction
@@ -338,10 +339,9 @@ import jellystack_mobile.design.generated.resources.use_different_account
 import jellystack_mobile.design.generated.resources.username
 import jellystack_mobile.design.generated.resources.version_label
 import jellystack_mobile.design.generated.resources.view_changelog
-import jellystack_mobile.design.generated.resources.whats_new_0150_admin
-import jellystack_mobile.design.generated.resources.whats_new_0150_home_sections
-import jellystack_mobile.design.generated.resources.whats_new_0150_playback
-import jellystack_mobile.design.generated.resources.whats_new_0150_syncplay
+import jellystack_mobile.design.generated.resources.whats_new_0151_play_next
+import jellystack_mobile.design.generated.resources.whats_new_0151_segments
+import jellystack_mobile.design.generated.resources.whats_new_0151_settings
 import jellystack_mobile.design.generated.resources.whats_new_dialog_title
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -379,10 +379,9 @@ private const val OFF_SUBTITLE_TRACK_ID = "__off_subtitle__"
 @Composable
 private fun DefaultWhatsNewHighlights(): List<String> =
     listOf(
-        stringResource(Res.string.whats_new_0150_home_sections),
-        stringResource(Res.string.whats_new_0150_syncplay),
-        stringResource(Res.string.whats_new_0150_playback),
-        stringResource(Res.string.whats_new_0150_admin),
+        stringResource(Res.string.whats_new_0151_segments),
+        stringResource(Res.string.whats_new_0151_settings),
+        stringResource(Res.string.whats_new_0151_play_next),
     )
 
 internal enum class ServerFormType {
@@ -1807,7 +1806,7 @@ fun JellystackRoot(
                     val preferOfflineDetail = !forceRefresh && offlineStatus is DownloadStatus.Completed
                     val cachedDetail = browseRepository.cachedItemDetail(item.id)
                     val fallbackDetail = cachedDetail ?: item.toOfflineDetail()
-                    val isOfflineMode = browseState.errorMessage?.isNotBlank() == true
+                    val isOfflineMode = browseState.homeErrorMessage?.isNotBlank() == true
                     var remoteFailure: Throwable? = null
                     var usedFallbackForEmptyRemoteDetail = false
                     val detail: JellyfinItemDetail? =
@@ -2360,7 +2359,7 @@ fun JellystackRoot(
             }
     }
 
-    LaunchedEffect(detailState, browseState.errorMessage) {
+    LaunchedEffect(detailState, browseState.homeErrorMessage) {
         when (val state = detailState) {
             is JellyfinDetailUiState.Loaded -> {
                 val seriesId =
@@ -2375,7 +2374,7 @@ fun JellystackRoot(
                     return@LaunchedEffect
                 }
                 isDetailEpisodesLoading = true
-                val offlineMode = browseState.errorMessage?.isNotBlank() == true
+                val offlineMode = browseState.homeErrorMessage?.isNotBlank() == true
                 val cachedEpisodes = browseRepository.episodesForSeries(seriesId)
                 detailEpisodeCache = cachedEpisodes
                 if (cachedEpisodes.isNotEmpty()) {
@@ -3244,6 +3243,12 @@ fun JellystackRoot(
                                         appSettingsRepository.setMobileStreamingQuality(action.quality)
                                     is SettingsAction.SetAutoplayNextMode ->
                                         appSettingsRepository.setAutoplayNextMode(action.mode)
+                                    is SettingsAction.SetIntroSkipMode,
+                                    is SettingsAction.SetRecapSkipMode,
+                                    is SettingsAction.SetOutroSkipMode,
+                                    is SettingsAction.SetPreviewSkipMode,
+                                    is SettingsAction.SetCommercialSkipMode,
+                                    -> persistPlaybackSegmentSetting(action, appSettingsRepository)
                                     is SettingsAction.SetResumeMode -> appSettingsRepository.setResumeMode(action.mode)
                                     is SettingsAction.SetSeekBackSeconds ->
                                         appSettingsRepository.setSeekBackSeconds(action.seconds)

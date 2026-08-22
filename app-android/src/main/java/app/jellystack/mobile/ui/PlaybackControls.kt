@@ -77,6 +77,8 @@ internal object AndroidPlaybackTags {
     const val CAST_STATUS_LABEL = "cast_status_label"
     const val CAST_DISCONNECT_TOP = "cast_disconnect_top"
     const val TIMELINE = "player_timeline"
+    const val ACTIONS_CONTROLS = "phone_player_actions_controls"
+    const val ACTIONS_STANDALONE = "phone_player_actions_standalone"
     const val OPTIONS = "player_options_panel"
     const val AUDIO_SELECTOR = "player_audio_selector"
     const val SUBTITLE_SELECTOR = "player_subtitle_selector"

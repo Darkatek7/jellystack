@@ -42,6 +42,16 @@
     <string name="player_pause">Pause</string>
     <string name="player_seek_back">Seek back 10 seconds</string>
     <string name="player_seek_forward">Seek forward 30 seconds</string>
+    <string name="player_skip_intro">Skip intro</string>
+    <string name="player_skip_recap">Skip recap</string>
+    <string name="player_skip_preview">Skip preview</string>
+    <string name="player_skip_commercial">Skip commercial</string>
+    <string name="player_skip_credits">Skip credits</string>
+    <string name="player_play_next_episode">Play next episode</string>
+    <string name="player_up_next">Up next</string>
+    <string name="player_playing_in_seconds">Playing in %1$d seconds</string>
+    <string name="player_play_now">Play now</string>
+    <string name="player_cancel">Cancel</string>
     <string name="player_select_cast">Select cast destination</string>
     <string name="player_cast_disconnected">Cast, not connected</string>
     <string name="player_cast_connecting_accessibility">Cast, connecting</string>

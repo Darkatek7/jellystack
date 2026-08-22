@@ -9,13 +9,15 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+
+enum class LibraryLoadErrorKind { FIRST_PAGE, NEXT_PAGE }
 
 data class JellyfinHomeState(
     val isInitialLoading: Boolean = false,
     val isHomeLoading: Boolean = false,
+    val isLibraryLoading: Boolean = false,
     val isPageLoading: Boolean = false,
     val libraries: List<JellyfinLibrary> = emptyList(),
     val continueWatching: List<JellyfinItem> = emptyList(),
@@ -26,13 +28,18 @@ data class JellyfinHomeState(
     val libraryItems: List<JellyfinItem> = emptyList(),
     val currentPage: Int = 0,
     val endReached: Boolean = false,
-    val errorMessage: String? = null,
+    val homeErrorMessage: String? = null,
+    val libraryErrorMessage: String? = null,
+    val libraryErrorKind: LibraryLoadErrorKind? = null,
     val imageBaseUrl: String? = null,
     val imageAccessToken: String? = null,
     val totalLibraryItemCount: Long? = null,
     val favorites: Set<String> = emptySet(),
     val browsePath: List<LibraryBrowseEntry> = emptyList(),
-)
+) {
+    val errorMessage: String?
+        get() = homeErrorMessage ?: libraryErrorMessage
+}
 
 data class LibraryBrowseEntry(
     val id: String,
@@ -47,6 +54,25 @@ private data class LibraryPageSnapshot(
     val endReached: Boolean,
     val totalLibraryItemCount: Long?,
 )
+
+private data class HomeFeedResults(
+    val continueWatching: List<JellyfinItem>,
+    val nextUp: List<JellyfinItem>,
+    val recentShows: List<JellyfinItem>,
+    val recentMovies: List<JellyfinItem>,
+)
+
+private suspend fun <T> loadHomeFeed(
+    fallback: T,
+    request: suspend () -> T,
+): T =
+    try {
+        request()
+    } catch (cancellation: CancellationException) {
+        throw cancellation
+    } catch (_: Throwable) {
+        fallback
+    }
 
 private fun JellyfinHomeState.snapshot(): LibraryPageSnapshot =
     LibraryPageSnapshot(
@@ -70,13 +96,27 @@ fun JellyfinItem.isBrowseContainer(): Boolean =
             "collectionfolder",
         )
 
-class JellyfinBrowseCoordinator(
-    private val repository: JellyfinBrowseRepository,
+class JellyfinBrowseCoordinator internal constructor(
+    private val repository: JellyfinBrowseRepositoryApi,
     private val scope: CoroutineScope,
     private val favoritesStore: JellyfinFavoritesStoreApi,
     private val pageSize: Int = 30,
     private val autoBootstrap: Boolean = true,
 ) {
+    constructor(
+        repository: JellyfinBrowseRepository,
+        scope: CoroutineScope,
+        favoritesStore: JellyfinFavoritesStoreApi,
+        pageSize: Int = 30,
+        autoBootstrap: Boolean = true,
+    ) : this(
+        repository = repository as JellyfinBrowseRepositoryApi,
+        scope = scope,
+        favoritesStore = favoritesStore,
+        pageSize = pageSize,
+        autoBootstrap = autoBootstrap,
+    )
+
     private val mutableFavorites = MutableStateFlow<Set<String>>(favoritesStore.snapshot())
     val favorites: StateFlow<Set<String>> = mutableFavorites.asStateFlow()
 
@@ -93,13 +133,13 @@ class JellyfinBrowseCoordinator(
     }
 
     private val mutableState = MutableStateFlow(JellyfinHomeState(isInitialLoading = true, isHomeLoading = true))
-    private val loadMutex = Mutex()
     private var refreshJob: Job? = null
     private val browseHistory = ArrayDeque<LibraryPageSnapshot>()
     private var browseLoadGeneration = 0L
     private var browseLoadJob: Job? = null
     private var favoritesParentSnapshot: LibraryPageSnapshot? = null
     private var libraryListRefreshJob: Job? = null
+    private var homeLoadGeneration = 0L
 
     val state: StateFlow<JellyfinHomeState> = mutableState.asStateFlow()
 
@@ -113,164 +153,194 @@ class JellyfinBrowseCoordinator(
     }
 
     fun bootstrap(forceRefresh: Boolean) {
+        homeLoadGeneration += 1
+        val expectedHomeGeneration = homeLoadGeneration
+        refreshJob?.cancel()
+        libraryListRefreshJob?.cancel()
         invalidateBrowseLoad()
+        val bootstrapBrowseGeneration = browseLoadGeneration
         browseHistory.clear()
         favoritesParentSnapshot = null
-        libraryListRefreshJob?.cancel()
         libraryListRefreshJob = null
-        refreshJob?.cancel()
+        mutableState.update {
+            it.copy(
+                isInitialLoading = true,
+                isHomeLoading = true,
+                homeErrorMessage = null,
+                libraryErrorMessage = null,
+                libraryErrorKind = null,
+            )
+        }
         refreshJob =
             scope.launch {
-                loadMutex.withLock {
+                try {
                     val cachedLibraries = repository.listLibraries()
+                    if (expectedHomeGeneration != homeLoadGeneration) return@launch
                     val shouldRefreshLibraries =
                         forceRefresh ||
                             cachedLibraries.isEmpty() ||
                             cachedLibraries.all { it.primaryImageTag.isNullOrBlank() }
-                    val cachedState = loadCachedState()
+                    val cachedState = loadCachedState(cachedLibraries)
+                    if (expectedHomeGeneration != homeLoadGeneration) return@launch
                     val shouldRefresh = forceRefresh || cachedState == null || shouldRefreshLibraries
-                    if (cachedState != null) {
-                        mutableState.value =
+                    if (cachedState != null && bootstrapBrowseGeneration == browseLoadGeneration) {
+                        updateHomeStateIfCurrent(expectedHomeGeneration) {
                             cachedState.copy(
                                 isInitialLoading = shouldRefresh,
                                 isHomeLoading = shouldRefresh,
-                                errorMessage = null,
+                                isLibraryLoading = false,
+                                homeErrorMessage = null,
+                                libraryErrorMessage = null,
+                                libraryErrorKind = null,
+                                favorites = mutableFavorites.value,
                             )
+                        }
                     } else {
-                        mutableState.value =
-                            mutableState.value.copy(
+                        updateHomeStateIfCurrent(expectedHomeGeneration) {
+                            it.copy(
                                 isInitialLoading = true,
                                 isHomeLoading = true,
-                                errorMessage = null,
+                                homeErrorMessage = null,
                             )
+                        }
                     }
-                    try {
-                        val libraries =
-                            if (shouldRefreshLibraries) {
-                                repository.refreshLibraries()
-                            } else {
-                                cachedLibraries
-                            }
-                        val selectedId = selectDefaultLibrary(libraries)
-                        val imageBaseUrl = repository.currentServerBaseUrl()
-                        val imageAccessToken = repository.currentAccessToken()
-                        val showsLibraryId = preferredLibraryId(libraries, "tvshows", "series") ?: selectedId
-                        val moviesLibraryId = preferredLibraryId(libraries, "movies") ?: selectedId
+                    val libraries =
+                        if (shouldRefreshLibraries) {
+                            repository.refreshLibraries()
+                        } else {
+                            cachedLibraries
+                        }
+                    if (expectedHomeGeneration != homeLoadGeneration) return@launch
+                    val selectedId = selectDefaultLibrary(libraries)
+                    val imageBaseUrl = repository.currentServerBaseUrl()
+                    if (expectedHomeGeneration != homeLoadGeneration) return@launch
+                    val imageAccessToken = repository.currentAccessToken()
+                    if (expectedHomeGeneration != homeLoadGeneration) return@launch
+                    val showsLibraryId = preferredLibraryId(libraries, "tvshows", "series") ?: selectedId
+                    val moviesLibraryId = preferredLibraryId(libraries, "movies") ?: selectedId
 
-                        val (continueWatching, nextUp, firstPage) =
-                            coroutineScope {
-                                val continueWatchingDeferred =
-                                    async {
+                    updateHomeStateIfCurrent(expectedHomeGeneration) { current ->
+                        if (bootstrapBrowseGeneration == browseLoadGeneration) {
+                            val cachedItems =
+                                cachedState
+                                    ?.takeIf { it.selectedLibraryId == selectedId }
+                                    ?.libraryItems
+                                    .orEmpty()
+                            current.copy(
+                                libraries = libraries,
+                                selectedLibraryId = selectedId,
+                                libraryItems = cachedItems,
+                                currentPage = 0,
+                                endReached = selectedId == null || cachedItems.size < pageSize,
+                                totalLibraryItemCount = cachedState?.totalLibraryItemCount,
+                                imageBaseUrl = imageBaseUrl,
+                                imageAccessToken = imageAccessToken,
+                                homeErrorMessage = null,
+                            )
+                        } else {
+                            current.copy(
+                                libraries = libraries,
+                                imageBaseUrl = imageBaseUrl,
+                                imageAccessToken = imageAccessToken,
+                            )
+                        }
+                    }
+                    if (
+                        expectedHomeGeneration == homeLoadGeneration &&
+                        selectedId != null &&
+                        bootstrapBrowseGeneration == browseLoadGeneration
+                    ) {
+                        launchLibraryPageLoad(page = 0, refresh = true)
+                    }
+
+                    val (continueWatching, nextUp, recentShows, recentMovies) =
+                        coroutineScope {
+                            val continueWatchingDeferred =
+                                async {
+                                    loadHomeFeed(cachedState?.continueWatching.orEmpty()) {
                                         if (forceRefresh || cachedState?.continueWatching.isNullOrEmpty()) {
                                             repository.refreshContinueWatching(limit = HOME_SECTION_ITEM_LIMIT)
                                         } else {
                                             cachedState!!.continueWatching
                                         }
                                     }
-                                val nextUpDeferred =
-                                    async {
-                                        val fallback =
-                                            cachedState?.nextUp
-                                                ?: repository.cachedNextUp(limit = HOME_SECTION_ITEM_LIMIT)
-                                        try {
-                                            repository.refreshNextUp(
-                                                limit = HOME_SECTION_ITEM_LIMIT,
-                                                libraryId = showsLibraryId,
-                                            )
-                                        } catch (cancellation: CancellationException) {
-                                            throw cancellation
-                                        } catch (_: Throwable) {
-                                            fallback
-                                        }
+                                }
+                            val nextUpDeferred =
+                                async {
+                                    val fallback =
+                                        cachedState?.nextUp
+                                            ?: repository.cachedNextUp(limit = HOME_SECTION_ITEM_LIMIT)
+                                    loadHomeFeed(fallback) {
+                                        repository.refreshNextUp(
+                                            limit = HOME_SECTION_ITEM_LIMIT,
+                                            libraryId = showsLibraryId,
+                                        )
                                     }
-                                val firstPageDeferred =
-                                    selectedId?.let { id ->
-                                        async {
-                                            val cached =
-                                                cachedState
-                                                    ?.takeIf { it.selectedLibraryId == id }
-                                                    ?.libraryItems
-                                                    ?: repository.cachedLibraryPage(id, page = 0, pageSize = pageSize)
-                                            try {
-                                                repository.loadLibraryPage(id, page = 0, pageSize = pageSize, refresh = true)
-                                            } catch (cancellation: CancellationException) {
-                                                throw cancellation
-                                            } catch (_: Throwable) {
-                                                LibraryPage(
-                                                    items = cached,
-                                                    totalRecordCount = cachedState?.totalLibraryItemCount,
-                                                )
-                                            }
-                                        }
+                                }
+                            val recentShowsDeferred =
+                                async {
+                                    loadHomeFeed(cachedState?.recentShows.orEmpty()) {
+                                        showsLibraryId
+                                            ?.let { id ->
+                                                if (forceRefresh || cachedState?.recentShows.isNullOrEmpty()) {
+                                                    repository.refreshRecentlyAddedShows(id, limit = HOME_SECTION_ITEM_LIMIT)
+                                                } else {
+                                                    cachedState!!.recentShows
+                                                }
+                                            }.orEmpty()
                                     }
-
-                                val continueWatchingResult = continueWatchingDeferred.await()
-                                val nextUpResult = nextUpDeferred.await()
-                                val firstPageResult: LibraryPage =
-                                    firstPageDeferred?.await() ?: LibraryPage(emptyList(), null)
-                                Triple(continueWatchingResult, nextUpResult, firstPageResult)
-                            }
-                        val (firstPageItems, firstPageTotal) = firstPage
-                        val newTotalBootstrap = firstPageTotal ?: mutableState.value.totalLibraryItemCount
-                        JellystackLog.d(
-                            "Home bootstrap loaded ${continueWatching.size} continueWatching items and ${nextUp.size} nextUp items",
+                                }
+                            val recentMoviesDeferred =
+                                async {
+                                    loadHomeFeed(cachedState?.recentMovies.orEmpty()) {
+                                        moviesLibraryId
+                                            ?.let { id ->
+                                                if (forceRefresh || cachedState?.recentMovies.isNullOrEmpty()) {
+                                                    repository.refreshRecentlyAddedMovies(id, limit = HOME_SECTION_ITEM_LIMIT)
+                                                } else {
+                                                    cachedState!!.recentMovies
+                                                }
+                                            }.orEmpty()
+                                    }
+                                }
+                            HomeFeedResults(
+                                continueWatching = continueWatchingDeferred.await(),
+                                nextUp = nextUpDeferred.await(),
+                                recentShows = recentShowsDeferred.await(),
+                                recentMovies = recentMoviesDeferred.await(),
+                            )
+                        }
+                    if (expectedHomeGeneration != homeLoadGeneration) return@launch
+                    JellystackLog.d(
+                        "Home bootstrap loaded ${continueWatching.size} continueWatching items and ${nextUp.size} nextUp items",
+                    )
+                    updateHomeStateIfCurrent(expectedHomeGeneration) { current ->
+                        current.copy(
+                            isInitialLoading = false,
+                            isHomeLoading = false,
+                            homeErrorMessage = null,
+                            continueWatching = continueWatching,
+                            nextUp = nextUp,
+                            recentShows = recentShows,
+                            recentMovies = recentMovies,
                         )
-                        val recentShows =
-                            showsLibraryId?.let { id ->
-                                if (forceRefresh || cachedState?.recentShows.isNullOrEmpty()) {
-                                    repository.refreshRecentlyAddedShows(id, limit = HOME_SECTION_ITEM_LIMIT)
-                                } else {
-                                    cachedState!!.recentShows
-                                }
-                            } ?: emptyList()
-                        val recentMovies =
-                            moviesLibraryId?.let { id ->
-                                if (forceRefresh || cachedState?.recentMovies.isNullOrEmpty()) {
-                                    repository.refreshRecentlyAddedMovies(id, limit = HOME_SECTION_ITEM_LIMIT)
-                                } else {
-                                    cachedState!!.recentMovies
-                                }
-                            } ?: emptyList()
-
-                        mutableState.value =
-                            mutableState.value.copy(
-                                isInitialLoading = false,
-                                isHomeLoading = false,
-                                isPageLoading = false,
-                                libraries = libraries,
-                                continueWatching = continueWatching,
-                                nextUp = nextUp,
-                                recentShows = recentShows,
-                                recentMovies = recentMovies,
-                                selectedLibraryId = selectedId,
-                                libraryItems = firstPageItems,
-                                currentPage = 0,
-                                endReached = firstPageItems.size < pageSize,
-                                errorMessage = null,
-                                imageBaseUrl = imageBaseUrl,
-                                imageAccessToken = imageAccessToken,
-                                totalLibraryItemCount = newTotalBootstrap,
-                            )
-                    } catch (cancellation: CancellationException) {
-                        throw cancellation
-                    } catch (t: Throwable) {
-                        val imageBaseUrl = repository.currentServerBaseUrl()
-                        val imageAccessToken = repository.currentAccessToken()
-                        mutableState.value =
-                            mutableState.value.copy(
-                                isInitialLoading = false,
-                                isHomeLoading = false,
-                                isPageLoading = false,
-                                errorMessage = t.message?.takeIf { it.isNotBlank() } ?: "",
-                                imageBaseUrl = imageBaseUrl,
-                                imageAccessToken = imageAccessToken,
-                            )
+                    }
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (t: Throwable) {
+                    updateHomeStateIfCurrent(expectedHomeGeneration) { current ->
+                        current.copy(
+                            isInitialLoading = false,
+                            isHomeLoading = false,
+                            homeErrorMessage = t.message?.takeIf { it.isNotBlank() } ?: "",
+                        )
                     }
                 }
             }
     }
 
     fun shutdown() {
+        homeLoadGeneration += 1
         invalidateBrowseLoad()
         browseHistory.clear()
         favoritesParentSnapshot = null
@@ -278,6 +348,14 @@ class JellyfinBrowseCoordinator(
         libraryListRefreshJob = null
         refreshJob?.cancel()
         refreshJob = null
+        mutableState.update {
+            it.copy(
+                isInitialLoading = false,
+                isHomeLoading = false,
+                isLibraryLoading = false,
+                isPageLoading = false,
+            )
+        }
     }
 
     fun selectLibrary(libraryId: String) {
@@ -288,40 +366,57 @@ class JellyfinBrowseCoordinator(
         invalidateBrowseLoad()
         browseHistory.clear()
         favoritesParentSnapshot = null
-        scope.launch {
-            loadMutex.withLock {
-                mutableState.value =
-                    mutableState.value.copy(
-                        selectedLibraryId = libraryId,
-                        browsePath = emptyList(),
-                        libraryItems = emptyList(),
-                        currentPage = 0,
-                        endReached = false,
-                        isInitialLoading = true,
-                        errorMessage = null,
-                    )
-            }
-            launchLibraryPageLoad(page = 0, refresh = true)
+        mutableState.update {
+            it.copy(
+                selectedLibraryId = libraryId,
+                browsePath = emptyList(),
+                libraryItems = emptyList(),
+                currentPage = 0,
+                endReached = false,
+                totalLibraryItemCount = null,
+                libraryErrorMessage = null,
+                libraryErrorKind = null,
+            )
         }
+        launchLibraryPageLoad(page = 0, refresh = true)
     }
 
     fun refreshSelectedLibrary() {
+        if (mutableState.value.selectedLibraryId == null) return
         invalidateBrowseLoad()
         launchLibraryPageLoad(page = 0, refresh = true)
     }
 
     fun refreshLibraries() {
+        homeLoadGeneration += 1
+        val expectedHomeGeneration = homeLoadGeneration
+        refreshJob?.cancel()
+        refreshJob = null
         libraryListRefreshJob?.cancel()
+        mutableState.update {
+            it.copy(
+                isInitialLoading = false,
+                isHomeLoading = false,
+                homeErrorMessage = null,
+            )
+        }
         libraryListRefreshJob =
             scope.launch {
                 try {
                     val libraries = repository.refreshLibraries()
-                    mutableState.value = mutableState.value.copy(libraries = libraries, errorMessage = null)
+                    updateHomeStateIfCurrent(expectedHomeGeneration) { current ->
+                        current.copy(libraries = libraries, homeErrorMessage = null)
+                    }
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (t: Throwable) {
-                    mutableState.value =
-                        mutableState.value.copy(errorMessage = t.message?.takeIf { it.isNotBlank() } ?: "")
+                    updateHomeStateIfCurrent(expectedHomeGeneration) { current ->
+                        current.copy(
+                            isInitialLoading = false,
+                            isHomeLoading = false,
+                            homeErrorMessage = t.message?.takeIf { it.isNotBlank() } ?: "",
+                        )
+                    }
                 }
             }
     }
@@ -338,9 +433,10 @@ class JellyfinBrowseCoordinator(
                 currentPage = 0,
                 endReached = false,
                 totalLibraryItemCount = null,
-                isInitialLoading = false,
+                isLibraryLoading = false,
                 isPageLoading = false,
-                errorMessage = null,
+                libraryErrorMessage = null,
+                libraryErrorKind = null,
             )
         launchLibraryPageLoad(page = 0, refresh = true)
     }
@@ -358,18 +454,20 @@ class JellyfinBrowseCoordinator(
                 currentPage = parent.currentPage,
                 endReached = parent.endReached,
                 totalLibraryItemCount = parent.totalLibraryItemCount,
-                isInitialLoading = false,
+                isLibraryLoading = false,
                 isPageLoading = false,
-                errorMessage = null,
+                libraryErrorMessage = null,
+                libraryErrorKind = null,
             )
         return true
     }
 
     fun loadNextPage() {
         val current = mutableState.value
-        if (current.selectedLibraryId == null || current.isPageLoading || current.endReached) {
+        if (current.selectedLibraryId == null || current.isLibraryLoading || current.isPageLoading || current.endReached) {
             return
         }
+        invalidateBrowseLoad()
         launchLibraryPageLoad(page = current.currentPage + 1, refresh = false)
     }
 
@@ -377,6 +475,7 @@ class JellyfinBrowseCoordinator(
         browseLoadGeneration += 1
         browseLoadJob?.cancel()
         browseLoadJob = null
+        mutableState.update { it.copy(isLibraryLoading = false, isPageLoading = false) }
     }
 
     private fun launchLibraryPageLoad(
@@ -386,6 +485,14 @@ class JellyfinBrowseCoordinator(
     ) {
         val expectedGeneration = browseLoadGeneration
         browseLoadJob?.cancel()
+        mutableState.update {
+            it.copy(
+                isLibraryLoading = page == 0,
+                isPageLoading = page > 0,
+                libraryErrorMessage = null,
+                libraryErrorKind = null,
+            )
+        }
         browseLoadJob =
             scope.launch {
                 loadLibraryPage(
@@ -403,98 +510,147 @@ class JellyfinBrowseCoordinator(
         filters: String? = null,
         expectedGeneration: Long,
     ) {
-        loadMutex.withLock {
-            if (expectedGeneration != browseLoadGeneration) return@withLock
-            // When a filters value is supplied (e.g. Favorites) we use a sentinel libraryId so the
-            // storage paths still work without binding the result to a real library on the server.
-            val selectedId =
-                if (filters != null) {
-                    FAVORITES_LIBRARY_SENTINEL
-                } else {
-                    mutableState.value.selectedLibraryId ?: return
+        if (expectedGeneration != browseLoadGeneration) return
+        // When a filters value is supplied (e.g. Favorites) we use a sentinel libraryId so the
+        // storage paths still work without binding the result to a real library on the server.
+        val selectedId =
+            if (filters != null) {
+                FAVORITES_LIBRARY_SENTINEL
+            } else {
+                mutableState.value.selectedLibraryId ?: return
+            }
+        val stateBefore = mutableState.value
+        val expectedSelectedLibraryId = stateBefore.selectedLibraryId
+        val expectedBrowsePath = stateBefore.browsePath
+        var imageBaseUrl = stateBefore.imageBaseUrl
+        var imageAccessToken = stateBefore.imageAccessToken
+        try {
+            imageBaseUrl = repository.currentServerBaseUrl()
+            if (!isBrowseContextCurrent(expectedGeneration, expectedSelectedLibraryId, expectedBrowsePath)) return
+            imageAccessToken = repository.currentAccessToken()
+            if (!isBrowseContextCurrent(expectedGeneration, expectedSelectedLibraryId, expectedBrowsePath)) return
+            val loadingPublished =
+                updateBrowseStateIfCurrent(expectedGeneration, expectedSelectedLibraryId, expectedBrowsePath) { current ->
+                    current.copy(
+                        isLibraryLoading = page == 0,
+                        isPageLoading = page > 0,
+                        libraryErrorMessage = null,
+                        libraryErrorKind = null,
+                        imageBaseUrl = imageBaseUrl,
+                        imageAccessToken = imageAccessToken,
+                    )
                 }
-            val stateBefore = mutableState.value
-            val imageBaseUrl = repository.currentServerBaseUrl()
-            val imageAccessToken = repository.currentAccessToken()
-            mutableState.value =
-                stateBefore.copy(
-                    isInitialLoading = refresh && page == 0,
-                    isPageLoading = !refresh,
-                    errorMessage = null,
-                    imageBaseUrl = imageBaseUrl,
-                    imageAccessToken = imageAccessToken,
-                )
-            try {
-                val requestPage: suspend () -> LibraryPage = {
-                    stateBefore.browsePath.lastOrNull()?.let { parent ->
-                        repository.loadChildrenPage(
-                            libraryId = selectedId,
-                            parentId = parent.id,
-                            page = page,
-                            pageSize = pageSize,
-                            refresh = refresh,
-                        )
-                    } ?: repository.loadLibraryPage(
+            if (!loadingPublished) return
+            val requestPage: suspend () -> LibraryPage = {
+                stateBefore.browsePath.lastOrNull()?.let { parent ->
+                    repository.loadChildrenPage(
                         libraryId = selectedId,
+                        parentId = parent.id,
                         page = page,
                         pageSize = pageSize,
                         refresh = refresh,
-                        filters = filters,
                     )
+                } ?: repository.loadLibraryPage(
+                    libraryId = selectedId,
+                    page = page,
+                    pageSize = pageSize,
+                    refresh = refresh,
+                    filters = filters,
+                )
+            }
+            val libraryPage = requestPage()
+            val (items, totalRecordCount) = libraryPage
+            val newTotal =
+                when {
+                    page == 0 && refresh && filters == null -> totalRecordCount ?: stateBefore.totalLibraryItemCount
+                    else -> stateBefore.totalLibraryItemCount
                 }
-                val libraryPage = requestPage.retryOnce()
-                val (items, totalRecordCount) = libraryPage
-                val totalCandidate = totalRecordCount
-                val newTotal =
-                    when {
-                        page == 0 && refresh && filters == null -> totalCandidate ?: stateBefore.totalLibraryItemCount
-                        else -> stateBefore.totalLibraryItemCount
-                    }
-                val merged =
-                    if (page == 0) {
-                        items
-                    } else {
-                        (stateBefore.libraryItems + items).distinctBy { it.id }
-                    }
-                if (expectedGeneration != browseLoadGeneration) return@withLock
-                mutableState.value =
-                    mutableState.value.copy(
-                        isInitialLoading = false,
-                        isPageLoading = false,
-                        libraryItems = merged,
-                        currentPage = page,
-                        endReached = items.size < pageSize,
-                        imageBaseUrl = imageBaseUrl,
-                        imageAccessToken = imageAccessToken,
-                        totalLibraryItemCount = newTotal,
-                    )
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (t: Throwable) {
-                if (expectedGeneration != browseLoadGeneration) return@withLock
-                mutableState.value =
-                    mutableState.value.copy(
-                        isInitialLoading = false,
-                        isPageLoading = false,
-                        errorMessage = t.message?.takeIf { it.isNotBlank() } ?: "",
-                        imageBaseUrl = imageBaseUrl,
-                        imageAccessToken = imageAccessToken,
-                    )
+            val merged =
+                if (page == 0) {
+                    items
+                } else {
+                    (stateBefore.libraryItems + items).distinctBy { it.id }
+                }
+            updateBrowseStateIfCurrent(expectedGeneration, expectedSelectedLibraryId, expectedBrowsePath) { current ->
+                current.copy(
+                    isLibraryLoading = false,
+                    isPageLoading = false,
+                    libraryItems = merged,
+                    currentPage = page,
+                    endReached = items.size < pageSize,
+                    imageBaseUrl = imageBaseUrl,
+                    imageAccessToken = imageAccessToken,
+                    totalLibraryItemCount = newTotal,
+                    libraryErrorMessage = null,
+                    libraryErrorKind = null,
+                )
+            }
+        } catch (cancellation: CancellationException) {
+            updateBrowseStateIfCurrent(expectedGeneration, expectedSelectedLibraryId, expectedBrowsePath) { current ->
+                current.copy(isLibraryLoading = false, isPageLoading = false)
+            }
+            throw cancellation
+        } catch (t: Throwable) {
+            updateBrowseStateIfCurrent(expectedGeneration, expectedSelectedLibraryId, expectedBrowsePath) { current ->
+                current.copy(
+                    isLibraryLoading = false,
+                    isPageLoading = false,
+                    libraryErrorMessage = t.message?.takeIf { it.isNotBlank() } ?: "",
+                    libraryErrorKind =
+                        if (page == 0) {
+                            LibraryLoadErrorKind.FIRST_PAGE
+                        } else {
+                            LibraryLoadErrorKind.NEXT_PAGE
+                        },
+                    imageBaseUrl = imageBaseUrl,
+                    imageAccessToken = imageAccessToken,
+                )
             }
         }
     }
 
-    private suspend fun (suspend () -> LibraryPage).retryOnce(): LibraryPage =
-        try {
-            invoke()
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (_: Throwable) {
-            invoke()
-        }
+    private fun isBrowseContextCurrent(
+        expectedGeneration: Long,
+        expectedSelectedLibraryId: String?,
+        expectedBrowsePath: List<LibraryBrowseEntry>,
+    ): Boolean {
+        val current = mutableState.value
+        return expectedGeneration == browseLoadGeneration &&
+            current.selectedLibraryId == expectedSelectedLibraryId &&
+            current.browsePath == expectedBrowsePath
+    }
 
-    private suspend fun loadCachedState(): JellyfinHomeState? {
-        val libraries = repository.listLibraries()
+    private fun updateBrowseStateIfCurrent(
+        expectedGeneration: Long,
+        expectedSelectedLibraryId: String?,
+        expectedBrowsePath: List<LibraryBrowseEntry>,
+        transform: (JellyfinHomeState) -> JellyfinHomeState,
+    ): Boolean {
+        while (true) {
+            val current = mutableState.value
+            if (
+                expectedGeneration != browseLoadGeneration ||
+                current.selectedLibraryId != expectedSelectedLibraryId ||
+                current.browsePath != expectedBrowsePath
+            ) {
+                return false
+            }
+            if (mutableState.compareAndSet(current, transform(current))) return true
+        }
+    }
+
+    private fun updateHomeStateIfCurrent(
+        expectedGeneration: Long,
+        transform: (JellyfinHomeState) -> JellyfinHomeState,
+    ): Boolean {
+        while (true) {
+            val current = mutableState.value
+            if (expectedGeneration != homeLoadGeneration) return false
+            if (mutableState.compareAndSet(current, transform(current))) return true
+        }
+    }
+
+    private suspend fun loadCachedState(libraries: List<JellyfinLibrary>): JellyfinHomeState? {
         if (libraries.isEmpty()) return null
         val selectedId = selectDefaultLibrary(libraries)
         val imageBaseUrl = repository.currentServerBaseUrl()
@@ -521,7 +677,6 @@ class JellyfinBrowseCoordinator(
             libraryItems = firstPage,
             currentPage = 0,
             endReached = selectedId == null || firstPage.size < pageSize,
-            errorMessage = null,
             imageBaseUrl = imageBaseUrl,
             imageAccessToken = imageAccessToken,
         )
@@ -678,9 +833,10 @@ class JellyfinBrowseCoordinator(
                 currentPage = parent.currentPage,
                 endReached = parent.endReached,
                 totalLibraryItemCount = parent.totalLibraryItemCount,
-                isInitialLoading = false,
+                isLibraryLoading = false,
                 isPageLoading = false,
-                errorMessage = null,
+                libraryErrorMessage = null,
+                libraryErrorKind = null,
             )
         return true
     }

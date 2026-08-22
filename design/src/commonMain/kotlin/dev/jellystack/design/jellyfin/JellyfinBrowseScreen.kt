@@ -128,6 +128,7 @@ import dev.jellystack.core.jellyfin.JellyfinHomeState
 import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.JellyfinItemDetail
 import dev.jellystack.core.jellyfin.JellyfinLibrary
+import dev.jellystack.core.jellyfin.LibraryLoadErrorKind
 import dev.jellystack.core.jellyfin.SpotlightCandidate
 import dev.jellystack.core.jellyfin.buildSpotlightCandidates
 import dev.jellystack.core.jellyfin.isBrowseContainer
@@ -212,6 +213,7 @@ import jellystack_mobile.design.generated.resources.ready_to_play
 import jellystack_mobile.design.generated.resources.remove_from_favorites
 import jellystack_mobile.design.generated.resources.remove_server
 import jellystack_mobile.design.generated.resources.resume
+import jellystack_mobile.design.generated.resources.retry
 import jellystack_mobile.design.generated.resources.retry_download
 import jellystack_mobile.design.generated.resources.search_library
 import jellystack_mobile.design.generated.resources.season
@@ -299,6 +301,12 @@ internal fun JellyfinBrowseScreen(
     spotlightEligibilityNow: Instant? = null,
 ) {
     val shellDestination = libraryNavigationState.destination
+    val onRetryLibraryError =
+        if (state.libraryErrorKind == LibraryLoadErrorKind.NEXT_PAGE) {
+            onLoadMore
+        } else {
+            onRefresh
+        }
     val responsiveProfile = LocalResponsiveProfile.current
     val layoutDirection = LocalLayoutDirection.current
     val listPadding =
@@ -314,7 +322,7 @@ internal fun JellyfinBrowseScreen(
         )
     val pullRefreshState =
         rememberPullRefreshState(
-            refreshing = state.isInitialLoading,
+            refreshing = if (showLibraryItems) state.isLibraryLoading else state.isInitialLoading,
             onRefresh = onRefresh,
         )
     val showsLibrary =
@@ -459,8 +467,8 @@ internal fun JellyfinBrowseScreen(
                 remember(downloadedMedia) {
                     downloadedMedia.isNotEmpty()
                 }
-            val isOffline = state.errorMessage?.isNotBlank() == true
-            val showSkeleton = state.isInitialLoading && state.libraryItems.isEmpty()
+            val isOffline = state.homeErrorMessage?.isNotBlank() == true
+            val showSkeleton = state.isLibraryLoading && state.libraryItems.isEmpty()
             val librarySeriesGroups =
                 remember(state.libraryItems, state.recentShows, isTvLibrary) {
                     val sourceItems = if (isTvLibrary && state.libraryItems.isNotEmpty()) state.libraryItems else state.recentShows
@@ -489,7 +497,8 @@ internal fun JellyfinBrowseScreen(
                     isPagedLibraryDestination &&
                         !state.endReached &&
                         !state.isPageLoading &&
-                        !state.isInitialLoading &&
+                        !state.isLibraryLoading &&
+                        state.libraryErrorMessage == null &&
                         state.libraryItems.isNotEmpty(),
                 onLoadMore = onLoadMore,
             )
@@ -553,13 +562,14 @@ internal fun JellyfinBrowseScreen(
                                         LibraryLandingHeader()
                                     }
                                     if (
-                                        state.errorMessage != null ||
+                                        state.homeErrorMessage != null ||
                                         (state.selectedLibraryId == null && state.libraries.isNotEmpty()) ||
                                         state.libraries.isEmpty()
                                     ) {
                                         item(span = { GridItemSpan(maxLineSpan) }) {
                                             StatusBanner(
                                                 state = state,
+                                                errorMessage = state.homeErrorMessage,
                                                 onRetry = onRefresh,
                                                 onConnect = onConnectServer,
                                             )
@@ -597,7 +607,7 @@ internal fun JellyfinBrowseScreen(
                                         )
                                     }
                                     if (
-                                        !state.isInitialLoading &&
+                                        !state.isLibraryLoading &&
                                         !isResolvingVisibleLibrarySelection &&
                                         libraryMovieItems.isEmpty() &&
                                         librarySeriesGroups.isEmpty() &&
@@ -651,7 +661,7 @@ internal fun JellyfinBrowseScreen(
                                 }
                                 ShellLibraryDestination.Section(ShellLibrarySection.Favorites) -> {
                                     val favoriteItems = state.libraryItems
-                                    val isFavoritesLoading = state.isInitialLoading || state.isPageLoading
+                                    val isFavoritesLoading = state.isLibraryLoading || state.isPageLoading
                                     if (!isFavoritesLoading && favoriteItems.isEmpty()) {
                                         item(span = { GridItemSpan(maxLineSpan) }) {
                                             LibraryEmptyState(
@@ -727,7 +737,7 @@ internal fun JellyfinBrowseScreen(
                                                 filteredLibraryItems.isEmpty()
                                             }
                                     val libraryIsEmpty = trimmedQuery.isBlank() && !backingItemsExist
-                                    if (!state.isInitialLoading && (libraryIsEmpty || noMatches)) {
+                                    if (!state.isLibraryLoading && (libraryIsEmpty || noMatches)) {
                                         item(span = { GridItemSpan(maxLineSpan) }) {
                                             LibraryEmptyState(
                                                 title =
@@ -815,13 +825,23 @@ internal fun JellyfinBrowseScreen(
                                 is ShellLibraryDestination.Section ->
                                     error("Unsupported library section: ${shellDestination.section}")
                             }
+                            if (shellDestination != ShellLibraryDestination.Root) {
+                                state.libraryErrorMessage?.let { message ->
+                                    item(span = { GridItemSpan(maxLineSpan) }) {
+                                        LibraryErrorBanner(
+                                            message = message,
+                                            onRetry = onRetryLibraryError,
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
 
                 if (!showSkeleton) {
                     PullRefreshIndicator(
-                        refreshing = state.isInitialLoading,
+                        refreshing = state.isLibraryLoading,
                         state = pullRefreshState,
                         modifier =
                             Modifier
@@ -956,7 +976,12 @@ internal fun JellyfinBrowseScreen(
 
         LoadMoreListener(
             listState = listState,
-            shouldLoadMore = !state.endReached && !state.isPageLoading && !state.isInitialLoading && state.libraryItems.isNotEmpty(),
+            shouldLoadMore =
+                !state.endReached &&
+                    !state.isPageLoading &&
+                    !state.isLibraryLoading &&
+                    state.libraryErrorMessage == null &&
+                    state.libraryItems.isNotEmpty(),
             onLoadMore = onLoadMore,
         )
 
@@ -981,13 +1006,14 @@ internal fun JellyfinBrowseScreen(
                         verticalArrangement = Arrangement.spacedBy(24.dp),
                     ) {
                         if (
-                            state.errorMessage != null ||
+                            state.homeErrorMessage != null ||
                             (state.selectedLibraryId == null && state.libraries.isNotEmpty()) ||
                             state.libraries.isEmpty()
                         ) {
                             item(key = "status") {
                                 StatusBanner(
                                     state = state,
+                                    errorMessage = state.homeErrorMessage,
                                     onRetry = onRefresh,
                                     onConnect = onConnectServer,
                                 )
@@ -3904,12 +3930,13 @@ internal fun buildImageUrl(
 @Composable
 private fun StatusBanner(
     state: JellyfinHomeState,
+    errorMessage: String?,
     onRetry: () -> Unit,
     onConnect: () -> Unit,
 ) {
     when {
-        state.errorMessage != null -> {
-            val message = state.errorMessage.orEmpty().ifBlank { stringResource(Res.string.something_went_wrong) }
+        errorMessage != null -> {
+            val message = errorMessage.ifBlank { stringResource(Res.string.something_went_wrong) }
             AssistChip(
                 onClick = onRetry,
                 label = { Text(message) },
@@ -3940,6 +3967,27 @@ private fun StatusBanner(
                 label = { Text(stringResource(Res.string.library_connect_server_status)) },
             )
         else -> Spacer(modifier = Modifier.height(1.dp))
+    }
+}
+
+@Composable
+private fun LibraryErrorBanner(
+    message: String,
+    onRetry: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = message.ifBlank { stringResource(Res.string.something_went_wrong) },
+            color = MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        TextButton(onClick = onRetry) {
+            Text(stringResource(Res.string.retry))
+        }
     }
 }
 

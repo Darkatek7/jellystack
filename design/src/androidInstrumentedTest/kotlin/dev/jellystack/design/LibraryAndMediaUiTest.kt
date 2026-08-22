@@ -65,6 +65,7 @@ import dev.jellystack.core.jellyfin.JellyfinMediaSource
 import dev.jellystack.core.jellyfin.JellyfinMediaStream
 import dev.jellystack.core.jellyfin.JellyfinMediaStreamType
 import dev.jellystack.core.jellyfin.JellyfinPerson
+import dev.jellystack.core.jellyfin.LibraryLoadErrorKind
 import dev.jellystack.core.jellyfin.MediaDetailEnrichment
 import dev.jellystack.core.jellyfin.SpotlightCandidate
 import dev.jellystack.core.jellyseerr.JellyseerrLanguageProfiles
@@ -221,6 +222,102 @@ class LibraryAndMediaUiTest {
         }
 
         composeRule.onNodeWithText("No downloads yet").assertExists()
+    }
+
+    @Test
+    fun retainedItemsFirstPageErrorRetryDispatchesRefresh() {
+        var refreshRequests = 0
+        var nextPageRequests = 0
+        val retained =
+            (0 until 24).map { index ->
+                movieItem("retained-$index", "Retained movie $index", "2026-06-28T12:00:00Z")
+            }
+        composeRule.setContent {
+            JellystackTheme(isDarkTheme = false) {
+                JellyfinBrowseScreen(
+                    state =
+                        JellyfinHomeState(
+                            selectedLibraryId = "lib-movies",
+                            libraryItems = retained,
+                            endReached = false,
+                            libraryErrorMessage = "Refresh failed",
+                            libraryErrorKind = LibraryLoadErrorKind.FIRST_PAGE,
+                        ),
+                    onSelectLibrary = {},
+                    onRefresh = { refreshRequests += 1 },
+                    onLoadMore = { nextPageRequests += 1 },
+                    onOpenDetail = {},
+                    onConnectServer = {},
+                    selectedSpotlightId = null,
+                    onSelectedSpotlightIdChange = {},
+                    libraryNavigationState =
+                        LibraryNavigationState(
+                            destination = LibraryDestination.Section(LibrarySection.Movies),
+                        ),
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Retained movie 0").assertExists()
+        composeRule.onNodeWithTag(LibraryCardTestTags.GRID).performScrollToIndex(25)
+        composeRule.runOnIdle {
+            assertEquals(0, refreshRequests)
+            assertEquals(0, nextPageRequests)
+        }
+        composeRule.onNodeWithText("Refresh failed").assertExists()
+        composeRule.onNodeWithText("Retry").performClick()
+        composeRule.runOnIdle {
+            assertEquals(1, refreshRequests)
+            assertEquals(0, nextPageRequests)
+        }
+    }
+
+    @Test
+    fun laterPageErrorRetryDispatchesLoadMore() {
+        var refreshRequests = 0
+        var nextPageRequests = 0
+        val retained =
+            (0 until 24).map { index ->
+                movieItem("retained-$index", "Retained movie $index", "2026-06-28T12:00:00Z")
+            }
+        composeRule.setContent {
+            JellystackTheme(isDarkTheme = false) {
+                JellyfinBrowseScreen(
+                    state =
+                        JellyfinHomeState(
+                            selectedLibraryId = "lib-movies",
+                            libraryItems = retained,
+                            endReached = false,
+                            libraryErrorMessage = "Paging failed",
+                            libraryErrorKind = LibraryLoadErrorKind.NEXT_PAGE,
+                        ),
+                    onSelectLibrary = {},
+                    onRefresh = { refreshRequests += 1 },
+                    onLoadMore = { nextPageRequests += 1 },
+                    onOpenDetail = {},
+                    onConnectServer = {},
+                    selectedSpotlightId = null,
+                    onSelectedSpotlightIdChange = {},
+                    libraryNavigationState =
+                        LibraryNavigationState(
+                            destination = LibraryDestination.Section(LibrarySection.Movies),
+                        ),
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Retained movie 0").assertExists()
+        composeRule.onNodeWithTag(LibraryCardTestTags.GRID).performScrollToIndex(25)
+        composeRule.runOnIdle {
+            assertEquals(0, refreshRequests)
+            assertEquals(0, nextPageRequests)
+        }
+        composeRule.onNodeWithText("Paging failed").assertExists()
+        composeRule.onNodeWithText("Retry").performClick()
+        composeRule.runOnIdle {
+            assertEquals(0, refreshRequests)
+            assertEquals(1, nextPageRequests)
+        }
     }
 
     @Test

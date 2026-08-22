@@ -21,6 +21,16 @@ class AppSettingsRepository(
 
     fun setAutoplayNextMode(value: AutoplayNextMode) = update(KEY_AUTOPLAY_NEXT, value.name) { copy(autoplayNextMode = value) }
 
+    fun setIntroSkipMode(value: SegmentSkipMode) = update(KEY_INTRO_SKIP_MODE, value.name) { copy(introSkipMode = value) }
+
+    fun setRecapSkipMode(value: SegmentSkipMode) = update(KEY_RECAP_SKIP_MODE, value.name) { copy(recapSkipMode = value) }
+
+    fun setOutroSkipMode(value: SegmentSkipMode) = update(KEY_OUTRO_SKIP_MODE, value.name) { copy(outroSkipMode = value) }
+
+    fun setPreviewSkipMode(value: SegmentSkipMode) = update(KEY_PREVIEW_SKIP_MODE, value.name) { copy(previewSkipMode = value) }
+
+    fun setCommercialSkipMode(value: SegmentSkipMode) = update(KEY_COMMERCIAL_SKIP_MODE, value.name) { copy(commercialSkipMode = value) }
+
     fun setResumeMode(value: ResumeMode) = update(KEY_RESUME_MODE, value.name) { copy(resumeMode = value) }
 
     fun setSeekBackSeconds(value: Int) {
@@ -78,6 +88,11 @@ class AppSettingsRepository(
             wifiStreamingQuality = enumValue(KEY_WIFI_QUALITY, StreamingQualityPreference.AUTO),
             mobileStreamingQuality = enumValue(KEY_MOBILE_QUALITY, StreamingQualityPreference.AUTO),
             autoplayNextMode = enumValue(KEY_AUTOPLAY_NEXT, AutoplayNextMode.COUNTDOWN),
+            introSkipMode = enumValue(KEY_INTRO_SKIP_MODE, SegmentSkipMode.SHOW_BUTTON),
+            recapSkipMode = enumValue(KEY_RECAP_SKIP_MODE, SegmentSkipMode.SHOW_BUTTON),
+            outroSkipMode = enumValue(KEY_OUTRO_SKIP_MODE, SegmentSkipMode.SHOW_BUTTON),
+            previewSkipMode = enumValue(KEY_PREVIEW_SKIP_MODE, SegmentSkipMode.OFF),
+            commercialSkipMode = enumValue(KEY_COMMERCIAL_SKIP_MODE, SegmentSkipMode.OFF),
             resumeMode = enumValue(KEY_RESUME_MODE, ResumeMode.RESUME),
             seekBackSeconds = storage.getInt(KEY_SEEK_BACK, 10).takeIf(SEEK_SECONDS::contains) ?: 10,
             seekForwardSeconds = storage.getInt(KEY_SEEK_FORWARD, 30).takeIf(SEEK_SECONDS::contains) ?: 30,
@@ -142,6 +157,11 @@ class AppSettingsRepository(
         const val KEY_WIFI_QUALITY = "settings.wifi_quality"
         const val KEY_MOBILE_QUALITY = "settings.mobile_quality"
         const val KEY_AUTOPLAY_NEXT = "settings.autoplay_next"
+        const val KEY_INTRO_SKIP_MODE = "settings.intro_skip_mode"
+        const val KEY_RECAP_SKIP_MODE = "settings.recap_skip_mode"
+        const val KEY_OUTRO_SKIP_MODE = "settings.outro_skip_mode"
+        const val KEY_PREVIEW_SKIP_MODE = "settings.preview_skip_mode"
+        const val KEY_COMMERCIAL_SKIP_MODE = "settings.commercial_skip_mode"
         const val KEY_RESUME_MODE = "settings.resume_mode"
         const val KEY_SEEK_BACK = "settings.seek_back_seconds"
         const val KEY_SEEK_FORWARD = "settings.seek_forward_seconds"

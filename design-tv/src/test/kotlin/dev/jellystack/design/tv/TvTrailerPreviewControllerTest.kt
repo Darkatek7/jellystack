@@ -5,6 +5,7 @@ import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.JellyfinItemDetail
 import dev.jellystack.players.PlaybackState
 import dev.jellystack.players.PlayerEvent
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -20,6 +21,193 @@ import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class TvTrailerPreviewControllerTest {
+    @Test
+    fun clearingMatchingRequestStopsPlayerWhilePlayIsPreparingExactlyOnce() =
+        runTest {
+            val player = SuspendingPreviewPlayer()
+            val controller =
+                TvTrailerPreviewController(
+                    scope = this,
+                    resolve = { source("trailer") },
+                    player = player,
+                    focusDelayMillis = 0,
+                )
+            val request = request(TvTrailerPreviewOwner.CARD, "movie")
+
+            controller.focus(request)
+            runCurrent()
+            player.playStarted.await()
+
+            controller.clearFocus(request)
+            runCurrent()
+            controller.release()
+
+            assertEquals(1, player.cancellations)
+            assertEquals(1, player.stops)
+            assertEquals(TvTrailerPreviewState.Idle, controller.state.value)
+        }
+
+    @Test
+    fun ownerCleanupOnlyStopsMatchingPreparingRequest() =
+        runTest {
+            val player = SuspendingPreviewPlayer()
+            val controller =
+                TvTrailerPreviewController(
+                    scope = this,
+                    resolve = { source("trailer") },
+                    player = player,
+                    focusDelayMillis = 0,
+                )
+
+            controller.focus(request(TvTrailerPreviewOwner.CARD, "movie"))
+            runCurrent()
+            player.playStarted.await()
+
+            controller.clearFocus(TvTrailerPreviewOwner.HERO)
+            runCurrent()
+            assertEquals(0, player.cancellations)
+            assertEquals(0, player.stops)
+
+            controller.clearFocus(TvTrailerPreviewOwner.CARD)
+            runCurrent()
+            controller.release()
+
+            assertEquals(1, player.cancellations)
+            assertEquals(1, player.stops)
+        }
+
+    @Test
+    fun staleRequestCleanupDoesNotStopCurrentPreparingRequest() =
+        runTest {
+            val player = SuspendingPreviewPlayer()
+            val controller =
+                TvTrailerPreviewController(
+                    scope = this,
+                    resolve = { source("trailer") },
+                    player = player,
+                    focusDelayMillis = 0,
+                )
+            val current = request(TvTrailerPreviewOwner.CARD, "current")
+
+            controller.focus(current)
+            runCurrent()
+            player.playStarted.await()
+
+            controller.clearFocus(request(TvTrailerPreviewOwner.CARD, "stale"))
+            runCurrent()
+            assertEquals(0, player.cancellations)
+            assertEquals(0, player.stops)
+
+            controller.clearFocus(current)
+            runCurrent()
+            controller.release()
+
+            assertEquals(1, player.cancellations)
+            assertEquals(1, player.stops)
+        }
+
+    @Test
+    fun releaseStopsPlayerWhilePlayIsPreparingExactlyOnce() =
+        runTest {
+            val player = SuspendingPreviewPlayer()
+            val controller =
+                TvTrailerPreviewController(
+                    scope = this,
+                    resolve = { source("trailer") },
+                    player = player,
+                    focusDelayMillis = 0,
+                )
+
+            controller.focus(request(TvTrailerPreviewOwner.HERO, "movie"))
+            runCurrent()
+            player.playStarted.await()
+
+            controller.release()
+            runCurrent()
+
+            assertEquals(1, player.cancellations)
+            assertEquals(1, player.stops)
+            assertEquals(TvTrailerPreviewState.Idle, controller.state.value)
+        }
+
+    @Test
+    fun staleOwnerCleanupDoesNotClearNewerRequestForSameItem() =
+        runTest {
+            val player = FakePreviewPlayer()
+            val controller = TvTrailerPreviewController(this, { source("trailer") }, player)
+            val cardRequest = request(TvTrailerPreviewOwner.CARD, "same")
+            val heroRequest = request(TvTrailerPreviewOwner.HERO, "same")
+
+            controller.focus(cardRequest)
+            controller.focus(heroRequest)
+            controller.clearFocus(cardRequest)
+            advanceTimeBy(3_000L)
+            runCurrent()
+
+            assertEquals(heroRequest, assertIs<TvTrailerPreviewState.Playing>(controller.state.value).request)
+            assertEquals(0, player.stops)
+            controller.release()
+        }
+
+    @Test
+    fun staleDuplicateCardCleanupDoesNotClearTheFocusedCardInstance() =
+        runTest {
+            val player = FakePreviewPlayer()
+            val controller = TvTrailerPreviewController(this, { source("trailer") }, player)
+            val oldCard = request(TvTrailerPreviewOwner.CARD, "same").copy(presentationId = "continue:same")
+            val focusedCard = request(TvTrailerPreviewOwner.CARD, "same").copy(presentationId = "latest:same")
+
+            controller.focus(oldCard)
+            controller.focus(focusedCard)
+            controller.clearFocus(oldCard)
+            advanceTimeBy(3_000L)
+            runCurrent()
+
+            assertEquals(focusedCard, assertIs<TvTrailerPreviewState.Playing>(controller.state.value).request)
+            assertEquals(0, player.stops)
+            controller.release()
+        }
+
+    @Test
+    fun clearingHeroOwnerDoesNotCancelFocusedCardPreview() =
+        runTest {
+            val player = FakePreviewPlayer()
+            val controller = TvTrailerPreviewController(this, { source("trailer") }, player)
+            val cardRequest = request(TvTrailerPreviewOwner.CARD, "card")
+
+            controller.focus(cardRequest)
+            advanceTimeBy(3_000L)
+            runCurrent()
+            controller.clearFocus(TvTrailerPreviewOwner.HERO)
+
+            assertEquals(cardRequest, assertIs<TvTrailerPreviewState.Playing>(controller.state.value).request)
+            assertEquals(0, player.stops)
+            controller.release()
+        }
+
+    @Test
+    fun heroSlideChangeClearsAndRearmsHeroOwner() =
+        runTest {
+            val player = FakePreviewPlayer()
+            val controller = TvTrailerPreviewController(this, { target -> source("${target.itemId}-trailer") }, player)
+            val first = request(TvTrailerPreviewOwner.HERO, "first")
+            val second = request(TvTrailerPreviewOwner.HERO, "second")
+
+            controller.focus(first)
+            advanceTimeBy(3_000L)
+            runCurrent()
+            controller.clearFocus(first)
+            controller.focus(second)
+
+            assertEquals(second, assertIs<TvTrailerPreviewState.Armed>(controller.state.value).request)
+            assertEquals(1, player.stops)
+            advanceTimeBy(3_000L)
+            runCurrent()
+            assertEquals(second, assertIs<TvTrailerPreviewState.Playing>(controller.state.value).request)
+            assertEquals(listOf("first-trailer", "second-trailer"), player.played.map { it.item.id })
+            controller.release()
+        }
+
     @Test
     fun playerEventsOnlyExposeTerminalPreviewStates() {
         assertEquals(TvTrailerPreviewPlayerEvent.Completed, PlayerEvent.Completed.toTrailerPreviewEvent())
@@ -37,7 +225,7 @@ class TvTrailerPreviewControllerTest {
             val player = FakePreviewPlayer()
             val controller = TvTrailerPreviewController(this, { source("trailer") }, player)
 
-            controller.focus(target("movie"))
+            controller.focus(request(TvTrailerPreviewOwner.CARD, "movie"))
             runCurrent()
             advanceTimeBy(2_999L)
             runCurrent()
@@ -65,9 +253,9 @@ class TvTrailerPreviewControllerTest {
                     player = player,
                 )
 
-            controller.focus(target("first"))
+            controller.focus(request(TvTrailerPreviewOwner.CARD, "first"))
             runCurrent()
-            controller.focus(target("second"))
+            controller.focus(request(TvTrailerPreviewOwner.CARD, "second"))
             firstResult.complete(source("first-trailer"))
             advanceTimeBy(3_000L)
             runCurrent()
@@ -95,7 +283,7 @@ class TvTrailerPreviewControllerTest {
                 )
 
             repeat(2) {
-                controller.focus(target("missing"))
+                controller.focus(request(TvTrailerPreviewOwner.CARD, "missing"))
                 advanceTimeBy(3_000L)
                 runCurrent()
                 controller.clearFocus()
@@ -103,7 +291,7 @@ class TvTrailerPreviewControllerTest {
             assertEquals(1, resolutions)
 
             controller.invalidateCache()
-            controller.focus(target("missing"))
+            controller.focus(request(TvTrailerPreviewOwner.CARD, "missing"))
             advanceTimeBy(3_000L)
             runCurrent()
             assertEquals(2, resolutions)
@@ -126,14 +314,14 @@ class TvTrailerPreviewControllerTest {
                 )
 
             controller.setEnabled(false)
-            controller.focus(target("movie"))
+            controller.focus(request(TvTrailerPreviewOwner.CARD, "movie"))
             advanceTimeBy(3_000L)
             runCurrent()
             assertEquals(0, resolutions)
 
             controller.setEnabled(true)
             controller.setSoundEnabled(false)
-            controller.focus(target("movie"))
+            controller.focus(request(TvTrailerPreviewOwner.CARD, "movie"))
             advanceTimeBy(3_000L)
             runCurrent()
             assertFalse(player.soundState)
@@ -149,7 +337,7 @@ class TvTrailerPreviewControllerTest {
         runTest {
             val player = FakePreviewPlayer()
             val controller = TvTrailerPreviewController(this, { source("trailer") }, player)
-            controller.focus(target("movie"))
+            controller.focus(request(TvTrailerPreviewOwner.CARD, "movie"))
             advanceTimeBy(3_000L)
             runCurrent()
 
@@ -168,6 +356,11 @@ class TvTrailerPreviewControllerTest {
             isEpisode = false,
             seriesId = null,
         )
+
+    private fun request(
+        owner: TvTrailerPreviewOwner,
+        id: String,
+    ) = TvTrailerPreviewRequest(owner, target(id))
 
     private fun source(id: String) = DetailTrailerSource.Local(item(id), detail(id))
 
@@ -245,5 +438,29 @@ class TvTrailerPreviewControllerTest {
         override fun setSoundEnabled(enabled: Boolean) {
             soundState = enabled
         }
+    }
+
+    private class SuspendingPreviewPlayer : TvTrailerPreviewPlayer {
+        override val events = MutableSharedFlow<TvTrailerPreviewPlayerEvent>()
+        val playStarted = CompletableDeferred<Unit>()
+        private val playResult = CompletableDeferred<Boolean>()
+        var cancellations = 0
+        var stops = 0
+
+        override suspend fun play(source: DetailTrailerSource.Local): Boolean {
+            playStarted.complete(Unit)
+            return try {
+                playResult.await()
+            } catch (cancellation: CancellationException) {
+                cancellations += 1
+                throw cancellation
+            }
+        }
+
+        override fun stop() {
+            stops += 1
+        }
+
+        override fun setSoundEnabled(enabled: Boolean) = Unit
     }
 }

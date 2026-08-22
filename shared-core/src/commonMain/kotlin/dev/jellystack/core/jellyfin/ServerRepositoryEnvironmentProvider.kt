@@ -7,6 +7,7 @@ import dev.jellystack.core.server.StoredCredential
 class ServerRepositoryEnvironmentProvider(
     private val repository: ServerRepository,
     private val deviceNameProvider: () -> String = { "Jellystack" },
+    private val clientVersionProvider: () -> String = { "unknown" },
 ) : JellyfinEnvironmentProvider {
     override suspend fun current(): JellyfinEnvironment? {
         val server =
@@ -20,6 +21,7 @@ class ServerRepositoryEnvironmentProvider(
             userId = credential.userId,
             deviceId = credential.deviceId ?: credential.username,
             deviceName = deviceNameProvider(),
+            clientVersion = clientVersionProvider(),
         )
     }
 }

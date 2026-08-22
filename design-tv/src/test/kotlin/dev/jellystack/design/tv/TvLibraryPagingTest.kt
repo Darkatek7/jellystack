@@ -1,17 +1,35 @@
 package dev.jellystack.design.tv
 
+import dev.jellystack.core.jellyfin.LibraryLoadErrorKind
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class TvLibraryPagingTest {
+    @Test
+    fun retainedItemsFirstPageFailureMapsRetryToRefresh() {
+        assertEquals(
+            TvLibraryRetryAction.REFRESH,
+            tvLibraryRetryAction(LibraryLoadErrorKind.FIRST_PAGE),
+        )
+    }
+
+    @Test
+    fun laterPageFailureMapsRetryToNextPage() {
+        assertEquals(
+            TvLibraryRetryAction.NEXT_PAGE,
+            tvLibraryRetryAction(LibraryLoadErrorKind.NEXT_PAGE),
+        )
+    }
+
     @Test
     fun loadsWithinTwoFourColumnRowsOfTheEnd() {
         assertTrue(
             shouldLoadNextLibraryPage(
                 lastVisibleIndex = 22,
                 totalItemCount = 30,
-                isInitialLoading = false,
+                isLibraryLoading = false,
                 isPageLoading = false,
                 endReached = false,
                 hasError = false,
@@ -21,7 +39,7 @@ class TvLibraryPagingTest {
 
     @Test
     fun doesNotLoadWhileBusyOrAtTheEnd() {
-        assertPagingBlocked(isInitialLoading = true)
+        assertPagingBlocked(isLibraryLoading = true)
         assertPagingBlocked(isPageLoading = true)
         assertPagingBlocked(endReached = true)
         assertPagingBlocked(hasError = true)
@@ -33,7 +51,7 @@ class TvLibraryPagingTest {
             shouldLoadNextLibraryPage(
                 10,
                 30,
-                isInitialLoading = false,
+                isLibraryLoading = false,
                 isPageLoading = false,
                 endReached = false,
                 hasError = false,
@@ -43,7 +61,7 @@ class TvLibraryPagingTest {
             shouldLoadNextLibraryPage(
                 -1,
                 0,
-                isInitialLoading = false,
+                isLibraryLoading = false,
                 isPageLoading = false,
                 endReached = false,
                 hasError = false,
@@ -52,7 +70,7 @@ class TvLibraryPagingTest {
     }
 
     private fun assertPagingBlocked(
-        isInitialLoading: Boolean = false,
+        isLibraryLoading: Boolean = false,
         isPageLoading: Boolean = false,
         endReached: Boolean = false,
         hasError: Boolean = false,
@@ -61,7 +79,7 @@ class TvLibraryPagingTest {
             shouldLoadNextLibraryPage(
                 29,
                 30,
-                isInitialLoading = isInitialLoading,
+                isLibraryLoading = isLibraryLoading,
                 isPageLoading = isPageLoading,
                 endReached = endReached,
                 hasError = hasError,

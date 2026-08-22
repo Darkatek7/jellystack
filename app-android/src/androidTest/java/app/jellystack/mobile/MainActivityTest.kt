@@ -281,28 +281,23 @@ class MainActivityTest {
     }
 
     @Test
-    fun whatsNewShowsCanonical0150Highlights() {
+    fun whatsNewShowsCanonical0151Highlights() {
         dismissOnboardingIfPresent()
         openWhatsNew()
-        composeRule.onAllNodesWithText("Version 0.15.0").onLast().assertExists()
+        composeRule.onAllNodesWithText("Version 0.15.1").onLast().assertExists()
         composeRule
             .onNodeWithText(
-                "Use your Jellyfin server's Home Sections layout in Jellystack.",
+                "Skip server-provided intros, recaps, previews, commercials, and credits from the player.",
                 substring = true,
             ).assertExists()
         composeRule
             .onNodeWithText(
-                "Create or join SyncPlay groups and watch together.",
+                "Choose Off, Button, or Auto independently for each segment type.",
                 substring = true,
             ).assertExists()
         composeRule
             .onNodeWithText(
-                "Change playback speed and inspect live Stats for Nerds.",
-                substring = true,
-            ).assertExists()
-        composeRule
-            .onNodeWithText(
-                "Administrators can manage Jellyfin and pending Seerr requests from the new Admin tab.",
+                "Play the next episode while credits are on screen.",
                 substring = true,
             ).assertExists()
     }

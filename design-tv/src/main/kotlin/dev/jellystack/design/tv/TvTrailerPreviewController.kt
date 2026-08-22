@@ -20,19 +20,27 @@ internal data class TvTrailerPreviewTarget(
     val seriesId: String?,
 )
 
+internal enum class TvTrailerPreviewOwner { HERO, CARD }
+
+internal data class TvTrailerPreviewRequest(
+    val owner: TvTrailerPreviewOwner,
+    val target: TvTrailerPreviewTarget,
+    val presentationId: String? = null,
+)
+
 internal sealed interface TvTrailerPreviewState {
     data object Idle : TvTrailerPreviewState
 
     data class Armed(
-        val target: TvTrailerPreviewTarget,
+        val request: TvTrailerPreviewRequest,
     ) : TvTrailerPreviewState
 
     data class Playing(
-        val target: TvTrailerPreviewTarget,
+        val request: TvTrailerPreviewRequest,
     ) : TvTrailerPreviewState
 
     data class Unavailable(
-        val target: TvTrailerPreviewTarget,
+        val request: TvTrailerPreviewRequest,
     ) : TvTrailerPreviewState
 }
 
@@ -51,6 +59,7 @@ internal interface TvTrailerPreviewPlayer {
     fun setSoundEnabled(enabled: Boolean)
 }
 
+@Suppress("TooManyFunctions") // small focused API: focus, unfocus, cancel, sound and state accessors
 internal class TvTrailerPreviewController(
     private val scope: CoroutineScope,
     private val resolve: suspend (TvTrailerPreviewTarget) -> DetailTrailerSource.Local?,
@@ -61,8 +70,9 @@ internal class TvTrailerPreviewController(
     val state: StateFlow<TvTrailerPreviewState> = mutableState.asStateFlow()
 
     private val cache = mutableMapOf<TvTrailerPreviewTarget, DetailTrailerSource.Local?>()
-    private var focusedTarget: TvTrailerPreviewTarget? = null
+    private var focusedRequest: TvTrailerPreviewRequest? = null
     private var focusJob: Job? = null
+    private var activePlayerRequest: TvTrailerPreviewRequest? = null
     private var enabled = true
     private var soundEnabled = true
     private val eventJob =
@@ -77,40 +87,49 @@ internal class TvTrailerPreviewController(
             }
         }
 
-    fun focus(target: TvTrailerPreviewTarget) {
+    fun focus(request: TvTrailerPreviewRequest) {
         if (!enabled) return
-        if (focusedTarget == target && mutableState.value !is TvTrailerPreviewState.Idle) return
+        if (focusedRequest == request && mutableState.value !is TvTrailerPreviewState.Idle) return
         cancelPendingAndStopPlaying()
-        focusedTarget = target
-        mutableState.value = TvTrailerPreviewState.Armed(target)
+        focusedRequest = request
+        mutableState.value = TvTrailerPreviewState.Armed(request)
         focusJob =
             scope.launch {
-                val resolution = async { cachedOrResolve(target) }
+                val resolution = async { cachedOrResolve(request.target) }
                 delay(focusDelayMillis)
                 val source = resolution.await()
                 currentCoroutineContext().ensureActive()
-                if (!enabled || focusedTarget != target) return@launch
+                if (!enabled || focusedRequest != request) return@launch
                 if (source == null) {
-                    mutableState.value = TvTrailerPreviewState.Unavailable(target)
+                    mutableState.value = TvTrailerPreviewState.Unavailable(request)
                     return@launch
                 }
                 player.setSoundEnabled(soundEnabled)
-                if (player.play(source)) {
-                    mutableState.value = TvTrailerPreviewState.Playing(target)
+                activePlayerRequest = request
+                val started = player.play(source)
+                currentCoroutineContext().ensureActive()
+                if (!enabled || focusedRequest != request || activePlayerRequest != request) return@launch
+                if (started) {
+                    mutableState.value = TvTrailerPreviewState.Playing(request)
                 } else {
+                    activePlayerRequest = null
                     mutableState.value = TvTrailerPreviewState.Idle
                 }
             }
     }
 
     fun clearFocus() {
-        focusedTarget = null
+        focusedRequest = null
         cancelPendingAndStopPlaying()
         mutableState.value = TvTrailerPreviewState.Idle
     }
 
-    fun clearFocus(target: TvTrailerPreviewTarget) {
-        if (focusedTarget == target) clearFocus()
+    fun clearFocus(request: TvTrailerPreviewRequest) {
+        if (focusedRequest == request) clearFocus()
+    }
+
+    fun clearFocus(owner: TvTrailerPreviewOwner) {
+        if (focusedRequest?.owner == owner) clearFocus()
     }
 
     fun setEnabled(value: Boolean) {
@@ -145,11 +164,17 @@ internal class TvTrailerPreviewController(
     private fun cancelPendingAndStopPlaying() {
         focusJob?.cancel()
         focusJob = null
-        if (mutableState.value is TvTrailerPreviewState.Playing) player.stop()
+        if (activePlayerRequest != null) {
+            activePlayerRequest = null
+            player.stop()
+        }
     }
 
     private fun stopPlaying() {
-        player.stop()
+        if (activePlayerRequest != null) {
+            activePlayerRequest = null
+            player.stop()
+        }
         mutableState.value = TvTrailerPreviewState.Idle
     }
 

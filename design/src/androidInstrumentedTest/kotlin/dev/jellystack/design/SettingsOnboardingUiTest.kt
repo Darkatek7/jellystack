@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.jellystack.core.preferences.AppPlatformCapabilities
+import dev.jellystack.core.preferences.SegmentSkipMode
 import dev.jellystack.core.preferences.ThemeMode
 import dev.jellystack.core.preferences.TutorialStep
 import dev.jellystack.core.security.BiometricCapability
@@ -110,6 +111,63 @@ class SettingsOnboardingUiTest {
         composeRule.onNodeWithText("Playback").performClick()
         composeRule.onNodeWithText("Wi-Fi streaming quality").assertIsDisplayed()
         composeRule.onNodeWithText("Mobile streaming quality").assertIsDisplayed()
+    }
+
+    @Test
+    fun playbackSegmentPickersExplainServerDataAndDispatchAllFiveActions() {
+        val actions = mutableListOf<SettingsAction>()
+        composeRule.setContent { playbackSegmentSettingsHarness(actions) }
+
+        composeRule
+            .onNodeWithText("Availability and timing come from your Jellyfin server.")
+            .performScrollTo()
+            .assertIsDisplayed()
+        listOf("Intros", "Recaps", "Credits", "Previews", "Commercials").forEach { title ->
+            composeRule.onNodeWithText(title).performScrollTo().performClick()
+            composeRule.onNodeWithText("Skip automatically").performClick()
+        }
+
+        composeRule.runOnIdle {
+            assertEquals(
+                listOf(
+                    SettingsAction.SetIntroSkipMode(SegmentSkipMode.AUTO_SKIP),
+                    SettingsAction.SetRecapSkipMode(SegmentSkipMode.AUTO_SKIP),
+                    SettingsAction.SetOutroSkipMode(SegmentSkipMode.AUTO_SKIP),
+                    SettingsAction.SetPreviewSkipMode(SegmentSkipMode.AUTO_SKIP),
+                    SettingsAction.SetCommercialSkipMode(SegmentSkipMode.AUTO_SKIP),
+                ),
+                actions,
+            )
+        }
+    }
+
+    @Test
+    fun unsupportedPlatformHidesPlaybackSegmentSettings() {
+        val actions = mutableListOf<SettingsAction>()
+        composeRule.setContent {
+            playbackSegmentSettingsHarness(
+                actions = actions,
+                capabilities = AppPlatformCapabilities(),
+            )
+        }
+
+        composeRule
+            .onNodeWithText("Availability and timing come from your Jellyfin server.")
+            .assertDoesNotExist()
+        listOf("Intros", "Recaps", "Credits", "Previews", "Commercials").forEach { title ->
+            composeRule.onNodeWithText(title).assertDoesNotExist()
+        }
+    }
+
+    @Test
+    fun unsupportedPlatformSearchDoesNotExposeSegmentSettings() {
+        composeRule.setContent {
+            compactSettingsHarness(capabilities = AppPlatformCapabilities())
+        }
+
+        composeRule.onNodeWithText("Search settings").performTextInput("segments")
+
+        composeRule.onNodeWithText("Playback").assertDoesNotExist()
     }
 
     @Test
@@ -380,8 +438,16 @@ private fun settingsOpenedFromRequestsHarness() {
 }
 
 @Composable
-private fun compactSettingsHarness() {
-    var state by remember { mutableStateOf(settingsState().copy(selectedSection = null)) }
+private fun compactSettingsHarness(capabilities: AppPlatformCapabilities = AppPlatformCapabilities.Android) {
+    var state by
+        remember {
+            mutableStateOf(
+                settingsState().copy(
+                    selectedSection = null,
+                    platformCapabilities = capabilities,
+                ),
+            )
+        }
     JellystackTheme(isDarkTheme = false) {
         Box(Modifier.requiredSize(width = 411.dp, height = 891.dp)) {
             SettingsScreen(
@@ -389,6 +455,25 @@ private fun compactSettingsHarness() {
                 onAction = { action ->
                     if (action is SettingsAction.SelectSection) state = state.copy(selectedSection = action.section)
                 },
+            )
+        }
+    }
+}
+
+@Composable
+private fun playbackSegmentSettingsHarness(
+    actions: MutableList<SettingsAction>,
+    capabilities: AppPlatformCapabilities = AppPlatformCapabilities.Android,
+) {
+    JellystackTheme(isDarkTheme = false) {
+        Box(Modifier.requiredSize(width = 411.dp, height = 891.dp)) {
+            SettingsScreen(
+                state =
+                    settingsState().copy(
+                        selectedSection = SettingsSection.Playback,
+                        platformCapabilities = capabilities,
+                    ),
+                onAction = actions::add,
             )
         }
     }
@@ -416,7 +501,7 @@ private fun settingsState(): SettingsUiState =
                     health = SettingsConnectionHealth.Ready,
                 ),
             ),
-        appVersion = "0.15.0",
+        appVersion = "0.15.1",
     )
 
 @Composable

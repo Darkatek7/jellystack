@@ -42,6 +42,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.media3.common.MediaMetadata as Media3MediaMetadata
 
 @UnstableApi
 class AndroidPlayerEngine(
@@ -63,6 +64,8 @@ class AndroidPlayerEngine(
     private var videoSurface: PlayerView? = null
     private var subtitleTextSize: SubtitleTextSize = SubtitleTextSize.SYSTEM
     private var subtitleBackground: SubtitleBackground = SubtitleBackground.SYSTEM
+    private var sessionMetadata: PlaybackMetadata? = null
+    private var sessionArtworkUrl: String? = null
     private var firstFrameRendered = false
     private var firstFrameWatchdog: Job? = null
     private var expectsAudioOutput = false
@@ -280,6 +283,9 @@ class AndroidPlayerEngine(
                                     PlaybackMode.LOCAL -> MimeTypes.VIDEO_MP4
                                 }
                         setMimeType(mimeType)
+                        sessionMetadata?.let { metadata ->
+                            setMediaMetadata(sessionMedia3Metadata(metadata, sessionArtworkUrl))
+                        }
                         if (source.subtitles.isNotEmpty()) {
                             val configurations =
                                 source.subtitles.map { subtitle ->
@@ -347,8 +353,18 @@ class AndroidPlayerEngine(
         firstFrameWatchdog?.cancel()
         audioOutputWatchdog?.cancel()
         expectsAudioOutput = false
+        sessionMetadata = null
+        sessionArtworkUrl = null
         exoPlayer.stop()
         exoPlayer.clearMediaItems()
+    }
+
+    override fun setSessionMetadata(
+        metadata: PlaybackMetadata?,
+        artworkUrl: String?,
+    ) {
+        sessionMetadata = metadata
+        sessionArtworkUrl = artworkUrl
     }
 
     override fun seekTo(positionMs: Long) {
@@ -671,3 +687,20 @@ class AndroidPlayerEngine(
 }
 
 private fun Tracks.hasSelectedAudioTrack(): Boolean = groups.any { group -> group.type == C.TRACK_TYPE_AUDIO && group.isSelected }
+
+@UnstableApi
+private fun sessionMedia3Metadata(
+    metadata: PlaybackMetadata,
+    artworkUrl: String?,
+): Media3MediaMetadata =
+    Media3MediaMetadata
+        .Builder()
+        .setTitle(metadata.title ?: "")
+        .setArtist(metadata.sessionArtistLine())
+        .setAlbumTitle(metadata.seriesName?.takeIf(String::isNotBlank))
+        .apply {
+            artworkUrl
+                ?.takeIf(String::isNotBlank)
+                ?.let { url -> runCatching { Uri.parse(url) }.getOrNull() }
+                ?.let(::setArtworkUri)
+        }.build()

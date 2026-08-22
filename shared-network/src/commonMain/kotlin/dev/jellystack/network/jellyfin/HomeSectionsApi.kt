@@ -18,6 +18,7 @@ class HomeSectionsApi(
     private val baseUrl: String,
     private val accessToken: String,
     private val deviceId: String? = null,
+    private val clientVersion: String = DEFAULT_JELLYSTACK_CLIENT_VERSION,
 ) {
     private fun HttpRequestBuilder.configure(pathSuffix: String) {
         url {
@@ -29,7 +30,7 @@ class HomeSectionsApi(
             appendIfAbsent(
                 "X-Emby-Authorization",
                 "MediaBrowser Client=\"Jellystack\", Device=\"Android\", " +
-                    "DeviceId=\"${deviceId ?: "unknown"}\", Version=\"0.15.0\"",
+                    "DeviceId=\"${deviceId ?: "unknown"}\", Version=\"$clientVersion\"",
             )
         }
     }

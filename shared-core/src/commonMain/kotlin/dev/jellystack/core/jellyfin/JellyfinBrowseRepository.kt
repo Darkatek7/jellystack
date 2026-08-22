@@ -53,6 +53,73 @@ internal fun libraryQueryForCollectionType(collectionType: String?): LibraryQuer
         else -> LibraryQuery(includeItemTypes = null, recursive = false)
     }
 
+internal interface JellyfinBrowseRepositoryApi {
+    suspend fun refreshLibraries(): List<JellyfinLibrary>
+
+    suspend fun listLibraries(): List<JellyfinLibrary>
+
+    suspend fun cachedContinueWatching(limit: Int): List<JellyfinItem>
+
+    suspend fun cachedNextUp(limit: Int): List<JellyfinItem>
+
+    suspend fun cachedRecentShows(
+        libraryId: String?,
+        limit: Int,
+    ): List<JellyfinItem>
+
+    suspend fun cachedRecentMovies(
+        libraryId: String?,
+        limit: Int,
+    ): List<JellyfinItem>
+
+    suspend fun loadLibraryPage(
+        libraryId: String,
+        page: Int,
+        pageSize: Int,
+        refresh: Boolean = page == 0,
+        filters: String? = null,
+    ): LibraryPage
+
+    suspend fun cachedLibraryPage(
+        libraryId: String,
+        page: Int,
+        pageSize: Int,
+    ): List<JellyfinItem>
+
+    suspend fun loadChildrenPage(
+        libraryId: String,
+        parentId: String,
+        page: Int,
+        pageSize: Int,
+        refresh: Boolean = page == 0,
+    ): LibraryPage
+
+    suspend fun refreshContinueWatching(limit: Int): List<JellyfinItem>
+
+    suspend fun refreshNextUp(
+        limit: Int,
+        libraryId: String?,
+    ): List<JellyfinItem>
+
+    suspend fun refreshRecentlyAddedShows(
+        libraryId: String,
+        limit: Int,
+    ): List<JellyfinItem>
+
+    suspend fun refreshRecentlyAddedMovies(
+        libraryId: String,
+        limit: Int,
+    ): List<JellyfinItem>
+
+    suspend fun currentServerBaseUrl(): String?
+
+    suspend fun currentAccessToken(): String?
+
+    suspend fun currentApi(): JellyfinBrowseApi?
+
+    suspend fun currentUserId(): String?
+}
+
 class JellyfinBrowseRepository(
     private val environmentProvider: JellyfinEnvironmentProvider,
     private val libraryStore: JellyfinLibraryStore,
@@ -60,12 +127,13 @@ class JellyfinBrowseRepository(
     private val detailStore: JellyfinItemDetailStore,
     private val apiFactory: JellyfinBrowseApiFactory,
     private val clock: Clock = Clock.System,
-) : OfflinePlaybackProgressReporter {
+) : OfflinePlaybackProgressReporter,
+    JellyfinBrowseRepositoryApi {
     private val cachedApis = mutableMapOf<String, JellyfinBrowseApi>()
 
     suspend fun cachedItem(itemId: String): JellyfinItem? = itemStore.get(itemId)?.toDomain()
 
-    suspend fun refreshLibraries(): List<JellyfinLibrary> {
+    override suspend fun refreshLibraries(): List<JellyfinLibrary> {
         val environment = environmentProvider.current() ?: return emptyList()
         val api = apiFor(environment)
         val response = api.fetchLibraries(environment.userId)
@@ -75,7 +143,7 @@ class JellyfinBrowseRepository(
         return records.map { it.toDomain() }
     }
 
-    suspend fun listLibraries(): List<JellyfinLibrary> {
+    override suspend fun listLibraries(): List<JellyfinLibrary> {
         val environment = environmentProvider.current() ?: return emptyList()
         return libraryStore.list(environment.serverKey).map { it.toDomain() }
     }
@@ -104,17 +172,17 @@ class JellyfinBrowseRepository(
         return records.map { it.toDomain() }
     }
 
-    suspend fun cachedContinueWatching(limit: Int): List<JellyfinItem> {
+    override suspend fun cachedContinueWatching(limit: Int): List<JellyfinItem> {
         val environment = environmentProvider.current() ?: return emptyList()
         return itemStore.listContinueWatching(environment.serverKey, limit.toLong()).map { it.toDomain() }
     }
 
-    suspend fun cachedNextUp(limit: Int): List<JellyfinItem> {
+    override suspend fun cachedNextUp(limit: Int): List<JellyfinItem> {
         val environment = environmentProvider.current() ?: return emptyList()
         return itemStore.listNextUp(environment.serverKey, limit.toLong()).map { it.toDomain() }
     }
 
-    suspend fun cachedRecentShows(
+    override suspend fun cachedRecentShows(
         libraryId: String?,
         limit: Int,
     ): List<JellyfinItem> {
@@ -122,7 +190,7 @@ class JellyfinBrowseRepository(
         return itemStore.listRecentShows(environment.serverKey, libraryId, limit.toLong()).map { it.toDomain() }
     }
 
-    suspend fun cachedRecentMovies(
+    override suspend fun cachedRecentMovies(
         libraryId: String?,
         limit: Int,
     ): List<JellyfinItem> {
@@ -130,12 +198,12 @@ class JellyfinBrowseRepository(
         return itemStore.listRecentMovies(environment.serverKey, libraryId, limit.toLong()).map { it.toDomain() }
     }
 
-    suspend fun loadLibraryPage(
+    override suspend fun loadLibraryPage(
         libraryId: String,
         page: Int,
         pageSize: Int,
-        refresh: Boolean = page == 0,
-        filters: String? = null,
+        refresh: Boolean,
+        filters: String?,
     ): LibraryPage {
         val environment = environmentProvider.current() ?: return LibraryPage(emptyList(), null)
         val api = apiFor(environment)
@@ -254,7 +322,7 @@ class JellyfinBrowseRepository(
         return libraryQueryForCollectionType(collectionType)
     }
 
-    suspend fun cachedLibraryPage(
+    override suspend fun cachedLibraryPage(
         libraryId: String,
         page: Int,
         pageSize: Int,
@@ -275,12 +343,12 @@ class JellyfinBrowseRepository(
         }.map { it.toDomain() }
     }
 
-    suspend fun loadChildrenPage(
+    override suspend fun loadChildrenPage(
         libraryId: String,
         parentId: String,
         page: Int,
         pageSize: Int,
-        refresh: Boolean = page == 0,
+        refresh: Boolean,
     ): LibraryPage {
         val environment = environmentProvider.current() ?: return LibraryPage(emptyList(), null)
         val startIndex = page * pageSize
@@ -328,7 +396,7 @@ class JellyfinBrowseRepository(
             ).map { it.toDomain() }
     }
 
-    suspend fun refreshContinueWatching(limit: Int): List<JellyfinItem> {
+    override suspend fun refreshContinueWatching(limit: Int): List<JellyfinItem> {
         val environment = environmentProvider.current() ?: return emptyList()
         val api = apiFor(environment)
         val now = clock.now()
@@ -342,7 +410,7 @@ class JellyfinBrowseRepository(
         return itemStore.listContinueWatching(environment.serverKey, limit.toLong()).map { it.toDomain() }
     }
 
-    suspend fun refreshNextUp(
+    override suspend fun refreshNextUp(
         limit: Int,
         libraryId: String?,
     ): List<JellyfinItem> {
@@ -439,12 +507,12 @@ class JellyfinBrowseRepository(
         return updated
     }
 
-    suspend fun refreshRecentlyAddedShows(
+    override suspend fun refreshRecentlyAddedShows(
         libraryId: String,
         limit: Int,
     ): List<JellyfinItem> = refreshRecentlyAdded(libraryId = libraryId, limit = limit, includeItemTypes = "Series,Episode")
 
-    suspend fun refreshRecentlyAddedMovies(
+    override suspend fun refreshRecentlyAddedMovies(
         libraryId: String,
         limit: Int,
     ): List<JellyfinItem> = refreshRecentlyAdded(libraryId = libraryId, limit = limit, includeItemTypes = "Movie")
@@ -687,16 +755,16 @@ class JellyfinBrowseRepository(
     private fun apiFor(environment: JellyfinEnvironment): JellyfinBrowseApi =
         cachedApis.getOrPut(environment.serverKey) { apiFactory(environment) }
 
-    suspend fun currentServerBaseUrl(): String? = environmentProvider.current()?.baseUrl
+    override suspend fun currentServerBaseUrl(): String? = environmentProvider.current()?.baseUrl
 
-    suspend fun currentAccessToken(): String? = environmentProvider.current()?.accessToken
+    override suspend fun currentAccessToken(): String? = environmentProvider.current()?.accessToken
 
     /**
      * Returns the currently active Jellyfin Browse API instance for the active environment, or null if no
      * environment is available. Intended for coordinator-side callers (e.g. favorites) that need direct API
      * access without re-implementing the cached factory logic.
      */
-    suspend fun currentApi(): JellyfinBrowseApi? {
+    override suspend fun currentApi(): JellyfinBrowseApi? {
         val environment = environmentProvider.current() ?: return null
         return apiFor(environment)
     }
@@ -704,7 +772,7 @@ class JellyfinBrowseRepository(
     /**
      * Returns the Jellyfin user id for the active environment, or null if no environment is available.
      */
-    suspend fun currentUserId(): String? = environmentProvider.current()?.userId
+    override suspend fun currentUserId(): String? = environmentProvider.current()?.userId
 }
 
 private fun JellyfinLibraryDto.toRecord(

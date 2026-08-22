@@ -1,8 +1,11 @@
+@file:Suppress("FunctionName", "FunctionNaming", "TooManyFunctions")
+
 package dev.jellystack.design.tv
 
 import dev.jellystack.core.jellyfin.HomeSectionAction
 import dev.jellystack.core.jellyfin.HomeSectionsState
 import dev.jellystack.core.jellyfin.JellyfinHomeState
+import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.SpotlightCandidate
 import dev.jellystack.core.jellyfin.buildLatestSpotlightCandidates
 import dev.jellystack.core.jellyfin.buildSpotlightCandidates
@@ -17,40 +20,109 @@ internal data class TvHomeHeroPresentation(
 
 internal enum class TvHomeCarouselDirection { PREVIOUS, NEXT }
 
+internal data class TvHomeCarouselState(
+    val selectedId: String? = null,
+)
+
+internal data class TvHomeCarouselManualMove(
+    val state: TvHomeCarouselState,
+    val openNavigationRail: Boolean = false,
+)
+
 internal fun reconcileTvHomeCarouselSelection(
     candidateIds: List<String>,
     currentId: String?,
 ): String? = currentId?.takeIf { it in candidateIds } ?: candidateIds.firstOrNull()
 
-internal fun moveTvHomeCarouselSelection(
+/** Delay before the unfocused hero advances; null disables auto-advance entirely. */
+internal const val TV_CAROUSEL_AUTO_ADVANCE_MS = 8_000L
+
+internal fun tvCarouselAutoAdvanceDelayMs(
+    heroFocused: Boolean,
+    candidateCount: Int,
+    previewActive: Boolean,
+): Long? =
+    when {
+        candidateCount <= 1 -> null
+        heroFocused -> null
+        previewActive -> null
+        else -> TV_CAROUSEL_AUTO_ADVANCE_MS
+    }
+
+/** Wrapping next-selection used by the auto-advancer (manual moves clamp instead). */
+internal fun advanceTvHomeCarousel(
     candidateIds: List<String>,
     currentId: String?,
-    direction: TvHomeCarouselDirection,
 ): String? {
-    val selectedId = reconcileTvHomeCarouselSelection(candidateIds, currentId) ?: return null
+    if (candidateIds.isEmpty()) return null
+    val currentIndex = currentId?.let(candidateIds::indexOf).takeIf { it != null && it >= 0 } ?: -1
+    return candidateIds[(currentIndex + 1) % candidateIds.size]
+}
+
+internal fun moveTvHomeCarouselManually(
+    candidateIds: List<String>,
+    state: TvHomeCarouselState,
+    direction: TvHomeCarouselDirection,
+): TvHomeCarouselManualMove {
+    val selectedId =
+        reconcileTvHomeCarouselSelection(candidateIds, state.selectedId)
+            ?: return TvHomeCarouselManualMove(state.copy(selectedId = null))
     val selectedIndex = candidateIds.indexOf(selectedId)
     return when (direction) {
-        TvHomeCarouselDirection.NEXT -> candidateIds[(selectedIndex + 1) % candidateIds.size]
-        TvHomeCarouselDirection.PREVIOUS -> candidateIds[(selectedIndex - 1 + candidateIds.size) % candidateIds.size]
+        TvHomeCarouselDirection.PREVIOUS ->
+            if (selectedIndex == 0) {
+                TvHomeCarouselManualMove(state.copy(selectedId = selectedId), openNavigationRail = true)
+            } else {
+                TvHomeCarouselManualMove(state.select(candidateIds[selectedIndex - 1]))
+            }
+        TvHomeCarouselDirection.NEXT ->
+            if (selectedIndex == candidateIds.lastIndex) {
+                TvHomeCarouselManualMove(state.copy(selectedId = selectedId))
+            } else {
+                TvHomeCarouselManualMove(state.select(candidateIds[selectedIndex + 1]))
+            }
     }
 }
 
-internal fun shouldAutoCycleTvHomeCarousel(
-    enabled: Boolean,
-    candidateCount: Int,
-    railOpen: Boolean,
-    previewActive: Boolean,
+private fun TvHomeCarouselState.select(itemId: String?) = if (selectedId == itemId) this else copy(selectedId = itemId)
+
+internal fun SpotlightCandidate.tvHomeTrailerPreviewItem() = actionItem
+
+internal fun TvTrailerPreviewState.showsTvHomeHeroPreview(
+    itemId: String,
     heroFocused: Boolean,
-): Boolean {
-    val canStart = enabled && candidateCount > 1
-    val paused = railOpen || previewActive || heroFocused
-    return canStart && !paused
+): Boolean =
+    heroFocused &&
+        this is TvTrailerPreviewState.Playing &&
+        request.owner == TvTrailerPreviewOwner.HERO &&
+        request.target.itemId == itemId
+
+internal fun TvTrailerPreviewState.showsTvMediaCardPreview(
+    itemId: String,
+    presentationId: String?,
+): Boolean =
+    this is TvTrailerPreviewState.Playing &&
+        request.owner == TvTrailerPreviewOwner.CARD &&
+        request.target.itemId == itemId &&
+        request.presentationId == presentationId
+
+internal sealed interface TvHomeJellyfinDestination {
+    data class Detail(
+        val item: JellyfinItem,
+    ) : TvHomeJellyfinDestination
+
+    data class Library(
+        val libraryId: String,
+        val title: String,
+    ) : TvHomeJellyfinDestination
 }
 
-internal fun TvTrailerPreviewState.blocksTvHomeCarouselAutoCycle(): Boolean =
-    this is TvTrailerPreviewState.Armed || this is TvTrailerPreviewState.Playing
-
-internal fun tvHomeCarouselIntervalMillis(intervalSeconds: Int): Long = intervalSeconds.coerceAtLeast(6) * 1_000L
+internal fun tvHomeJellyfinDestination(item: JellyfinItem): TvHomeJellyfinDestination =
+    if (item.type.equals("CollectionFolder", ignoreCase = true)) {
+        TvHomeJellyfinDestination.Library(item.id, item.name)
+    } else {
+        TvHomeJellyfinDestination.Detail(item)
+    }
 
 internal fun buildTvHomeHeroPresentation(
     state: JellyfinHomeState,
@@ -95,7 +167,7 @@ internal fun buildTvHomeHeroPresentation(
 internal data class TvHomeFocusRow(
     val id: String,
     val lazyColumnIndex: Int,
-    val firstItemId: String?,
+    val itemIds: List<String>,
     val landscape: Boolean,
 )
 
@@ -108,6 +180,7 @@ internal sealed interface TvHomeFocusOrigin {
 
     data class Row(
         val id: String,
+        val itemId: String? = null,
     ) : TvHomeFocusOrigin
 }
 
@@ -120,6 +193,7 @@ internal sealed interface TvHomeFocusDestination {
         val id: String,
         val lazyColumnIndex: Int,
         val firstItemId: String,
+        val horizontalIndex: Int,
     ) : TvHomeFocusDestination
 }
 
@@ -128,16 +202,40 @@ internal data class TvHomeFocusMove(
     val destination: TvHomeFocusDestination,
 )
 
+internal data class TvHomeFocusCompletion(
+    val requestId: Long,
+    val focused: Boolean,
+)
+
+internal class TvHomeFocusTargetRegistry<T : Any>(
+    private val targetFactory: () -> T,
+) {
+    private val targets = linkedMapOf<String, LinkedHashMap<String, T>>()
+
+    fun reconcile(rows: List<TvHomeFocusRow>): Map<String, Map<String, T>> {
+        targets.keys.retainAll(rows.mapTo(mutableSetOf()) { it.id })
+        rows.forEach { row ->
+            val rowTargets = targets.getOrPut(row.id) { linkedMapOf() }
+            rowTargets.keys.retainAll(row.itemIds.toSet())
+            row.itemIds.forEach { itemId -> rowTargets.getOrPut(itemId, targetFactory) }
+        }
+        return targets.mapValues { (_, rowTargets) -> rowTargets.toMap() }
+    }
+}
+
 internal class TvHomeVerticalFocusCoordinator(
     rows: List<TvHomeFocusRow>,
 ) {
     private var rows = rows.nonEmptyRows()
     private var nextRequestId = 0L
-    private var pendingRequestId: Long? = null
+    private var pendingMove: TvHomeFocusMove? = null
 
-    fun replaceRows(rows: List<TvHomeFocusRow>) {
-        this.rows = rows.nonEmptyRows()
-        pendingRequestId = null
+    fun replaceRows(rows: List<TvHomeFocusRow>): TvHomeFocusMove? {
+        val replacement = rows.nonEmptyRows()
+        if (this.rows == replacement) return pendingMove
+        this.rows = replacement
+        pendingMove = pendingMove?.reconcile(replacement)
+        return pendingMove
     }
 
     fun beginMove(
@@ -145,18 +243,59 @@ internal class TvHomeVerticalFocusCoordinator(
         direction: TvHomeVerticalDirection,
         onAccepted: () -> Unit = {},
     ): TvHomeFocusMove? {
-        pendingRequestId = null
         val destination = destination(origin, direction) ?: return null
+        return existingOrNewMove(destination, onAccepted)
+    }
+
+    private fun existingOrNewMove(
+        destination: TvHomeFocusDestination,
+        onAccepted: () -> Unit,
+    ): TvHomeFocusMove {
+        pendingMove?.takeIf { it.destination == destination }?.let { return it }
+        pendingMove = null
         onAccepted()
         val requestId = ++nextRequestId
-        pendingRequestId = requestId
-        return TvHomeFocusMove(requestId, destination)
+        return TvHomeFocusMove(requestId, destination).also { pendingMove = it }
     }
 
     fun acceptCompletion(requestId: Long): Boolean {
-        if (pendingRequestId != requestId) return false
-        pendingRequestId = null
+        if (pendingMove?.requestId != requestId) return false
+        pendingMove = null
         return true
+    }
+
+    suspend fun completeMove(
+        requestId: Long,
+        requestTarget: suspend (String) -> Boolean,
+    ): TvHomeFocusCompletion? {
+        val move = pendingMove?.takeIf { it.requestId == requestId } ?: return null
+        val focused =
+            when (val destination = move.destination) {
+                TvHomeFocusDestination.HeroCarousel -> requestTarget(TV_HOME_HERO_TARGET)
+                TvHomeFocusDestination.HeroPrimary -> requestTarget(TV_HOME_PRIMARY_TARGET)
+                is TvHomeFocusDestination.Row -> {
+                    val row = rows.firstOrNull { it.id == destination.id }
+                    val targetIndex =
+                        row?.itemIds?.indexOf(destination.firstItemId)?.takeIf { it >= 0 }
+                            ?: destination.horizontalIndex
+                    row
+                        ?.itemIds
+                        ?.indices
+                        ?.sortedBy { index -> kotlin.math.abs(index - targetIndex) }
+                        ?.any { index -> requestTarget(tvHomeCardTargetId(row.id, row.itemIds[index])) }
+                        ?: false
+                }
+            }
+        return completeTvHomeFocusMove(requestId, focused)
+    }
+
+    private fun completeTvHomeFocusMove(
+        requestId: Long,
+        focused: Boolean,
+    ): TvHomeFocusCompletion? {
+        val completed = pendingMove?.takeIf { it.requestId == requestId } ?: return null
+        pendingMove = null
+        return TvHomeFocusCompletion(completed.requestId, focused)
     }
 
     private fun destination(
@@ -183,13 +322,32 @@ internal class TvHomeVerticalFocusCoordinator(
                 }
             }
         }
+
+    private fun TvHomeFocusMove.reconcile(rows: List<TvHomeFocusRow>): TvHomeFocusMove? {
+        val rowDestination = destination as? TvHomeFocusDestination.Row ?: return this
+        return reconcileRowDestination(rowDestination, rows)
+    }
+
+    private fun TvHomeFocusMove.reconcileRowDestination(
+        destination: TvHomeFocusDestination.Row,
+        rows: List<TvHomeFocusRow>,
+    ): TvHomeFocusMove? {
+        val row =
+            rows.firstOrNull { it.id == destination.id }
+                ?: rows.minByOrNull { kotlin.math.abs(it.lazyColumnIndex - destination.lazyColumnIndex) }
+                ?: return null
+        return copy(destination = row.destination())
+    }
 }
 
-private fun List<TvHomeFocusRow>.nonEmptyRows(): List<TvHomeFocusRow> = filter { !it.firstItemId.isNullOrBlank() }
+private fun List<TvHomeFocusRow>.nonEmptyRows(): List<TvHomeFocusRow> = filter { it.itemIds.isNotEmpty() }
 
-private fun TvHomeFocusRow.destination(): TvHomeFocusDestination.Row =
-    TvHomeFocusDestination.Row(
+private fun TvHomeFocusRow.destination(horizontalIndex: Int = 0): TvHomeFocusDestination.Row {
+    val resolvedHorizontalIndex = horizontalIndex.coerceIn(0, itemIds.lastIndex)
+    return TvHomeFocusDestination.Row(
         id = id,
         lazyColumnIndex = lazyColumnIndex,
-        firstItemId = requireNotNull(firstItemId),
+        firstItemId = itemIds[resolvedHorizontalIndex],
+        horizontalIndex = resolvedHorizontalIndex,
     )
+}
