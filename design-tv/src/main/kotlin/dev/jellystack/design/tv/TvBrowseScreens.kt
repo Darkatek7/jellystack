@@ -98,7 +98,6 @@ import dev.jellystack.core.jellyseerr.JellyseerrRequestSummary
 import dev.jellystack.core.jellyseerr.JellyseerrRequestsState
 import dev.jellystack.core.jellyseerr.JellyseerrSearchItem
 import dev.jellystack.players.AndroidPlayerEngine
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
@@ -317,21 +316,6 @@ internal fun TvHomeScreen(
         val selectedId = reconcileTvHomeCarouselSelection(candidateIds, carouselState.selectedId)
         if (selectedId != carouselState.selectedId) {
             carouselState = carouselState.copy(selectedId = selectedId)
-        }
-    }
-    LaunchedEffect(candidateIds, heroHasFocus, carouselState.selectedId, trailerPreviewState) {
-        val delayMs =
-            tvCarouselAutoAdvanceDelayMs(
-                heroFocused = heroHasFocus,
-                candidateCount = heroCandidates.size,
-                previewActive = trailerPreviewState is TvTrailerPreviewState.Playing,
-            ) ?: return@LaunchedEffect
-        delay(delayMs)
-        if (heroHasFocus) return@LaunchedEffect
-        advanceTvHomeCarousel(candidateIds, carouselState.selectedId)?.let { nextId ->
-            onCancelPreview(TvTrailerPreviewOwner.HERO)
-            carouselDirection = TvHomeCarouselDirection.NEXT
-            carouselState = carouselState.copy(selectedId = nextId)
         }
     }
     LaunchedEffect(heroHasFocus, activePreviewItem?.id) {

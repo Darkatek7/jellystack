@@ -54,6 +54,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onKeyEvent
@@ -143,6 +144,13 @@ internal fun tvJellyfinHeroTitlePresentation(
         textColor = TvText,
     )
 
+internal fun tvVisibleOfficialRating(rating: String?): String? {
+    val trimmed = rating?.trim().orEmpty()
+    if (trimmed.isEmpty()) return null
+    val numericRating = trimmed.toDoubleOrNull()
+    return trimmed.takeIf { numericRating == null || numericRating > 0.0 }
+}
+
 internal data class TvSeasonGroup(
     val seasonNumber: Int?,
     val episodes: List<JellyfinItem>,
@@ -188,22 +196,37 @@ internal suspend fun loadTvJellyfinDetailBase(
     return TvJellyfinDetailBase(item, detail)
 }
 
+internal data class TvDetailSectionFocusModifiers(
+    val firstTargetModifier: Modifier,
+    val navigationModifier: Modifier,
+)
+
+internal data class TvDetailFocusTarget(
+    val id: String,
+    val lazyItemIndex: Int,
+)
+
 @Composable
 internal fun TvDetailFocusLayout(
     routeKey: String,
     heroContentDescription: String,
     bodyFocusItemIndex: Int = 1,
-    nextBodyItemIndex: Int? = null,
+    lowerContentTargets: List<TvDetailFocusTarget> = emptyList(),
     modifier: Modifier = Modifier,
     heroContent: @Composable BoxScope.(primaryActionModifier: Modifier, actionRowModifier: Modifier) -> Unit,
-    content: LazyListScope.(bodyFocusModifier: Modifier, lowerContentFocusModifier: Modifier) -> Unit,
+    content: LazyListScope.(bodyFocusModifier: Modifier, lowerContentFocusModifiers: List<TvDetailSectionFocusModifiers>) -> Unit,
 ) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val heroFocusRequester = remember(routeKey) { FocusRequester() }
     val primaryActionFocusRequester = remember(routeKey) { FocusRequester() }
     val bodyFocusRequester = remember(routeKey) { FocusRequester() }
-    val lowerContentFocusRequester = remember(routeKey) { FocusRequester() }
+    val lowerContentFocusRequestersById = remember(routeKey) { mutableMapOf<String, FocusRequester>() }
+    val lowerContentFocusRequesters =
+        lowerContentTargets.map { target ->
+            lowerContentFocusRequestersById.getOrPut(target.id) { FocusRequester() }
+        }
+    var activeLowerContentId by remember(routeKey) { mutableStateOf<String?>(null) }
 
     fun focusHero() {
         scope.launch {
@@ -224,22 +247,47 @@ internal fun TvDetailFocusLayout(
         scope.launch {
             listState.scrollToItem(bodyFocusItemIndex)
             withFrameNanos { }
+            activeLowerContentId = null
             bodyFocusRequester.requestFocus()
         }
     }
 
-    fun focusLowerContent() {
-        val itemIndex = nextBodyItemIndex ?: return
+    fun focusLowerContent(index: Int) {
+        val target =
+            lowerContentTargets.getOrNull(index) ?: run {
+                focusBody()
+                return
+            }
+        val focusRequester =
+            lowerContentFocusRequesters.getOrNull(index) ?: run {
+                focusBody()
+                return
+            }
         scope.launch {
-            listState.scrollToItem(itemIndex)
+            listState.scrollToItem(target.lazyItemIndex)
             withFrameNanos { }
-            lowerContentFocusRequester.requestFocus()
+            val focused = runCatching { focusRequester.requestFocus() }.getOrDefault(false)
+            if (focused) {
+                activeLowerContentId = target.id
+            } else {
+                listState.scrollToItem(bodyFocusItemIndex)
+                withFrameNanos { }
+                activeLowerContentId = null
+                bodyFocusRequester.requestFocus()
+            }
         }
     }
 
     LaunchedEffect(routeKey) {
         listState.scrollToItem(0)
         heroFocusRequester.requestFocus()
+    }
+    LaunchedEffect(lowerContentTargets, activeLowerContentId) {
+        val activeId = activeLowerContentId
+        if (activeId != null && lowerContentTargets.none { it.id == activeId }) {
+            withFrameNanos { }
+            focusBody()
+        }
     }
 
     val primaryActionModifier =
@@ -281,31 +329,57 @@ internal fun TvDetailFocusLayout(
                 if (isInitialDownPress && event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_UP) {
                     focusPrimaryAction()
                     true
-                } else if (nextBodyItemIndex != null && isInitialDownPress &&
+                } else if (lowerContentTargets.isNotEmpty() &&
+                    isInitialDownPress &&
                     event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_DOWN
                 ) {
-                    focusLowerContent()
+                    focusLowerContent(0)
                     true
                 } else {
                     false
                 }
+            }.onFocusChanged { focusState ->
+                if (focusState.isFocused) activeLowerContentId = null
             }.focusable()
-    val lowerContentFocusModifier =
-        Modifier
-            .focusRequester(lowerContentFocusRequester)
-            .testTag("tv-detail-lower-content-focus")
-            .onPreviewKeyEvent { event ->
-                if (
-                    event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
-                    event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_UP &&
-                    event.nativeKeyEvent.repeatCount == 0
-                ) {
-                    focusBody()
-                    true
-                } else {
-                    false
-                }
-            }
+    val lowerContentFocusModifiers =
+        lowerContentTargets.mapIndexed { index, target ->
+            val firstTargetModifier =
+                Modifier
+                    .focusRequester(lowerContentFocusRequesters[index])
+                    .testTag("tv-detail-lower-content-focus-$index")
+                    .onFocusChanged { focusState ->
+                        if (focusState.isFocused) activeLowerContentId = target.id
+                    }
+            val navigationModifier =
+                Modifier
+                    .onFocusChanged { focusState ->
+                        if (focusState.hasFocus) activeLowerContentId = target.id
+                    }.onPreviewKeyEvent { event ->
+                        val isInitialPress =
+                            event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
+                                event.nativeKeyEvent.repeatCount == 0
+                        if (!isInitialPress) {
+                            false
+                        } else {
+                            when (event.nativeKeyEvent.keyCode) {
+                                KeyEvent.KEYCODE_DPAD_UP -> {
+                                    if (index == 0) focusBody() else focusLowerContent(index - 1)
+                                    true
+                                }
+                                KeyEvent.KEYCODE_DPAD_DOWN -> {
+                                    if (index < lowerContentTargets.lastIndex) {
+                                        focusLowerContent(index + 1)
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                }
+                                else -> false
+                            }
+                        }
+                    }
+            TvDetailSectionFocusModifiers(firstTargetModifier, navigationModifier)
+        }
 
     LazyColumn(
         state = listState,
@@ -334,12 +408,13 @@ internal fun TvDetailFocusLayout(
                         onClick = { primaryActionFocusRequester.requestFocus() },
                         shape = RoundedCornerShape(0.dp),
                         scale = 1f,
+                        showFocusBorder = false,
                     ),
             ) {
                 heroContent(primaryActionModifier, actionRowModifier)
             }
         }
-        content(bodyFocusModifier, lowerContentFocusModifier)
+        content(bodyFocusModifier, lowerContentFocusModifiers)
     }
 }
 
@@ -433,6 +508,16 @@ internal fun TvJellyfinDetailScreen(
     val logoTag = currentItem.seriesLogoImageTag ?: currentDetail.logoImageTag ?: currentItem.logoImageTag ?: currentItem.parentLogoImageTag
     val titlePresentation = tvJellyfinHeroTitlePresentation(currentItem.type, logoTag)
     val hasResumePosition = (currentItem.positionTicks ?: 0L) > 0L
+    val lowerContentTargets =
+        buildList {
+            var itemIndex = 3
+            if (episodes.isNotEmpty()) {
+                if (seasonGroups.size > 1) itemIndex += 1
+                add(TvDetailFocusTarget("episodes", itemIndex++))
+            }
+            if (currentDetail.people.isNotEmpty()) add(TvDetailFocusTarget("cast", itemIndex++))
+            if (similar.isNotEmpty()) add(TvDetailFocusTarget("similar", itemIndex))
+        }
 
     fun startPlayback(startPolicy: PlaybackStartPolicy) {
         scope.launch {
@@ -450,8 +535,7 @@ internal fun TvJellyfinDetailScreen(
         routeKey = route.itemId,
         heroContentDescription = currentDetail.name,
         bodyFocusItemIndex = 2,
-        nextBodyItemIndex =
-            if (episodes.isNotEmpty() || currentDetail.people.isNotEmpty() || similar.isNotEmpty()) 3 else null,
+        lowerContentTargets = lowerContentTargets,
         modifier = modifier,
         heroContent = { primaryActionModifier, actionRowModifier ->
             AsyncImage(
@@ -587,13 +671,14 @@ internal fun TvJellyfinDetailScreen(
                 }
             }
         },
-    ) { bodyFocusModifier, lowerContentFocusModifier ->
+    ) { bodyFocusModifier, lowerContentFocusModifiers ->
+        var lowerContentFocusIndex = 0
         item("facts") {
             Row(Modifier.padding(start = 108.dp, end = 42.dp), horizontalArrangement = Arrangement.spacedBy(22.dp)) {
                 listOfNotNull(
                     currentDetail.productionYear?.toString(),
                     currentDetail.runTimeTicks?.let { "${it / 600_000_000L} min" },
-                    currentDetail.officialRating,
+                    tvVisibleOfficialRating(currentDetail.officialRating),
                     currentDetail.communityRating?.let { "★ %.1f".format(it) },
                     currentDetail.mediaSources
                         .firstOrNull()
@@ -615,6 +700,7 @@ internal fun TvJellyfinDetailScreen(
             }
         }
         if (episodes.isNotEmpty()) {
+            val episodesFocusModifiers = lowerContentFocusModifiers[lowerContentFocusIndex++]
             if (seasonGroups.size > 1) {
                 item("seasons") {
                     Column(Modifier.padding(start = 108.dp, end = 42.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -648,13 +734,20 @@ internal fun TvJellyfinDetailScreen(
                     visibleEpisodes,
                     homeState,
                     onOpenItem,
-                    firstItemModifier = lowerContentFocusModifier,
+                    firstItemModifier = episodesFocusModifiers.firstTargetModifier,
+                    navigationModifier = episodesFocusModifiers.navigationModifier,
                 )
             }
         }
         if (currentDetail.people.isNotEmpty()) {
+            val castFocusModifiers = lowerContentFocusModifiers[lowerContentFocusIndex++]
             item("cast") {
-                Column(Modifier.padding(start = 108.dp, end = 42.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(
+                    Modifier
+                        .padding(start = 108.dp, end = 42.dp)
+                        .then(castFocusModifiers.navigationModifier),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
                     TvSectionTitle(strings.cast)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                         items(currentDetail.people.take(16), key = { it.id }) { person ->
@@ -662,7 +755,6 @@ internal fun TvJellyfinDetailScreen(
                                 title = person.name,
                                 subtitle = person.role,
                                 landscape = false,
-                                focusable = false,
                                 imageUrl =
                                     jellyfinImageUrl(
                                         homeState.imageBaseUrl,
@@ -672,10 +764,10 @@ internal fun TvJellyfinDetailScreen(
                                         "Primary",
                                         400,
                                     ),
-                                onClick = {},
+                                onClick = null,
                                 modifier =
-                                    if (episodes.isEmpty() && person.id == currentDetail.people.first().id) {
-                                        lowerContentFocusModifier
+                                    if (person.id == currentDetail.people.first().id) {
+                                        castFocusModifiers.firstTargetModifier
                                     } else {
                                         Modifier
                                     },
@@ -686,14 +778,15 @@ internal fun TvJellyfinDetailScreen(
             }
         }
         if (similar.isNotEmpty()) {
+            val similarFocusModifiers = lowerContentFocusModifiers[lowerContentFocusIndex]
             item("similar") {
                 TvDetailItemRow(
                     strings.similar,
                     similar,
                     homeState,
                     onOpenItem,
-                    firstItemModifier =
-                        if (episodes.isEmpty() && currentDetail.people.isEmpty()) lowerContentFocusModifier else Modifier,
+                    firstItemModifier = similarFocusModifiers.firstTargetModifier,
+                    navigationModifier = similarFocusModifiers.navigationModifier,
                 )
             }
         }
@@ -746,8 +839,14 @@ private fun TvDetailItemRow(
     homeState: JellyfinHomeState,
     onOpenItem: (JellyfinItem) -> Unit,
     firstItemModifier: Modifier = Modifier,
+    navigationModifier: Modifier = Modifier,
 ) {
-    Column(Modifier.padding(start = 108.dp, end = 42.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(
+        Modifier
+            .padding(start = 108.dp, end = 42.dp)
+            .then(navigationModifier),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
         TvSectionTitle(title)
         LazyRow(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
             items(items, key = { it.id }) { item ->

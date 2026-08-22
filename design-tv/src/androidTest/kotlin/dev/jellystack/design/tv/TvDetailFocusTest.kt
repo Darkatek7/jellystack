@@ -5,6 +5,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
@@ -72,7 +77,7 @@ class TvDetailFocusTest {
     }
 
     @Test
-    fun downFromActionRowFocusesAndScrollsToDetailBody() {
+    fun focusChainOverviewCastSimilarScrollsAndCastCenterIsNoOp() {
         composeRule.setContent {
             JellystackTvTheme {
                 TvDetailFocusLayout(
@@ -94,16 +99,50 @@ class TvDetailFocusTest {
                         }
                     },
                     bodyFocusItemIndex = 1,
-                    nextBodyItemIndex = 2,
-                ) { bodyFocusModifier, lowerContentFocusModifier ->
+                    lowerContentTargets =
+                        listOf(
+                            TvDetailFocusTarget("cast", 2),
+                            TvDetailFocusTarget("similar", 3),
+                        ),
+                ) { bodyFocusModifier, lowerContentFocusModifiers ->
                     item("overview") {
                         Box(bodyFocusModifier.fillMaxWidth().height(900.dp))
                     }
                     item("cast") {
-                        TvActionButton(
-                            label = "Cast member",
+                        LazyRow(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(220.dp)
+                                .then(lowerContentFocusModifiers[0].navigationModifier),
+                        ) {
+                            itemsIndexed(listOf("Actor 1", "Actor 2")) { index, actor ->
+                                TvMediaCard(
+                                    title = actor,
+                                    imageUrl = null,
+                                    onClick = null,
+                                    modifier =
+                                        if (index == 0) {
+                                            lowerContentFocusModifiers[0]
+                                                .firstTargetModifier
+                                                .width(180.dp)
+                                                .testTag("cast-person-$index")
+                                        } else {
+                                            Modifier.width(180.dp).testTag("cast-person-$index")
+                                        },
+                                )
+                            }
+                        }
+                    }
+                    item("similar") {
+                        TvMediaCard(
+                            title = "Similar",
+                            imageUrl = null,
                             onClick = {},
-                            modifier = lowerContentFocusModifier.width(220.dp),
+                            modifier =
+                                lowerContentFocusModifiers[1]
+                                    .firstTargetModifier
+                                    .then(lowerContentFocusModifiers[1].navigationModifier)
+                                    .testTag("similar-item-0"),
                         )
                     }
                 }
@@ -121,15 +160,173 @@ class TvDetailFocusTest {
                 true
             }.getOrDefault(false)
         }
-        composeRule.onNodeWithTag("tv-detail-body-focus").assertIsFocused()
+        val body = composeRule.onNodeWithTag("tv-detail-body-focus").assertIsFocused()
         assertTrue(hero.getUnclippedBoundsInRoot().top.value < 0f)
 
-        composeRule.onNodeWithTag("tv-detail-body-focus").performKeyInput { pressKey(Key.DirectionDown) }
+        body.performKeyInput { pressKey(Key.DirectionDown) }
         composeRule.waitForIdle()
-        composeRule.onNodeWithContentDescription("Cast member").assertIsFocused()
+        val firstCast = composeRule.onNodeWithContentDescription("Actor 1").assertIsFocused()
 
-        composeRule.onNodeWithContentDescription("Cast member").performKeyInput { pressKey(Key.DirectionUp) }
+        firstCast.performKeyInput { pressKey(Key.Enter) }
         composeRule.waitForIdle()
-        composeRule.onNodeWithTag("tv-detail-body-focus").assertIsFocused()
+        firstCast.assertIsFocused()
+
+        firstCast.performKeyInput { pressKey(Key.DirectionRight) }
+        composeRule.waitForIdle()
+        val secondCast = composeRule.onNodeWithContentDescription("Actor 2").assertIsFocused()
+
+        secondCast.performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.waitForIdle()
+        val similar = composeRule.onNodeWithContentDescription("Similar").assertIsFocused()
+
+        similar.performKeyInput { pressKey(Key.DirectionUp) }
+        composeRule.waitForIdle()
+        firstCast.assertIsFocused()
+    }
+
+    @Test
+    fun disappearingLowerSectionRestoresOverviewFocus() {
+        var showCast by mutableStateOf(true)
+        composeRule.setContent {
+            JellystackTvTheme {
+                TvDetailFocusLayout(
+                    routeKey = "episode-changing",
+                    heroContentDescription = "Changing episode details",
+                    modifier = Modifier.fillMaxSize(),
+                    heroContent = { primaryActionModifier, actionRowModifier ->
+                        TvActionButton(
+                            label = "Play",
+                            onClick = {},
+                            primary = true,
+                            modifier =
+                                primaryActionModifier
+                                    .then(actionRowModifier)
+                                    .align(Alignment.BottomStart)
+                                    .width(TV_DETAIL_PRIMARY_ACTION_WIDTH_DP.dp),
+                        )
+                    },
+                    bodyFocusItemIndex = 1,
+                    lowerContentTargets =
+                        if (showCast) listOf(TvDetailFocusTarget("cast", 2)) else emptyList(),
+                ) { bodyFocusModifier, lowerContentFocusModifiers ->
+                    item("overview") {
+                        Box(bodyFocusModifier.fillMaxWidth().height(900.dp))
+                    }
+                    if (showCast) {
+                        item("cast") {
+                            LazyRow(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .height(220.dp)
+                                    .then(lowerContentFocusModifiers[0].navigationModifier),
+                            ) {
+                                item("actor") {
+                                    TvMediaCard(
+                                        title = "Temporary actor",
+                                        imageUrl = null,
+                                        onClick = null,
+                                        modifier =
+                                            lowerContentFocusModifiers[0]
+                                                .firstTargetModifier
+                                                .width(180.dp),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag("tv-detail-hero").performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.onNodeWithTag("tv-detail-primary-action").performKeyInput { pressKey(Key.DirectionDown) }
+        val overview = composeRule.onNodeWithTag("tv-detail-body-focus").assertIsFocused()
+        overview.performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.onNodeWithContentDescription("Temporary actor").assertIsFocused()
+
+        composeRule.runOnIdle { showCast = false }
+        composeRule.waitForIdle()
+
+        overview.assertIsFocused()
+        composeRule.onNodeWithContentDescription("Temporary actor").assertDoesNotExist()
+    }
+
+    @Test
+    fun appendingLowerSectionKeepsExistingCastFocus() {
+        var showSimilar by mutableStateOf(false)
+        composeRule.setContent {
+            JellystackTvTheme {
+                TvDetailFocusLayout(
+                    routeKey = "episode-appending",
+                    heroContentDescription = "Appending episode details",
+                    modifier = Modifier.fillMaxSize(),
+                    heroContent = { primaryActionModifier, actionRowModifier ->
+                        TvActionButton(
+                            label = "Play",
+                            onClick = {},
+                            primary = true,
+                            modifier =
+                                primaryActionModifier
+                                    .then(actionRowModifier)
+                                    .align(Alignment.BottomStart)
+                                    .width(TV_DETAIL_PRIMARY_ACTION_WIDTH_DP.dp),
+                        )
+                    },
+                    bodyFocusItemIndex = 1,
+                    lowerContentTargets =
+                        buildList {
+                            add(TvDetailFocusTarget("cast", 2))
+                            if (showSimilar) add(TvDetailFocusTarget("similar", 3))
+                        },
+                ) { bodyFocusModifier, lowerContentFocusModifiers ->
+                    item("overview") {
+                        Box(bodyFocusModifier.fillMaxWidth().height(900.dp))
+                    }
+                    item("cast") {
+                        LazyRow(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(220.dp)
+                                .then(lowerContentFocusModifiers[0].navigationModifier),
+                        ) {
+                            item("actor") {
+                                TvMediaCard(
+                                    title = "Persistent actor",
+                                    imageUrl = null,
+                                    onClick = null,
+                                    modifier =
+                                        lowerContentFocusModifiers[0]
+                                            .firstTargetModifier
+                                            .width(180.dp),
+                                )
+                            }
+                        }
+                    }
+                    if (showSimilar) {
+                        item("similar") {
+                            TvMediaCard(
+                                title = "New similar item",
+                                imageUrl = null,
+                                onClick = {},
+                                modifier =
+                                    lowerContentFocusModifiers[1]
+                                        .firstTargetModifier
+                                        .then(lowerContentFocusModifiers[1].navigationModifier),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag("tv-detail-hero").performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.onNodeWithTag("tv-detail-primary-action").performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.onNodeWithTag("tv-detail-body-focus").performKeyInput { pressKey(Key.DirectionDown) }
+        val cast = composeRule.onNodeWithContentDescription("Persistent actor").assertIsFocused()
+
+        composeRule.runOnIdle { showSimilar = true }
+        composeRule.waitForIdle()
+
+        cast.assertIsFocused()
     }
 }

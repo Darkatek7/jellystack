@@ -2,6 +2,7 @@ package dev.jellystack.design.tv
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -19,5 +20,21 @@ class TvDetailPresentationTest {
         assertEquals(TvText, episode.textColor)
         assertFalse(movieWithoutLogo.useGraphicLogo)
         assertEquals(TvText, movieWithoutLogo.textColor)
+    }
+
+    @Test
+    fun validOfficialRatingsRemainVisible() {
+        assertEquals("PG-13", tvVisibleOfficialRating("PG-13"))
+        assertEquals("TV-MA", tvVisibleOfficialRating("TV-MA"))
+    }
+
+    @Test
+    fun blankAndZeroOfficialRatingsAreHidden() {
+        assertNull(tvVisibleOfficialRating(null))
+        assertNull(tvVisibleOfficialRating(""))
+        assertNull(tvVisibleOfficialRating("   "))
+        assertNull(tvVisibleOfficialRating("0"))
+        assertNull(tvVisibleOfficialRating("0.0"))
+        assertNull(tvVisibleOfficialRating("   0   "))
     }
 }

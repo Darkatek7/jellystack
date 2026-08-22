@@ -90,7 +90,7 @@ internal fun tvCompactActionRequiredWidthDp(
 
 @Composable
 internal fun Modifier.tvFocusable(
-    onClick: () -> Unit,
+    onClick: (() -> Unit)?,
     enabled: Boolean = true,
     shape: RoundedCornerShape = RoundedCornerShape(16.dp),
     scale: Float = 1.045f,
@@ -99,6 +99,7 @@ internal fun Modifier.tvFocusable(
     focusToNavigationRailOnLeft: Boolean = false,
     focusTargetId: String? = null,
     providedFocusRequester: FocusRequester? = null,
+    showFocusBorder: Boolean = true,
 ): Modifier {
     val rememberedFocusRequester = remember { FocusRequester() }
     val restorationRequester = providedFocusRequester ?: rememberedFocusRequester
@@ -111,6 +112,16 @@ internal fun Modifier.tvFocusable(
             }
         }
     }
+    val centerActionModifier =
+        if (onClick != null) {
+            Modifier
+                .semantics {
+                    role = Role.Button
+                    if (!enabled) disabled()
+                }.clickable(enabled = enabled, onClick = onClick)
+        } else {
+            Modifier
+        }
     return this.then(
         Modifier
             .focusRequester(restorationRequester)
@@ -128,11 +139,9 @@ internal fun Modifier.tvFocusable(
                     }
                     onFocusChanged?.invoke(focused)
                 },
+                showFocusBorder = showFocusBorder,
             ).tvReturnToNavigationRailOnLeft(focusToNavigationRailOnLeft)
-            .semantics {
-                role = Role.Button
-                if (!enabled) disabled()
-            }.clickable(enabled = enabled, onClick = onClick)
+            .then(centerActionModifier)
             .focusable(enabled),
     )
 }
@@ -143,10 +152,17 @@ private fun Modifier.tvFocusDecoration(
     scale: Float,
     onFocused: (() -> Unit)?,
     onFocusChanged: ((Boolean) -> Unit)?,
+    showFocusBorder: Boolean = true,
 ): Modifier {
     var focused by remember { mutableStateOf(false) }
     val animatedScale by animateFloatAsState(if (focused) scale else 1f, label = "tv-focus-scale")
     val borderColor by animateColorAsState(if (focused) TvPurple else Color.Transparent, label = "tv-focus-color")
+    val borderModifier =
+        if (showFocusBorder) {
+            Modifier.border(if (focused) 1.5.dp else 0.dp, borderColor.copy(alpha = 0.9f), shape)
+        } else {
+            Modifier
+        }
     return this
         .onFocusChanged {
             val becameFocused = it.isFocused && !focused
@@ -165,7 +181,7 @@ private fun Modifier.tvFocusDecoration(
                             .CornerRadius(22.dp.toPx()),
                 )
             }
-        }.border(if (focused) 1.5.dp else 0.dp, borderColor.copy(alpha = 0.9f), shape)
+        }.then(borderModifier)
         .clip(shape)
 }
 
@@ -284,7 +300,7 @@ internal fun TvCompactActionButton(
 internal fun TvMediaCard(
     title: String,
     imageUrl: String?,
-    onClick: () -> Unit,
+    onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     landscape: Boolean = true,
