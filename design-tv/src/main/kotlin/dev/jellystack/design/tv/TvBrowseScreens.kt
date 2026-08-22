@@ -1861,6 +1861,27 @@ private fun TvFocusPlaceholder(
     }
 }
 
+internal data class TvSeerrCardArtwork(
+    val path: String?,
+    val isBackdrop: Boolean,
+    val fit: TvMediaCardArtworkFit,
+)
+
+internal fun tvSeerrCardArtwork(
+    posterPath: String?,
+    backdropPath: String?,
+): TvSeerrCardArtwork =
+    TvSeerrCardArtwork(
+        path = backdropPath ?: posterPath,
+        isBackdrop = backdropPath != null,
+        fit =
+            if (backdropPath == null && posterPath != null) {
+                TvMediaCardArtworkFit.CONTAIN_PORTRAIT
+            } else {
+                TvMediaCardArtworkFit.CROP
+            },
+    )
+
 @Composable
 private fun TvSeerrRow(
     title: String,
@@ -1888,16 +1909,12 @@ private fun TvSeerrRow(
             ) { index, item ->
                 val id = "${item.mediaType}:${item.tmdbId}"
                 val targetId = focusTargetId(id)
+                val artwork = tvSeerrCardArtwork(item.posterPath, item.backdropPath)
                 TvMediaCard(
                     title = item.title,
                     subtitle = item.releaseYear,
-                    imageUrl = tmdbImageUrl(item.posterPath ?: item.backdropPath, backdrop = item.posterPath == null),
-                    artworkFit =
-                        if (item.posterPath != null) {
-                            TvMediaCardArtworkFit.CONTAIN_PORTRAIT
-                        } else {
-                            TvMediaCardArtworkFit.CROP
-                        },
+                    imageUrl = tmdbImageUrl(artwork.path, backdrop = artwork.isBackdrop),
+                    artworkFit = artwork.fit,
                     onClick = { onItem(item) },
                     onFocused = { focusMemory.remember(routeKey, title, id, horizontalIndex = index) },
                     modifier =

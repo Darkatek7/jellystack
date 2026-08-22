@@ -329,4 +329,33 @@ class TvDetailFocusTest {
 
         cast.assertIsFocused()
     }
+
+    @Test
+    fun detailWithoutHeroActionMovesDirectlyBetweenHeroAndOverview() {
+        composeRule.setContent {
+            JellystackTvTheme {
+                TvDetailFocusLayout(
+                    routeKey = "seerr-no-action",
+                    heroContentDescription = "Seerr details",
+                    hasPrimaryAction = false,
+                    modifier = Modifier.fillMaxSize(),
+                    heroContent = { _, _ -> Box(Modifier.fillMaxSize()) },
+                ) { bodyFocusModifier, _ ->
+                    item("overview") {
+                        Box(bodyFocusModifier.fillMaxWidth().height(900.dp))
+                    }
+                }
+            }
+        }
+
+        val hero = composeRule.onNodeWithTag("tv-detail-hero").assertIsFocused()
+        hero.performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.waitForIdle()
+
+        val overview = composeRule.onNodeWithTag("tv-detail-body-focus").assertIsFocused()
+        overview.performKeyInput { pressKey(Key.DirectionUp) }
+        composeRule.waitForIdle()
+
+        hero.assertIsFocused()
+    }
 }

@@ -206,12 +206,25 @@ internal data class TvDetailFocusTarget(
     val lazyItemIndex: Int,
 )
 
+internal fun tvSeerrDetailLowerContentTargets(
+    hasRatings: Boolean,
+    hasCast: Boolean,
+    hasSimilar: Boolean,
+): List<TvDetailFocusTarget> =
+    buildList {
+        var lazyItemIndex = 2
+        if (hasRatings) lazyItemIndex += 1
+        if (hasCast) add(TvDetailFocusTarget("cast", lazyItemIndex++))
+        if (hasSimilar) add(TvDetailFocusTarget("similar", lazyItemIndex))
+    }
+
 @Composable
 internal fun TvDetailFocusLayout(
     routeKey: String,
     heroContentDescription: String,
     bodyFocusItemIndex: Int = 1,
     lowerContentTargets: List<TvDetailFocusTarget> = emptyList(),
+    hasPrimaryAction: Boolean = true,
     modifier: Modifier = Modifier,
     heroContent: @Composable BoxScope.(primaryActionModifier: Modifier, actionRowModifier: Modifier) -> Unit,
     content: LazyListScope.(bodyFocusModifier: Modifier, lowerContentFocusModifiers: List<TvDetailSectionFocusModifiers>) -> Unit,
@@ -240,6 +253,14 @@ internal fun TvDetailFocusLayout(
             listState.scrollToItem(0)
             withFrameNanos { }
             primaryActionFocusRequester.requestFocus()
+        }
+    }
+
+    fun focusBodyFromHero() {
+        scope.launch {
+            listState.scrollToItem(bodyFocusItemIndex)
+            withFrameNanos { }
+            bodyFocusRequester.requestFocus()
         }
     }
 
@@ -327,7 +348,11 @@ internal fun TvDetailFocusLayout(
                 val isInitialDownPress =
                     event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN && event.nativeKeyEvent.repeatCount == 0
                 if (isInitialDownPress && event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_UP) {
-                    focusPrimaryAction()
+                    if (hasPrimaryAction) {
+                        focusPrimaryAction()
+                    } else {
+                        focusHero()
+                    }
                     true
                 } else if (lowerContentTargets.isNotEmpty() &&
                     isInitialDownPress &&
@@ -399,13 +424,23 @@ internal fun TvDetailFocusLayout(
                             event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
                             event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_DOWN
                         ) {
-                            primaryActionFocusRequester.requestFocus()
+                            if (hasPrimaryAction) {
+                                primaryActionFocusRequester.requestFocus()
+                            } else {
+                                focusBodyFromHero()
+                            }
                             true
                         } else {
                             false
                         }
                     }.tvFocusable(
-                        onClick = { primaryActionFocusRequester.requestFocus() },
+                        onClick = {
+                            if (hasPrimaryAction) {
+                                primaryActionFocusRequester.requestFocus()
+                            } else {
+                                focusBodyFromHero()
+                            }
+                        },
                         shape = RoundedCornerShape(0.dp),
                         scale = 1f,
                         showFocusBorder = false,
@@ -923,175 +958,226 @@ internal fun TvSeerrDetailScreen(
     LaunchedEffect(activeRequest?.id) {
         if (activeRequest != null) showRequestDialog = false
     }
-    Box(modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(26.dp)) {
-            item("hero") {
-                Box(Modifier.fillMaxWidth().height(520.dp)) {
-                    AsyncImage(
-                        model =
-                            tmdbImageUrl(
-                                detail?.backdropPath ?: route.backdropPath ?: detail?.posterPath ?: route.posterPath,
-                                backdrop = (detail?.backdropPath ?: route.backdropPath) != null,
-                            ),
-                        contentDescription = detail?.title ?: route.title,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop,
-                    )
-                    Box(
-                        Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.verticalGradient(
-                                    listOf(Color.Black.copy(0.1f), TvBackground.copy(0.2f), TvBackground),
-                                ),
-                            ),
-                    )
-                    Column(
-                        Modifier.align(Alignment.BottomStart).padding(start = 58.dp, bottom = 38.dp).fillMaxWidth(0.62f),
-                        verticalArrangement = Arrangement.spacedBy(13.dp),
-                    ) {
-                        Text(
-                            detail?.title ?: route.title,
-                            color = TvText,
-                            fontSize = 46.sp,
-                            lineHeight = 49.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 2,
-                        )
-                        Text((detail?.genres.orEmpty()).take(4).joinToString("  •  "), color = TvTextMuted, fontSize = 19.sp)
-                        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                            when {
-                                activeRequest != null ->
-                                    TvActionButton(
-                                        activeRequest.availability.standard.label(strings),
-                                        {},
-                                        enabled = false,
-                                        modifier = Modifier.width(250.dp),
-                                    )
-                                canRequestStandard || canRequest4k ->
-                                    TvActionButton(
-                                        strings.request,
-                                        primary = true,
-                                        onClick = { showRequestDialog = true },
-                                        modifier = Modifier.width(230.dp),
-                                    )
-                                readyRequests != null -> Text(strings.cannotRequest, color = TvTextMuted)
-                            }
-                            (detail?.trailer?.url ?: detail?.videos?.firstOrNull { it.url != null }?.url)?.let { trailerUrl ->
-                                TvActionButton(strings.trailer, { runCatching { uriHandler.openUri(trailerUrl) } })
-                            }
-                        }
-                    }
-                }
-            }
-            item("overview") {
-                Column(Modifier.padding(horizontal = 58.dp).fillMaxWidth(0.72f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    TvSectionTitle(strings.overview)
-                    detail?.tagline?.let { Text(it, color = TvPurple, fontSize = 20.sp, fontWeight = FontWeight.SemiBold) }
-                    Text(
-                        detail?.overview ?: route.overview ?: strings.noOverview,
-                        color = TvText,
-                        fontSize = 20.sp,
-                        lineHeight = 29.sp,
-                    )
-                }
-            }
-            detail?.ratings?.let { ratings ->
-                item("ratings") {
-                    Row(Modifier.padding(horizontal = 58.dp), horizontalArrangement = Arrangement.spacedBy(22.dp)) {
-                        listOfNotNull(
-                            ratings.tmdb?.let { "TMDB %.1f".format(it) },
-                            ratings.imdb?.let { "IMDb %.1f".format(it) },
-                            ratings.rottenTomatoesCritics?.let { "RT Critics %.0f%%".format(it) },
-                            ratings.rottenTomatoesAudience?.let { "RT Audience %.0f%%".format(it) },
-                        ).forEach { value ->
-                            Box(
-                                Modifier
-                                    .background(TvSurfaceRaised, RoundedCornerShape(16.dp))
-                                    .padding(horizontal = 22.dp, vertical = 16.dp),
-                            ) {
-                                Text(value, color = TvText, fontWeight = FontWeight.SemiBold)
-                            }
-                        }
-                    }
-                }
-            }
-            if (!detail?.cast.isNullOrEmpty()) {
-                item("cast") {
-                    Column(Modifier.padding(horizontal = 58.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        TvSectionTitle(strings.cast)
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                            items(
-                                detail!!.cast.take(16),
-                                key = { it.id },
-                                contentType = { "cast-card" },
-                            ) { person ->
-                                TvMediaCard(
-                                    person.name,
-                                    tmdbImageUrl(person.profilePath),
-                                    {},
-                                    subtitle = person.character,
-                                    format = TvMediaCardFormat.CAST_PORTRAIT,
-                                    focusable = false,
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-            val similar = detail?.enrichment?.similar.orEmpty()
-            if (similar.isNotEmpty()) {
-                item("similar") {
-                    Column(Modifier.padding(horizontal = 58.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        TvSectionTitle(strings.similar)
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                            items(
-                                similar,
-                                key = { "${it.mediaType}:${it.tmdbId}" },
-                                contentType = { "media-card" },
-                            ) { item ->
-                                TvMediaCard(
-                                    item.title,
-                                    tmdbImageUrl(item.backdropPath ?: item.posterPath, item.backdropPath != null),
-                                    { onOpenItem(item) },
-                                    subtitle = item.releaseYear,
-                                    artworkFit =
-                                        if (item.backdropPath == null && item.posterPath != null) {
-                                            TvMediaCardArtworkFit.CONTAIN_PORTRAIT
-                                        } else {
-                                            TvMediaCardArtworkFit.CROP
-                                        },
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-            item { Spacer(Modifier.height(50.dp)) }
-        }
-        if (showRequestDialog && readyRequests != null) {
-            TvRequestDialog(
-                title = detail?.title ?: route.title,
-                mediaType = route.mediaType,
-                seasons =
-                    detail
-                        ?.seasons
-                        .orEmpty()
-                        .filter { it.seasonNumber > 0 }
-                        .map { it.seasonNumber },
-                requestsState = readyRequests,
-                strings = strings,
-                onDismiss = { showRequestDialog = false },
-                onSubmit = { profile, selection, variant ->
-                    requestsCoordinator.submitRequest(
-                        item = fallbackItem,
-                        profileSelection = profile,
-                        seasons = selection,
-                        variant = variant,
-                    )
-                },
+    val similar = detail?.enrichment?.similar.orEmpty()
+    val hasCast = !detail?.cast.isNullOrEmpty()
+    val hasRequestAction = activeRequest == null && (canRequestStandard || canRequest4k)
+    val trailerUrl = detail?.trailer?.url ?: detail?.videos?.firstOrNull { it.url != null }?.url
+    val lowerContentTargets =
+        tvSeerrDetailLowerContentTargets(
+            hasRatings = detail?.ratings != null,
+            hasCast = hasCast,
+            hasSimilar = similar.isNotEmpty(),
+        )
+    TvDetailFocusLayout(
+        routeKey = route.focusRouteKey(),
+        heroContentDescription = detail?.title ?: route.title,
+        bodyFocusItemIndex = 1,
+        lowerContentTargets = lowerContentTargets,
+        hasPrimaryAction = hasRequestAction || trailerUrl != null,
+        modifier = modifier,
+        heroContent = { primaryActionModifier, actionRowModifier ->
+            AsyncImage(
+                model =
+                    tmdbImageUrl(
+                        detail?.backdropPath ?: route.backdropPath ?: detail?.posterPath ?: route.posterPath,
+                        backdrop = (detail?.backdropPath ?: route.backdropPath) != null,
+                    ),
+                contentDescription = detail?.title ?: route.title,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
             )
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color.Black.copy(0.1f), TvBackground.copy(0.2f), TvBackground),
+                        ),
+                    ),
+            )
+            Column(
+                Modifier.align(Alignment.BottomStart).padding(start = 58.dp, bottom = 38.dp).fillMaxWidth(0.62f),
+                verticalArrangement = Arrangement.spacedBy(13.dp),
+            ) {
+                Text(
+                    detail?.title ?: route.title,
+                    color = TvText,
+                    fontSize = 46.sp,
+                    lineHeight = 49.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                )
+                Text((detail?.genres.orEmpty()).take(4).joinToString("  •  "), color = TvTextMuted, fontSize = 19.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    when {
+                        activeRequest != null ->
+                            TvActionButton(
+                                activeRequest.availability.standard.label(strings),
+                                {},
+                                enabled = false,
+                                modifier = Modifier.width(250.dp),
+                            )
+                        hasRequestAction ->
+                            TvActionButton(
+                                strings.request,
+                                primary = true,
+                                onClick = { showRequestDialog = true },
+                                modifier =
+                                    primaryActionModifier
+                                        .then(actionRowModifier)
+                                        .width(TV_DETAIL_PRIMARY_ACTION_WIDTH_DP.dp),
+                            )
+                        readyRequests != null -> Text(strings.cannotRequest, color = TvTextMuted)
+                    }
+                    trailerUrl?.let { url ->
+                        TvActionButton(
+                            strings.trailer,
+                            { runCatching { uriHandler.openUri(url) } },
+                            modifier =
+                                if (hasRequestAction) {
+                                    actionRowModifier
+                                } else {
+                                    primaryActionModifier.then(actionRowModifier)
+                                },
+                        )
+                    }
+                }
+            }
+        },
+    ) { bodyFocusModifier, lowerContentFocusModifiers ->
+        var lowerContentFocusIndex = 0
+        item("overview") {
+            Column(
+                bodyFocusModifier.padding(horizontal = 58.dp).fillMaxWidth(0.72f),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                TvSectionTitle(strings.overview)
+                detail?.tagline?.let { Text(it, color = TvPurple, fontSize = 20.sp, fontWeight = FontWeight.SemiBold) }
+                Text(
+                    detail?.overview ?: route.overview ?: strings.noOverview,
+                    color = TvText,
+                    fontSize = 20.sp,
+                    lineHeight = 29.sp,
+                )
+            }
         }
+        detail?.ratings?.let { ratings ->
+            item("ratings") {
+                Row(Modifier.padding(horizontal = 58.dp), horizontalArrangement = Arrangement.spacedBy(22.dp)) {
+                    listOfNotNull(
+                        ratings.tmdb?.let { "TMDB %.1f".format(it) },
+                        ratings.imdb?.let { "IMDb %.1f".format(it) },
+                        ratings.rottenTomatoesCritics?.let { "RT Critics %.0f%%".format(it) },
+                        ratings.rottenTomatoesAudience?.let { "RT Audience %.0f%%".format(it) },
+                    ).forEach { value ->
+                        Box(
+                            Modifier
+                                .background(TvSurfaceRaised, RoundedCornerShape(16.dp))
+                                .padding(horizontal = 22.dp, vertical = 16.dp),
+                        ) {
+                            Text(value, color = TvText, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+            }
+        }
+        if (hasCast) {
+            val castFocusModifiers = lowerContentFocusModifiers[lowerContentFocusIndex++]
+            item("cast") {
+                Column(
+                    Modifier
+                        .padding(horizontal = 58.dp)
+                        .then(castFocusModifiers.navigationModifier),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    TvSectionTitle(strings.cast)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                        items(
+                            detail!!.cast.take(16),
+                            key = { it.id },
+                            contentType = { "cast-card" },
+                        ) { person ->
+                            TvMediaCard(
+                                title = person.name,
+                                imageUrl = tmdbImageUrl(person.profilePath),
+                                onClick = null,
+                                subtitle = person.character,
+                                format = TvMediaCardFormat.CAST_PORTRAIT,
+                                modifier =
+                                    if (person.id == detail.cast.first().id) {
+                                        castFocusModifiers.firstTargetModifier
+                                    } else {
+                                        Modifier
+                                    },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        if (similar.isNotEmpty()) {
+            val similarFocusModifiers = lowerContentFocusModifiers[lowerContentFocusIndex]
+            item("similar") {
+                Column(
+                    Modifier
+                        .padding(horizontal = 58.dp)
+                        .then(similarFocusModifiers.navigationModifier),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    TvSectionTitle(strings.similar)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                        items(
+                            similar,
+                            key = { "${it.mediaType}:${it.tmdbId}" },
+                            contentType = { "media-card" },
+                        ) { item ->
+                            TvMediaCard(
+                                title = item.title,
+                                imageUrl = tmdbImageUrl(item.backdropPath ?: item.posterPath, item.backdropPath != null),
+                                onClick = { onOpenItem(item) },
+                                subtitle = item.releaseYear,
+                                artworkFit =
+                                    if (item.backdropPath == null && item.posterPath != null) {
+                                        TvMediaCardArtworkFit.CONTAIN_PORTRAIT
+                                    } else {
+                                        TvMediaCardArtworkFit.CROP
+                                    },
+                                modifier =
+                                    if (item == similar.first()) {
+                                        similarFocusModifiers.firstTargetModifier
+                                    } else {
+                                        Modifier
+                                    },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        item { Spacer(Modifier.height(50.dp)) }
+    }
+    if (showRequestDialog && readyRequests != null) {
+        TvRequestDialog(
+            title = detail?.title ?: route.title,
+            mediaType = route.mediaType,
+            seasons =
+                detail
+                    ?.seasons
+                    .orEmpty()
+                    .filter { it.seasonNumber > 0 }
+                    .map { it.seasonNumber },
+            requestsState = readyRequests,
+            strings = strings,
+            onDismiss = { showRequestDialog = false },
+            onSubmit = { profile, selection, variant ->
+                requestsCoordinator.submitRequest(
+                    item = fallbackItem,
+                    profileSelection = profile,
+                    seasons = selection,
+                    variant = variant,
+                )
+            },
+        )
     }
 }
 
