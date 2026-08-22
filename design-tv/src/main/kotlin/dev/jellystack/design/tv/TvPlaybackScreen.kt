@@ -1,4 +1,12 @@
-@file:Suppress("CyclomaticComplexMethod", "FunctionName", "FunctionNaming", "LongMethod", "LongParameterList", "MaxLineLength")
+@file:Suppress(
+    "CyclomaticComplexMethod",
+    "FunctionName",
+    "FunctionNaming",
+    "LongMethod",
+    "LongParameterList",
+    "MaxLineLength",
+    "TooManyFunctions",
+)
 
 package dev.jellystack.design.tv
 
@@ -57,6 +65,7 @@ import dev.jellystack.players.PlaybackController
 import dev.jellystack.players.PlaybackSegmentAction
 import dev.jellystack.players.PlaybackSegmentState
 import dev.jellystack.players.PlaybackState
+import dev.jellystack.players.formatPlaybackTime
 import dev.jellystack.players.syncplay.SyncPlayCoordinator
 import dev.jellystack.players.syncplay.SyncPlayUiState
 import kotlinx.coroutines.delay
@@ -71,6 +80,8 @@ internal fun TvPlaybackScreen(
     syncState: SyncPlayUiState,
     segmentState: PlaybackSegmentState,
     continuationState: PlaybackContinuationState,
+    seekBackSeconds: Int = 10,
+    seekForwardSeconds: Int = 30,
     onSkipSegment: (PlaybackSegmentAction) -> Unit,
     onPlayNext: () -> Unit,
     strings: TvStrings,
@@ -105,11 +116,12 @@ internal fun TvPlaybackScreen(
         )
     }
 
-    LaunchedEffect(controlsVisible, navigation.current, interactionGeneration) {
-        if (controlsVisible && navigation.current == TvPlayerPanel.NONE) {
-            delay(5_000)
-            controlsVisible = false
+    LaunchedEffect(controlsVisible, navigation.current, interactionGeneration, active?.isPaused) {
+        if (!shouldAutoHideTvControls(controlsVisible, navigation.current != TvPlayerPanel.NONE, active?.isPaused == true)) {
+            return@LaunchedEffect
         }
+        delay(5_000)
+        controlsVisible = false
     }
     LaunchedEffect(active != null, controlsVisible, navigation.current) {
         if (active != null && navigation.current == TvPlayerPanel.NONE) {
@@ -164,9 +176,20 @@ internal fun TvPlaybackScreen(
                         KeyEvent.KEYCODE_DPAD_RIGHT,
                         ->
                             if (navigation.current == TvPlayerPanel.NONE && !controlsVisible && active != null) {
-                                val step = if (event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) -10_000L else 30_000L
-                                val multiplier = (event.nativeKeyEvent.repeatCount + 1).coerceAtMost(6)
-                                controller.seekTo((active.positionMs + step * multiplier).coerceIn(0L, active.durationMs ?: Long.MAX_VALUE))
+                                val stepMs =
+                                    if (event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+                                        -seekBackSeconds * 1_000L
+                                    } else {
+                                        seekForwardSeconds * 1_000L
+                                    }
+                                controller.seekTo(
+                                    tvScrubTarget(
+                                        positionMs = active.positionMs,
+                                        durationMs = active.durationMs,
+                                        stepMs = stepMs,
+                                        repeatCount = event.nativeKeyEvent.repeatCount,
+                                    ),
+                                )
                                 true
                             } else {
                                 false
@@ -230,11 +253,28 @@ internal fun TvPlaybackScreen(
                 controlsFocusRequester = controlsFocusRequester,
                 actionEntryFocusRequester = actionEntryFocusRequester,
                 actions = playbackActions,
+                seekBackSeconds = seekBackSeconds,
+                seekForwardSeconds = seekForwardSeconds,
                 onAction = activatePlaybackAction,
                 onAudio = { navigation = TvPlayerPanelNavigation.closed().openQuick(TvPlayerPanel.AUDIO) },
                 onSubtitles = { navigation = TvPlayerPanelNavigation.closed().openQuick(TvPlayerPanel.SUBTITLES) },
                 onMore = { navigation = navigation.openMore() },
                 modifier = Modifier.align(Alignment.BottomCenter),
+            )
+        }
+        val controlsHiddenOverlay = active != null && !controlsVisible && navigation.current == TvPlayerPanel.NONE
+        if (controlsHiddenOverlay && active.isPaused) {
+            Text(
+                strings.pausedLabel,
+                color = Color.White,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier =
+                    Modifier
+                        .align(Alignment.Center)
+                        .background(Color.Black.copy(alpha = 0.62f), RoundedCornerShape(50))
+                        .padding(horizontal = 26.dp, vertical = 12.dp)
+                        .testTag("tv-playback-paused-chip"),
             )
         }
         if (active != null && !controlsVisible) {
@@ -305,6 +345,8 @@ private fun TvPlayerControls(
     controlsFocusRequester: FocusRequester,
     actionEntryFocusRequester: FocusRequester,
     actions: List<TvPlaybackActionModel>,
+    seekBackSeconds: Int,
+    seekForwardSeconds: Int,
     onAction: (TvPlaybackActionModel) -> Unit,
     onAudio: () -> Unit,
     onSubtitles: () -> Unit,
@@ -326,7 +368,13 @@ private fun TvPlayerControls(
             onAction = onAction,
             modifier = Modifier.fillMaxWidth().testTag(TV_PLAYBACK_ACTIONS_CONTROLS_TAG),
         )
-        TvProgress(active.positionMs, active.durationMs, Modifier.testTag(TV_PLAYBACK_TIMELINE_TAG))
+        TvProgress(
+            active = active,
+            controller = controller,
+            seekBackMs = seekBackSeconds * 1_000L,
+            seekForwardMs = seekForwardSeconds * 1_000L,
+            modifier = Modifier.testTag(TV_PLAYBACK_TIMELINE_TAG),
+        )
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
             Row(Modifier.weight(1f), horizontalArrangement = Arrangement.Start) {
                 TvPlayerIconButton(Icons.AutoMirrored.Filled.VolumeUp, strings.audio, onAudio)
@@ -334,8 +382,15 @@ private fun TvPlayerControls(
                 TvPlayerIconButton(Icons.Default.Subtitles, strings.subtitles, onSubtitles)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(22.dp), verticalAlignment = Alignment.CenterVertically) {
-                TvPlayerIconButton(Icons.Default.Replay10, "${strings.seekBack} 10", {
-                    controller.seekTo((active.positionMs - 10_000L).coerceAtLeast(0L))
+                TvPlayerIconButton(Icons.Default.Replay10, "${strings.seekBack} $seekBackSeconds", {
+                    controller.seekTo(
+                        tvScrubTarget(
+                            positionMs = active.positionMs,
+                            durationMs = active.durationMs,
+                            stepMs = -seekBackSeconds * 1_000L,
+                            repeatCount = 0,
+                        ),
+                    )
                 }, size = 64.dp, iconSize = 34.dp)
                 TvPlayerIconButton(
                     if (active.isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
@@ -353,10 +408,13 @@ private fun TvPlayerControls(
                     size = 78.dp,
                     iconSize = 42.dp,
                 )
-                TvPlayerIconButton(Icons.Default.Forward30, "${strings.seekForward} 30", {
+                TvPlayerIconButton(Icons.Default.Forward30, "${strings.seekForward} $seekForwardSeconds", {
                     controller.seekTo(
-                        (active.positionMs + 30_000L).coerceAtMost(
-                            active.durationMs ?: Long.MAX_VALUE,
+                        tvScrubTarget(
+                            positionMs = active.positionMs,
+                            durationMs = active.durationMs,
+                            stepMs = seekForwardSeconds * 1_000L,
+                            repeatCount = 0,
                         ),
                     )
                 }, size = 64.dp, iconSize = 34.dp)
@@ -368,18 +426,119 @@ private fun TvPlayerControls(
     }
 }
 
+/** Repeat-accelerated D-pad scrub target; the base for every seek path in the TV player. */
+internal fun tvScrubTarget(
+    positionMs: Long,
+    durationMs: Long?,
+    stepMs: Long,
+    repeatCount: Int,
+): Long {
+    val multiplier = (repeatCount + 1).coerceAtMost(TV_SCRUB_REPEAT_ACCELERATION_CAP)
+    val upperBound = durationMs?.takeIf { it > 0L } ?: Long.MAX_VALUE
+    return (positionMs + stepMs * multiplier).coerceIn(0L, upperBound)
+}
+
+/**
+ * Controls may start their hide countdown only while playing with no panel open.
+ * Paused playback keeps controls on screen so the state stays discoverable.
+ */
+internal fun shouldAutoHideTvControls(
+    controlsVisible: Boolean,
+    panelOpen: Boolean,
+    isPaused: Boolean,
+): Boolean = controlsVisible && !panelOpen && !isPaused
+
+private const val TV_SCRUB_REPEAT_ACCELERATION_CAP = 6
+
+/** Minimum spacing between live seeks while the user keeps holding a direction. */
+internal const val TV_SCRUB_COMMIT_INTERVAL_MS = 250L
+
 @Composable
 private fun TvProgress(
-    position: Long,
-    duration: Long?,
+    active: PlaybackState.Active,
+    controller: PlaybackController,
+    seekBackMs: Long,
+    seekForwardMs: Long,
     modifier: Modifier = Modifier,
 ) {
-    val fraction = if (duration != null && duration > 0) (position.toFloat() / duration).coerceIn(0f, 1f) else 0f
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Box(Modifier.fillMaxWidth().height(5.dp).background(Color.White.copy(alpha = 0.25f), RoundedCornerShape(50))) {
-            Box(Modifier.fillMaxWidth(fraction).height(5.dp).background(TvPurple, RoundedCornerShape(50)))
+    var previewPosition by remember { mutableStateOf<Long?>(null) }
+    var lastCommitElapsed by remember { mutableStateOf(Long.MIN_VALUE) }
+    val duration = active.durationMs
+    val displayPosition = previewPosition ?: active.positionMs
+    val fraction =
+        if (duration != null && duration > 0) (displayPosition.toFloat() / duration).coerceIn(0f, 1f) else 0f
+
+    fun commit(
+        target: Long,
+        force: Boolean,
+    ) {
+        val elapsed = System.currentTimeMillis()
+        if (force || lastCommitElapsed == Long.MIN_VALUE || elapsed - lastCommitElapsed >= TV_SCRUB_COMMIT_INTERVAL_MS) {
+            lastCommitElapsed = elapsed
+            controller.seekTo(target)
         }
-        Text("${position.formatDuration()}  /  ${duration?.formatDuration() ?: "--:--"}", color = TvTextMuted)
+    }
+
+    Column(
+        modifier
+            .onPreviewKeyEvent { event ->
+                val keyCode = event.nativeKeyEvent.keyCode
+                if (
+                    keyCode != KeyEvent.KEYCODE_DPAD_LEFT &&
+                    keyCode != KeyEvent.KEYCODE_DPAD_RIGHT
+                ) {
+                    return@onPreviewKeyEvent false
+                }
+                when (event.nativeKeyEvent.action) {
+                    KeyEvent.ACTION_DOWN -> {
+                        val target =
+                            tvScrubTarget(
+                                positionMs = active.positionMs,
+                                durationMs = duration,
+                                stepMs =
+                                    if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+                                        -seekBackMs
+                                    } else {
+                                        seekForwardMs
+                                    },
+                                repeatCount = event.nativeKeyEvent.repeatCount,
+                            )
+                        previewPosition = target
+                        commit(target, force = false)
+                    }
+
+                    KeyEvent.ACTION_UP -> {
+                        previewPosition?.let { commit(it, force = true) }
+                        previewPosition = null
+                    }
+                }
+                true
+            }.tvFocusable(
+                onClick = { if (active.isPaused) controller.resume() else controller.pause() },
+                shape = RoundedCornerShape(12.dp),
+                scale = 1.01f,
+            ),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Box(Modifier.fillMaxWidth().height(22.dp), contentAlignment = Alignment.CenterStart) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(5.dp)
+                    .background(Color.White.copy(alpha = 0.25f), RoundedCornerShape(50)),
+            )
+            Box(
+                Modifier
+                    .fillMaxWidth(fraction)
+                    .height(5.dp)
+                    .background(TvPurple, RoundedCornerShape(50)),
+            )
+        }
+        Text(
+            "${formatPlaybackTime(displayPosition)}  /  " +
+                "${duration?.takeIf { it > 0 }?.let(::formatPlaybackTime) ?: "--:--"}",
+            color = TvTextMuted,
+        )
     }
 }
 
@@ -453,14 +612,6 @@ internal fun TvPlaybackActions(
 internal const val TV_PLAYBACK_ACTIONS_CONTROLS_TAG = "tv-playback-actions-controls"
 internal const val TV_PLAYBACK_ACTIONS_STANDALONE_TAG = "tv-playback-actions-standalone"
 internal const val TV_PLAYBACK_TIMELINE_TAG = "tv-playback-timeline"
-
-private fun Long.formatDuration(): String {
-    val totalSeconds = this / 1_000L
-    val hours = totalSeconds / 3_600
-    val minutes = (totalSeconds % 3_600) / 60
-    val seconds = totalSeconds % 60
-    return if (hours > 0) "%d:%02d:%02d".format(hours, minutes, seconds) else "%d:%02d".format(minutes, seconds)
-}
 
 private fun dev.jellystack.players.PlaybackMetadata?.playerPrimaryTitle(strings: TvStrings): String =
     this?.seriesName?.takeIf(String::isNotBlank) ?: this?.title?.takeIf(String::isNotBlank) ?: strings.playback

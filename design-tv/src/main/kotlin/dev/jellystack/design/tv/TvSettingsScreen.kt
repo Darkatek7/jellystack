@@ -90,6 +90,7 @@ internal fun TvSettingsScreen(
     var showJellyfinConnect by remember { mutableStateOf(false) }
     var showSeerrConnect by remember { mutableStateOf(false) }
     var choiceDialog by remember { mutableStateOf<TvChoiceDialogState?>(null) }
+    var pendingServerRemoval by remember { mutableStateOf<dev.jellystack.core.server.ManagedServer?>(null) }
     val listState = rememberLazyListState()
     val primarySettingTargetIds =
         listOf(
@@ -383,12 +384,7 @@ internal fun TvSettingsScreen(
                             }
                             TvActionButton(
                                 strings.remove,
-                                {
-                                    scope.launch {
-                                        serverRepository.remove(server.id)
-                                        onServersChanged()
-                                    }
-                                },
+                                { pendingServerRemoval = server },
                                 focusToNavigationRailOnLeft = true,
                                 focusTargetId = tvSettingsServerActionTargetId(server.id, "remove"),
                             )
@@ -434,6 +430,40 @@ internal fun TvSettingsScreen(
         TvChoiceDialog(dialog, cancelLabel = strings.cancel, onDismiss = { choiceDialog = null }) { option ->
             option.onSelect()
             choiceDialog = null
+        }
+    }
+    pendingServerRemoval?.let { target ->
+        Dialog(onDismissRequest = { pendingServerRemoval = null }) {
+            Column(
+                Modifier
+                    .width(620.dp)
+                    .background(TvSurfaceRaised, RoundedCornerShape(26.dp))
+                    .padding(28.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Text(
+                    strings.removeServerConfirm.format(target.name),
+                    color = TvText,
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(strings.removeServerMessage, color = TvTextMuted, fontSize = 17.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    TvActionButton(
+                        strings.remove,
+                        primary = true,
+                        modifier = Modifier.width(180.dp),
+                        onClick = {
+                            pendingServerRemoval = null
+                            scope.launch {
+                                serverRepository.remove(target.id)
+                                onServersChanged()
+                            }
+                        },
+                    )
+                    TvActionButton(strings.cancel, onClick = { pendingServerRemoval = null })
+                }
+            }
         }
     }
 }

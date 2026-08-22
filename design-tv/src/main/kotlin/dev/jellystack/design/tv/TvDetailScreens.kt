@@ -5,6 +5,7 @@
     "LongMethod",
     "LongParameterList",
     "MaxLineLength",
+    "TooManyFunctions",
 )
 
 package dev.jellystack.design.tv
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -29,6 +31,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -86,8 +89,11 @@ import dev.jellystack.core.jellyseerr.JellyseerrRequestsCoordinator
 import dev.jellystack.core.jellyseerr.JellyseerrRequestsState
 import dev.jellystack.core.jellyseerr.JellyseerrSearchItem
 import dev.jellystack.core.preferences.AppSettings
+import dev.jellystack.core.preferences.ResumeMode
 import dev.jellystack.players.PlaybackController
 import dev.jellystack.players.PlaybackRequest
+import dev.jellystack.players.PlaybackStartPolicy
+import dev.jellystack.players.formatPlaybackTime
 import kotlinx.coroutines.launch
 
 internal data class TvJellyfinDetailBase(
@@ -95,10 +101,38 @@ internal data class TvJellyfinDetailBase(
     val detail: JellyfinItemDetail,
 )
 
+/** Pending "resume or restart?" decision captured from the primary play action. */
+internal data class ResumeAskRequest(
+    val positionLabel: String,
+)
+
+private const val TV_TICKS_PER_MILLISECOND = 10_000L
+
+/** Formats a Jellyfin resume position (100-ns ticks) for the resume prompt. */
+internal fun tvResumePositionLabel(positionTicks: Long?): String =
+    formatPlaybackTime((positionTicks ?: 0L).coerceAtLeast(0L) / TV_TICKS_PER_MILLISECOND)
+
 internal data class TvJellyfinHeroTitlePresentation(
     val useGraphicLogo: Boolean,
     val textColor: Color,
 )
+
+/** Typed detail-load failures so the UI can show localized copy instead of raw exception text. */
+internal enum class TvDetailLoadErrorKind { ITEM_UNAVAILABLE, DETAILS_UNAVAILABLE }
+
+internal class TvDetailLoadException(
+    val kind: TvDetailLoadErrorKind,
+) : Exception(kind.name)
+
+internal fun tvDetailErrorMessage(
+    error: Throwable,
+    strings: TvStrings,
+): String =
+    when ((error as? TvDetailLoadException)?.kind) {
+        TvDetailLoadErrorKind.ITEM_UNAVAILABLE -> strings.detailUnavailable
+        TvDetailLoadErrorKind.DETAILS_UNAVAILABLE -> strings.detailLoadFailed
+        null -> strings.detailLoadFailed
+    }
 
 internal fun tvJellyfinHeroTitlePresentation(
     itemType: String,
@@ -109,14 +143,48 @@ internal fun tvJellyfinHeroTitlePresentation(
         textColor = TvText,
     )
 
+internal data class TvSeasonGroup(
+    val seasonNumber: Int?,
+    val episodes: List<JellyfinItem>,
+)
+
+internal fun buildTvSeasonGroups(episodes: List<JellyfinItem>): List<TvSeasonGroup> =
+    episodes
+        .groupBy { episode -> episode.parentIndexNumber?.takeIf { it > 0 } }
+        .map { (seasonNumber, episodesInSeason) ->
+            TvSeasonGroup(
+                seasonNumber = seasonNumber,
+                episodes =
+                    episodesInSeason.sortedWith(
+                        compareBy<JellyfinItem> { it.indexNumber ?: Int.MAX_VALUE }.thenBy { it.id },
+                    ),
+            )
+        }.sortedWith(
+            compareBy<TvSeasonGroup> { group -> group.seasonNumber ?: Int.MAX_VALUE },
+        )
+
+/** Prefers the season that holds an in-progress or next-up episode, else the first season. */
+internal fun defaultTvSeasonIndex(
+    groups: List<TvSeasonGroup>,
+    fallbackEpisodeId: String? = null,
+): Int {
+    val byFallback =
+        fallbackEpisodeId
+            ?.let { targetId -> groups.indexOfFirst { group -> group.episodes.any { it.id == targetId } } }
+            ?.takeIf { it >= 0 }
+    if (byFallback != null) return byFallback
+    val hasProgress: (JellyfinItem) -> Boolean = { (it.positionTicks ?: 0L) > 0L || it.playedPercentage != null }
+    return groups.indexOfFirst { group -> group.episodes.any(hasProgress) }.takeIf { it >= 0 } ?: 0
+}
+
 internal suspend fun loadTvJellyfinDetailBase(
     itemId: String,
     initialItem: JellyfinItem?,
     cachedItem: suspend (String) -> JellyfinItem?,
     loadDetail: suspend (String) -> JellyfinItemDetail?,
 ): TvJellyfinDetailBase {
-    val item = initialItem ?: cachedItem(itemId) ?: error("Media item is unavailable.")
-    val detail = loadDetail(itemId) ?: error("Media details are unavailable.")
+    val item = initialItem ?: cachedItem(itemId) ?: throw TvDetailLoadException(TvDetailLoadErrorKind.ITEM_UNAVAILABLE)
+    val detail = loadDetail(itemId) ?: throw TvDetailLoadException(TvDetailLoadErrorKind.DETAILS_UNAVAILABLE)
     return TvJellyfinDetailBase(item, detail)
 }
 
@@ -300,11 +368,21 @@ internal fun TvJellyfinDetailScreen(
     var item by remember(route.itemId) { mutableStateOf<JellyfinItem?>(null) }
     var detail by remember(route.itemId) { mutableStateOf<JellyfinItemDetail?>(null) }
     var episodes by remember(route.itemId) { mutableStateOf<List<JellyfinItem>>(emptyList()) }
+    var selectedSeasonIndex by remember(route.itemId) { mutableStateOf(0) }
     var similar by remember(route.itemId) { mutableStateOf<List<JellyfinItem>>(emptyList()) }
     var trailer by remember(route.itemId) { mutableStateOf<DetailTrailerSource?>(null) }
+    var trailerError by remember(route.itemId) { mutableStateOf(false) }
     var error by remember(route.itemId) { mutableStateOf<String?>(null) }
     var loadRevision by remember(route.itemId) { mutableStateOf(0) }
+    var resumeAskRequest by remember(route.itemId) { mutableStateOf<ResumeAskRequest?>(null) }
     val uriHandler = LocalUriHandler.current
+    val seasonGroups = remember(episodes) { buildTvSeasonGroups(episodes) }
+    val activeSeason =
+        seasonGroups.getOrElse(selectedSeasonIndex) { seasonGroups.firstOrNull() }
+    val visibleEpisodes = activeSeason?.episodes ?: episodes
+    LaunchedEffect(seasonGroups) {
+        if (selectedSeasonIndex !in seasonGroups.indices) selectedSeasonIndex = defaultTvSeasonIndex(seasonGroups)
+    }
     LaunchedEffect(route.itemId, initialItem, loadRevision) {
         error = null
         runCatching {
@@ -320,6 +398,7 @@ internal fun TvJellyfinDetailScreen(
             item = loadedItem
             detail = loadedDetail
             if (loadedItem.type.equals("Series", true)) episodes = repository.refreshEpisodesForSeries(route.itemId)
+            selectedSeasonIndex = 0
             similar = repository.fetchSimilarItems(route.itemId, 12)
             trailer =
                 trailerResolver.resolve(
@@ -331,7 +410,7 @@ internal fun TvJellyfinDetailScreen(
                         detail = loadedDetail,
                     ),
                 )
-        }.onFailure { error = it.message }
+        }.onFailure { currentError -> error = tvDetailErrorMessage(currentError, strings) }
     }
     val currentItem = item
     val currentDetail = detail
@@ -358,11 +437,25 @@ internal fun TvJellyfinDetailScreen(
     val logoId = if (currentItem.type.equals("Episode", true)) currentItem.seriesId ?: currentItem.id else currentItem.id
     val logoTag = currentItem.seriesLogoImageTag ?: currentDetail.logoImageTag ?: currentItem.logoImageTag ?: currentItem.parentLogoImageTag
     val titlePresentation = tvJellyfinHeroTitlePresentation(currentItem.type, logoTag)
+    val hasResumePosition = (currentItem.positionTicks ?: 0L) > 0L
+    fun startPlayback(startPolicy: PlaybackStartPolicy) {
+        scope.launch {
+            val environment = environmentProvider.current() ?: return@launch
+            playbackController.play(
+                PlaybackRequest.from(currentItem, currentDetail, startPolicy = startPolicy),
+                environment,
+            )
+            playbackController.setPlaybackSpeed(settings.defaultPlaybackSpeed)
+            playbackController.setStatsForNerdsEnabled(settings.statsForNerdsEnabled)
+            onPlaybackStarted()
+        }
+    }
     TvDetailFocusLayout(
         routeKey = route.itemId,
         heroContentDescription = currentDetail.name,
         bodyFocusItemIndex = 2,
-        nextBodyItemIndex = if (episodes.isNotEmpty() || currentDetail.people.isNotEmpty() || similar.isNotEmpty()) 3 else null,
+        nextBodyItemIndex =
+            if (episodes.isNotEmpty() || currentDetail.people.isNotEmpty() || similar.isNotEmpty()) 3 else null,
         modifier = modifier,
         heroContent = { primaryActionModifier, actionRowModifier ->
             AsyncImage(
@@ -433,16 +526,14 @@ internal fun TvJellyfinDetailScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     TvActionButton(
-                        if ((currentItem.positionTicks ?: 0L) > 0L) strings.continueLabel else strings.play,
+                        if (hasResumePosition) strings.continueLabel else strings.play,
                         primary = true,
                         leading = { Icon(Icons.Default.PlayArrow, null, tint = Color(0xFF251450)) },
                         onClick = {
-                            scope.launch {
-                                val environment = environmentProvider.current() ?: return@launch
-                                playbackController.play(PlaybackRequest.from(currentItem, currentDetail), environment)
-                                playbackController.setPlaybackSpeed(settings.defaultPlaybackSpeed)
-                                playbackController.setStatsForNerdsEnabled(settings.statsForNerdsEnabled)
-                                onPlaybackStarted()
+                            if (hasResumePosition && settings.resumeMode == ResumeMode.ASK) {
+                                resumeAskRequest = ResumeAskRequest(tvResumePositionLabel(currentItem.positionTicks))
+                            } else {
+                                startPlayback(PlaybackStartPolicy.INHERIT)
                             }
                         },
                         modifier = primaryActionModifier.then(actionRowModifier).width(TV_DETAIL_PRIMARY_ACTION_WIDTH_DP.dp),
@@ -485,12 +576,18 @@ internal fun TvJellyfinDetailScreen(
                                             onPlaybackStarted()
                                         }
                                     }
-                                    is DetailTrailerSource.YouTube -> source.trailer.url?.let { runCatching { uriHandler.openUri(it) } }
+                                    is DetailTrailerSource.YouTube ->
+                                        source.trailer.url?.let { trailerUrl ->
+                                            trailerError = runCatching { uriHandler.openUri(trailerUrl) }.isFailure
+                                        }
                                 }
                             },
                             modifier = actionRowModifier,
                         )
                     }
+                }
+                if (trailerError) {
+                    Text(strings.trailerOpenFailed, color = Color(0xFFFFA59E), fontSize = 16.sp)
                 }
             }
         },
@@ -522,10 +619,37 @@ internal fun TvJellyfinDetailScreen(
             }
         }
         if (episodes.isNotEmpty()) {
+            if (seasonGroups.size > 1) {
+                item("seasons") {
+                    Column(Modifier.padding(start = 108.dp, end = 42.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        TvSectionTitle(strings.seasons)
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                        ) {
+                            itemsIndexed(
+                                seasonGroups,
+                                key = { _, group -> "season-${group.seasonNumber ?: Int.MAX_VALUE}" },
+                            ) { index, group ->
+                                val label =
+                                    group.seasonNumber
+                                        ?.let { season -> strings.seasonNumber.format(season) }
+                                        ?: strings.specials
+                                TvActionButton(
+                                    label,
+                                    { selectedSeasonIndex = index },
+                                    primary = index == selectedSeasonIndex.coerceIn(seasonGroups.indices),
+                                    modifier = Modifier.widthIn(min = 150.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
             item("episodes") {
                 TvDetailItemRow(
                     strings.episodes,
-                    episodes,
+                    visibleEpisodes,
                     homeState,
                     onOpenItem,
                     firstItemModifier = lowerContentFocusModifier,
@@ -542,6 +666,7 @@ internal fun TvJellyfinDetailScreen(
                                 title = person.name,
                                 subtitle = person.role,
                                 landscape = false,
+                                focusable = false,
                                 imageUrl =
                                     jellyfinImageUrl(
                                         homeState.imageBaseUrl,
@@ -577,6 +702,44 @@ internal fun TvJellyfinDetailScreen(
             }
         }
         item { Spacer(Modifier.height(50.dp)) }
+    }
+    resumeAskRequest?.let { request ->
+        Dialog(onDismissRequest = { resumeAskRequest = null }) {
+            Column(
+                Modifier
+                    .width(620.dp)
+                    .background(TvSurfaceRaised, RoundedCornerShape(28.dp))
+                    .padding(34.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
+                Text(strings.resumeAskTitle, fontSize = 30.sp, fontWeight = FontWeight.Bold, color = TvText)
+                Text(
+                    strings.continueFrom.format(request.positionLabel),
+                    fontSize = 19.sp,
+                    color = TvTextMuted,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    TvActionButton(
+                        strings.continueLabel,
+                        primary = true,
+                        modifier = Modifier.width(230.dp),
+                        onClick = {
+                            resumeAskRequest = null
+                            startPlayback(PlaybackStartPolicy.RESUME)
+                        },
+                    )
+                    TvActionButton(
+                        strings.restart,
+                        modifier = Modifier.width(230.dp),
+                        onClick = {
+                            resumeAskRequest = null
+                            startPlayback(PlaybackStartPolicy.RESTART)
+                        },
+                    )
+                    TvActionButton(strings.cancel, onClick = { resumeAskRequest = null })
+                }
+            }
+        }
     }
 }
 
@@ -694,7 +857,7 @@ internal fun TvSeerrDetailScreen(
                             when {
                                 activeRequest != null ->
                                     TvActionButton(
-                                        activeRequest.availability.standard?.name ?: activeRequest.requestStatus.name,
+                                        activeRequest.availability.standard.label(strings),
                                         {},
                                         enabled = false,
                                         modifier = Modifier.width(250.dp),
@@ -759,6 +922,7 @@ internal fun TvSeerrDetailScreen(
                                     {},
                                     subtitle = person.character,
                                     landscape = false,
+                                    focusable = false,
                                 )
                             }
                         }

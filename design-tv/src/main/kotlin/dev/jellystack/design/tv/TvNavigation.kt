@@ -1,8 +1,13 @@
 package dev.jellystack.design.tv
 
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.snapshots.SnapshotStateList
+import androidx.compose.runtime.toMutableStateList
 import androidx.navigation3.runtime.NavKey
 import dev.jellystack.core.jellyseerr.JellyseerrMediaType
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.Json
 
 @Serializable
 sealed interface TvRoute : NavKey {
@@ -121,6 +126,26 @@ internal fun tvRailTargetId(route: TvRoute): String =
         }
 
 internal enum class TvBackAction { POP_LIBRARY_PATH, POP_ROUTE, CLOSE_RAIL, OPEN_RAIL }
+
+/**
+ * Persists the navigation back stack across process death. TV systems kill background apps
+ * aggressively; without this the app restarts on Home and loses deep navigation.
+ */
+internal object TvRouteBackStack {
+    private val json = Json { ignoreUnknownKeys = true }
+    private val serializer = ListSerializer(TvRoute.serializer())
+
+    fun encode(routes: List<TvRoute>): String = json.encodeToString(serializer, routes)
+
+    /** Returns null (instead of throwing) on corrupt or unknown saved state. */
+    fun decode(raw: String): List<TvRoute>? = runCatching { json.decodeFromString(serializer, raw) }.getOrNull()
+}
+
+internal val TvRouteBackStackSaver: Saver<SnapshotStateList<TvRoute>, String> =
+    Saver(
+        save = { routes -> TvRouteBackStack.encode(routes) },
+        restore = { raw -> TvRouteBackStack.decode(raw)?.toMutableStateList() },
+    )
 
 internal fun tvBackAction(
     currentRoute: TvRoute,

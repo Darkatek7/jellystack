@@ -37,6 +37,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -302,9 +303,14 @@ private fun TvAuthenticatedApp(
     val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateFlow
         .collectAsStateWithLifecycle()
     val focusMemory = remember { TvFocusMemory() }
-    val backStack = remember { mutableStateListOf<TvRoute>(TvRoute.Home) }
+    // Saveable back stack: survives activity recreation and process death (TV apps are killed aggressively).
+    var backStack by
+        rememberSaveable(stateSaver = TvRouteBackStackSaver) {
+            mutableStateOf(mutableStateListOf(TvRoute.Home))
+        }
     val detailSourceItems = remember { mutableStateMapOf<String, JellyfinItem>() }
     var jellyfinSearchResults by remember { mutableStateOf(emptyList<dev.jellystack.core.jellyfin.JellyfinItem>()) }
+    var jellyfinSearchActive by remember { mutableStateOf(false) }
     var jellyfinSearchJob by remember { mutableStateOf<Job?>(null) }
     val segmentHttpClient = remember { NetworkClientFactory.create(ClientConfig(installLogging = false)) }
     val playbackCommandRouter =
@@ -605,18 +611,22 @@ private fun TvAuthenticatedApp(
                                         homeState = homeState,
                                         strings = strings,
                                         focusMemory = focusMemory,
+                                        isSearching = jellyfinSearchActive,
                                         onQueryChanged = { query ->
                                             requestsCoordinator.search(query)
                                             jellyfinSearchJob?.cancel()
                                             if (query.isBlank()) {
+                                                jellyfinSearchActive = false
                                                 jellyfinSearchResults = emptyList()
                                             } else {
+                                                jellyfinSearchActive = true
                                                 jellyfinSearchJob =
                                                     scope.launch {
                                                         delay(300)
                                                         jellyfinSearchResults =
                                                             runCatching { browseRepository.searchItems(query.trim()) }
                                                                 .getOrDefault(emptyList())
+                                                        jellyfinSearchActive = false
                                                     }
                                             }
                                         },
@@ -681,6 +691,8 @@ private fun TvAuthenticatedApp(
                                         syncState = syncPlayState,
                                         segmentState = segmentState,
                                         continuationState = continuationState,
+                                        seekBackSeconds = settings.seekBackSeconds,
+                                        seekForwardSeconds = settings.seekForwardSeconds,
                                         onSkipSegment = segmentCoordinator::skip,
                                         onPlayNext = continuationCoordinator::playNext,
                                         strings = strings,

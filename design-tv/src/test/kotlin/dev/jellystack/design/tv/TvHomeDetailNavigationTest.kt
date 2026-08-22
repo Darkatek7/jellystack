@@ -39,13 +39,15 @@ class TvHomeDetailNavigationTest {
     @Test
     fun detailCacheMissTerminatesAsErrorInsteadOfLoadingForever() =
         runTest {
-            assertFailsWith<IllegalStateException> {
+            assertFailsWith<TvDetailLoadException> {
                 loadTvJellyfinDetailBase(
                     itemId = "missing",
                     initialItem = null,
                     cachedItem = { null },
                     loadDetail = { detail(id = "missing", name = "Missing") },
                 )
+            }.let { thrown ->
+                assertEquals(TvDetailLoadErrorKind.ITEM_UNAVAILABLE, thrown.kind)
             }
         }
 

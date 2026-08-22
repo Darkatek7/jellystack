@@ -90,6 +90,15 @@ interface PlayerEngine {
 
     fun setVideoQuality(maxBitrate: Int?)
 
+    /**
+     * Publishes now-playing metadata (title/series/artwork) so platform surfaces such as the
+     * TV launcher card can describe the current item. No-op by default.
+     */
+    fun setSessionMetadata(
+        metadata: PlaybackMetadata?,
+        artworkUrl: String?,
+    ) = Unit
+
     fun setPlaybackSpeed(speed: Float) = Unit
 
     fun release()

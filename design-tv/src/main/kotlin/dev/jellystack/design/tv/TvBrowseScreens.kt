@@ -61,6 +61,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -97,6 +98,7 @@ import dev.jellystack.core.jellyseerr.JellyseerrRequestSummary
 import dev.jellystack.core.jellyseerr.JellyseerrRequestsState
 import dev.jellystack.core.jellyseerr.JellyseerrSearchItem
 import dev.jellystack.players.AndroidPlayerEngine
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
@@ -307,6 +309,21 @@ internal fun TvHomeScreen(
         val selectedId = reconcileTvHomeCarouselSelection(candidateIds, carouselState.selectedId)
         if (selectedId != carouselState.selectedId) {
             carouselState = carouselState.copy(selectedId = selectedId)
+        }
+    }
+    LaunchedEffect(candidateIds, heroHasFocus, carouselState.selectedId, trailerPreviewState) {
+        val delayMs =
+            tvCarouselAutoAdvanceDelayMs(
+                heroFocused = heroHasFocus,
+                candidateCount = heroCandidates.size,
+                previewActive = trailerPreviewState is TvTrailerPreviewState.Playing,
+            ) ?: return@LaunchedEffect
+        delay(delayMs)
+        if (heroHasFocus) return@LaunchedEffect
+        advanceTvHomeCarousel(candidateIds, carouselState.selectedId)?.let { nextId ->
+            onCancelPreview(TvTrailerPreviewOwner.HERO)
+            carouselDirection = TvHomeCarouselDirection.NEXT
+            carouselState = carouselState.copy(selectedId = nextId)
         }
     }
     LaunchedEffect(heroHasFocus, activePreviewItem?.id) {
@@ -1288,13 +1305,14 @@ internal fun TvSearchScreen(
     homeState: JellyfinHomeState,
     strings: TvStrings,
     focusMemory: TvFocusMemory,
+    isSearching: Boolean = false,
     onQueryChanged: (String) -> Unit,
     onJellyfinItem: (JellyfinItem) -> Unit,
     onSeerrItem: (JellyseerrSearchItem) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var query by remember { mutableStateOf("") }
-    var source by remember { mutableStateOf(TvSearchSource.ALL) }
+    var query by rememberSaveable { mutableStateOf("") }
+    var source by rememberSaveable { mutableStateOf(TvSearchSource.ALL) }
     val queryFocusRequester = remember { FocusRequester() }
     val sourceFocusRequester = remember { FocusRequester() }
     val seerrResults = (requestsState as? JellyseerrRequestsState.Ready)?.searchResults.orEmpty()
@@ -1383,7 +1401,13 @@ internal fun TvSearchScreen(
                 )
             }
         }
-        if (query.isNotBlank() && !visibleJellyfin && !visibleSeerr) item { Text(strings.noResults, color = TvTextMuted) }
+        val nothingFound = !visibleJellyfin && !visibleSeerr
+        if (query.isNotBlank() && isSearching && nothingFound) {
+            item { Text(strings.searching, color = TvTextMuted) }
+        }
+        if (query.isNotBlank() && !isSearching && nothingFound) {
+            item { Text(strings.noResults, color = TvTextMuted) }
+        }
         if (visibleJellyfin) {
             item {
                 TvJellyfinRow(
@@ -1507,7 +1531,7 @@ internal fun TvDiscoverScreen(
                 if (railState != null && railState.items.isNotEmpty()) {
                     item(rail.name) {
                         TvSeerrRow(
-                            rail.label(),
+                            rail.label(strings),
                             railState.items,
                             focusMemory,
                             "discover",
@@ -1535,8 +1559,8 @@ internal fun TvDiscoverScreen(
                                 title = request.title ?: request.originalTitle ?: "Request ${request.id}",
                                 subtitle =
                                     listOfNotNull(
-                                        request.requestStatus.name,
-                                        request.availability.standard?.name,
+                                        request.requestStatus.label(strings),
+                                        request.availability.standard.label(strings),
                                     ).joinToString(" - "),
                                 imageUrl = tmdbImageUrl(request.backdropPath ?: request.posterPath, request.backdropPath != null),
                                 onClick = { item?.let(onItem) },
@@ -1623,8 +1647,6 @@ private fun JellyfinItem.subtitleText(): String? =
         if (type.equals("Episode", true)) "S${parentIndexNumber ?: 0} E${indexNumber ?: 0}" else null,
         communityRating?.let { "★ %.1f".format(it) },
     ).joinToString("  •  ").ifBlank { null }
-
-private fun JellyseerrRecommendationRail.label(): String = name.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() }
 
 private fun JellyseerrRequestSummary.toSearchItem(): JellyseerrSearchItem? {
     val id = tmdbId ?: return null

@@ -289,6 +289,7 @@ internal fun TvMediaCard(
     subtitle: String? = null,
     landscape: Boolean = true,
     fillWidth: Boolean = false,
+    focusable: Boolean = true,
     onFocused: (() -> Unit)? = null,
     onFocusChanged: ((Boolean) -> Unit)? = null,
     focusToNavigationRailOnLeft: Boolean = false,
@@ -310,24 +311,31 @@ internal fun TvMediaCard(
             bringIntoViewRequester.bringIntoView()
         }
     }
+    val interactionModifier =
+        if (focusable) {
+            Modifier.tvFocusable(
+                onClick = onClick,
+                shape = shape,
+                onFocused = onFocused,
+                onFocusChanged = {
+                    focused = it
+                    onFocusChanged?.invoke(it)
+                },
+                focusToNavigationRailOnLeft = focusToNavigationRailOnLeft,
+                focusTargetId = focusTargetId,
+            )
+        } else {
+            Modifier
+        }
     Column(
         modifier =
             modifier
                 .then(if (fillWidth) Modifier.fillMaxWidth() else Modifier.width(cardWidth))
+                .then(interactionModifier)
                 .bringIntoViewRequester(bringIntoViewRequester)
                 .semantics(mergeDescendants = true) {
                     contentDescription = listOfNotNull(title, subtitle).joinToString(", ")
-                }.tvFocusable(
-                    onClick = onClick,
-                    shape = shape,
-                    onFocused = onFocused,
-                    onFocusChanged = {
-                        focused = it
-                        onFocusChanged?.invoke(it)
-                    },
-                    focusToNavigationRailOnLeft = focusToNavigationRailOnLeft,
-                    focusTargetId = focusTargetId,
-                ).background(TvSurface, shape),
+                }.background(TvSurface, shape),
     ) {
         Box(
             modifier =

@@ -352,9 +352,7 @@ internal fun TvPlayerOptionsPanel(
                         val selected = index == selectedIndex
                         TvPlayerSelectionRow(
                             option.label.ifBlank { strings.automatic },
-                            option.mode.name
-                                .lowercase()
-                                .replaceFirstChar(Char::uppercase),
+                            option.mode.label(strings),
                             selected,
                             { onQualitySelected(option.id) },
                             if (index == 0) Modifier.focusRequester(firstFocus) else Modifier,
