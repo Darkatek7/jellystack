@@ -384,6 +384,11 @@ private fun TvAuthenticatedApp(
         backStack.add(route)
     }
 
+    fun openSettingsConnections() {
+        selectTopLevel(TvRoute.Settings())
+        push(tvConnectionsSettingsRoute())
+    }
+
     fun openSeerr(item: JellyseerrSearchItem) {
         recommendationsCoordinator.loadDetail(item)
         push(item.toTvRoute())
@@ -644,10 +649,11 @@ private fun TvAuthenticatedApp(
                                         strings,
                                         focusMemory,
                                         ::openSeerr,
-                                        onConnectSeerr = { selectTopLevel(TvRoute.Settings()) },
+                                        onConnectSeerr = ::openSettingsConnections,
                                     )
                                 is TvRoute.Settings ->
                                     TvSettingsScreen(
+                                        section = route.section,
                                         settings = settings,
                                         repository = settingsRepository,
                                         serverRepository = serverRepository,
@@ -655,6 +661,7 @@ private fun TvAuthenticatedApp(
                                         quickConnectCoordinator = koin.get<JellyfinQuickConnectCoordinator>(),
                                         appVersion = appVersion,
                                         strings = strings,
+                                        onOpenCategory = { category -> push(tvSettingsRoute(category)) },
                                         onServersChanged = {
                                             browseCoordinator.bootstrap(true)
                                             recommendationsCoordinator.refreshAll()

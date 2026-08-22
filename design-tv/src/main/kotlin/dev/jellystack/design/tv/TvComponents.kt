@@ -58,6 +58,8 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsPropertyKey
+import androidx.compose.ui.semantics.SemanticsPropertyReceiver
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.role
@@ -78,6 +80,9 @@ internal const val TV_DETAIL_PRIMARY_ACTION_WIDTH_DP = 230
 internal const val TV_DETAIL_COMPACT_ACTION_WIDTH_DP = 132
 internal const val TV_DETAIL_ACTION_GAP_DP = 14
 internal const val TV_DETAIL_COMPACT_ACTION_HEIGHT_DP = 72
+
+internal val TvDestructiveActionKey = SemanticsPropertyKey<Boolean>("TvDestructiveAction")
+private var SemanticsPropertyReceiver.tvDestructiveAction by TvDestructiveActionKey
 
 internal fun tvDetailActionRowRequiredWidthDp(): Int =
     TV_DETAIL_PRIMARY_ACTION_WIDTH_DP + (TV_DETAIL_COMPACT_ACTION_WIDTH_DP * 3) + (TV_DETAIL_ACTION_GAP_DP * 3)
@@ -193,6 +198,7 @@ internal fun TvActionButton(
     modifier: Modifier = Modifier,
     leading: (@Composable () -> Unit)? = null,
     primary: Boolean = false,
+    destructive: Boolean = false,
     enabled: Boolean = true,
     focusToNavigationRailOnLeft: Boolean = false,
     focusTargetId: String? = null,
@@ -205,10 +211,17 @@ internal fun TvActionButton(
             modifier
                 .height(58.dp)
                 .graphicsLayer { alpha = if (enabled) 1f else 0.5f }
-                .background(if (primary) TvPurple else TvSurfaceRaised, shape)
-                .semantics(mergeDescendants = true) {
+                .background(
+                    when {
+                        destructive -> Color(0xFFB3261E)
+                        primary -> TvPurple
+                        else -> TvSurfaceRaised
+                    },
+                    shape,
+                ).semantics(mergeDescendants = true) {
                     contentDescription = label
                     selected = primary
+                    if (destructive) tvDestructiveAction = true
                 }.tvFocusable(
                     onClick = onClick,
                     enabled = enabled,
@@ -226,7 +239,7 @@ internal fun TvActionButton(
         Text(
             label,
             fontWeight = FontWeight.SemiBold,
-            color = if (primary) Color(0xFF251450) else TvText,
+            color = if (primary && !destructive) Color(0xFF251450) else TvText,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )

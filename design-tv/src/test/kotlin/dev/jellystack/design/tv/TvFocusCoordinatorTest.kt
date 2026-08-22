@@ -124,6 +124,29 @@ class TvFocusCoordinatorTest {
         }
 
     @Test
+    fun settingsLandingAndCategoriesRestoreTheirExactTargetsIndependently() =
+        runTest {
+            val coordinator = TvFocusCoordinator<String>()
+            val landingRoute = TvRoute.Settings().focusRouteKey()
+            val playbackRoute = tvSettingsRoute(TvSettingsCategory.PLAYBACK).focusRouteKey()
+            val audioRoute = tvSettingsRoute(TvSettingsCategory.AUDIO_SUBTITLES).focusRouteKey()
+            val landingTarget = tvSettingsCategoryTargetId(TvSettingsCategory.CONNECTIONS)
+            val playbackTarget = tvSettingsControlTargetId("playback-speed")
+            val audioTarget = tvSettingsControlTargetId("subtitle-background")
+
+            coordinator.register(landingRoute, landingTarget)
+            coordinator.register(playbackRoute, playbackTarget)
+            coordinator.register(audioRoute, audioTarget)
+            coordinator.rememberFocused(landingRoute, landingTarget)
+            coordinator.rememberFocused(playbackRoute, playbackTarget)
+            coordinator.rememberFocused(audioRoute, audioTarget)
+
+            assertEquals(TvFocusRestoration.Focused(landingTarget), coordinator.restoreFocus(landingRoute) { true })
+            assertEquals(TvFocusRestoration.Focused(playbackTarget), coordinator.restoreFocus(playbackRoute) { true })
+            assertEquals(TvFocusRestoration.Focused(audioTarget), coordinator.restoreFocus(audioRoute) { true })
+        }
+
+    @Test
     fun semanticTargetMemorySurvivesRouteDisposalAndRequesterRecreation() =
         runTest {
             val coordinator = TvFocusCoordinator<String>()

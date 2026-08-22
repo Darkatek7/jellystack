@@ -70,7 +70,7 @@ internal fun TvRoute.focusRouteKey(libraryPath: List<String> = emptyList()): Str
             }
         TvRoute.Search -> "search"
         TvRoute.Discover -> "discover"
-        is TvRoute.Settings -> "settings:${section ?: "root"}"
+        is TvRoute.Settings -> "settings:${TvSettingsCategory.fromRouteSection(section)?.routeKey ?: "root"}"
         is TvRoute.JellyfinDetail -> "jellyfin-detail:$itemId"
         is TvRoute.SeerrDetail -> "seerr-detail:${mediaType.name}:$tmdbId"
         TvRoute.Player -> "player"

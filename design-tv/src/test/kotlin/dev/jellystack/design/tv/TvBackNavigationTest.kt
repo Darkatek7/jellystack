@@ -71,6 +71,30 @@ class TvBackNavigationTest {
     }
 
     @Test
+    fun settingsCategoryPopsToLandingBeforeTheRailCanOpen() {
+        assertEquals(
+            TvBackAction.POP_ROUTE,
+            tvBackAction(
+                tvSettingsRoute(TvSettingsCategory.AUDIO_SUBTITLES),
+                backStackSize = 2,
+                libraryPathDepth = 0,
+                railVisible = false,
+                selectedLibraryId = null,
+            ),
+        )
+        assertEquals(
+            TvBackAction.OPEN_RAIL,
+            tvBackAction(
+                TvRoute.Settings(),
+                backStackSize = 1,
+                libraryPathDepth = 0,
+                railVisible = false,
+                selectedLibraryId = null,
+            ),
+        )
+    }
+
+    @Test
     fun topLevelLibraryListIgnoresAStaleNestedBrowsePath() {
         assertEquals(
             TvBackAction.OPEN_RAIL,
