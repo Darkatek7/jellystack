@@ -23,6 +23,15 @@ import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import dev.jellystack.core.jellyfin.JellyfinHomeState
+import dev.jellystack.core.jellyfin.JellyfinItem
+import dev.jellystack.core.jellyfin.JellyfinPerson
+import dev.jellystack.core.jellyseerr.JellyseerrMediaAvailability
+import dev.jellystack.core.jellyseerr.JellyseerrMediaRatings
+import dev.jellystack.core.jellyseerr.JellyseerrMediaType
+import dev.jellystack.core.jellyseerr.JellyseerrPerson
+import dev.jellystack.core.jellyseerr.JellyseerrSearchItem
+import dev.jellystack.core.preferences.AppLanguage
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -39,7 +48,11 @@ class TvDetailFocusTest {
         composeRule.setContent {
             JellystackTvTheme {
                 TvDetailFocusLayout(
-                    routeKey = "movie-1",
+                    uiState =
+                        TvDetailUiState(
+                            routeKey = "movie-1",
+                            sections = listOf(TvDetailSection.Overview(null, null)),
+                        ),
                     heroContentDescription = "Movie details",
                     modifier = Modifier.fillMaxSize(),
                     heroContent = { primaryActionModifier, actionRowModifier ->
@@ -81,7 +94,23 @@ class TvDetailFocusTest {
         composeRule.setContent {
             JellystackTvTheme {
                 TvDetailFocusLayout(
-                    routeKey = "episode-1",
+                    uiState =
+                        TvDetailUiState(
+                            routeKey = "episode-1",
+                            sections =
+                                listOf(
+                                    TvDetailSection.Overview(null, null),
+                                    TvDetailSection.Cast(
+                                        listOf(
+                                            TvDetailCastItem.Jellyfin(jellyfinPerson("person-0")),
+                                            TvDetailCastItem.Jellyfin(jellyfinPerson("person-1")),
+                                        ),
+                                    ),
+                                    TvDetailSection.Similar(
+                                        listOf(TvDetailSimilarItem.Jellyfin(jellyfinItem("similar-0"))),
+                                    ),
+                                ),
+                        ),
                     heroContentDescription = "Episode details",
                     modifier = Modifier.fillMaxSize(),
                     heroContent = { primaryActionModifier, actionRowModifier ->
@@ -98,13 +127,9 @@ class TvDetailFocusTest {
                             )
                         }
                     },
-                    bodyFocusItemIndex = 1,
-                    lowerContentTargets =
-                        listOf(
-                            TvDetailFocusTarget("cast", 2),
-                            TvDetailFocusTarget("similar", 3),
-                        ),
-                ) { bodyFocusModifier, lowerContentFocusModifiers ->
+                ) { bodyFocusModifier, sectionFocusModifiers ->
+                    val castFocusModifiers = sectionFocusModifiers.getValue("cast")
+                    val similarFocusModifiers = sectionFocusModifiers.getValue("similar")
                     item("overview") {
                         Box(bodyFocusModifier.fillMaxWidth().height(900.dp))
                     }
@@ -113,7 +138,7 @@ class TvDetailFocusTest {
                             Modifier
                                 .fillMaxWidth()
                                 .height(220.dp)
-                                .then(lowerContentFocusModifiers[0].navigationModifier),
+                                .then(castFocusModifiers.navigationModifier),
                         ) {
                             itemsIndexed(listOf("Actor 1", "Actor 2")) { index, actor ->
                                 TvMediaCard(
@@ -121,14 +146,11 @@ class TvDetailFocusTest {
                                     imageUrl = null,
                                     onClick = null,
                                     modifier =
-                                        if (index == 0) {
-                                            lowerContentFocusModifiers[0]
-                                                .firstTargetModifier
-                                                .width(180.dp)
-                                                .testTag("cast-person-$index")
-                                        } else {
-                                            Modifier.width(180.dp).testTag("cast-person-$index")
-                                        },
+                                        castFocusModifiers
+                                            .itemModifier("person-$index")
+                                            .width(180.dp)
+                                            .testTag("cast-person-$index"),
+                                    providedFocusRequester = castFocusModifiers.itemFocusRequester("person-$index"),
                                 )
                             }
                         }
@@ -139,10 +161,11 @@ class TvDetailFocusTest {
                             imageUrl = null,
                             onClick = {},
                             modifier =
-                                lowerContentFocusModifiers[1]
-                                    .firstTargetModifier
-                                    .then(lowerContentFocusModifiers[1].navigationModifier)
+                                similarFocusModifiers
+                                    .itemModifier("similar-0")
+                                    .then(similarFocusModifiers.navigationModifier)
                                     .testTag("similar-item-0"),
+                            providedFocusRequester = similarFocusModifiers.itemFocusRequester("similar-0"),
                         )
                     }
                 }
@@ -190,7 +213,21 @@ class TvDetailFocusTest {
         composeRule.setContent {
             JellystackTvTheme {
                 TvDetailFocusLayout(
-                    routeKey = "episode-changing",
+                    uiState =
+                        TvDetailUiState(
+                            routeKey = "episode-changing",
+                            sections =
+                                buildList {
+                                    add(TvDetailSection.Overview(null, null))
+                                    if (showCast) {
+                                        add(
+                                            TvDetailSection.Cast(
+                                                listOf(TvDetailCastItem.Jellyfin(jellyfinPerson("temporary-actor"))),
+                                            ),
+                                        )
+                                    }
+                                },
+                        ),
                     heroContentDescription = "Changing episode details",
                     modifier = Modifier.fillMaxSize(),
                     heroContent = { primaryActionModifier, actionRowModifier ->
@@ -205,10 +242,7 @@ class TvDetailFocusTest {
                                     .width(TV_DETAIL_PRIMARY_ACTION_WIDTH_DP.dp),
                         )
                     },
-                    bodyFocusItemIndex = 1,
-                    lowerContentTargets =
-                        if (showCast) listOf(TvDetailFocusTarget("cast", 2)) else emptyList(),
-                ) { bodyFocusModifier, lowerContentFocusModifiers ->
+                ) { bodyFocusModifier, sectionFocusModifiers ->
                     item("overview") {
                         Box(bodyFocusModifier.fillMaxWidth().height(900.dp))
                     }
@@ -218,7 +252,7 @@ class TvDetailFocusTest {
                                 Modifier
                                     .fillMaxWidth()
                                     .height(220.dp)
-                                    .then(lowerContentFocusModifiers[0].navigationModifier),
+                                    .then(sectionFocusModifiers.getValue("cast").navigationModifier),
                             ) {
                                 item("actor") {
                                     TvMediaCard(
@@ -226,9 +260,14 @@ class TvDetailFocusTest {
                                         imageUrl = null,
                                         onClick = null,
                                         modifier =
-                                            lowerContentFocusModifiers[0]
-                                                .firstTargetModifier
+                                            sectionFocusModifiers
+                                                .getValue("cast")
+                                                .itemModifier("temporary-actor")
                                                 .width(180.dp),
+                                        providedFocusRequester =
+                                            sectionFocusModifiers
+                                                .getValue("cast")
+                                                .itemFocusRequester("temporary-actor"),
                                     )
                                 }
                             }
@@ -257,7 +296,26 @@ class TvDetailFocusTest {
         composeRule.setContent {
             JellystackTvTheme {
                 TvDetailFocusLayout(
-                    routeKey = "episode-appending",
+                    uiState =
+                        TvDetailUiState(
+                            routeKey = "episode-appending",
+                            sections =
+                                buildList {
+                                    add(TvDetailSection.Overview(null, null))
+                                    add(
+                                        TvDetailSection.Cast(
+                                            listOf(TvDetailCastItem.Jellyfin(jellyfinPerson("persistent-actor"))),
+                                        ),
+                                    )
+                                    if (showSimilar) {
+                                        add(
+                                            TvDetailSection.Similar(
+                                                listOf(TvDetailSimilarItem.Jellyfin(jellyfinItem("new-similar"))),
+                                            ),
+                                        )
+                                    }
+                                },
+                        ),
                     heroContentDescription = "Appending episode details",
                     modifier = Modifier.fillMaxSize(),
                     heroContent = { primaryActionModifier, actionRowModifier ->
@@ -272,13 +330,7 @@ class TvDetailFocusTest {
                                     .width(TV_DETAIL_PRIMARY_ACTION_WIDTH_DP.dp),
                         )
                     },
-                    bodyFocusItemIndex = 1,
-                    lowerContentTargets =
-                        buildList {
-                            add(TvDetailFocusTarget("cast", 2))
-                            if (showSimilar) add(TvDetailFocusTarget("similar", 3))
-                        },
-                ) { bodyFocusModifier, lowerContentFocusModifiers ->
+                ) { bodyFocusModifier, sectionFocusModifiers ->
                     item("overview") {
                         Box(bodyFocusModifier.fillMaxWidth().height(900.dp))
                     }
@@ -287,7 +339,7 @@ class TvDetailFocusTest {
                             Modifier
                                 .fillMaxWidth()
                                 .height(220.dp)
-                                .then(lowerContentFocusModifiers[0].navigationModifier),
+                                .then(sectionFocusModifiers.getValue("cast").navigationModifier),
                         ) {
                             item("actor") {
                                 TvMediaCard(
@@ -295,9 +347,14 @@ class TvDetailFocusTest {
                                     imageUrl = null,
                                     onClick = null,
                                     modifier =
-                                        lowerContentFocusModifiers[0]
-                                            .firstTargetModifier
+                                        sectionFocusModifiers
+                                            .getValue("cast")
+                                            .itemModifier("persistent-actor")
                                             .width(180.dp),
+                                    providedFocusRequester =
+                                        sectionFocusModifiers
+                                            .getValue("cast")
+                                            .itemFocusRequester("persistent-actor"),
                                 )
                             }
                         }
@@ -309,9 +366,14 @@ class TvDetailFocusTest {
                                 imageUrl = null,
                                 onClick = {},
                                 modifier =
-                                    lowerContentFocusModifiers[1]
-                                        .firstTargetModifier
-                                        .then(lowerContentFocusModifiers[1].navigationModifier),
+                                    sectionFocusModifiers
+                                        .getValue("similar")
+                                        .itemModifier("new-similar")
+                                        .then(sectionFocusModifiers.getValue("similar").navigationModifier),
+                                providedFocusRequester =
+                                    sectionFocusModifiers
+                                        .getValue("similar")
+                                        .itemFocusRequester("new-similar"),
                             )
                         }
                     }
@@ -335,7 +397,11 @@ class TvDetailFocusTest {
         composeRule.setContent {
             JellystackTvTheme {
                 TvDetailFocusLayout(
-                    routeKey = "seerr-no-action",
+                    uiState =
+                        TvDetailUiState(
+                            routeKey = "seerr-no-action",
+                            sections = listOf(TvDetailSection.Overview(null, null)),
+                        ),
                     heroContentDescription = "Seerr details",
                     hasPrimaryAction = false,
                     modifier = Modifier.fillMaxSize(),
@@ -358,4 +424,216 @@ class TvDetailFocusTest {
 
         hero.assertIsFocused()
     }
+
+    @Test
+    fun jellyfinProductionSectionsKeepAndRecoverFocusAcrossAsyncChanges() {
+        var episodes by mutableStateOf(listOf(jellyfinItem("episode-1")))
+        var cast by mutableStateOf(listOf(jellyfinPerson("person-1"), jellyfinPerson("person-2")))
+        var similar by mutableStateOf(emptyList<JellyfinItem>())
+        val strings = TvStrings.current(AppLanguage.ENGLISH)
+        composeRule.setContent {
+            val uiState =
+                buildTvJellyfinDetailUiState(
+                    routeKey = "series-changing",
+                    facts = emptyList(),
+                    overview = "Overview",
+                    tagline = null,
+                    seasonGroups = listOf(TvSeasonGroup(1, episodes)),
+                    selectedSeasonIndex = 0,
+                    episodes = episodes,
+                    cast = cast,
+                    similar = similar,
+                )
+            JellystackTvTheme {
+                TvDetailFocusLayout(
+                    uiState = uiState,
+                    heroContentDescription = "Changing Jellyfin details",
+                    modifier = Modifier.fillMaxSize(),
+                    heroContent = { primaryActionModifier, actionRowModifier ->
+                        TvActionButton(
+                            label = "Play",
+                            onClick = {},
+                            primary = true,
+                            modifier =
+                                primaryActionModifier
+                                    .then(actionRowModifier)
+                                    .align(Alignment.BottomStart)
+                                    .width(TV_DETAIL_PRIMARY_ACTION_WIDTH_DP.dp),
+                        )
+                    },
+                ) { bodyFocusModifier, sectionFocusModifiers ->
+                    tvJellyfinDetailSections(
+                        uiState = uiState,
+                        homeState = JellyfinHomeState(),
+                        strings = strings,
+                        bodyFocusModifier = bodyFocusModifier,
+                        sectionFocusModifiers = sectionFocusModifiers,
+                        onOpenItem = {},
+                        onSelectSeason = {},
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag("tv-detail-hero").performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.onNodeWithTag("tv-detail-primary-action").performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.onNodeWithTag("tv-detail-body-focus").performKeyInput { pressKey(Key.DirectionDown) }
+        val episodeTag = "tv-detail-section-episodes-item-episode-1"
+        waitUntilTagFocused(episodeTag)
+        composeRule.onNodeWithTag(episodeTag).performKeyInput { pressKey(Key.DirectionDown) }
+        val firstPersonTag = "tv-detail-section-cast-item-person-1"
+        val secondPersonTag = "tv-detail-section-cast-item-person-2"
+        waitUntilTagFocused(firstPersonTag)
+        composeRule.onNodeWithTag(firstPersonTag).performKeyInput { pressKey(Key.DirectionRight) }
+        val surviving = composeRule.onNodeWithTag(secondPersonTag).assertIsFocused()
+
+        composeRule.runOnIdle {
+            episodes = emptyList()
+            cast = listOf(jellyfinPerson("person-2"), jellyfinPerson("person-1"))
+            similar = listOf(jellyfinItem("similar-2"), jellyfinItem("similar-1"))
+        }
+        waitUntilTagFocused(secondPersonTag)
+        surviving.assertIsFocused()
+
+        composeRule.runOnIdle { cast = listOf(jellyfinPerson("person-1")) }
+        waitUntilTagFocused(firstPersonTag)
+        composeRule.onNodeWithTag(secondPersonTag).assertDoesNotExist()
+        composeRule.onNodeWithTag(firstPersonTag).assertIsFocused()
+    }
+
+    @Test
+    fun seerrProductionSectionsKeepAndRecoverFocusAcrossAsyncChanges() {
+        var ratings by mutableStateOf<JellyseerrMediaRatings?>(null)
+        var cast by mutableStateOf(listOf(seerrPerson(1), seerrPerson(2)))
+        var similar by mutableStateOf(listOf(seerrItem(11), seerrItem(12)))
+        val strings = TvStrings.current(AppLanguage.ENGLISH)
+        composeRule.setContent {
+            val uiState =
+                buildTvSeerrDetailUiState(
+                    routeKey = "tv:42",
+                    overview = "Overview",
+                    tagline = null,
+                    ratings = ratings,
+                    cast = cast,
+                    similar = similar,
+                )
+            JellystackTvTheme {
+                TvDetailFocusLayout(
+                    uiState = uiState,
+                    heroContentDescription = "Changing Seerr details",
+                    hasPrimaryAction = false,
+                    modifier = Modifier.fillMaxSize(),
+                    heroContent = { _, _ -> Box(Modifier.fillMaxSize()) },
+                ) { bodyFocusModifier, sectionFocusModifiers ->
+                    tvSeerrDetailSections(
+                        uiState = uiState,
+                        strings = strings,
+                        bodyFocusModifier = bodyFocusModifier,
+                        sectionFocusModifiers = sectionFocusModifiers,
+                        onOpenItem = {},
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag("tv-detail-hero").performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.onNodeWithTag("tv-detail-body-focus").performKeyInput { pressKey(Key.DirectionDown) }
+        waitUntilFocused("Person 1")
+        composeRule.onNodeWithContentDescription("Person 1").performKeyInput { pressKey(Key.DirectionDown) }
+        waitUntilFocused("Similar 11")
+        composeRule.onNodeWithContentDescription("Similar 11").performKeyInput { pressKey(Key.DirectionRight) }
+        val surviving = composeRule.onNodeWithContentDescription("Similar 12").assertIsFocused()
+
+        composeRule.runOnIdle {
+            ratings = JellyseerrMediaRatings(8.0, null, null, null)
+            cast = emptyList()
+            similar = listOf(seerrItem(12), seerrItem(11))
+        }
+        waitUntilFocused("Similar 12")
+        surviving.assertIsFocused()
+
+        composeRule.runOnIdle { similar = listOf(seerrItem(11)) }
+        composeRule.waitUntil(5_000) {
+            runCatching {
+                composeRule.onNodeWithContentDescription("Similar 12").assertDoesNotExist()
+                composeRule.onNodeWithContentDescription("Similar 11").assertIsFocused()
+                true
+            }.getOrDefault(false)
+        }
+        composeRule.onNodeWithContentDescription("Similar 12").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Similar 11").assertIsFocused()
+    }
+
+    private fun waitUntilFocused(contentDescription: String) {
+        composeRule.waitUntil(5_000) {
+            runCatching {
+                composeRule.onNodeWithContentDescription(contentDescription).assertIsFocused()
+                true
+            }.getOrDefault(false)
+        }
+    }
+
+    private fun waitUntilTagFocused(tag: String) {
+        composeRule.waitUntil(5_000) {
+            runCatching {
+                composeRule.onNodeWithTag(tag).assertIsFocused()
+                true
+            }.getOrDefault(false)
+        }
+    }
+
+    private fun jellyfinPerson(id: String) =
+        JellyfinPerson(id = id, name = id, role = "Role", type = "Actor", primaryImageTag = null)
+
+    private fun jellyfinItem(id: String) =
+        JellyfinItem(
+            id = id,
+            libraryId = null,
+            name = id,
+            sortName = null,
+            overview = null,
+            type = "Episode",
+            mediaType = null,
+            locationType = null,
+            taglines = emptyList(),
+            parentId = null,
+            primaryImageTag = null,
+            thumbImageTag = null,
+            backdropImageTag = null,
+            seriesId = null,
+            seriesPrimaryImageTag = null,
+            seriesThumbImageTag = null,
+            seriesBackdropImageTag = null,
+            parentLogoImageTag = null,
+            runTimeTicks = null,
+            positionTicks = null,
+            playedPercentage = null,
+            productionYear = null,
+            premiereDate = null,
+            communityRating = null,
+            officialRating = null,
+            indexNumber = null,
+            parentIndexNumber = null,
+            seriesName = null,
+            seasonId = null,
+            episodeTitle = null,
+            lastPlayed = null,
+        )
+
+    private fun seerrPerson(id: Int) = JellyseerrPerson(id = id, name = "Person $id")
+
+    private fun seerrItem(id: Int) =
+        JellyseerrSearchItem(
+            tmdbId = id,
+            mediaType = JellyseerrMediaType.TV,
+            title = "Similar $id",
+            overview = null,
+            releaseYear = null,
+            posterPath = null,
+            backdropPath = null,
+            mediaInfoId = null,
+            tvdbId = null,
+            availability = JellyseerrMediaAvailability(null, null),
+            requests = emptyList(),
+        )
 }

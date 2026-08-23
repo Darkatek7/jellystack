@@ -7,37 +7,6 @@ import org.junit.Test
 
 class TvSeerrPresentationTest {
     @Test
-    fun lowerContentTargetsFollowRenderedOptionalSections() {
-        assertEquals(
-            listOf(
-                TvDetailFocusTarget("cast", 3),
-                TvDetailFocusTarget("similar", 4),
-            ),
-            tvSeerrDetailLowerContentTargets(
-                hasRatings = true,
-                hasCast = true,
-                hasSimilar = true,
-            ),
-        )
-        assertEquals(
-            listOf(TvDetailFocusTarget("similar", 2)),
-            tvSeerrDetailLowerContentTargets(
-                hasRatings = false,
-                hasCast = false,
-                hasSimilar = true,
-            ),
-        )
-        assertEquals(
-            emptyList<TvDetailFocusTarget>(),
-            tvSeerrDetailLowerContentTargets(
-                hasRatings = true,
-                hasCast = false,
-                hasSimilar = false,
-            ),
-        )
-    }
-
-    @Test
     fun backdropWinsOverPosterForLandscapeMediaCards() {
         val artwork = tvSeerrCardArtwork(posterPath = "/poster.jpg", backdropPath = "/backdrop.jpg")
 

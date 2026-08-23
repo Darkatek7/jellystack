@@ -334,6 +334,7 @@ internal fun TvMediaCard(
     previewProgress: State<Float>? = null,
     previewSurfaceTestTag: String? = null,
     focusTargetId: String? = null,
+    providedFocusRequester: FocusRequester? = null,
 ) {
     val shape = RoundedCornerShape(18.dp)
     var focused by remember { mutableStateOf(false) }
@@ -358,6 +359,7 @@ internal fun TvMediaCard(
                 },
                 focusToNavigationRailOnLeft = focusToNavigationRailOnLeft,
                 focusTargetId = focusTargetId,
+                providedFocusRequester = providedFocusRequester,
             )
         } else {
             Modifier
