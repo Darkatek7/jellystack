@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -44,7 +45,9 @@ import androidx.compose.material.icons.filled.LocalMovies
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -200,6 +203,7 @@ internal data class TvDetailSectionFocusModifiers(
     val navigationModifier: Modifier,
     val itemModifiers: Map<String, Modifier>,
     val itemFocusRequesters: Map<String, FocusRequester>,
+    val horizontalListState: LazyListState,
 ) {
     fun itemModifier(itemId: String): Modifier = itemModifiers[itemId] ?: Modifier
 
@@ -207,6 +211,7 @@ internal data class TvDetailSectionFocusModifiers(
 }
 
 private data class TvPendingFocusRecovery(
+    val transactionId: Long,
     val source: TvFocusAnchor,
     val target: TvFocusAnchor,
 )
@@ -231,19 +236,39 @@ internal fun TvDetailFocusLayout(
     val bodyFocusRequester = remember(routeKey) { FocusRequester() }
     val itemFocusRequesters = remember(routeKey) { mutableMapOf<String, FocusRequester>() }
     val focusSections = uiState.sections.filter { it.participatesInSectionFocus() && it.itemIds.isNotEmpty() }
+    val horizontalListStates =
+        focusSections.associate { section ->
+            section.id to key(section.id) { rememberLazyListState() }
+        }
     val bodySectionIndex = uiState.sections.indexOfFirst { it is TvDetailSection.Overview }.coerceAtLeast(0)
     val bodyLazyItemIndex = bodySectionIndex + 1
     var lastConfirmedItemAnchor by remember(routeKey) { mutableStateOf<TvFocusAnchor?>(null) }
-    var semanticItemIsActive by remember(routeKey) { mutableStateOf(false) }
+    var focusOwnership by remember(routeKey) { mutableStateOf<TvFocusDestination?>(null) }
+    var destinationIntent by remember(routeKey) { mutableStateOf<TvFocusDestination?>(TvFocusDestination.HERO) }
     var pendingFocusRecovery by remember(routeKey) { mutableStateOf<TvPendingFocusRecovery?>(null) }
+    var focusTransactionId by remember(routeKey) { mutableStateOf(0L) }
     var activeSectionIndex by remember(routeKey) { mutableStateOf(0) }
     var activeItemIndex by remember(routeKey) { mutableStateOf(0) }
 
-    fun requester(sectionId: String, itemId: String): FocusRequester =
-        itemFocusRequesters.getOrPut("$sectionId\u0000$itemId") { FocusRequester() }
+    fun requesterKey(
+        sectionId: String,
+        itemId: String,
+    ): String = "$sectionId\u0000$itemId"
+
+    fun requester(
+        sectionId: String,
+        itemId: String,
+    ): FocusRequester = itemFocusRequesters.getOrPut(requesterKey(sectionId, itemId)) { FocusRequester() }
+
+    fun ownDestination(destination: TvFocusDestination) {
+        focusTransactionId += 1
+        pendingFocusRecovery = null
+        destinationIntent = destination
+        focusOwnership = null
+    }
 
     fun focusHero() {
-        pendingFocusRecovery = null
+        ownDestination(TvFocusDestination.HERO)
         scope.launch {
             listState.scrollToItem(0)
             heroFocusRequester.requestFocus()
@@ -251,7 +276,7 @@ internal fun TvDetailFocusLayout(
     }
 
     fun focusPrimaryAction() {
-        pendingFocusRecovery = null
+        ownDestination(TvFocusDestination.PRIMARY_ACTION)
         scope.launch {
             listState.scrollToItem(0)
             withFrameNanos { }
@@ -260,7 +285,7 @@ internal fun TvDetailFocusLayout(
     }
 
     fun focusBodyFromHero() {
-        pendingFocusRecovery = null
+        ownDestination(TvFocusDestination.BODY)
         scope.launch {
             listState.scrollToItem(bodyLazyItemIndex)
             withFrameNanos { }
@@ -269,7 +294,7 @@ internal fun TvDetailFocusLayout(
     }
 
     fun focusBody() {
-        pendingFocusRecovery = null
+        ownDestination(TvFocusDestination.BODY)
         scope.launch {
             listState.scrollToItem(bodyLazyItemIndex)
             withFrameNanos { }
@@ -281,20 +306,23 @@ internal fun TvDetailFocusLayout(
         sectionId: String,
         preferredItemId: String? = null,
     ) {
-        pendingFocusRecovery = null
+        ownDestination(TvFocusDestination.SECTION_ITEM)
         val section = uiState.section(sectionId) ?: return focusBody()
         val itemId = preferredItemId?.takeIf(section.itemIds::contains) ?: section.itemIds.firstOrNull() ?: return focusBody()
-        val lazyItemIndex = uiState.sections.indexOfFirst { it.id == sectionId }.takeIf { it >= 0 }?.plus(1) ?: return focusBody()
+        val lazyItemIndex =
+            uiState.sections
+                .indexOfFirst { it.id == sectionId }
+                .takeIf { it >= 0 }
+                ?.plus(1) ?: return focusBody()
         val focusRequester = requester(sectionId, itemId)
+        val horizontalListState = horizontalListStates.getValue(sectionId)
+        val horizontalItemIndex = section.itemIds.indexOf(itemId)
         scope.launch {
             listState.scrollToItem(lazyItemIndex)
+            horizontalListState.scrollToItem(horizontalItemIndex)
             withFrameNanos { }
             val focused = runCatching { focusRequester.requestFocus() }.getOrDefault(false)
-            if (!focused) {
-                listState.scrollToItem(bodyLazyItemIndex)
-                withFrameNanos { }
-                bodyFocusRequester.requestFocus()
-            }
+            if (!focused) focusBody()
         }
     }
 
@@ -315,42 +343,86 @@ internal fun TvDetailFocusLayout(
 
     val recoverySource =
         lastConfirmedItemAnchor?.takeIf { source ->
-            semanticItemIsActive && uiState.resolve(source) == null
+            focusOwnership == TvFocusDestination.SECTION_ITEM && uiState.resolve(source) == null
         }
 
     LaunchedEffect(routeKey) {
         listState.scrollToItem(0)
+        destinationIntent = TvFocusDestination.HERO
+        focusOwnership = null
         heroFocusRequester.requestFocus()
+    }
+    LaunchedEffect(uiState.sections, lastConfirmedItemAnchor) {
+        val anchor = lastConfirmedItemAnchor ?: return@LaunchedEffect
+        val resolved = uiState.resolve(anchor) ?: return@LaunchedEffect
+        activeSectionIndex = focusSections.indexOfFirst { it.id == anchor.sectionId }.coerceAtLeast(0)
+        activeItemIndex = resolved.itemIndex
     }
     LaunchedEffect(uiState.sections, recoverySource) {
         val source = recoverySource ?: return@LaunchedEffect
-        pendingFocusRecovery = TvPendingFocusRecovery(source, recoveryTarget(source))
+        focusTransactionId += 1
+        pendingFocusRecovery = TvPendingFocusRecovery(focusTransactionId, source, recoveryTarget(source))
     }
     LaunchedEffect(pendingFocusRecovery, uiState.sections) {
         val pending = pendingFocusRecovery ?: return@LaunchedEffect
-        val currentTarget = recoveryTarget(pending.source)
+
+        fun isCurrent(): Boolean =
+            pendingFocusRecovery?.transactionId == pending.transactionId &&
+                focusOwnership == TvFocusDestination.SECTION_ITEM &&
+                lastConfirmedItemAnchor == pending.source
+
+        val currentTarget =
+            pending.target.takeIf { it.destination == TvFocusDestination.BODY }
+                ?: recoveryTarget(pending.source)
         if (currentTarget != pending.target) {
-            pendingFocusRecovery = TvPendingFocusRecovery(pending.source, currentTarget)
+            if (isCurrent()) pendingFocusRecovery = pending.copy(target = currentTarget)
             return@LaunchedEffect
         }
         if (currentTarget.destination == TvFocusDestination.SECTION_ITEM) {
             val sectionId = currentTarget.sectionId ?: return@LaunchedEffect
             val itemId = currentTarget.itemId ?: return@LaunchedEffect
-            val lazyItemIndex = uiState.sections.indexOfFirst { it.id == sectionId }.takeIf { it >= 0 }?.plus(1)
+            val lazyItemIndex =
+                uiState.sections
+                    .indexOfFirst { it.id == sectionId }
+                    .takeIf { it >= 0 }
+                    ?.plus(1)
             if (lazyItemIndex == null) {
-                pendingFocusRecovery = TvPendingFocusRecovery(
-                    pending.source,
-                    TvFocusAnchor("overview", null, TvFocusDestination.BODY),
-                )
+                if (isCurrent()) {
+                    pendingFocusRecovery = pending.copy(target = TvFocusAnchor("overview", null, TvFocusDestination.BODY))
+                }
+                return@LaunchedEffect
+            }
+            val section = uiState.section(sectionId) ?: return@LaunchedEffect
+            val horizontalItemIndex = section.itemIds.indexOf(itemId).takeIf { it >= 0 }
+            val horizontalListState = horizontalListStates[sectionId]
+            if (horizontalItemIndex == null || horizontalListState == null) {
+                if (isCurrent()) {
+                    pendingFocusRecovery = pending.copy(target = TvFocusAnchor("overview", null, TvFocusDestination.BODY))
+                }
                 return@LaunchedEffect
             }
             listState.scrollToItem(lazyItemIndex)
+            if (!isCurrent()) return@LaunchedEffect
+            horizontalListState.scrollToItem(horizontalItemIndex)
+            if (!isCurrent()) return@LaunchedEffect
             withFrameNanos { }
-            runCatching { requester(sectionId, itemId).requestFocus() }
+            if (!isCurrent()) return@LaunchedEffect
+            val focused = runCatching { requester(sectionId, itemId).requestFocus() }.getOrDefault(false)
+            if (!focused && isCurrent()) {
+                pendingFocusRecovery = pending.copy(target = TvFocusAnchor("overview", null, TvFocusDestination.BODY))
+            }
         } else {
+            destinationIntent = TvFocusDestination.BODY
             listState.scrollToItem(bodyLazyItemIndex)
+            if (!isCurrent()) return@LaunchedEffect
             withFrameNanos { }
-            bodyFocusRequester.requestFocus()
+            if (!isCurrent()) return@LaunchedEffect
+            val focused = runCatching { bodyFocusRequester.requestFocus() }.getOrDefault(false)
+            if (isCurrent()) {
+                if (!focused) focusOwnership = null
+                destinationIntent = null
+                pendingFocusRecovery = null
+            }
         }
     }
 
@@ -359,11 +431,11 @@ internal fun TvDetailFocusLayout(
             .focusRequester(primaryActionFocusRequester)
             .testTag("tv-detail-primary-action")
             .onFocusChanged { focusState ->
-                if (focusState.isFocused && pendingFocusRecovery == null && recoverySource == null) {
-                    semanticItemIsActive = false
+                if (focusState.isFocused && destinationIntent == TvFocusDestination.PRIMARY_ACTION) {
+                    focusOwnership = TvFocusDestination.PRIMARY_ACTION
+                    destinationIntent = null
                 }
-            }
-            .onPreviewKeyEvent { event ->
+            }.onPreviewKeyEvent { event ->
                 if (
                     event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
                     event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_UP
@@ -415,64 +487,83 @@ internal fun TvDetailFocusLayout(
                 if (focusState.isFocused) {
                     val pending = pendingFocusRecovery
                     if (pending?.target?.destination == TvFocusDestination.BODY) {
-                        semanticItemIsActive = false
+                        focusOwnership = TvFocusDestination.BODY
+                        destinationIntent = null
                         pendingFocusRecovery = null
-                    } else if (pending == null && recoverySource == null) {
-                        semanticItemIsActive = false
+                    } else if (destinationIntent == TvFocusDestination.BODY) {
+                        focusOwnership = TvFocusDestination.BODY
+                        destinationIntent = null
                     }
                 }
             }.focusable()
     val sectionFocusModifiers =
-        focusSections.mapIndexed { sectionIndex, section ->
-            val focusRequesters = section.itemIds.associateWith { itemId -> requester(section.id, itemId) }
-            val itemModifiers =
-                section.itemIds.associateWith { itemId ->
-                    Modifier
-                        .testTag("tv-detail-section-${section.id}-item-$itemId")
-                        .onFocusChanged { focusState ->
-                            val itemAnchor = TvFocusAnchor(section.id, itemId, TvFocusDestination.SECTION_ITEM)
-                            if (focusState.isFocused) {
-                                activeSectionIndex = sectionIndex
-                                activeItemIndex = section.itemIds.indexOf(itemId).coerceAtLeast(0)
-                                lastConfirmedItemAnchor = itemAnchor
-                                semanticItemIsActive = true
-                                if (pendingFocusRecovery?.target == itemAnchor) pendingFocusRecovery = null
-                            }
-                        }
-                }
-            val navigationModifier =
-                Modifier
-                    .onPreviewKeyEvent { event ->
-                        val isInitialPress =
-                            event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
-                                event.nativeKeyEvent.repeatCount == 0
-                        if (!isInitialPress) {
-                            false
-                        } else {
-                            when (event.nativeKeyEvent.keyCode) {
-                                KeyEvent.KEYCODE_DPAD_UP -> {
-                                    if (sectionIndex == 0) focusBody() else focusSection(focusSections[sectionIndex - 1].id)
-                                    true
+        focusSections
+            .mapIndexed { sectionIndex, section ->
+                val focusRequesters = section.itemIds.associateWith { itemId -> requester(section.id, itemId) }
+                val itemModifiers =
+                    section.itemIds.associateWith { itemId ->
+                        Modifier
+                            .testTag("tv-detail-section-${section.id}-item-$itemId")
+                            .onFocusChanged { focusState ->
+                                val itemAnchor = TvFocusAnchor(section.id, itemId, TvFocusDestination.SECTION_ITEM)
+                                if (focusState.isFocused) {
+                                    focusTransactionId += 1
+                                    pendingFocusRecovery = null
+                                    activeSectionIndex = sectionIndex
+                                    activeItemIndex = section.itemIds.indexOf(itemId).coerceAtLeast(0)
+                                    lastConfirmedItemAnchor = itemAnchor
+                                    focusOwnership = TvFocusDestination.SECTION_ITEM
+                                    destinationIntent = null
                                 }
-                                KeyEvent.KEYCODE_DPAD_DOWN -> {
-                                    if (sectionIndex < focusSections.lastIndex) {
-                                        focusSection(focusSections[sectionIndex + 1].id)
-                                        true
-                                    } else {
-                                        false
-                                    }
-                                }
-                                else -> false
                             }
-                        }
                     }
-            section.id to
-                TvDetailSectionFocusModifiers(
-                    navigationModifier = navigationModifier,
-                    itemModifiers = itemModifiers,
-                    itemFocusRequesters = focusRequesters,
-                )
-        }.toMap()
+                val navigationModifier =
+                    Modifier
+                        .onPreviewKeyEvent { event ->
+                            val isInitialPress =
+                                event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
+                                    event.nativeKeyEvent.repeatCount == 0
+                            if (!isInitialPress) {
+                                false
+                            } else {
+                                when (event.nativeKeyEvent.keyCode) {
+                                    KeyEvent.KEYCODE_DPAD_UP -> {
+                                        if (sectionIndex == 0) focusBody() else focusSection(focusSections[sectionIndex - 1].id)
+                                        true
+                                    }
+                                    KeyEvent.KEYCODE_DPAD_DOWN -> {
+                                        if (sectionIndex < focusSections.lastIndex) {
+                                            focusSection(focusSections[sectionIndex + 1].id)
+                                            true
+                                        } else {
+                                            false
+                                        }
+                                    }
+                                    else -> false
+                                }
+                            }
+                        }
+                section.id to
+                    TvDetailSectionFocusModifiers(
+                        navigationModifier = navigationModifier,
+                        itemModifiers = itemModifiers,
+                        itemFocusRequesters = focusRequesters,
+                        horizontalListState = horizontalListStates.getValue(section.id),
+                    )
+            }.toMap()
+
+    SideEffect {
+        val retainedRequesterKeys =
+            buildSet {
+                focusSections.forEach { section ->
+                    section.itemIds.forEach { itemId -> add(requesterKey(section.id, itemId)) }
+                }
+                listOfNotNull(pendingFocusRecovery?.source, pendingFocusRecovery?.target)
+                    .filter { it.destination == TvFocusDestination.SECTION_ITEM }
+                    .forEach { anchor -> add(requesterKey(anchor.sectionId.orEmpty(), anchor.itemId.orEmpty())) }
+            }
+        itemFocusRequesters.keys.retainAll(retainedRequesterKeys)
+    }
 
     LazyColumn(
         state = listState,
@@ -488,17 +579,17 @@ internal fun TvDetailFocusLayout(
                     .testTag("tv-detail-hero")
                     .semantics { contentDescription = heroContentDescription }
                     .onFocusChanged { focusState ->
-                        if (focusState.isFocused && pendingFocusRecovery == null && recoverySource == null) {
-                            semanticItemIsActive = false
+                        if (focusState.isFocused && destinationIntent == TvFocusDestination.HERO) {
+                            focusOwnership = TvFocusDestination.HERO
+                            destinationIntent = null
                         }
-                    }
-                    .onKeyEvent { event ->
+                    }.onKeyEvent { event ->
                         if (
                             event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
                             event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_DOWN
                         ) {
                             if (hasPrimaryAction) {
-                                primaryActionFocusRequester.requestFocus()
+                                focusPrimaryAction()
                             } else {
                                 focusBodyFromHero()
                             }
@@ -509,7 +600,7 @@ internal fun TvDetailFocusLayout(
                     }.tvFocusable(
                         onClick = {
                             if (hasPrimaryAction) {
-                                primaryActionFocusRequester.requestFocus()
+                                focusPrimaryAction()
                             } else {
                                 focusBodyFromHero()
                             }
@@ -879,7 +970,12 @@ internal fun LazyListScope.tvJellyfinDetailSections(
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                         ) {
-                            itemsIndexed(section.groups, key = { _, group -> "season-${group.seasonNumber ?: Int.MAX_VALUE}" }) { index, group ->
+                            itemsIndexed(section.groups, key = {
+                                    _,
+                                    group,
+                                ->
+                                "season-${group.seasonNumber ?: Int.MAX_VALUE}"
+                            }) { index, group ->
                                 val label =
                                     group.seasonNumber
                                         ?.let { season -> strings.seasonNumber.format(season) }
@@ -902,7 +998,7 @@ internal fun LazyListScope.tvJellyfinDetailSections(
             }
             is TvDetailSection.Cast -> {
                 val focusModifiers = sectionFocusModifiers.getValue(section.id)
-                val people = section.items.mapNotNull { (it as? TvDetailCastItem.Jellyfin)?.person }.take(16)
+                val people = section.items.mapNotNull { it as? TvDetailCastItem.Jellyfin }
                 item(section.id) {
                     Column(
                         Modifier
@@ -911,8 +1007,12 @@ internal fun LazyListScope.tvJellyfinDetailSections(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         TvSectionTitle(strings.cast)
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                            items(people, key = { it.id }, contentType = { "cast-card" }) { person ->
+                        LazyRow(
+                            state = focusModifiers.horizontalListState,
+                            horizontalArrangement = Arrangement.spacedBy(18.dp),
+                        ) {
+                            items(people, key = TvDetailCastItem.Jellyfin::id, contentType = { "cast-card" }) { castItem ->
+                                val person = castItem.person
                                 TvMediaCard(
                                     title = person.name,
                                     subtitle = person.role,
@@ -925,7 +1025,7 @@ internal fun LazyListScope.tvJellyfinDetailSections(
                                             person.primaryImageTag,
                                             "Primary",
                                             TvArtworkSize.PORTRAIT_CARD.maxWidth,
-                                    ),
+                                        ),
                                     onClick = null,
                                     modifier = focusModifiers.itemModifier(person.id),
                                     providedFocusRequester = focusModifiers.itemFocusRequester(person.id),
@@ -937,9 +1037,15 @@ internal fun LazyListScope.tvJellyfinDetailSections(
             }
             is TvDetailSection.Similar -> {
                 val focusModifiers = sectionFocusModifiers.getValue(section.id)
-                val items = section.items.mapNotNull { (it as? TvDetailSimilarItem.Jellyfin)?.item }
+                val items = section.items.mapNotNull { it as? TvDetailSimilarItem.Jellyfin }
                 item(section.id) {
-                    TvDetailItemRow(strings.similar, items, homeState, onOpenItem, focusModifiers)
+                    TvKeyedDetailItemRow(
+                        title = strings.similar,
+                        keyedItems = items.map { TvKeyedJellyfinDetailItem(it.id, it.item) },
+                        homeState = homeState,
+                        onOpenItem = onOpenItem,
+                        focusModifiers = focusModifiers,
+                    )
                 }
             }
             is TvDetailSection.Ratings -> Unit
@@ -948,10 +1054,30 @@ internal fun LazyListScope.tvJellyfinDetailSections(
     item("detail-bottom-spacer") { Spacer(Modifier.height(50.dp)) }
 }
 
+private data class TvKeyedJellyfinDetailItem(
+    val id: String,
+    val item: JellyfinItem,
+)
+
 @Composable
 private fun TvDetailItemRow(
     title: String,
     items: List<JellyfinItem>,
+    homeState: JellyfinHomeState,
+    onOpenItem: (JellyfinItem) -> Unit,
+    focusModifiers: TvDetailSectionFocusModifiers,
+) = TvKeyedDetailItemRow(
+    title = title,
+    keyedItems = items.map { TvKeyedJellyfinDetailItem(it.id, it) },
+    homeState = homeState,
+    onOpenItem = onOpenItem,
+    focusModifiers = focusModifiers,
+)
+
+@Composable
+private fun TvKeyedDetailItemRow(
+    title: String,
+    keyedItems: List<TvKeyedJellyfinDetailItem>,
     homeState: JellyfinHomeState,
     onOpenItem: (JellyfinItem) -> Unit,
     focusModifiers: TvDetailSectionFocusModifiers,
@@ -963,8 +1089,12 @@ private fun TvDetailItemRow(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         TvSectionTitle(title)
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-            items(items, key = { it.id }, contentType = { "media-card" }) { item ->
+        LazyRow(
+            state = focusModifiers.horizontalListState,
+            horizontalArrangement = Arrangement.spacedBy(18.dp),
+        ) {
+            items(keyedItems, key = TvKeyedJellyfinDetailItem::id, contentType = { "media-card" }) { keyedItem ->
+                val item = keyedItem.item
                 val hasLandscapeArtwork = item.seriesThumbImageTag != null || item.thumbImageTag != null
                 TvMediaCard(
                     title = item.episodeTitle ?: item.name,
@@ -988,8 +1118,8 @@ private fun TvDetailItemRow(
                             TvMediaCardArtworkFit.CONTAIN_PORTRAIT
                         },
                     onClick = { onOpenItem(item) },
-                    modifier = focusModifiers.itemModifier(item.id),
-                    providedFocusRequester = focusModifiers.itemFocusRequester(item.id),
+                    modifier = focusModifiers.itemModifier(keyedItem.id),
+                    providedFocusRequester = focusModifiers.itemFocusRequester(keyedItem.id),
                 )
             }
         }
@@ -1037,7 +1167,7 @@ internal fun LazyListScope.tvSeerrDetailSections(
                 }
             is TvDetailSection.Cast -> {
                 val focusModifiers = sectionFocusModifiers.getValue(section.id)
-                val people = section.items.mapNotNull { (it as? TvDetailCastItem.Seerr)?.person }.take(16)
+                val people = section.items.mapNotNull { it as? TvDetailCastItem.Seerr }
                 item(section.id) {
                     Column(
                         Modifier
@@ -1046,16 +1176,20 @@ internal fun LazyListScope.tvSeerrDetailSections(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         TvSectionTitle(strings.cast)
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                            items(people, key = { it.id }, contentType = { "cast-card" }) { person ->
+                        LazyRow(
+                            state = focusModifiers.horizontalListState,
+                            horizontalArrangement = Arrangement.spacedBy(18.dp),
+                        ) {
+                            items(people, key = TvDetailCastItem.Seerr::id, contentType = { "cast-card" }) { castItem ->
+                                val person = castItem.person
                                 TvMediaCard(
                                     title = person.name,
                                     imageUrl = tmdbImageUrl(person.profilePath),
                                     onClick = null,
                                     subtitle = person.character,
                                     format = TvMediaCardFormat.CAST_PORTRAIT,
-                                    modifier = focusModifiers.itemModifier("person-${person.id}"),
-                                    providedFocusRequester = focusModifiers.itemFocusRequester("person-${person.id}"),
+                                    modifier = focusModifiers.itemModifier(castItem.id),
+                                    providedFocusRequester = focusModifiers.itemFocusRequester(castItem.id),
                                 )
                             }
                         }
@@ -1064,7 +1198,7 @@ internal fun LazyListScope.tvSeerrDetailSections(
             }
             is TvDetailSection.Similar -> {
                 val focusModifiers = sectionFocusModifiers.getValue(section.id)
-                val items = section.items.mapNotNull { (it as? TvDetailSimilarItem.Seerr)?.item }
+                val items = section.items.mapNotNull { it as? TvDetailSimilarItem.Seerr }
                 item(section.id) {
                     Column(
                         Modifier
@@ -1073,8 +1207,12 @@ internal fun LazyListScope.tvSeerrDetailSections(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         TvSectionTitle(strings.similar)
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                            items(items, key = { "${it.mediaType}:${it.tmdbId}" }, contentType = { "media-card" }) { item ->
+                        LazyRow(
+                            state = focusModifiers.horizontalListState,
+                            horizontalArrangement = Arrangement.spacedBy(18.dp),
+                        ) {
+                            items(items, key = TvDetailSimilarItem.Seerr::id, contentType = { "media-card" }) { similarItem ->
+                                val item = similarItem.item
                                 TvMediaCard(
                                     title = item.title,
                                     imageUrl = tmdbImageUrl(item.backdropPath ?: item.posterPath, item.backdropPath != null),
@@ -1086,9 +1224,8 @@ internal fun LazyListScope.tvSeerrDetailSections(
                                         } else {
                                             TvMediaCardArtworkFit.CROP
                                         },
-                                    modifier = focusModifiers.itemModifier("${item.mediaType.name.lowercase()}:${item.tmdbId}"),
-                                    providedFocusRequester =
-                                        focusModifiers.itemFocusRequester("${item.mediaType.name.lowercase()}:${item.tmdbId}"),
+                                    modifier = focusModifiers.itemModifier(similarItem.id),
+                                    providedFocusRequester = focusModifiers.itemFocusRequester(similarItem.id),
                                 )
                             }
                         }

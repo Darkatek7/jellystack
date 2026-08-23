@@ -40,7 +40,13 @@ class TvDetailUiStateTest {
             listOf("facts", "overview", "seasons", "episodes", "cast", "similar"),
             state.sections.map(TvDetailSection::id),
         )
-        assertEquals(state.sections.size, state.sections.map(TvDetailSection::id).toSet().size)
+        assertEquals(
+            state.sections.size,
+            state.sections
+                .map(TvDetailSection::id)
+                .toSet()
+                .size,
+        )
         assertEquals(listOf("episode-2", "episode-1"), state.section("episodes")?.itemIds)
         assertEquals(listOf("person-2", "person-1"), state.section("cast")?.itemIds)
         assertEquals(listOf("similar-2", "similar-1"), state.section("similar")?.itemIds)
@@ -95,6 +101,64 @@ class TvDetailUiStateTest {
         assertEquals(listOf("person-2", "person-1"), changed.section("cast")?.itemIds)
         assertEquals(listOf("tv:12", "tv:11"), changed.section("similar")?.itemIds)
         assertTrue(changed.sections.map(TvDetailSection::id).let { it.size == it.toSet().size })
+    }
+
+    @Test
+    fun jellyfinFocusSectionsNormalizeDuplicateProviderIdsAndLimitCastToSixteen() {
+        val cast =
+            buildList {
+                add(jellyfinPerson("person-1"))
+                add(jellyfinPerson("person-1"))
+                (2..17).forEach { add(jellyfinPerson("person-$it")) }
+            }
+        val state =
+            buildTvJellyfinDetailUiState(
+                routeKey = "series-duplicates",
+                facts = emptyList(),
+                overview = null,
+                tagline = null,
+                seasonGroups = emptyList(),
+                selectedSeasonIndex = 0,
+                episodes = listOf(jellyfinItem("episode-1"), jellyfinItem("episode-1"), jellyfinItem("episode-2")),
+                cast = cast,
+                similar = listOf(jellyfinItem("similar-1"), jellyfinItem("similar-1"), jellyfinItem("similar-2")),
+            )
+
+        assertEquals((1..16).map { "person-$it" }, state.section("cast")?.itemIds)
+        assertEquals(listOf("episode-1", "episode-2"), state.section("episodes")?.itemIds)
+        assertEquals(listOf("similar-1", "similar-2"), state.section("similar")?.itemIds)
+        assertUniqueFocusItemIds(state)
+    }
+
+    @Test
+    fun seerrFocusSectionsNormalizeDuplicateProviderIdsBeforeCastLimit() {
+        val cast =
+            buildList {
+                add(seerrPerson(1))
+                add(seerrPerson(1))
+                (2..17).forEach { add(seerrPerson(it)) }
+            }
+        val state =
+            buildTvSeerrDetailUiState(
+                routeKey = "tv:duplicates",
+                overview = null,
+                tagline = null,
+                ratings = null,
+                cast = cast,
+                similar = listOf(seerrItem(1), seerrItem(1), seerrItem(2)),
+            )
+
+        assertEquals((1..16).map { "person-$it" }, state.section("cast")?.itemIds)
+        assertEquals(listOf("tv:1", "tv:2"), state.section("similar")?.itemIds)
+        assertUniqueFocusItemIds(state)
+    }
+
+    private fun assertUniqueFocusItemIds(state: TvDetailUiState) {
+        state.sections
+            .filter { it is TvDetailSection.Episodes || it is TvDetailSection.Cast || it is TvDetailSection.Similar }
+            .forEach { section ->
+                assertEquals("Duplicate IDs in ${section.id}", section.itemIds.size, section.itemIds.toSet().size)
+            }
     }
 
     private fun jellyfinPerson(id: String) =

@@ -146,7 +146,9 @@ internal fun buildTvJellyfinDetailUiState(
     cast: List<JellyfinPerson>,
     similar: List<JellyfinItem>,
 ): TvDetailUiState {
-    val episodeSnapshot = episodes.toList()
+    val episodeSnapshot = episodes.distinctBy(JellyfinItem::id)
+    val castSnapshot = cast.distinctBy(JellyfinPerson::id).take(16)
+    val similarSnapshot = similar.distinctBy(JellyfinItem::id)
     return TvDetailUiState(
         routeKey = routeKey,
         sections =
@@ -162,8 +164,8 @@ internal fun buildTvJellyfinDetailUiState(
                     )
                 }
                 if (episodeSnapshot.isNotEmpty()) add(TvDetailSection.Episodes(episodeSnapshot))
-                if (cast.isNotEmpty()) add(TvDetailSection.Cast(cast.map(TvDetailCastItem::Jellyfin)))
-                if (similar.isNotEmpty()) add(TvDetailSection.Similar(similar.map(TvDetailSimilarItem::Jellyfin)))
+                if (castSnapshot.isNotEmpty()) add(TvDetailSection.Cast(castSnapshot.map(TvDetailCastItem::Jellyfin)))
+                if (similarSnapshot.isNotEmpty()) add(TvDetailSection.Similar(similarSnapshot.map(TvDetailSimilarItem::Jellyfin)))
             },
     )
 }
@@ -182,7 +184,9 @@ internal fun buildTvSeerrDetailUiState(
             buildList {
                 add(TvDetailSection.Overview(overview, tagline))
                 ratings?.let { add(TvDetailSection.Ratings(it)) }
-                if (cast.isNotEmpty()) add(TvDetailSection.Cast(cast.map(TvDetailCastItem::Seerr)))
-                if (similar.isNotEmpty()) add(TvDetailSection.Similar(similar.map(TvDetailSimilarItem::Seerr)))
+                val castSnapshot = cast.distinctBy(JellyseerrPerson::id).take(16)
+                val similarSnapshot = similar.distinctBy { "${it.mediaType.name.lowercase()}:${it.tmdbId}" }
+                if (castSnapshot.isNotEmpty()) add(TvDetailSection.Cast(castSnapshot.map(TvDetailCastItem::Seerr)))
+                if (similarSnapshot.isNotEmpty()) add(TvDetailSection.Similar(similarSnapshot.map(TvDetailSimilarItem::Seerr)))
             },
     )
