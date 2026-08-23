@@ -740,6 +740,7 @@ class TvDetailFocusTest {
         composeRule.mainClock.autoAdvance = false
         composeRule.runOnIdle { cast = emptyList() }
         composeRule.mainClock.advanceTimeByFrame()
+        composeRule.onNodeWithTag("tv-detail-body-focus").assertIsFocused()
         composeRule.onNodeWithTag("tv-detail-body-focus").performKeyInput { pressKey(Key.DirectionUp) }
         composeRule.runOnIdle { similar = (16 downTo 1).map(::seerrItem) }
         composeRule.mainClock.autoAdvance = true
