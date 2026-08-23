@@ -32,11 +32,10 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
@@ -304,13 +303,17 @@ private fun TvAuthenticatedApp(
     val sessionState by sessionRepository.state.collectAsStateWithLifecycle()
     val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateFlow
         .collectAsStateWithLifecycle()
-    val focusMemory = remember { TvFocusMemory() }
-    // Saveable back stack: survives activity recreation and process death (TV apps are killed aggressively).
-    var backStack by
-        rememberSaveable(stateSaver = TvRouteBackStackSaver) {
-            mutableStateOf(mutableStateListOf(TvRoute.Home))
+    // Compose adapts the lifecycle-agnostic holder to process-death persistence at this root boundary.
+    val appStateSaver =
+        remember {
+            Saver<TvAppStateHolder, String>(
+                save = { TvAppStatePersistence.encode(it.snapshot()) },
+                restore = { raw -> TvAppStatePersistence.decode(raw)?.let(::TvAppStateHolder) },
+            )
         }
-    val detailSourceItems = remember { mutableStateMapOf<String, JellyfinItem>() }
+    val appStateHolder = rememberSaveable(saver = appStateSaver) { TvAppStateHolder() }
+    val appUiState = appStateHolder.state
+    val focusMemory = appStateHolder.focusMemory
     val jellyfinSearchCoordinator =
         remember(scope, browseRepository) {
             TvJellyfinSearchCoordinator(scope = scope, searchItems = browseRepository::searchItems)
@@ -374,17 +377,16 @@ private fun TvAuthenticatedApp(
             ?: JellyfinSyncPlayAccess.NONE
 
     fun push(route: TvRoute) {
-        if (backStack.lastOrNull() != route) backStack.add(route)
+        appStateHolder.push(route)
     }
 
     fun openJellyfinDetail(item: JellyfinItem) {
-        detailSourceItems[item.id] = item
+        appStateHolder.rememberDetailSource(item)
         push(TvRoute.JellyfinDetail(item.id))
     }
 
     fun selectTopLevel(route: TvRoute) {
-        backStack.clear()
-        backStack.add(route)
+        appStateHolder.selectTopLevel(route)
     }
 
     fun openSettingsConnections() {
@@ -428,7 +430,12 @@ private fun TvAuthenticatedApp(
     }
     LaunchedEffect(serverRepository.currentServers()) { trailerPreviewCoordinator.invalidateCache() }
     LaunchedEffect(lifecycleState) {
-        if (!lifecycleState.isAtLeast(Lifecycle.State.STARTED)) trailerPreviewCoordinator.clearFocus()
+        if (lifecycleState.isAtLeast(Lifecycle.State.STARTED)) {
+            appStateHolder.onForegrounded()
+        } else {
+            appStateHolder.onBackgrounded()
+            trailerPreviewCoordinator.clearFocus()
+        }
     }
     DisposableEffect(Unit) {
         onDispose {
@@ -440,7 +447,7 @@ private fun TvAuthenticatedApp(
         }
     }
 
-    val currentRoute = backStack.last()
+    val currentRoute = appUiState.currentRoute
     val jellyfinServerKey = serverRepository.activeServer(ServerType.JELLYFIN)?.id
     val showRail =
         currentRoute is TvRoute.Home ||
@@ -460,34 +467,39 @@ private fun TvAuthenticatedApp(
         )
     val contentStartPadding by
         animateDpAsState(
-            if (showRail && focusCoordinator.isRailVisible) 134.dp else 0.dp,
+            if (showRail && appUiState.railExpanded) 134.dp else 0.dp,
             label = "tv-content-rail-safe-area",
         )
-    BackHandler(enabled = showRail) {
-        when (
-            tvBackAction(
-                currentRoute,
-                backStack.size,
-                homeState.browsePath.size,
-                focusCoordinator.isRailVisible,
-                homeState.selectedLibraryId,
-            )
-        ) {
+    val backAction =
+        tvBackAction(
+            currentRoute,
+            appUiState.backStack.size,
+            homeState.browsePath.size,
+            appUiState.railExpanded,
+            homeState.selectedLibraryId,
+        )
+    BackHandler(enabled = backAction != TvBackAction.SYSTEM_EXIT) {
+        when (backAction) {
             TvBackAction.POP_LIBRARY_PATH -> {
                 browseCoordinator.navigateUp()
-                focusCoordinator.closeRail()
+                appStateHolder.closeRail()
+                focusCoordinator.onUserMovement()
             }
             TvBackAction.POP_ROUTE -> {
-                backStack.removeLastOrNull()
-                focusCoordinator.closeRail()
+                appStateHolder.popRoute()
+                appStateHolder.closeRail()
+                focusCoordinator.onUserMovement()
             }
-            TvBackAction.CLOSE_RAIL -> focusCoordinator.closeRail()
-            TvBackAction.OPEN_RAIL -> focusCoordinator.openRail()
+            TvBackAction.CLOSE_RAIL -> {
+                appStateHolder.closeRail()
+                focusCoordinator.onUserMovement()
+            }
+            TvBackAction.SYSTEM_EXIT -> Unit
         }
     }
-    LaunchedEffect(showRail, focusCoordinator.isRailVisible, currentFocusRouteKey) {
-        if (!showRail) return@LaunchedEffect
-        if (focusCoordinator.isRailVisible) {
+    LaunchedEffect(showRail, appUiState.railExpanded, currentFocusRouteKey, appUiState.isForeground) {
+        if (!showRail || !appUiState.isForeground) return@LaunchedEffect
+        if (appUiState.railExpanded) {
             val railRestoration =
                 focusCoordinator.restoreFocus(
                     routeKey = TV_FOCUS_RAIL_ROUTE,
@@ -495,31 +507,36 @@ private fun TvAuthenticatedApp(
                     requestFocus = { requester -> runCatching { requester.requestFocus() }.getOrDefault(false) },
                 )
             if (railRestoration is TvFocusRestoration.Failed) {
-                focusCoordinator.closeRail()
+                appStateHolder.closeRail()
+                focusCoordinator.onUserMovement()
                 focusCoordinator.restoreFocus(
                     routeKey = currentFocusRouteKey,
                     requestFocus = { requester -> runCatching { requester.requestFocus() }.getOrDefault(false) },
                 )
             }
         } else {
-            val restored =
-                focusCoordinator.restoreFocus(
-                    routeKey = currentFocusRouteKey,
-                    requestFocus = { requester -> runCatching { requester.requestFocus() }.getOrDefault(false) },
-                )
-            if (restored is TvFocusRestoration.Failed) focusCoordinator.openRail()
+            // A missing content target must not turn route restoration (including Back) into a rail opener.
+            focusCoordinator.restoreFocus(
+                routeKey = currentFocusRouteKey,
+                requestFocus = { requester -> runCatching { requester.requestFocus() }.getOrDefault(false) },
+            )
         }
     }
-    LaunchedEffect(focusCoordinator.isRailVisible, currentRoute) {
-        if (focusCoordinator.isRailVisible || currentRoute !is TvRoute.Home) trailerPreviewCoordinator.clearFocus()
+    LaunchedEffect(appUiState.railExpanded, currentRoute) {
+        if (appUiState.railExpanded || currentRoute !is TvRoute.Home) trailerPreviewCoordinator.clearFocus()
     }
     Box(Modifier.fillMaxSize()) {
         CompositionLocalProvider(
-            LocalTvNavigationRailOpener provides { focusCoordinator.openRail() },
+            LocalTvNavigationRailOpener provides {
+                if (!appStateHolder.state.railExpanded) {
+                    focusCoordinator.onUserMovement()
+                    appStateHolder.openRail()
+                }
+            },
         ) {
             NavDisplay(
-                backStack = backStack,
-                onBack = { if (backStack.size > 1) backStack.removeLastOrNull() },
+                backStack = appUiState.backStack,
+                onBack = { appStateHolder.popRoute() },
                 modifier = Modifier.fillMaxSize().padding(start = contentStartPadding),
                 entryProvider = { route ->
                     NavEntry(route) {
@@ -661,7 +678,7 @@ private fun TvAuthenticatedApp(
                                 is TvRoute.JellyfinDetail ->
                                     TvJellyfinDetailScreen(
                                         route = route,
-                                        initialItem = detailSourceItems[route.itemId],
+                                        initialItem = appStateHolder.detailSource(route.itemId),
                                         homeState = homeState,
                                         repository = browseRepository,
                                         browseCoordinator = browseCoordinator,
@@ -701,7 +718,7 @@ private fun TvAuthenticatedApp(
                                         stopPlayback = stopPlayback,
                                         onClose = {
                                             stopPlayback()
-                                            backStack.removeLastOrNull()
+                                            appStateHolder.popRoute()
                                         },
                                     )
                             }
@@ -711,7 +728,7 @@ private fun TvAuthenticatedApp(
             )
         }
         if (showRail) {
-            if (focusCoordinator.isRailVisible) {
+            if (appUiState.railExpanded) {
                 Box(
                     Modifier
                         .width(280.dp)
@@ -728,13 +745,17 @@ private fun TvAuthenticatedApp(
             ) {
                 TvNavigationRail(
                     selected = currentRoute,
-                    expanded = focusCoordinator.isRailVisible,
+                    expanded = appUiState.railExpanded,
                     strings = strings,
                     onSelected = { route ->
                         selectTopLevel(route)
-                        focusCoordinator.closeRail()
+                        focusCoordinator.onUserMovement()
+                        appStateHolder.closeRail()
                     },
-                    onDismiss = { focusCoordinator.closeRail() },
+                    onDismiss = {
+                        focusCoordinator.onUserMovement()
+                        appStateHolder.closeRail()
+                    },
                 )
             }
         }

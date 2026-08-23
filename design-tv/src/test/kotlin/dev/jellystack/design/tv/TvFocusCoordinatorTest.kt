@@ -287,19 +287,6 @@ class TvFocusCoordinatorTest {
         }
 
     @Test
-    fun rapidRepeatedLeftAndRailCloseAreIdempotent() {
-        val coordinator = TvFocusCoordinator<String>()
-
-        assertTrue(coordinator.openRail(repeatCount = 0))
-        assertFalse(coordinator.openRail(repeatCount = 1))
-        assertFalse(coordinator.openRail(repeatCount = 0))
-        assertTrue(coordinator.isRailVisible)
-        assertTrue(coordinator.closeRail())
-        assertFalse(coordinator.closeRail())
-        assertFalse(coordinator.isRailVisible)
-    }
-
-    @Test
     fun routeKeysSeparateLibraryListIdsPathsSettingsAndOtherRoots() {
         assertEquals("home", TvRoute.Home.focusRouteKey())
         assertEquals("library:list", TvRoute.Library().focusRouteKey())
@@ -336,8 +323,7 @@ class TvFocusCoordinatorTest {
                 TvFocusRestoration.Focused("empty-placeholder"),
                 coordinator.restoreFocus("library:empty") { true },
             )
-            coordinator.openRail()
-            coordinator.closeRail()
+            coordinator.onUserMovement()
             assertEquals(TvFocusRestoration.Focused("retry"), coordinator.restoreFocus("library:error") { true })
         }
 }

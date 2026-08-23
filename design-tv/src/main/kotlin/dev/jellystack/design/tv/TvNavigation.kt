@@ -1,8 +1,5 @@
 package dev.jellystack.design.tv
 
-import androidx.compose.runtime.saveable.Saver
-import androidx.compose.runtime.snapshots.SnapshotStateList
-import androidx.compose.runtime.toMutableStateList
 import androidx.navigation3.runtime.NavKey
 import dev.jellystack.core.jellyseerr.JellyseerrMediaType
 import kotlinx.serialization.Serializable
@@ -129,7 +126,7 @@ internal fun tvRailTargetId(route: TvRoute): String =
             else -> route.focusRouteKey()
         }
 
-internal enum class TvBackAction { POP_LIBRARY_PATH, POP_ROUTE, CLOSE_RAIL, OPEN_RAIL }
+internal enum class TvBackAction { POP_LIBRARY_PATH, POP_ROUTE, CLOSE_RAIL, SYSTEM_EXIT }
 
 /**
  * Persists the navigation back stack across process death. TV systems kill background apps
@@ -145,12 +142,6 @@ internal object TvRouteBackStack {
     fun decode(raw: String): List<TvRoute>? = runCatching { json.decodeFromString(serializer, raw) }.getOrNull()
 }
 
-internal val TvRouteBackStackSaver: Saver<SnapshotStateList<TvRoute>, String> =
-    Saver(
-        save = { routes -> TvRouteBackStack.encode(routes) },
-        restore = { raw -> TvRouteBackStack.decode(raw)?.toMutableStateList() },
-    )
-
 internal fun tvBackAction(
     currentRoute: TvRoute,
     backStackSize: Int,
@@ -165,19 +156,36 @@ internal fun tvBackAction(
             libraryPathDepth > 0 -> TvBackAction.POP_LIBRARY_PATH
         backStackSize > 1 -> TvBackAction.POP_ROUTE
         railVisible -> TvBackAction.CLOSE_RAIL
-        else -> TvBackAction.OPEN_RAIL
+        else -> TvBackAction.SYSTEM_EXIT
     }
 
-data class TvFocusSnapshot(
-    val rowKey: String?,
-    val itemId: String?,
+@Serializable
+internal data class TvFocusSnapshot(
+    val anchor: TvFocusAnchor,
     val verticalIndex: Int,
     val horizontalIndex: Int,
+    val horizontalCenter: Float,
+) {
+    val rowKey: String?
+        get() = anchor.sectionId
+
+    val itemId: String?
+        get() = anchor.itemId
+}
+
+@androidx.compose.runtime.Immutable
+internal data class TvFocusTarget(
+    val anchor: TvFocusAnchor,
+    val horizontalCenter: Float,
+    val horizontalIndex: Int,
+    val actionable: Boolean = true,
 )
 
 /** Keeps route-local focus stable while asynchronous rows refresh around it. */
-class TvFocusMemory {
-    private val snapshots = mutableMapOf<String, TvFocusSnapshot>()
+internal class TvFocusMemory(
+    initialSnapshots: Map<String, TvFocusSnapshot> = emptyMap(),
+) {
+    private val snapshots = initialSnapshots.toMutableMap()
 
     fun remember(
         routeKey: String,
@@ -185,17 +193,53 @@ class TvFocusMemory {
         itemId: String?,
         verticalIndex: Int = 0,
         horizontalIndex: Int = 0,
+    ) = remember(
+        routeKey = routeKey,
+        anchor = TvFocusAnchor(rowKey, itemId, TvFocusDestination.SECTION_ITEM),
+        verticalIndex = verticalIndex,
+        horizontalIndex = horizontalIndex,
+        horizontalCenter = horizontalIndex.toFloat(),
+    )
+
+    fun remember(
+        routeKey: String,
+        anchor: TvFocusAnchor,
+        horizontalCenter: Float,
+        verticalIndex: Int = 0,
+        horizontalIndex: Int = 0,
     ) {
+        val safeHorizontalIndex = horizontalIndex.coerceAtLeast(0)
         snapshots[routeKey] =
             TvFocusSnapshot(
-                rowKey = rowKey,
-                itemId = itemId,
+                anchor = anchor,
                 verticalIndex = verticalIndex.coerceAtLeast(0),
-                horizontalIndex = horizontalIndex.coerceAtLeast(0),
+                horizontalIndex = safeHorizontalIndex,
+                horizontalCenter = horizontalCenter.takeIf(Float::isFinite) ?: safeHorizontalIndex.toFloat(),
             )
     }
 
     fun restore(routeKey: String): TvFocusSnapshot? = snapshots[routeKey]
+
+    internal fun snapshot(): Map<String, TvFocusSnapshot> = snapshots.toMap()
+
+    internal fun clear() = snapshots.clear()
+
+    internal fun resolve(
+        routeKey: String,
+        availableTargets: List<TvFocusTarget>,
+    ): TvFocusAnchor? {
+        val actionableTargets = availableTargets.filter(TvFocusTarget::actionable)
+        if (actionableTargets.isEmpty()) return null
+        val snapshot = snapshots[routeKey] ?: return actionableTargets.first().anchor
+        actionableTargets.firstOrNull { it.anchor == snapshot.anchor }?.let { return it.anchor }
+        val sameSection = actionableTargets.filter { it.anchor.sectionId == snapshot.anchor.sectionId }
+        if (sameSection.isEmpty()) return actionableTargets.first().anchor
+        return sameSection
+            .minWithOrNull(
+                compareBy<TvFocusTarget> { kotlin.math.abs(it.horizontalCenter - snapshot.horizontalCenter) }
+                    .thenBy { kotlin.math.abs(it.horizontalIndex - snapshot.horizontalIndex) },
+            )?.anchor
+    }
 
     fun resolveItem(
         routeKey: String,
@@ -204,11 +248,16 @@ class TvFocusMemory {
         if (availableIds.isEmpty()) {
             null
         } else {
-            val snapshot = snapshots[routeKey]
-            when {
-                snapshot == null -> availableIds.first()
-                snapshot.itemId in availableIds -> snapshot.itemId
-                else -> availableIds.getOrNull(snapshot.horizontalIndex.coerceIn(0, availableIds.lastIndex))
-            }
+            val sectionId = snapshots[routeKey]?.anchor?.sectionId
+            resolve(
+                routeKey,
+                availableIds.mapIndexed { index, id ->
+                    TvFocusTarget(
+                        anchor = TvFocusAnchor(sectionId, id, TvFocusDestination.SECTION_ITEM),
+                        horizontalCenter = index.toFloat(),
+                        horizontalIndex = index,
+                    )
+                },
+            )?.itemId
         }
 }

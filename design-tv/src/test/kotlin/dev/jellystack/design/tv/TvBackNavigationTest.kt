@@ -33,9 +33,9 @@ class TvBackNavigationTest {
     }
 
     @Test
-    fun railOpensOnlyAtTopLevelRoot() {
+    fun topLevelCollapsedRailDelegatesBackToSystem() {
         assertEquals(
-            TvBackAction.OPEN_RAIL,
+            TvBackAction.SYSTEM_EXIT,
             tvBackAction(
                 TvRoute.Home,
                 backStackSize = 1,
@@ -45,7 +45,7 @@ class TvBackNavigationTest {
             ),
         )
         assertEquals(
-            TvBackAction.OPEN_RAIL,
+            TvBackAction.SYSTEM_EXIT,
             tvBackAction(
                 TvRoute.Settings(),
                 backStackSize = 1,
@@ -83,7 +83,7 @@ class TvBackNavigationTest {
             ),
         )
         assertEquals(
-            TvBackAction.OPEN_RAIL,
+            TvBackAction.SYSTEM_EXIT,
             tvBackAction(
                 TvRoute.Settings(),
                 backStackSize = 1,
@@ -97,7 +97,7 @@ class TvBackNavigationTest {
     @Test
     fun topLevelLibraryListIgnoresAStaleNestedBrowsePath() {
         assertEquals(
-            TvBackAction.OPEN_RAIL,
+            TvBackAction.SYSTEM_EXIT,
             tvBackAction(
                 TvRoute.Library(),
                 backStackSize = 1,
@@ -120,5 +120,27 @@ class TvBackNavigationTest {
                 selectedLibraryId = "movies",
             ),
         )
+    }
+
+    @Test
+    fun noBackStateOpensTheRail() {
+        val routes = listOf(TvRoute.Home, TvRoute.Library(), TvRoute.Search, TvRoute.Discover, TvRoute.Settings())
+
+        routes.forEach { route ->
+            listOf(false, true).forEach { railExpanded ->
+                val action =
+                    tvBackAction(
+                        currentRoute = route,
+                        backStackSize = 1,
+                        libraryPathDepth = 0,
+                        railVisible = railExpanded,
+                        selectedLibraryId = null,
+                    )
+                assertEquals(
+                    if (railExpanded) TvBackAction.CLOSE_RAIL else TvBackAction.SYSTEM_EXIT,
+                    action,
+                )
+            }
+        }
     }
 }

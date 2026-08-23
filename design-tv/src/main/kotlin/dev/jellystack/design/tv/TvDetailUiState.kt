@@ -6,6 +6,7 @@ import dev.jellystack.core.jellyfin.JellyfinPerson
 import dev.jellystack.core.jellyseerr.JellyseerrMediaRatings
 import dev.jellystack.core.jellyseerr.JellyseerrPerson
 import dev.jellystack.core.jellyseerr.JellyseerrSearchItem
+import kotlinx.serialization.Serializable
 
 @Immutable
 internal data class TvDetailUiState(
@@ -111,12 +112,14 @@ internal sealed interface TvDetailSimilarItem {
 }
 
 @Immutable
+@Serializable
 internal data class TvFocusAnchor(
     val sectionId: String?,
     val itemId: String?,
     val destination: TvFocusDestination,
 )
 
+@Serializable
 internal enum class TvFocusDestination { HERO, PRIMARY_ACTION, BODY, SECTION_ITEM }
 
 @Immutable
