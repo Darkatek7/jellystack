@@ -1105,7 +1105,7 @@ internal fun TvLibraryScreen(
     val gridState = rememberLazyGridState()
     val itemTargetIds =
         if (route.libraryId == null) {
-            state.libraries.map { tvLibraryTargetId(it.id) }
+            state.libraries.map { tvLibraryTargetId(it.id, "libraries") }
         } else {
             state.libraryItems.map { tvLibraryTargetId(it.id) }
         }
@@ -1175,7 +1175,7 @@ internal fun TvLibraryScreen(
                 key = { _, library -> library.id },
                 contentType = { _, _ -> "library-card" },
             ) { index, library ->
-                val targetId = tvLibraryTargetId(library.id)
+                val targetId = tvLibraryTargetId(library.id, "libraries")
                 TvMediaCard(
                     title = library.name,
                     subtitle = library.itemCount?.let { "$it items" },

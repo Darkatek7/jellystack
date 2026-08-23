@@ -22,14 +22,15 @@ class TvFocusMemoryTest {
 
         assertEquals(
             remembered,
-            memory.resolve(
-                "detail",
-                listOf(
-                    TvFocusTarget(TvFocusAnchor("similar", "movie-1", TvFocusDestination.SECTION_ITEM), 200f, 0),
-                    TvFocusTarget(remembered, 900f, 4),
-                    TvFocusTarget(TvFocusAnchor("cast", "person-3", TvFocusDestination.SECTION_ITEM), 610f, 1),
-                ),
-            ),
+            memory
+                .resolve(
+                    "detail",
+                    listOf(
+                        TvFocusTarget("similar-1", TvFocusAnchor("similar", "movie-1", TvFocusDestination.SECTION_ITEM), 200f, 0),
+                        TvFocusTarget("cast-2", remembered, 900f, 4),
+                        TvFocusTarget("cast-3", TvFocusAnchor("cast", "person-3", TvFocusDestination.SECTION_ITEM), 610f, 1),
+                    ),
+                )?.anchor,
         )
     }
 
@@ -50,22 +51,26 @@ class TvFocusMemoryTest {
                     "detail",
                     listOf(
                         TvFocusTarget(
+                            "cast-person",
                             TvFocusAnchor("cast", "person", TvFocusDestination.SECTION_ITEM),
                             horizontalCenter = 641f,
                             horizontalIndex = 0,
                         ),
                         TvFocusTarget(
+                            "episode-far",
                             TvFocusAnchor("episodes", "episode-far", TvFocusDestination.SECTION_ITEM),
                             horizontalCenter = 200f,
                             horizontalIndex = 1,
                         ),
                         TvFocusTarget(
+                            "episode-near",
                             TvFocusAnchor("episodes", "episode-near", TvFocusDestination.SECTION_ITEM),
                             horizontalCenter = 620f,
                             horizontalIndex = 4,
                         ),
                     ),
-                )?.itemId,
+                )?.anchor
+                ?.itemId,
         )
     }
 
@@ -86,19 +91,60 @@ class TvFocusMemoryTest {
                     "detail",
                     listOf(
                         TvFocusTarget(
+                            "status",
                             TvFocusAnchor("loading", "status", TvFocusDestination.BODY),
                             horizontalCenter = 0f,
                             horizontalIndex = 0,
                             actionable = false,
                         ),
                         TvFocusTarget(
+                            "first-action",
                             TvFocusAnchor("actions", "first-action", TvFocusDestination.PRIMARY_ACTION),
                             horizontalCenter = 100f,
                             horizontalIndex = 0,
                         ),
                     ),
-                )?.itemId,
+                )?.anchor
+                ?.itemId,
         )
+    }
+
+    @Test
+    fun resolvesRequesterIdAndNeverChoosesNonActionableExactStatus() {
+        val memory = TvFocusMemory()
+        memory.remember(
+            "library:movies",
+            TvFocusAnchor("status", "loading", TvFocusDestination.BODY),
+            horizontalCenter = 0f,
+        )
+
+        val resolved =
+            memory.resolve(
+                "library:movies",
+                listOf(
+                    TvFocusTarget(
+                        targetId = TV_LIBRARY_LOADING_TARGET,
+                        anchor = TvFocusAnchor("status", "loading", TvFocusDestination.BODY),
+                        horizontalCenter = 0f,
+                        horizontalIndex = 0,
+                        actionable = false,
+                    ),
+                    TvFocusTarget(
+                        targetId = tvLibraryTargetId("movie-1"),
+                        anchor = TvFocusAnchor("items", "movie-1", TvFocusDestination.SECTION_ITEM),
+                        horizontalCenter = 240f,
+                        horizontalIndex = 0,
+                    ),
+                ),
+            )
+
+        assertEquals(tvLibraryTargetId("movie-1"), resolved?.targetId)
+    }
+
+    @Test
+    fun libraryRootAndLibraryItemsUseDistinctSemanticSections() {
+        assertEquals("libraries", tvFocusTarget(tvLibraryTargetId("movies", "libraries")).anchor.sectionId)
+        assertEquals("items", tvFocusTarget(tvLibraryTargetId("movie-1")).anchor.sectionId)
     }
 
     @Test

@@ -231,6 +231,9 @@ internal fun TvDetailFocusLayout(
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val routeKey = uiState.routeKey
+    val focusContext = LocalTvFocusContext.current
+    val persistedRouteKey = focusContext?.routeKey ?: routeKey
+    val focusMemory = focusContext?.focusMemory
     val heroFocusRequester = remember(routeKey) { FocusRequester() }
     val primaryActionFocusRequester = remember(routeKey) { FocusRequester() }
     val bodyFocusRequester = remember(routeKey) { FocusRequester() }
@@ -249,6 +252,51 @@ internal fun TvDetailFocusLayout(
     var focusTransactionId by remember(routeKey) { mutableStateOf(0L) }
     var activeSectionIndex by remember(routeKey) { mutableStateOf(0) }
     var activeItemIndex by remember(routeKey) { mutableStateOf(0) }
+    var pendingPersistedAnchor by
+        remember(routeKey, focusMemory) {
+            mutableStateOf(focusMemory?.restore(persistedRouteKey)?.anchor)
+        }
+    var restoringPersistedAnchor by remember(routeKey) { mutableStateOf<TvFocusAnchor?>(null) }
+    val restorationTargets =
+        buildList {
+            add(tvFocusTarget("detail:hero", actionable = true).copy(anchor = TvFocusAnchor("hero", null, TvFocusDestination.HERO)))
+            if (hasPrimaryAction) {
+                add(
+                    tvFocusTarget("detail:primary", actionable = true)
+                        .copy(anchor = TvFocusAnchor("actions", "primary", TvFocusDestination.PRIMARY_ACTION)),
+                )
+            }
+            add(tvFocusTarget("detail:body", actionable = true).copy(anchor = TvFocusAnchor("overview", null, TvFocusDestination.BODY)))
+            focusSections.forEach { section ->
+                section.itemIds.forEachIndexed { index, itemId ->
+                    add(
+                        TvFocusTarget(
+                            targetId = "detail:${section.id}:$itemId",
+                            anchor = TvFocusAnchor(section.id, itemId, TvFocusDestination.SECTION_ITEM),
+                            horizontalCenter = index.toFloat(),
+                            horizontalIndex = index,
+                        ),
+                    )
+                }
+            }
+        }
+
+    fun rememberFocus(
+        anchor: TvFocusAnchor,
+        horizontalIndex: Int = 0,
+    ) {
+        if (pendingPersistedAnchor != null) {
+            if (restoringPersistedAnchor != anchor) return
+            pendingPersistedAnchor = null
+            restoringPersistedAnchor = null
+        }
+        focusMemory?.remember(
+            routeKey = persistedRouteKey,
+            anchor = anchor,
+            horizontalCenter = horizontalIndex.toFloat(),
+            horizontalIndex = horizontalIndex,
+        )
+    }
 
     fun requesterKey(
         sectionId: String,
@@ -260,23 +308,30 @@ internal fun TvDetailFocusLayout(
         itemId: String,
     ): FocusRequester = itemFocusRequesters.getOrPut(requesterKey(sectionId, itemId)) { FocusRequester() }
 
-    fun ownDestination(destination: TvFocusDestination) {
+    fun ownDestination(
+        destination: TvFocusDestination,
+        cancelPersistedRestoration: Boolean = true,
+    ) {
+        if (cancelPersistedRestoration) {
+            pendingPersistedAnchor = null
+            restoringPersistedAnchor = null
+        }
         focusTransactionId += 1
         pendingFocusRecovery = null
         destinationIntent = destination
         focusOwnership = null
     }
 
-    fun focusHero() {
-        ownDestination(TvFocusDestination.HERO)
+    fun focusHero(cancelPersistedRestoration: Boolean = true) {
+        ownDestination(TvFocusDestination.HERO, cancelPersistedRestoration)
         scope.launch {
             listState.scrollToItem(0)
             heroFocusRequester.requestFocus()
         }
     }
 
-    fun focusPrimaryAction() {
-        ownDestination(TvFocusDestination.PRIMARY_ACTION)
+    fun focusPrimaryAction(cancelPersistedRestoration: Boolean = true) {
+        ownDestination(TvFocusDestination.PRIMARY_ACTION, cancelPersistedRestoration)
         scope.launch {
             listState.scrollToItem(0)
             withFrameNanos { }
@@ -284,8 +339,8 @@ internal fun TvDetailFocusLayout(
         }
     }
 
-    fun focusBodyFromHero() {
-        ownDestination(TvFocusDestination.BODY)
+    fun focusBodyFromHero(cancelPersistedRestoration: Boolean = true) {
+        ownDestination(TvFocusDestination.BODY, cancelPersistedRestoration)
         scope.launch {
             listState.scrollToItem(bodyLazyItemIndex)
             withFrameNanos { }
@@ -293,8 +348,8 @@ internal fun TvDetailFocusLayout(
         }
     }
 
-    fun focusBody() {
-        ownDestination(TvFocusDestination.BODY)
+    fun focusBody(cancelPersistedRestoration: Boolean = true) {
+        ownDestination(TvFocusDestination.BODY, cancelPersistedRestoration)
         scope.launch {
             listState.scrollToItem(bodyLazyItemIndex)
             withFrameNanos { }
@@ -305,15 +360,19 @@ internal fun TvDetailFocusLayout(
     fun focusSection(
         sectionId: String,
         preferredItemId: String? = null,
+        cancelPersistedRestoration: Boolean = true,
     ) {
-        ownDestination(TvFocusDestination.SECTION_ITEM)
-        val section = uiState.section(sectionId) ?: return focusBody()
-        val itemId = preferredItemId?.takeIf(section.itemIds::contains) ?: section.itemIds.firstOrNull() ?: return focusBody()
+        ownDestination(TvFocusDestination.SECTION_ITEM, cancelPersistedRestoration)
+        val section = uiState.section(sectionId) ?: return focusBody(cancelPersistedRestoration)
+        val itemId =
+            preferredItemId?.takeIf(section.itemIds::contains)
+                ?: section.itemIds.firstOrNull()
+                ?: return focusBody(cancelPersistedRestoration)
         val lazyItemIndex =
             uiState.sections
                 .indexOfFirst { it.id == sectionId }
                 .takeIf { it >= 0 }
-                ?.plus(1) ?: return focusBody()
+                ?.plus(1) ?: return focusBody(cancelPersistedRestoration)
         val focusRequester = requester(sectionId, itemId)
         val horizontalListState = horizontalListStates.getValue(sectionId)
         val horizontalItemIndex = section.itemIds.indexOf(itemId)
@@ -322,7 +381,7 @@ internal fun TvDetailFocusLayout(
             horizontalListState.scrollToItem(horizontalItemIndex)
             withFrameNanos { }
             val focused = runCatching { focusRequester.requestFocus() }.getOrDefault(false)
-            if (!focused) focusBody()
+            if (!focused) focusBody(cancelPersistedRestoration)
         }
     }
 
@@ -347,10 +406,36 @@ internal fun TvDetailFocusLayout(
         }
 
     LaunchedEffect(routeKey) {
-        listState.scrollToItem(0)
-        destinationIntent = TvFocusDestination.HERO
-        focusOwnership = null
-        heroFocusRequester.requestFocus()
+        if (pendingPersistedAnchor == null) {
+            focusHero(cancelPersistedRestoration = false)
+        } else if (
+            pendingPersistedAnchor?.destination == TvFocusDestination.SECTION_ITEM &&
+            uiState.section(pendingPersistedAnchor?.sectionId.orEmpty()) == null
+        ) {
+            focusHero(cancelPersistedRestoration = false)
+        }
+    }
+    LaunchedEffect(uiState.sections, pendingPersistedAnchor) {
+        val pending = pendingPersistedAnchor ?: return@LaunchedEffect
+        if (
+            pending.destination == TvFocusDestination.SECTION_ITEM &&
+            uiState.section(pending.sectionId.orEmpty()) == null
+        ) {
+            return@LaunchedEffect
+        }
+        val target = focusMemory?.resolve(persistedRouteKey, restorationTargets) ?: return@LaunchedEffect
+        restoringPersistedAnchor = target.anchor
+        when (target.anchor.destination) {
+            TvFocusDestination.HERO -> focusHero(cancelPersistedRestoration = false)
+            TvFocusDestination.PRIMARY_ACTION -> focusPrimaryAction(cancelPersistedRestoration = false)
+            TvFocusDestination.BODY -> focusBody(cancelPersistedRestoration = false)
+            TvFocusDestination.SECTION_ITEM ->
+                focusSection(
+                    sectionId = target.anchor.sectionId.orEmpty(),
+                    preferredItemId = target.anchor.itemId,
+                    cancelPersistedRestoration = false,
+                )
+        }
     }
     LaunchedEffect(uiState.sections, lastConfirmedItemAnchor) {
         val anchor = lastConfirmedItemAnchor ?: return@LaunchedEffect
@@ -435,6 +520,9 @@ internal fun TvDetailFocusLayout(
                     focusOwnership = TvFocusDestination.PRIMARY_ACTION
                     destinationIntent = null
                 }
+                if (focusState.isFocused) {
+                    rememberFocus(TvFocusAnchor("actions", "primary", TvFocusDestination.PRIMARY_ACTION))
+                }
             }.onPreviewKeyEvent { event ->
                 if (
                     event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
@@ -485,6 +573,7 @@ internal fun TvDetailFocusLayout(
                 }
             }.onFocusChanged { focusState ->
                 if (focusState.isFocused) {
+                    rememberFocus(TvFocusAnchor("overview", null, TvFocusDestination.BODY))
                     val pending = pendingFocusRecovery
                     if (pending?.target?.destination == TvFocusDestination.BODY) {
                         focusOwnership = TvFocusDestination.BODY
@@ -512,6 +601,7 @@ internal fun TvDetailFocusLayout(
                                     activeSectionIndex = sectionIndex
                                     activeItemIndex = section.itemIds.indexOf(itemId).coerceAtLeast(0)
                                     lastConfirmedItemAnchor = itemAnchor
+                                    rememberFocus(itemAnchor, activeItemIndex)
                                     focusOwnership = TvFocusDestination.SECTION_ITEM
                                     destinationIntent = null
                                 }
@@ -582,6 +672,9 @@ internal fun TvDetailFocusLayout(
                         if (focusState.isFocused && destinationIntent == TvFocusDestination.HERO) {
                             focusOwnership = TvFocusDestination.HERO
                             destinationIntent = null
+                        }
+                        if (focusState.isFocused) {
+                            rememberFocus(TvFocusAnchor("hero", null, TvFocusDestination.HERO))
                         }
                     }.onKeyEvent { event ->
                         if (

@@ -8,8 +8,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -46,6 +48,84 @@ import org.junit.runner.RunWith
 class TvDetailFocusTest {
     @get:Rule
     val composeRule = createComposeRule()
+
+    @Test
+    fun detailRestoresHolderOwnedSemanticAnchorAfterRecreation() {
+        val routeKey = "jellyfin-detail:movie-restore"
+        var cast by mutableStateOf<List<TvDetailCastItem>?>(null)
+        val holder = TvAppStateHolder()
+        holder.focusMemory.remember(
+            routeKey,
+            TvFocusAnchor("cast", "person-1", TvFocusDestination.SECTION_ITEM),
+            horizontalCenter = 480f,
+            horizontalIndex = 1,
+        )
+        val restored =
+            TvAppStateHolder(
+                requireNotNull(TvAppStatePersistence.decode(TvAppStatePersistence.encode(holder.snapshot()))),
+            )
+        setRestorationContent(restored, routeKey) { cast }
+
+        composeRule.onNodeWithTag("tv-detail-hero").assertIsFocused()
+        composeRule.runOnIdle {
+            cast =
+                listOf(
+                    TvDetailCastItem.Jellyfin(jellyfinPerson("person-0")),
+                    TvDetailCastItem.Jellyfin(jellyfinPerson("person-1")),
+                )
+        }
+        waitUntilFocused("Actor 1")
+    }
+
+    @Test
+    fun detailFallsBackWhenPersistedSectionExistsWithoutActionableItems() {
+        val routeKey = "jellyfin-detail:movie-empty-cast"
+        val holder = holderRememberingCast(routeKey)
+
+        setRestorationContent(holder, routeKey) { emptyList() }
+
+        composeRule.onNodeWithTag("tv-detail-hero").assertIsFocused()
+        composeRule.runOnIdle {
+            assertEquals(
+                TvFocusDestination.HERO,
+                holder.focusMemory
+                    .restore(routeKey)
+                    ?.anchor
+                    ?.destination,
+            )
+        }
+    }
+
+    @Test
+    fun detailUserMovementCancelsPendingRestoreBeforeSectionArrives() {
+        val routeKey = "jellyfin-detail:movie-cancel-restore"
+        var cast by mutableStateOf<List<TvDetailCastItem>?>(null)
+        val holder = holderRememberingCast(routeKey)
+        setRestorationContent(holder, routeKey) { cast }
+
+        val hero = composeRule.onNodeWithTag("tv-detail-hero").assertIsFocused()
+        hero.performKeyInput { pressKey(Key.DirectionDown) }
+        val body = composeRule.onNodeWithTag("tv-detail-body-focus").assertIsFocused()
+
+        composeRule.runOnIdle {
+            cast =
+                listOf(
+                    TvDetailCastItem.Jellyfin(jellyfinPerson("person-0")),
+                    TvDetailCastItem.Jellyfin(jellyfinPerson("person-1")),
+                )
+        }
+        composeRule.waitForIdle()
+        body.assertIsFocused()
+        composeRule.runOnIdle {
+            assertEquals(
+                TvFocusDestination.BODY,
+                holder.focusMemory
+                    .restore(routeKey)
+                    ?.anchor
+                    ?.destination,
+            )
+        }
+    }
 
     @Test
     fun detailOpensAtHeroAndUpFromPrimaryActionRestoresTop() {
@@ -747,6 +827,69 @@ class TvDetailFocusTest {
         composeRule.waitForIdle()
 
         composeRule.onNodeWithTag("tv-detail-hero").assertIsFocused()
+    }
+
+    private fun holderRememberingCast(routeKey: String) =
+        TvAppStateHolder().apply {
+            focusMemory.remember(
+                routeKey,
+                TvFocusAnchor("cast", "person-1", TvFocusDestination.SECTION_ITEM),
+                horizontalCenter = 480f,
+                horizontalIndex = 1,
+            )
+        }
+
+    private fun setRestorationContent(
+        holder: TvAppStateHolder,
+        routeKey: String,
+        castProvider: () -> List<TvDetailCastItem>?,
+    ) {
+        composeRule.setContent {
+            val coordinator = remember { TvFocusCoordinator<androidx.compose.ui.focus.FocusRequester>() }
+            val cast = castProvider()
+            val uiState =
+                TvDetailUiState(
+                    routeKey = routeKey,
+                    sections =
+                        buildList {
+                            add(TvDetailSection.Overview("Overview", null))
+                            cast?.let { add(TvDetailSection.Cast(it)) }
+                        },
+                )
+            CompositionLocalProvider(
+                LocalTvFocusContext provides TvFocusContext(coordinator, routeKey, holder.focusMemory),
+            ) {
+                JellystackTvTheme {
+                    TvDetailFocusLayout(
+                        uiState = uiState,
+                        heroContentDescription = "Restored details",
+                        hasPrimaryAction = false,
+                        modifier = Modifier.fillMaxSize(),
+                        heroContent = { _, _ -> Box(Modifier.fillMaxSize()) },
+                    ) { bodyFocusModifier, sectionFocusModifiers ->
+                        item("overview") { Box(bodyFocusModifier.fillMaxWidth().height(600.dp)) }
+                        sectionFocusModifiers["cast"]?.let { castFocus ->
+                            item("cast") {
+                                LazyRow(
+                                    modifier = castFocus.navigationModifier,
+                                    state = castFocus.horizontalListState,
+                                ) {
+                                    itemsIndexed(cast.orEmpty()) { index, person ->
+                                        TvMediaCard(
+                                            title = "Actor $index",
+                                            imageUrl = null,
+                                            onClick = {},
+                                            modifier = castFocus.itemModifier(person.id),
+                                            providedFocusRequester = castFocus.itemFocusRequester(person.id),
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private fun moveFocusRightThroughPeople(ids: IntRange) {

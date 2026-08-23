@@ -29,6 +29,7 @@ internal class TvFocusCoordinator<T : Any>(
     private data class TargetRegistration(
         var count: Int,
         var fallback: Boolean,
+        var focusTarget: TvFocusTarget?,
     )
 
     private data class Registration<T>(
@@ -71,16 +72,18 @@ internal class TvFocusCoordinator<T : Any>(
         targetId: Any,
         target: T,
         fallback: Boolean = false,
+        focusTarget: TvFocusTarget? = null,
     ) {
         val route = routes.getOrPut(routeKey) { RouteTargets() }
         val registration = route.attached.getOrPut(targetId) { Registration() }
         val targetRegistration = registration.targets[target]
         if (targetRegistration == null) {
-            registration.targets[target] = TargetRegistration(count = 1, fallback = fallback)
+            registration.targets[target] = TargetRegistration(count = 1, fallback = fallback, focusTarget = focusTarget)
             registrationRevision += 1
         } else {
             targetRegistration.count += 1
             targetRegistration.fallback = targetRegistration.fallback || fallback
+            targetRegistration.focusTarget = focusTarget ?: targetRegistration.focusTarget
         }
     }
 
@@ -113,12 +116,48 @@ internal class TvFocusCoordinator<T : Any>(
         routeKey: Any,
         targetId: Any,
         target: T,
-    ) {
-        val route = routes[routeKey] ?: return
+    ): TvFocusTarget? {
+        val route = routes[routeKey] ?: return null
+        val registration = route.attached[targetId]?.targets?.get(target) ?: return null
         if (target in route.attached[targetId]?.targets.orEmpty()) {
             route.rememberedId = targetId
             onUserMovement()
         }
+        return focusTargets(routeKey).firstOrNull { it.targetId == targetId } ?: registration.focusTarget
+    }
+
+    fun focusTargets(routeKey: Any): List<TvFocusTarget> {
+        val attachedTargets =
+            routes[routeKey]
+                ?.attached
+                ?.mapNotNull { (targetId, registration) ->
+                    registration.targets.values
+                        .firstNotNullOfOrNull { it.focusTarget }
+                        ?.takeIf { it.targetId == targetId }
+                }.orEmpty()
+        val attachedById = attachedTargets.associateBy(TvFocusTarget::targetId)
+        val materializerTargets =
+            materializers[routeKey]
+                ?.values
+                ?.flatMap { materializer -> materializer.targetIds.map(::tvFocusTarget) }
+                .orEmpty()
+        val materializerIds = materializerTargets.mapTo(mutableSetOf(), TvFocusTarget::targetId)
+        return (
+            materializerTargets.map { target -> attachedById[target.targetId] ?: target } +
+                attachedTargets.filterNot { it.targetId in materializerIds }
+        ).distinctBy(TvFocusTarget::targetId)
+            .groupBy { it.anchor.sectionId }
+            .values
+            .flatMap { sectionTargets ->
+                val hasMaterializerDescriptors = sectionTargets.any { it.targetId in materializerIds }
+                sectionTargets
+                    .mapIndexed { index, target ->
+                        target.copy(
+                            horizontalCenter = if (hasMaterializerDescriptors) index.toFloat() else target.horizontalCenter,
+                            horizontalIndex = index,
+                        )
+                    }
+            }
     }
 
     fun registerMaterializer(
@@ -158,14 +197,15 @@ internal class TvFocusCoordinator<T : Any>(
         preferredTargetId: String? = null,
         includeFallback: Boolean = true,
         requestFocus: (T) -> Boolean,
-    ): TvFocusRestoration<T> =
-        restorationLocks.getOrPut(routeKey) { Mutex() }.withLock {
-            val restorationRevision = interactionRevision
+    ): TvFocusRestoration<T> {
+        val restorationRevision = interactionRevision
+        return restorationLocks.getOrPut(routeKey) { Mutex() }.withLock {
+            if (interactionRevision != restorationRevision) return TvFocusRestoration.Cancelled
             awaitRouteCapability(routeKey)
             if (interactionRevision != restorationRevision) return TvFocusRestoration.Cancelled
             val rememberedTargetId = preferredTargetId ?: routes[routeKey]?.rememberedId as? String
             if (rememberedTargetId != null) {
-                materializeIfNeeded(routeKey, rememberedTargetId)
+                materializeIfNeeded(routeKey, rememberedTargetId, restorationRevision)
                 if (interactionRevision != restorationRevision) return TvFocusRestoration.Cancelled
                 focusTarget(routeKey, rememberedTargetId, restorationRevision, requestFocus)?.let {
                     return TvFocusRestoration.Focused(it)
@@ -186,7 +226,7 @@ internal class TvFocusCoordinator<T : Any>(
                         ?.let(::addAll)
                 }.distinct()
             fallbackIds.forEach { targetId ->
-                materializeIfNeeded(routeKey, targetId)
+                materializeIfNeeded(routeKey, targetId, restorationRevision)
                 if (interactionRevision != restorationRevision) return TvFocusRestoration.Cancelled
                 focusTarget(routeKey, targetId, restorationRevision, requestFocus)?.let {
                     return TvFocusRestoration.Focused(it)
@@ -195,23 +235,30 @@ internal class TvFocusCoordinator<T : Any>(
             }
             return TvFocusRestoration.Failed
         }
+    }
 
     private suspend fun materializeIfNeeded(
         routeKey: Any,
         targetId: String,
-    ): Boolean =
-        when {
+        restorationRevision: Long,
+    ): Boolean {
+        if (
             routes[routeKey]
                 ?.attached
                 ?.get(targetId)
                 ?.targets
-                ?.isNotEmpty() == true -> true
-            else ->
-                materializerAwaitingTvTarget(routeKey, targetId)
-                    ?.let { materializer -> materializer.materialize(targetId) }
-                    ?.let { materialized -> materialized && awaitTargetAttachment(routeKey, targetId) }
-                    ?: false
+                ?.isNotEmpty() == true
+        ) {
+            return true
         }
+        val materializer = materializerAwaitingTvTarget(routeKey, targetId)
+        if (interactionRevision != restorationRevision) return false
+        val materialized = materializer?.materialize(targetId) == true
+        if (interactionRevision != restorationRevision || !materialized) return false
+        val attached = awaitTargetAttachment(routeKey, targetId)
+        if (interactionRevision != restorationRevision) return false
+        return attached
+    }
 
     /** First materializer covering [targetId], waiting up to the attachment timeout for registration. */
     private suspend fun materializerAwaitingTvTarget(

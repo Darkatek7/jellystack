@@ -137,6 +137,123 @@ class TvAppStateHolderTest {
     }
 
     @Test
+    fun sameAuthenticatedEnvironmentSurvivesProcessRecreation() {
+        val identity = TvAuthenticatedEnvironmentIdentity("connection-1", "user-1")
+        val holder = TvAppStateHolder()
+        assertTrue(holder.activateEnvironment(identity))
+        holder.push(TvRoute.Search)
+        holder.focusMemory.remember("search", "results", "movie-1")
+
+        val restored =
+            TvAppStateHolder(
+                requireNotNull(TvAppStatePersistence.decode(TvAppStatePersistence.encode(holder.snapshot()))),
+            )
+
+        assertFalse(restored.activateEnvironment(identity))
+        assertEquals(TvRoute.Search, restored.state.currentRoute)
+        assertEquals("movie-1", restored.focusMemory.restore("search")?.itemId)
+        assertEquals(identity, restored.state.environmentIdentity)
+    }
+
+    @Test
+    fun authenticatedPrincipalOrConnectionChangeStartsCleanGeneration() {
+        val holder = TvAppStateHolder()
+        holder.activateEnvironment(TvAuthenticatedEnvironmentIdentity("connection-1", "user-1"))
+        holder.push(TvRoute.Search)
+        holder.focusMemory.remember("search", "results", "private")
+        val firstGeneration = holder.state.activeProfileGeneration
+
+        assertTrue(holder.activateEnvironment(TvAuthenticatedEnvironmentIdentity("connection-1", "user-2")))
+        assertEquals(firstGeneration + 1, holder.state.activeProfileGeneration)
+        assertEquals(listOf(TvRoute.Home), holder.state.backStack)
+        assertNull(holder.focusMemory.restore("search"))
+
+        holder.push(TvRoute.Discover)
+        assertTrue(holder.activateEnvironment(TvAuthenticatedEnvironmentIdentity("connection-2", "user-2")))
+        assertEquals(firstGeneration + 2, holder.state.activeProfileGeneration)
+        assertEquals(listOf(TvRoute.Home), holder.state.backStack)
+    }
+
+    @Test
+    fun persistenceMigratesLegacyRoutesAndToleratesUnknownFields() {
+        val legacyRoutes = listOf(TvRoute.Home, TvRoute.Library("movies", "Movies"))
+        assertEquals(legacyRoutes, TvAppStatePersistence.decode(TvRouteBackStack.encode(legacyRoutes))?.backStack)
+
+        val identity = TvAuthenticatedEnvironmentIdentity("connection-1", "user-1")
+        val encoded =
+            TvAppStatePersistence.encode(
+                TvAppStateSnapshot(
+                    backStack = listOf(TvRoute.Search),
+                    environmentIdentity = identity,
+                ),
+            )
+        assertTrue("\"version\":1" in encoded)
+        val unversionedSnapshot = encoded.substringAfter("\"snapshot\":").dropLast(1)
+        assertEquals(listOf(TvRoute.Search), TvAppStatePersistence.decode(unversionedSnapshot)?.backStack)
+        val futureCompatible =
+            encoded
+                .replace("\"version\":1", "\"version\":99")
+                .dropLast(1) + ",\"futureField\":{\"value\":42}}"
+        assertEquals(listOf(TvRoute.Search), TvAppStatePersistence.decode(futureCompatible)?.backStack)
+        assertEquals(identity, TvAppStatePersistence.decode(futureCompatible)?.environmentIdentity)
+        assertNull(TvAppStatePersistence.decode("{definitely-not-json"))
+    }
+
+    @Test
+    fun legacyRoutesBindToFirstIdentityButCredentialLossClearsPrivateState() {
+        val legacyRoutes = listOf(TvRoute.Home, TvRoute.Library("movies"))
+        val holder = TvAppStateHolder(requireNotNull(TvAppStatePersistence.decode(TvRouteBackStack.encode(legacyRoutes))))
+        holder.focusMemory.remember("library:movies", "items", "private")
+
+        assertTrue(holder.activateEnvironment(TvAuthenticatedEnvironmentIdentity("connection", "user")))
+        assertEquals(legacyRoutes, holder.state.backStack)
+        assertNull(holder.focusMemory.restore("library:movies"))
+
+        holder.rememberDetailSource(item("private-detail"))
+        holder.push(TvRoute.JellyfinDetail("private-detail"))
+        assertTrue(holder.deactivateEnvironment())
+        assertEquals(listOf(TvRoute.Home), holder.state.backStack)
+        assertNull(holder.detailSource("private-detail"))
+        assertNull(holder.state.environmentIdentity)
+    }
+
+    @Test
+    fun legacyRoutesAreClearedWhenNoAuthenticatedIdentityIsActive() {
+        val legacyRoutes = listOf(TvRoute.Home, TvRoute.JellyfinDetail("private-detail"))
+        val holder = TvAppStateHolder(requireNotNull(TvAppStatePersistence.decode(TvRouteBackStack.encode(legacyRoutes))))
+        val initialGeneration = holder.state.activeProfileGeneration
+
+        assertTrue(holder.deactivateEnvironment())
+        assertEquals(listOf(TvRoute.Home), holder.state.backStack)
+        assertEquals(initialGeneration + 1L, holder.state.activeProfileGeneration)
+        assertFalse(holder.deactivateEnvironment())
+    }
+
+    @Test
+    fun persistenceEnvelopeRoundTripsAllDurableState() {
+        val snapshot =
+            TvAppStateSnapshot(
+                backStack = listOf(TvRoute.Discover),
+                railExpanded = true,
+                activeProfileGeneration = 7,
+                isForeground = false,
+                environmentIdentity = TvAuthenticatedEnvironmentIdentity("connection", "user"),
+                focusSnapshots =
+                    mapOf(
+                        "discover" to
+                            TvFocusSnapshot(
+                                TvFocusAnchor("trending", "movie", TvFocusDestination.SECTION_ITEM),
+                                2,
+                                3,
+                                640f,
+                            ),
+                    ),
+            )
+
+        assertEquals(snapshot, TvAppStatePersistence.decode(TvAppStatePersistence.encode(snapshot)))
+    }
+
+    @Test
     fun userRailMovementCancelsAnInFlightRestoration() =
         runTest {
             val restorationStarted = CompletableDeferred<Unit>()

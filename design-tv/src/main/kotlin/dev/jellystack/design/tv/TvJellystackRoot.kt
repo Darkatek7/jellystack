@@ -98,14 +98,20 @@ import kotlinx.coroutines.launch
 internal fun TvRouteFocusScope(
     focusCoordinator: TvFocusCoordinator<FocusRequester>,
     routeKey: String,
+    focusMemory: TvFocusMemory? = null,
     content: @Composable () -> Unit,
 ) {
     val entryFocusRequester = remember(focusCoordinator, routeKey) { FocusRequester() }
     CompositionLocalProvider(
         LocalTvScreenEntryFocusRequester provides entryFocusRequester,
-        LocalTvFocusContext provides TvFocusContext(focusCoordinator, routeKey),
+        LocalTvFocusContext provides TvFocusContext(focusCoordinator, routeKey, focusMemory),
         content = content,
     )
+}
+
+@Composable
+internal fun TvAppBackHandler(dispatcher: TvAppBackDispatcher) {
+    BackHandler(enabled = dispatcher.rootHandlerEnabled) { dispatcher.dispatch() }
 }
 
 @Composable
@@ -314,6 +320,27 @@ private fun TvAuthenticatedApp(
     val appStateHolder = rememberSaveable(saver = appStateSaver) { TvAppStateHolder() }
     val appUiState = appStateHolder.state
     val focusMemory = appStateHolder.focusMemory
+    val authenticatedEnvironmentIdentity =
+        activeJellyfinServer?.let { server ->
+            (server.credentials as? StoredCredential.Jellyfin)?.let { credential ->
+                TvAuthenticatedEnvironmentIdentity(
+                    serverConnectionId = server.id,
+                    principalId = credential.userId,
+                )
+            }
+        }
+    LaunchedEffect(authenticatedEnvironmentIdentity) {
+        if (authenticatedEnvironmentIdentity == null) {
+            appStateHolder.deactivateEnvironment()
+        } else {
+            appStateHolder.activateEnvironment(authenticatedEnvironmentIdentity)
+        }
+    }
+    // Never compose a restored private route while its persisted owner is unvalidated. The effect
+    // above either binds a legacy snapshot, switches to a clean generation, or clears credentials.
+    if (appUiState.environmentIdentity != authenticatedEnvironmentIdentity || authenticatedEnvironmentIdentity == null) {
+        return
+    }
     val jellyfinSearchCoordinator =
         remember(scope, browseRepository) {
             TvJellyfinSearchCoordinator(scope = scope, searchItems = browseRepository::searchItems)
@@ -456,7 +483,7 @@ private fun TvAuthenticatedApp(
             currentRoute is TvRoute.Discover ||
             currentRoute is TvRoute.Settings
     val focusCoordinator =
-        remember {
+        remember(appUiState.activeProfileGeneration) {
             TvFocusCoordinator<FocusRequester>(
                 awaitFocusFrame = { withFrameNanos { } },
             )
@@ -470,33 +497,15 @@ private fun TvAuthenticatedApp(
             if (showRail && appUiState.railExpanded) 134.dp else 0.dp,
             label = "tv-content-rail-safe-area",
         )
-    val backAction =
-        tvBackAction(
-            currentRoute,
-            appUiState.backStack.size,
-            homeState.browsePath.size,
-            appUiState.railExpanded,
-            homeState.selectedLibraryId,
+    val backDispatcher =
+        TvAppBackDispatcher(
+            holder = appStateHolder,
+            libraryPathDepth = { homeState.browsePath.size },
+            selectedLibraryId = { homeState.selectedLibraryId },
+            popLibraryPath = browseCoordinator::navigateUp,
+            cancelFocusRestoration = focusCoordinator::onUserMovement,
         )
-    BackHandler(enabled = backAction != TvBackAction.SYSTEM_EXIT) {
-        when (backAction) {
-            TvBackAction.POP_LIBRARY_PATH -> {
-                browseCoordinator.navigateUp()
-                appStateHolder.closeRail()
-                focusCoordinator.onUserMovement()
-            }
-            TvBackAction.POP_ROUTE -> {
-                appStateHolder.popRoute()
-                appStateHolder.closeRail()
-                focusCoordinator.onUserMovement()
-            }
-            TvBackAction.CLOSE_RAIL -> {
-                appStateHolder.closeRail()
-                focusCoordinator.onUserMovement()
-            }
-            TvBackAction.SYSTEM_EXIT -> Unit
-        }
-    }
+    TvAppBackHandler(backDispatcher)
     LaunchedEffect(showRail, appUiState.railExpanded, currentFocusRouteKey, appUiState.isForeground) {
         if (!showRail || !appUiState.isForeground) return@LaunchedEffect
         if (appUiState.railExpanded) {
@@ -516,8 +525,11 @@ private fun TvAuthenticatedApp(
             }
         } else {
             // A missing content target must not turn route restoration (including Back) into a rail opener.
+            val semanticTargetId =
+                focusMemory.resolve(currentFocusRouteKey, focusCoordinator.focusTargets(currentFocusRouteKey))?.targetId
             focusCoordinator.restoreFocus(
                 routeKey = currentFocusRouteKey,
+                preferredTargetId = semanticTargetId,
                 requestFocus = { requester -> runCatching { requester.requestFocus() }.getOrDefault(false) },
             )
         }
@@ -536,7 +548,7 @@ private fun TvAuthenticatedApp(
         ) {
             NavDisplay(
                 backStack = appUiState.backStack,
-                onBack = { appStateHolder.popRoute() },
+                onBack = { backDispatcher.dispatch() },
                 modifier = Modifier.fillMaxSize().padding(start = contentStartPadding),
                 entryProvider = { route ->
                     NavEntry(route) {
@@ -544,7 +556,7 @@ private fun TvAuthenticatedApp(
                             route.focusRouteKey(
                                 if (route is TvRoute.Library) homeState.browsePath.map { it.id } else emptyList(),
                             )
-                        TvRouteFocusScope(focusCoordinator, entryRouteKey) {
+                        TvRouteFocusScope(focusCoordinator, entryRouteKey, focusMemory) {
                             when (route) {
                                 TvRoute.Home ->
                                     TvHomeScreen(

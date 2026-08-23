@@ -56,6 +56,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsPropertyKey
@@ -110,9 +112,23 @@ internal fun Modifier.tvFocusable(
     val rememberedFocusRequester = remember { FocusRequester() }
     val restorationRequester = providedFocusRequester ?: rememberedFocusRequester
     val focusContext = LocalTvFocusContext.current
+    var horizontalCenter by remember(focusTargetId) { mutableStateOf(0f) }
+    val semanticTarget =
+        focusTargetId?.let { targetId ->
+            tvFocusTarget(
+                targetId = targetId,
+                horizontalCenter = horizontalCenter,
+                actionable = enabled && onClick != null,
+            )
+        }
     if (focusContext != null && focusTargetId != null) {
-        DisposableEffect(focusContext, focusTargetId, restorationRequester) {
-            focusContext.coordinator.register(focusContext.routeKey, focusTargetId, restorationRequester)
+        DisposableEffect(focusContext, focusTargetId, restorationRequester, semanticTarget) {
+            focusContext.coordinator.register(
+                focusContext.routeKey,
+                focusTargetId,
+                restorationRequester,
+                focusTarget = semanticTarget,
+            )
             onDispose {
                 focusContext.coordinator.unregister(focusContext.routeKey, focusTargetId, restorationRequester)
             }
@@ -137,17 +153,25 @@ internal fun Modifier.tvFocusable(
                 onFocused,
                 onFocusChanged = { focused ->
                     if (focused && focusTargetId != null) {
-                        focusContext?.coordinator?.rememberFocused(
-                            focusContext.routeKey,
-                            focusTargetId,
-                            restorationRequester,
-                        )
+                        focusContext
+                            ?.coordinator
+                            ?.rememberFocused(focusContext.routeKey, focusTargetId, restorationRequester)
+                            ?.let { target ->
+                                focusContext.focusMemory?.remember(
+                                    routeKey = focusContext.routeKey,
+                                    anchor = target.anchor,
+                                    horizontalCenter = target.horizontalCenter,
+                                    horizontalIndex = target.horizontalIndex,
+                                )
+                            }
                     }
                     onFocusChanged?.invoke(focused)
                 },
                 showFocusBorder = showFocusBorder,
             ).tvReturnToNavigationRailOnLeft(focusToNavigationRailOnLeft)
-            .then(centerActionModifier)
+            .onGloballyPositioned { coordinates ->
+                horizontalCenter = coordinates.boundsInRoot().center.x
+            }.then(centerActionModifier)
             .focusable(enabled),
     )
 }
@@ -173,8 +197,10 @@ private fun Modifier.tvFocusDecoration(
         .onFocusChanged {
             val becameFocused = it.isFocused && !focused
             focused = it.isFocused
-            onFocusChanged?.invoke(it.isFocused)
             if (becameFocused) onFocused?.invoke()
+            // The semantic callback runs last so stable production anchors cannot be replaced by
+            // legacy callbacks that use localized row titles as section identifiers.
+            onFocusChanged?.invoke(it.isFocused)
         }.graphicsLayer {
             scaleX = animatedScale
             scaleY = animatedScale
@@ -581,6 +607,7 @@ internal val LocalTvScreenEntryFocusRequester = staticCompositionLocalOf<FocusRe
 internal data class TvFocusContext(
     val coordinator: TvFocusCoordinator<FocusRequester>,
     val routeKey: String,
+    val focusMemory: TvFocusMemory? = null,
 )
 
 internal val LocalTvFocusContext = staticCompositionLocalOf<TvFocusContext?> { null }
@@ -605,17 +632,37 @@ internal fun Modifier.tvFocusTarget(
     focusTargetId: String,
 ): Modifier {
     val focusContext = LocalTvFocusContext.current
+    var horizontalCenter by remember(focusTargetId) { mutableStateOf(0f) }
+    val semanticTarget = tvFocusTarget(focusTargetId, horizontalCenter = horizontalCenter)
     if (focusContext != null) {
-        DisposableEffect(focusContext, focusTargetId, requester, fallback) {
-            focusContext.coordinator.register(focusContext.routeKey, focusTargetId, requester, fallback)
+        DisposableEffect(focusContext, focusTargetId, requester, fallback, semanticTarget) {
+            focusContext.coordinator.register(
+                focusContext.routeKey,
+                focusTargetId,
+                requester,
+                fallback,
+                semanticTarget,
+            )
             onDispose {
                 focusContext.coordinator.unregister(focusContext.routeKey, focusTargetId, requester)
             }
         }
     }
-    return onFocusChanged { state ->
+    return onGloballyPositioned { coordinates ->
+        horizontalCenter = coordinates.boundsInRoot().center.x
+    }.onFocusChanged { state ->
         if (state.isFocused) {
-            focusContext?.coordinator?.rememberFocused(focusContext.routeKey, focusTargetId, requester)
+            focusContext
+                ?.coordinator
+                ?.rememberFocused(focusContext.routeKey, focusTargetId, requester)
+                ?.let { target ->
+                    focusContext.focusMemory?.remember(
+                        routeKey = focusContext.routeKey,
+                        anchor = target.anchor,
+                        horizontalCenter = target.horizontalCenter,
+                        horizontalIndex = target.horizontalIndex,
+                    )
+                }
         }
     }
 }

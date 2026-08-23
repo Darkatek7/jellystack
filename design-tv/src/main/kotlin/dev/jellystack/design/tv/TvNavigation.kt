@@ -99,7 +99,10 @@ internal fun tvHomeCardTargetId(
     itemId: String,
 ): String = "home:row:$rowId:item:$itemId"
 
-internal fun tvLibraryTargetId(itemId: String): String = "library:item:$itemId"
+internal fun tvLibraryTargetId(
+    itemId: String,
+    sectionId: String = "items",
+): String = "library:$sectionId:item:$itemId"
 
 internal fun tvSearchSourceTargetId(source: String): String = "search:source:$source"
 
@@ -175,11 +178,63 @@ internal data class TvFocusSnapshot(
 
 @androidx.compose.runtime.Immutable
 internal data class TvFocusTarget(
+    val targetId: String,
     val anchor: TvFocusAnchor,
     val horizontalCenter: Float,
     val horizontalIndex: Int,
     val actionable: Boolean = true,
 )
+
+/** Builds semantic browse anchors from the stable requester IDs already used by production UI. */
+internal fun tvFocusTarget(
+    targetId: String,
+    horizontalCenter: Float = 0f,
+    horizontalIndex: Int = 0,
+    actionable: Boolean = true,
+): TvFocusTarget {
+    val (anchor, statusTarget) =
+        when {
+            targetId == TV_HOME_HERO_TARGET -> TvFocusAnchor("hero", null, TvFocusDestination.HERO) to false
+            targetId == TV_HOME_PRIMARY_TARGET || targetId == TV_HOME_DETAILS_TARGET ->
+                TvFocusAnchor("hero-actions", targetId.substringAfterLast(':'), TvFocusDestination.PRIMARY_ACTION) to false
+            targetId.startsWith("home:row:") && ":item:" in targetId -> {
+                val value = targetId.removePrefix("home:row:")
+                TvFocusAnchor(value.substringBefore(":item:"), value.substringAfter(":item:"), TvFocusDestination.SECTION_ITEM) to false
+            }
+            targetId.startsWith("library:") && ":item:" in targetId -> {
+                val value = targetId.removePrefix("library:")
+                TvFocusAnchor(value.substringBefore(":item:"), value.substringAfter(":item:"), TvFocusDestination.SECTION_ITEM) to false
+            }
+            targetId == TV_LIBRARY_LOADING_TARGET -> TvFocusAnchor("status", "loading", TvFocusDestination.BODY) to true
+            targetId == TV_LIBRARY_EMPTY_TARGET -> TvFocusAnchor("status", "empty", TvFocusDestination.BODY) to true
+            targetId == TV_LIBRARY_RETRY_TARGET -> TvFocusAnchor("status", "retry", TvFocusDestination.PRIMARY_ACTION) to false
+            targetId == TV_SEARCH_QUERY_TARGET -> TvFocusAnchor("query", null, TvFocusDestination.PRIMARY_ACTION) to false
+            targetId.startsWith("search:source:") ->
+                TvFocusAnchor("sources", targetId.removePrefix("search:source:"), TvFocusDestination.SECTION_ITEM) to false
+            targetId.startsWith("search:") && ":item:" in targetId -> {
+                val value = targetId.removePrefix("search:")
+                TvFocusAnchor(value.substringBefore(":item:"), value.substringAfter(":item:"), TvFocusDestination.SECTION_ITEM) to false
+            }
+            targetId.startsWith("discover:rail:") && ":item:" in targetId -> {
+                val value = targetId.removePrefix("discover:rail:")
+                TvFocusAnchor(value.substringBefore(":item:"), value.substringAfter(":item:"), TvFocusDestination.SECTION_ITEM) to false
+            }
+            targetId == TV_DISCOVER_LOADING_TARGET -> TvFocusAnchor("status", "loading", TvFocusDestination.BODY) to true
+            targetId == TV_DISCOVER_EMPTY_TARGET -> TvFocusAnchor("status", "empty", TvFocusDestination.BODY) to true
+            targetId == TV_DISCOVER_CONNECT_TARGET || targetId == TV_DISCOVER_RETRY_TARGET ->
+                TvFocusAnchor("status", targetId.substringAfterLast(':'), TvFocusDestination.PRIMARY_ACTION) to false
+            targetId.startsWith("settings:") ->
+                TvFocusAnchor("settings", targetId.removePrefix("settings:"), TvFocusDestination.PRIMARY_ACTION) to false
+            else -> TvFocusAnchor(targetId.substringBefore(':'), targetId, TvFocusDestination.SECTION_ITEM) to false
+        }
+    return TvFocusTarget(
+        targetId = targetId,
+        anchor = anchor,
+        horizontalCenter = horizontalCenter.takeIf(Float::isFinite) ?: horizontalIndex.toFloat(),
+        horizontalIndex = horizontalIndex.coerceAtLeast(0),
+        actionable = actionable && !statusTarget,
+    )
+}
 
 /** Keeps route-local focus stable while asynchronous rows refresh around it. */
 internal class TvFocusMemory(
@@ -227,18 +282,18 @@ internal class TvFocusMemory(
     internal fun resolve(
         routeKey: String,
         availableTargets: List<TvFocusTarget>,
-    ): TvFocusAnchor? {
+    ): TvFocusTarget? {
         val actionableTargets = availableTargets.filter(TvFocusTarget::actionable)
         if (actionableTargets.isEmpty()) return null
-        val snapshot = snapshots[routeKey] ?: return actionableTargets.first().anchor
-        actionableTargets.firstOrNull { it.anchor == snapshot.anchor }?.let { return it.anchor }
+        val snapshot = snapshots[routeKey] ?: return actionableTargets.first()
+        actionableTargets.firstOrNull { it.anchor == snapshot.anchor }?.let { return it }
         val sameSection = actionableTargets.filter { it.anchor.sectionId == snapshot.anchor.sectionId }
-        if (sameSection.isEmpty()) return actionableTargets.first().anchor
+        if (sameSection.isEmpty()) return actionableTargets.first()
         return sameSection
             .minWithOrNull(
                 compareBy<TvFocusTarget> { kotlin.math.abs(it.horizontalCenter - snapshot.horizontalCenter) }
                     .thenBy { kotlin.math.abs(it.horizontalIndex - snapshot.horizontalIndex) },
-            )?.anchor
+            )
     }
 
     fun resolveItem(
@@ -253,11 +308,54 @@ internal class TvFocusMemory(
                 routeKey,
                 availableIds.mapIndexed { index, id ->
                     TvFocusTarget(
+                        targetId = id,
                         anchor = TvFocusAnchor(sectionId, id, TvFocusDestination.SECTION_ITEM),
                         horizontalCenter = index.toFloat(),
                         horizontalIndex = index,
                     )
                 },
-            )?.itemId
+            )?.anchor?.itemId
         }
+}
+
+/** Executes the one app-level Back hierarchy used by both Navigation3 and the root fallback handler. */
+internal class TvAppBackDispatcher(
+    private val holder: TvAppStateHolder,
+    private val libraryPathDepth: () -> Int,
+    private val selectedLibraryId: () -> String?,
+    private val popLibraryPath: () -> Unit,
+    private val cancelFocusRestoration: () -> Unit,
+) {
+    val action: TvBackAction
+        get() =
+            tvBackAction(
+                currentRoute = holder.state.currentRoute,
+                backStackSize = holder.state.backStack.size,
+                libraryPathDepth = libraryPathDepth(),
+                railVisible = holder.state.railExpanded,
+                selectedLibraryId = selectedLibraryId(),
+            )
+
+    /** Navigation3 owns Back whenever it has a previous entry; the root only handles non-route layers. */
+    val rootHandlerEnabled: Boolean
+        get() = holder.state.backStack.size == 1 && action != TvBackAction.SYSTEM_EXIT
+
+    fun dispatch(): Boolean {
+        val consumed =
+            when (action) {
+                TvBackAction.POP_LIBRARY_PATH -> {
+                    popLibraryPath()
+                    holder.closeRail()
+                    true
+                }
+                TvBackAction.POP_ROUTE -> holder.popRoute()
+                TvBackAction.CLOSE_RAIL -> {
+                    holder.closeRail()
+                    true
+                }
+                TvBackAction.SYSTEM_EXIT -> false
+            }
+        if (consumed) cancelFocusRestoration()
+        return consumed
+    }
 }

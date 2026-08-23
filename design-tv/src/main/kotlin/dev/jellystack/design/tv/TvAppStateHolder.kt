@@ -15,7 +15,14 @@ internal data class TvAppUiState(
     val currentRoute: TvRoute,
     val railExpanded: Boolean,
     val activeProfileGeneration: Long,
+    val environmentIdentity: TvAuthenticatedEnvironmentIdentity?,
     val isForeground: Boolean,
+)
+
+@Serializable
+internal data class TvAuthenticatedEnvironmentIdentity(
+    val serverConnectionId: String,
+    val principalId: String,
 )
 
 @Serializable
@@ -23,19 +30,36 @@ internal data class TvAppStateSnapshot(
     val backStack: List<TvRoute> = listOf(TvRoute.Home),
     val railExpanded: Boolean = false,
     val activeProfileGeneration: Long = 0L,
+    val environmentIdentity: TvAuthenticatedEnvironmentIdentity? = null,
     val isForeground: Boolean = true,
     val focusSnapshots: Map<String, TvFocusSnapshot> = emptyMap(),
 )
 
+@Serializable
+private data class TvAppStateEnvelope(
+    val version: Int,
+    val snapshot: TvAppStateSnapshot,
+)
+
+private const val TV_APP_STATE_VERSION = 1
+
 internal object TvAppStatePersistence {
     private val json = Json { ignoreUnknownKeys = true }
 
-    fun encode(snapshot: TvAppStateSnapshot): String = json.encodeToString(TvAppStateSnapshot.serializer(), snapshot)
+    fun encode(snapshot: TvAppStateSnapshot): String =
+        json.encodeToString(
+            TvAppStateEnvelope.serializer(),
+            TvAppStateEnvelope(version = TV_APP_STATE_VERSION, snapshot = snapshot),
+        )
 
     fun decode(raw: String): TvAppStateSnapshot? =
-        runCatching { json.decodeFromString(TvAppStateSnapshot.serializer(), raw) }
+        runCatching { json.decodeFromString(TvAppStateEnvelope.serializer(), raw).snapshot }
             .getOrNull()
-            ?.takeIf { it.backStack.isNotEmpty() }
+            ?.valid()
+            ?: runCatching { json.decodeFromString(TvAppStateSnapshot.serializer(), raw) }.getOrNull()?.valid()
+            ?: TvRouteBackStack.decode(raw)?.takeIf(List<TvRoute>::isNotEmpty)?.let { TvAppStateSnapshot(backStack = it) }
+
+    private fun TvAppStateSnapshot.valid(): TvAppStateSnapshot? = takeIf { it.backStack.isNotEmpty() }
 }
 
 /** Lifecycle-agnostic owner for navigation, rail, profile generation, and semantic focus state. */
@@ -53,6 +77,7 @@ internal class TvAppStateHolder(
                 backStack = initialSnapshot.backStack.ifEmpty { listOf(TvRoute.Home) },
                 railExpanded = initialSnapshot.railExpanded,
                 activeProfileGeneration = initialSnapshot.activeProfileGeneration,
+                environmentIdentity = initialSnapshot.environmentIdentity,
                 isForeground = initialSnapshot.isForeground,
             ),
         )
@@ -105,8 +130,47 @@ internal class TvAppStateHolder(
                 backStack = listOf(TvRoute.Home),
                 railExpanded = false,
                 activeProfileGeneration = generation,
+                environmentIdentity = state.environmentIdentity,
                 isForeground = state.isForeground,
             )
+    }
+
+    /** Validates restored state against the authenticated server connection and principal. */
+    fun activateEnvironment(identity: TvAuthenticatedEnvironmentIdentity): Boolean {
+        if (state.environmentIdentity == identity) return false
+        focusMemory.clear()
+        detailSourceItems.clear()
+        val firstIdentityBinding = state.environmentIdentity == null
+        state =
+            uiState(
+                backStack = if (firstIdentityBinding) state.backStack else listOf(TvRoute.Home),
+                railExpanded = false,
+                activeProfileGeneration = state.activeProfileGeneration + 1L,
+                environmentIdentity = identity,
+                isForeground = state.isForeground,
+            )
+        return true
+    }
+
+    fun deactivateEnvironment(): Boolean {
+        val alreadyClean =
+            state.environmentIdentity == null &&
+                state.backStack == listOf(TvRoute.Home) &&
+                !state.railExpanded &&
+                focusMemory.snapshot().isEmpty() &&
+                detailSourceItems.isEmpty()
+        if (alreadyClean) return false
+        focusMemory.clear()
+        detailSourceItems.clear()
+        state =
+            uiState(
+                backStack = listOf(TvRoute.Home),
+                railExpanded = false,
+                activeProfileGeneration = state.activeProfileGeneration + 1L,
+                environmentIdentity = null,
+                isForeground = state.isForeground,
+            )
+        return true
     }
 
     fun rememberDetailSource(item: JellyfinItem) {
@@ -120,6 +184,7 @@ internal class TvAppStateHolder(
             backStack = state.backStack.toList(),
             railExpanded = state.railExpanded,
             activeProfileGeneration = state.activeProfileGeneration,
+            environmentIdentity = state.environmentIdentity,
             isForeground = state.isForeground,
             focusSnapshots = focusMemory.snapshot(),
         )
@@ -129,6 +194,7 @@ internal class TvAppStateHolder(
             backStack = backStack,
             railExpanded = false,
             activeProfileGeneration = activeProfileGeneration,
+            environmentIdentity = environmentIdentity,
             isForeground = isForeground,
         )
 
@@ -137,6 +203,7 @@ internal class TvAppStateHolder(
             backStack: List<TvRoute>,
             railExpanded: Boolean,
             activeProfileGeneration: Long,
+            environmentIdentity: TvAuthenticatedEnvironmentIdentity?,
             isForeground: Boolean,
         ): TvAppUiState {
             val snapshot = backStack.ifEmpty { listOf(TvRoute.Home) }.toList()
@@ -145,6 +212,7 @@ internal class TvAppStateHolder(
                 currentRoute = snapshot.last(),
                 railExpanded = railExpanded,
                 activeProfileGeneration = activeProfileGeneration,
+                environmentIdentity = environmentIdentity,
                 isForeground = isForeground,
             )
         }

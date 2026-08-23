@@ -2,6 +2,8 @@ package dev.jellystack.design.tv
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class TvBackNavigationTest {
     @Test
@@ -142,5 +144,39 @@ class TvBackNavigationTest {
                 )
             }
         }
+    }
+
+    @Test
+    fun productionDispatcherKeepsFolderRouteRailAndSystemExitLayered() {
+        val holder = TvAppStateHolder()
+        holder.push(TvRoute.Library("shows"))
+        holder.openRail()
+        var pathDepth = 2
+        var cancellations = 0
+        val dispatcher =
+            TvAppBackDispatcher(
+                holder = holder,
+                libraryPathDepth = { pathDepth },
+                selectedLibraryId = { "shows" },
+                popLibraryPath = { pathDepth -= 1 },
+                cancelFocusRestoration = { cancellations += 1 },
+            )
+
+        assertFalse(dispatcher.rootHandlerEnabled)
+        assertTrue(dispatcher.dispatch())
+        assertEquals(1, pathDepth)
+        assertEquals(2, holder.state.backStack.size)
+        assertTrue(dispatcher.dispatch())
+        assertEquals(0, pathDepth)
+        holder.openRail()
+        assertTrue(dispatcher.dispatch())
+        assertEquals(listOf(TvRoute.Home), holder.state.backStack)
+        assertFalse(holder.state.railExpanded)
+        holder.openRail()
+        assertTrue(dispatcher.rootHandlerEnabled)
+        assertTrue(dispatcher.dispatch())
+        assertFalse(holder.state.railExpanded)
+        assertFalse(dispatcher.dispatch())
+        assertEquals(4, cancellations)
     }
 }

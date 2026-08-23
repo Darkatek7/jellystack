@@ -11,6 +11,7 @@
 package dev.jellystack.design.tv
 
 import android.view.KeyEvent
+import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
@@ -151,6 +152,14 @@ internal fun TvPlaybackScreen(
             TvPlaybackActionKind.PLAY_NEXT -> onPlayNext()
         }
     }
+    val handlePlaybackBack = {
+        when {
+            navigation.current != TvPlayerPanel.NONE -> navigation = navigation.back()
+            controlsVisible -> controlsVisible = false
+            else -> onClose()
+        }
+    }
+    TvPlayerBackHandler(handlePlaybackBack)
 
     Box(
         modifier =
@@ -209,11 +218,7 @@ internal fun TvPlaybackScreen(
                                 false
                             }
                         KeyEvent.KEYCODE_BACK -> {
-                            when {
-                                navigation.current != TvPlayerPanel.NONE -> navigation = navigation.back()
-                                controlsVisible -> controlsVisible = false
-                                else -> onClose()
-                            }
+                            handlePlaybackBack()
                             true
                         }
                         else -> false
@@ -323,6 +328,11 @@ internal fun TvPlaybackScreen(
             )
         }
     }
+}
+
+@Composable
+internal fun TvPlayerBackHandler(onBack: () -> Unit) {
+    BackHandler(onBack = onBack)
 }
 
 @Composable
