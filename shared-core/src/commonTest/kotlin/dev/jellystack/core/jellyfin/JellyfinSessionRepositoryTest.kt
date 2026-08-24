@@ -53,12 +53,28 @@ class JellyfinSessionRepositoryTest {
             assertEquals(JellyfinSyncPlayAccess.JOIN_GROUPS, capabilities.syncPlayAccess)
         }
 
-    private fun repositoryWith(responseBody: String): JellyfinSessionRepository {
+    @Test
+    fun reportsExpiredAuthenticationSeparatelyFromOrdinaryFailures() =
+        runTest {
+            val unauthorized = repositoryWith("{}", HttpStatusCode.Unauthorized)
+            val unavailable = repositoryWith("{}", HttpStatusCode.ServiceUnavailable)
+
+            unauthorized.refresh()
+            unavailable.refresh()
+
+            assertTrue((unauthorized.state.value as JellyfinSessionState.Error).authenticationExpired)
+            assertFalse((unavailable.state.value as JellyfinSessionState.Error).authenticationExpired)
+        }
+
+    private fun repositoryWith(
+        responseBody: String,
+        status: HttpStatusCode = HttpStatusCode.OK,
+    ): JellyfinSessionRepository {
         val engine =
             MockEngine {
                 respond(
                     content = responseBody,
-                    status = HttpStatusCode.OK,
+                    status = status,
                     headers = headersOf(HttpHeaders.ContentType, "application/json"),
                 )
             }

@@ -3,9 +3,12 @@ package dev.jellystack.core.jellyfin
 import dev.jellystack.network.ClientConfig
 import dev.jellystack.network.NetworkClientFactory
 import dev.jellystack.network.jellyfin.JellyfinActivityEntryDto
+import dev.jellystack.network.jellyfin.JellyfinAuthenticationException
 import dev.jellystack.network.jellyfin.JellyfinSessionApi
 import dev.jellystack.network.jellyfin.JellyfinUserDto
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.ClientRequestException
+import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -45,6 +48,7 @@ sealed interface JellyfinSessionState {
 
     data class Error(
         val message: String,
+        val authenticationExpired: Boolean = false,
     ) : JellyfinSessionState
 }
 
@@ -85,7 +89,11 @@ class JellyfinSessionRepository(
             throw cancelled
         } catch (failure: Throwable) {
             if (refreshGeneration == generation && environmentProvider.current() == environment) {
-                mutableState.value = JellyfinSessionState.Error(failure.message ?: "Unable to load Jellyfin user policy")
+                mutableState.value =
+                    JellyfinSessionState.Error(
+                        message = failure.message ?: "Unable to load Jellyfin user policy",
+                        authenticationExpired = failure.isAuthenticationExpired(),
+                    )
             }
             JellyfinSessionCapabilities.NONE
         }
@@ -93,6 +101,13 @@ class JellyfinSessionRepository(
 
     suspend fun api(): JellyfinSessionApi? = environmentProvider.current()?.let(apiFactory)
 }
+
+private fun Throwable.isAuthenticationExpired(): Boolean =
+    this is JellyfinAuthenticationException ||
+        (
+            this is ClientRequestException &&
+                (response.status == HttpStatusCode.Unauthorized || response.status == HttpStatusCode.Forbidden)
+        )
 
 data class JellyfinAdminOverview(
     val serverName: String?,

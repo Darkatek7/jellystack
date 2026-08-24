@@ -18,6 +18,8 @@ import dev.jellystack.core.preferences.AppSettingsRepository
 import dev.jellystack.core.preferences.ResumeMode
 import dev.jellystack.core.preferences.StreamingQualityPreference
 import dev.jellystack.core.preferences.SubtitleMode
+import dev.jellystack.core.profile.ActiveProfileRepository
+import dev.jellystack.core.profile.ProfilePreferencesRepository
 import dev.jellystack.design.tv.TvJellystackRoot
 import dev.jellystack.players.AndroidPlaybackSessionBridge
 import dev.jellystack.players.AndroidPlayerEngine
@@ -50,6 +52,8 @@ class MainActivity : AppCompatActivity() {
             )
         val koin = JellystackDI.koin
         val settingsRepository = koin.get<AppSettingsRepository>()
+        val activeProfileRepository = koin.get<ActiveProfileRepository>()
+        val profilePreferencesRepository = koin.get<ProfilePreferencesRepository>()
         val browseRepository = koin.get<JellyfinBrowseRepository>()
         val playbackSettings =
             SharedPreferencesSettings(
@@ -67,7 +71,13 @@ class MainActivity : AppCompatActivity() {
                 playerEngine = playerEngine,
                 streamingProgressReporter = JellyfinStreamingProgressReporter(browseRepository),
                 subtitlePreferenceStore = SettingsSubtitlePreferenceStore(playbackSettings),
-                playbackPreferencesProvider = PlaybackPreferencesProvider { settingsRepository.settings.value },
+                playbackPreferencesProvider =
+                    PlaybackPreferencesProvider {
+                        val deviceSettings = settingsRepository.settings.value
+                        activeProfileRepository.profileId.value
+                            ?.let { profilePreferencesRepository.preferences(it).value.applyTo(deviceSettings) }
+                            ?: deviceSettings
+                    },
             )
         trailerPreviewController = createTrailerPreviewController(settingsRepository)
         playbackBridge =
@@ -118,6 +128,7 @@ class MainActivity : AppCompatActivity() {
                 trailerPreviewEngine = trailerPreviewEngine,
                 appVersion = BuildConfig.VERSION_NAME,
                 stopPlayback = playbackBridge::stopPlayback,
+                coldLaunch = savedInstanceState == null,
             )
         }
     }

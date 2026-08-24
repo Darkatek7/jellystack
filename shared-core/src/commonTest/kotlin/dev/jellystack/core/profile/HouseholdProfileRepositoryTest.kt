@@ -56,11 +56,11 @@ class HouseholdProfileRepositoryTest {
         }
 }
 
-private object FixedProfileClock : Clock {
+internal object FixedProfileClock : Clock {
     override fun now(): Instant = Instant.fromEpochMilliseconds(1_700_000_000_000L)
 }
 
-private class InMemoryProfileStore : ProfileStore {
+internal class InMemoryProfileStore : ProfileStore {
     private val profiles = linkedMapOf<String, HouseholdProfile>()
     private val bindings = linkedMapOf<String, ProfileConnectionBinding>()
     private val profileFlow = MutableStateFlow<List<HouseholdProfile>>(emptyList())

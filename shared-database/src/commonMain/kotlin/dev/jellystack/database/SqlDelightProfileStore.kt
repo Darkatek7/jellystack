@@ -161,3 +161,5 @@ private fun Profile_saved_media.toDomain(): SavedMediaRecord =
         check(record.identity.provider == MediaIdentityProvider.fromStorageValue(provider))
         check(record.identity.providerId == provider_id)
     }
+
+fun JellystackDatabase.profileStore(): ProfileStore = SqlDelightProfileStore(householdProfilesQueries)

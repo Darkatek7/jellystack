@@ -9,6 +9,7 @@ import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.HeadersBuilder
 import io.ktor.http.HttpMethod
+import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.http.path
 import io.ktor.http.takeFrom
@@ -51,12 +52,17 @@ class JellyfinSessionApi(
         if (!contains(name)) append(name, value)
     }
 
-    suspend fun currentUser(): JellyfinUserDto =
-        client
-            .request {
+    suspend fun currentUser(): JellyfinUserDto {
+        val response =
+            client.request {
                 method = HttpMethod.Get
                 configure("/Users/Me")
-            }.body()
+            }
+        if (response.status == HttpStatusCode.Unauthorized || response.status == HttpStatusCode.Forbidden) {
+            throw JellyfinAuthenticationException()
+        }
+        return response.body()
+    }
 
     suspend fun users(): List<JellyfinUserDto> =
         client
@@ -165,6 +171,8 @@ class JellyfinSessionApi(
         }
     }
 }
+
+class JellyfinAuthenticationException : IllegalStateException("Jellyfin authentication expired")
 
 @Serializable
 data class JellyfinUserDto(

@@ -11,13 +11,44 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.mapLatest
 
-class ProfileEnvironmentProvider(
-    private val activeState: StateFlow<ActiveProfileState>,
+class ProfileEnvironmentProvider private constructor(
+    private val activeProfileIdProvider: () -> String?,
+    private val activeProfileChanges: Flow<*>,
     private val bindingResolver: suspend (profileId: String) -> ProfileConnectionBinding?,
     private val serverResolver: suspend (connectionId: String) -> ManagedServer?,
     private val deviceNameProvider: () -> String = { "Jellystack" },
     private val clientVersionProvider: () -> String = { "unknown" },
 ) {
+    constructor(
+        activeState: StateFlow<ActiveProfileState>,
+        bindingResolver: suspend (profileId: String) -> ProfileConnectionBinding?,
+        serverResolver: suspend (connectionId: String) -> ManagedServer?,
+        deviceNameProvider: () -> String = { "Jellystack" },
+        clientVersionProvider: () -> String = { "unknown" },
+    ) : this(
+        activeProfileIdProvider = { (activeState.value as? ActiveProfileState.Active)?.profileId },
+        activeProfileChanges = activeState,
+        bindingResolver = bindingResolver,
+        serverResolver = serverResolver,
+        deviceNameProvider = deviceNameProvider,
+        clientVersionProvider = clientVersionProvider,
+    )
+
+    constructor(
+        activeProfiles: ActiveProfileRepository,
+        bindingResolver: suspend (profileId: String) -> ProfileConnectionBinding?,
+        serverResolver: suspend (connectionId: String) -> ManagedServer?,
+        deviceNameProvider: () -> String = { "Jellystack" },
+        clientVersionProvider: () -> String = { "unknown" },
+    ) : this(
+        activeProfileIdProvider = { activeProfiles.profileId.value },
+        activeProfileChanges = activeProfiles.profileId,
+        bindingResolver = bindingResolver,
+        serverResolver = serverResolver,
+        deviceNameProvider = deviceNameProvider,
+        clientVersionProvider = clientVersionProvider,
+    )
+
     suspend fun jellyfin(): JellyfinEnvironment? {
         val profileId = activeProfileId() ?: return null
         val connectionId = bindingResolver(profileId)?.jellyfinConnectionId ?: return null
@@ -52,7 +83,7 @@ class ProfileEnvironmentProvider(
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    fun observeSeerr(): Flow<JellyseerrEnvironment?> = activeState.mapLatest { seerr() }.distinctUntilChanged()
+    fun observeSeerr(): Flow<JellyseerrEnvironment?> = activeProfileChanges.mapLatest { seerr() }.distinctUntilChanged()
 
-    private fun activeProfileId(): String? = (activeState.value as? ActiveProfileState.Active)?.profileId
+    private fun activeProfileId(): String? = activeProfileIdProvider()
 }

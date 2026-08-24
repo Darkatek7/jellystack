@@ -50,6 +50,7 @@ import dev.jellystack.core.preferences.ResumeMode
 import dev.jellystack.core.preferences.SubtitleBackground
 import dev.jellystack.core.preferences.SubtitleMode
 import dev.jellystack.core.preferences.SubtitleTextSize
+import dev.jellystack.core.profile.ProfilePreferencesRepository
 import dev.jellystack.core.server.JellyfinQuickConnectCoordinator
 import dev.jellystack.core.server.ManagedServer
 import dev.jellystack.core.server.ServerConnectionCoordinator
@@ -75,6 +76,8 @@ internal fun TvSettingsScreen(
     onOpenCategory: (TvSettingsCategory) -> Unit,
     onServersChanged: () -> Unit,
     modifier: Modifier = Modifier,
+    profileId: String? = null,
+    profilePreferencesRepository: ProfilePreferencesRepository? = null,
 ) {
     val scope = rememberCoroutineScope()
     val servers by serverRepository.observeServers().collectAsStateWithLifecycle()
@@ -129,7 +132,14 @@ internal fun TvSettingsScreen(
                 targetIds = tvSettingsControlKeys(category).map(::tvSettingsControlTargetId),
                 modifier = modifier,
             ) {
-                TvPlaybackSettings(settings, repository, strings, ::showChoices)
+                TvPlaybackSettings(
+                    settings = settings,
+                    repository = repository,
+                    strings = strings,
+                    showChoices = ::showChoices,
+                    profileId = profileId,
+                    profilePreferencesRepository = profilePreferencesRepository,
+                )
             }
         TvSettingsCategory.AUDIO_SUBTITLES ->
             TvSettingsCategoryPage(
@@ -138,7 +148,14 @@ internal fun TvSettingsScreen(
                 targetIds = tvSettingsControlKeys(category).map(::tvSettingsControlTargetId),
                 modifier = modifier,
             ) {
-                TvAudioSubtitleSettings(settings, repository, strings, ::showChoices)
+                TvAudioSubtitleSettings(
+                    settings = settings,
+                    repository = repository,
+                    profileId = profileId,
+                    profilePreferencesRepository = profilePreferencesRepository,
+                    strings = strings,
+                    showChoices = ::showChoices,
+                )
             }
         TvSettingsCategory.SEGMENT_SKIPPING ->
             TvSettingsCategoryPage(
@@ -382,6 +399,8 @@ internal fun TvPlaybackSettings(
     repository: AppSettingsRepository,
     strings: TvStrings,
     showChoices: (String, List<TvChoiceOption>) -> Unit,
+    profileId: String? = null,
+    profilePreferencesRepository: ProfilePreferencesRepository? = null,
 ) {
     TvSettingsGrid {
         TvSettingTile(
@@ -409,7 +428,11 @@ internal fun TvPlaybackSettings(
                 strings.autoplay,
                 AutoplayNextMode.entries.map { value ->
                     TvChoiceOption(value.label(strings), value == settings.autoplayNextMode) {
-                        repository.setAutoplayNextMode(value)
+                        if (profileId != null && profilePreferencesRepository != null) {
+                            profilePreferencesRepository.setAutoplayNextMode(profileId, value)
+                        } else {
+                            repository.setAutoplayNextMode(value)
+                        }
                     }
                 },
             )
@@ -422,7 +445,13 @@ internal fun TvPlaybackSettings(
             showChoices(
                 strings.resume,
                 ResumeMode.entries.map { value ->
-                    TvChoiceOption(value.label(strings), value == settings.resumeMode) { repository.setResumeMode(value) }
+                    TvChoiceOption(value.label(strings), value == settings.resumeMode) {
+                        if (profileId != null && profilePreferencesRepository != null) {
+                            profilePreferencesRepository.setResumeMode(profileId, value)
+                        } else {
+                            repository.setResumeMode(value)
+                        }
+                    }
                 },
             )
         }
@@ -460,7 +489,11 @@ internal fun TvPlaybackSettings(
                 strings.playbackSpeed,
                 tvSpeedOptions().map { value ->
                     TvChoiceOption("${value}x", value == settings.defaultPlaybackSpeed) {
-                        repository.setDefaultPlaybackSpeed(value)
+                        if (profileId != null && profilePreferencesRepository != null) {
+                            profilePreferencesRepository.setDefaultPlaybackSpeed(profileId, value)
+                        } else {
+                            repository.setDefaultPlaybackSpeed(value)
+                        }
                     }
                 },
             )
@@ -498,6 +531,8 @@ internal fun TvPlaybackSettings(
 private fun TvAudioSubtitleSettings(
     settings: AppSettings,
     repository: AppSettingsRepository,
+    profileId: String?,
+    profilePreferencesRepository: ProfilePreferencesRepository?,
     strings: TvStrings,
     showChoices: (String, List<TvChoiceOption>) -> Unit,
 ) {
@@ -511,7 +546,13 @@ private fun TvAudioSubtitleSettings(
         ) {
             showChoices(
                 strings.audioLanguage,
-                preferredLanguageOptions(strings, settings.preferredAudioLanguage) { repository.setPreferredAudioLanguage(it) },
+                preferredLanguageOptions(strings, settings.preferredAudioLanguage) {
+                    if (profileId != null && profilePreferencesRepository != null) {
+                        profilePreferencesRepository.setPreferredAudioLanguage(profileId, it)
+                    } else {
+                        repository.setPreferredAudioLanguage(it)
+                    }
+                },
             )
         }
         TvSettingTile(
@@ -522,7 +563,11 @@ private fun TvAudioSubtitleSettings(
             showChoices(
                 strings.subtitleLanguage,
                 preferredLanguageOptions(strings, settings.preferredSubtitleLanguage) {
-                    repository.setPreferredSubtitleLanguage(it)
+                    if (profileId != null && profilePreferencesRepository != null) {
+                        profilePreferencesRepository.setPreferredSubtitleLanguage(profileId, it)
+                    } else {
+                        repository.setPreferredSubtitleLanguage(it)
+                    }
                 },
             )
         }
@@ -534,7 +579,13 @@ private fun TvAudioSubtitleSettings(
             showChoices(
                 strings.subtitleMode,
                 SubtitleMode.entries.map { value ->
-                    TvChoiceOption(value.label(strings), value == settings.subtitleMode) { repository.setSubtitleMode(value) }
+                    TvChoiceOption(value.label(strings), value == settings.subtitleMode) {
+                        if (profileId != null && profilePreferencesRepository != null) {
+                            profilePreferencesRepository.setSubtitleMode(profileId, value)
+                        } else {
+                            repository.setSubtitleMode(value)
+                        }
+                    }
                 },
             )
         }

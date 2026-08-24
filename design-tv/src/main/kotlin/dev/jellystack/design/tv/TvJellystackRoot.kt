@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
@@ -78,6 +79,15 @@ import dev.jellystack.core.jellyseerr.JellyseerrRepository
 import dev.jellystack.core.jellyseerr.JellyseerrRequestsCoordinator
 import dev.jellystack.core.jellyseerr.JellyseerrSearchItem
 import dev.jellystack.core.preferences.AppSettingsRepository
+import dev.jellystack.core.profile.ActiveProfileRepository
+import dev.jellystack.core.profile.HouseholdProfile
+import dev.jellystack.core.profile.HouseholdProfileRepository
+import dev.jellystack.core.profile.ProfilePinRepository
+import dev.jellystack.core.profile.ProfilePinResult
+import dev.jellystack.core.profile.ProfilePinState
+import dev.jellystack.core.profile.ProfilePreferencesRepository
+import dev.jellystack.core.profile.ProfileRemovalCoordinator
+import dev.jellystack.core.server.ActiveServerPreferenceRepository
 import dev.jellystack.core.server.JellyfinQuickConnectCoordinator
 import dev.jellystack.core.server.ServerConnectionCoordinator
 import dev.jellystack.core.server.ServerRepository
@@ -96,7 +106,9 @@ import dev.jellystack.players.PlaybackSegmentModeProvider
 import dev.jellystack.players.PlaybackStartPolicy
 import dev.jellystack.players.PlaybackState
 import dev.jellystack.players.syncplay.SyncPlayCoordinator
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.datetime.Clock
 
 @Composable
 internal fun TvRouteFocusScope(
@@ -128,24 +140,438 @@ fun TvJellystackRoot(
     appVersion: String,
     stopPlayback: () -> Unit,
     modifier: Modifier = Modifier,
+    coldLaunch: Boolean = true,
 ) {
     JellystackTvTheme {
         val koin = remember { JellystackDI.koin }
         val serverRepository = remember(koin) { koin.get<ServerRepository>() }
-        val servers by serverRepository.observeServers().collectAsStateWithLifecycle()
         val settingsRepository = remember(koin) { koin.get<AppSettingsRepository>() }
         val settings by settingsRepository.settings.collectAsStateWithLifecycle()
         val strings = remember(settings.appLanguage) { TvStrings.current(settings.appLanguage) }
-        Box(modifier.fillMaxSize().background(TvBackground)) {
-            if (servers.none { it.type == ServerType.JELLYFIN }) {
+        TvProfileHost(
+            playbackController = playbackController,
+            playerEngine = playerEngine,
+            trailerPreviewController = trailerPreviewController,
+            trailerPreviewEngine = trailerPreviewEngine,
+            appVersion = appVersion,
+            settingsRepository = settingsRepository,
+            serverRepository = serverRepository,
+            strings = strings,
+            stopPlayback = stopPlayback,
+            coldLaunch = coldLaunch,
+            modifier = modifier,
+        )
+    }
+}
+
+@Composable
+@OptIn(UnstableApi::class)
+private fun TvProfileHost(
+    playbackController: PlaybackController,
+    playerEngine: AndroidPlayerEngine,
+    trailerPreviewController: PlaybackController,
+    trailerPreviewEngine: AndroidPlayerEngine,
+    appVersion: String,
+    settingsRepository: AppSettingsRepository,
+    serverRepository: ServerRepository,
+    strings: TvStrings,
+    stopPlayback: () -> Unit,
+    coldLaunch: Boolean,
+    modifier: Modifier,
+) {
+    val koin = remember { JellystackDI.koin }
+    val scope = rememberCoroutineScope()
+    val profileRepository = remember(koin) { koin.get<HouseholdProfileRepository>() }
+    val activeProfiles = remember(koin) { koin.get<ActiveProfileRepository>() }
+    val pinRepository = remember(koin) { koin.get<ProfilePinRepository>() }
+    val removalCoordinator = remember(koin) { koin.get<ProfileRemovalCoordinator>() }
+    val activeServerPreferences = remember(koin) { koin.get<ActiveServerPreferenceRepository>() }
+    val profiles by profileRepository.observeProfiles().collectAsStateWithLifecycle(initialValue = emptyList())
+    val servers by serverRepository.observeServers().collectAsStateWithLifecycle()
+    var legacyChecked by remember { mutableStateOf(false) }
+    var initialized by rememberSaveable { mutableStateOf(false) }
+    var pickerVisible by rememberSaveable { mutableStateOf(false) }
+    var selectedProfileId by rememberSaveable { mutableStateOf<String?>(null) }
+    var generation by rememberSaveable { mutableStateOf(0L) }
+    var activatedProfileId by remember { mutableStateOf<String?>(null) }
+    var switchingProfile by remember { mutableStateOf<HouseholdProfile?>(null) }
+    var pinProfile by remember { mutableStateOf<HouseholdProfile?>(null) }
+    var pinValue by rememberSaveable { mutableStateOf("") }
+    var pinRemainingAttempts by rememberSaveable { mutableStateOf<Int?>(null) }
+    var pinLockedUntilMillis by rememberSaveable { mutableStateOf<Long?>(null) }
+    var pinClockTick by remember { mutableStateOf(0L) }
+    var pinForManagement by rememberSaveable { mutableStateOf(false) }
+    var configuringPinProfile by remember { mutableStateOf<HouseholdProfile?>(null) }
+    var firstConfiguredPin by rememberSaveable { mutableStateOf<String?>(null) }
+    var configurationPin by rememberSaveable { mutableStateOf("") }
+    var configurationPinError by rememberSaveable { mutableStateOf(false) }
+    var configurationCanRemove by rememberSaveable { mutableStateOf(false) }
+    var reconnectProfile by remember { mutableStateOf<HouseholdProfile?>(null) }
+    var reconnectConnectionId by rememberSaveable { mutableStateOf<String?>(null) }
+    var recoverPinProfileId by rememberSaveable { mutableStateOf<String?>(null) }
+    var addProfile by rememberSaveable { mutableStateOf(false) }
+    var removeProfile by remember { mutableStateOf<HouseholdProfile?>(null) }
+    var connectionsBeforeAdd by remember { mutableStateOf<Set<String>>(emptySet()) }
+
+    LaunchedEffect(servers.map { it.id }) {
+        if (servers.any { it.type == ServerType.JELLYFIN }) profileRepository.ensureLegacyDefaultProfile()
+        legacyChecked = true
+    }
+    LaunchedEffect(legacyChecked, profiles, initialized) {
+        if (!legacyChecked || initialized) return@LaunchedEffect
+        when (
+            val initial =
+                initialTvProfileState(
+                    profiles = profiles,
+                    coldLaunch = coldLaunch,
+                    pickerWasVisible = pickerVisible,
+                    rememberedProfileId = activeProfiles.profileId.value,
+                    generation = generation,
+                )
+        ) {
+            is TvProfileState.Content -> selectedProfileId = initial.profile.id
+            is TvProfileState.Picker -> {
+                activeProfiles.clear()
+                pickerVisible = true
+            }
+            else -> Unit
+        }
+        initialized = true
+    }
+    LaunchedEffect(profiles.map { it.id }, selectedProfileId) {
+        if (selectedProfileId != null && profiles.none { it.id == selectedProfileId }) {
+            selectedProfileId = null
+            pickerVisible = true
+        }
+    }
+
+    fun beginActivation(profile: HouseholdProfile) {
+        switchingProfile = profile
+        pinProfile = null
+        pinValue = ""
+        scope.launch {
+            stopPlayback()
+            trailerPreviewController.stop(saveProgress = false)
+            activeProfiles.clear()
+            val binding = profileRepository.binding(profile.id)
+            val jellyfin = binding?.let { serverRepository.findServer(it.jellyfinConnectionId) }
+            if (binding == null || jellyfin == null || jellyfin.type != ServerType.JELLYFIN) {
+                reconnectProfile = profile
+                reconnectConnectionId = binding?.jellyfinConnectionId
+                switchingProfile = null
+                return@launch
+            }
+            serverRepository.setActiveServer(ServerType.JELLYFIN, binding.jellyfinConnectionId)
+            val seerrId = binding.seerrConnectionId
+            if (seerrId == null) {
+                activeServerPreferences.setActiveServerId(ServerType.JELLYSEERR, null)
+            } else if (serverRepository.findServer(seerrId)?.type == ServerType.JELLYSEERR) {
+                serverRepository.setActiveServer(ServerType.JELLYSEERR, seerrId)
+            } else {
+                activeServerPreferences.setActiveServerId(ServerType.JELLYSEERR, null)
+            }
+            activeProfiles.activate(profile.id)
+            profileRepository.updateProfile(profile.copy(lastActiveAt = Clock.System.now()))
+            generation += 1L
+            selectedProfileId = profile.id
+            activatedProfileId = profile.id
+            pickerVisible = false
+            reconnectProfile = null
+            reconnectConnectionId = null
+            switchingProfile = null
+        }
+    }
+
+    fun selectProfile(profile: HouseholdProfile) {
+        pinForManagement = false
+        scope.launch {
+            when (val state = pinRepository.state(profile.id)) {
+                ProfilePinState.NotConfigured -> beginActivation(profile)
+                ProfilePinState.Ready -> {
+                    pinProfile = profile
+                    pinValue = ""
+                    pinRemainingAttempts = null
+                    pinLockedUntilMillis = null
+                }
+                is ProfilePinState.Locked -> {
+                    pinProfile = profile
+                    pinValue = ""
+                    pinLockedUntilMillis = state.until.toEpochMilliseconds()
+                }
+            }
+        }
+    }
+    LaunchedEffect(pinLockedUntilMillis, pinProfile?.id) {
+        val deadline = pinLockedUntilMillis ?: return@LaunchedEffect
+        while (Clock.System.now().toEpochMilliseconds() < deadline) {
+            delay(1_000)
+            pinClockTick += 1L
+        }
+    }
+
+    fun manageProfilePin(profile: HouseholdProfile) {
+        scope.launch {
+            when (val state = pinRepository.state(profile.id)) {
+                ProfilePinState.NotConfigured -> {
+                    configuringPinProfile = profile
+                    firstConfiguredPin = null
+                    configurationPin = ""
+                    configurationPinError = false
+                    configurationCanRemove = false
+                }
+                ProfilePinState.Ready -> {
+                    pinForManagement = true
+                    pinProfile = profile
+                    pinValue = ""
+                    pinRemainingAttempts = null
+                    pinLockedUntilMillis = null
+                }
+                is ProfilePinState.Locked -> {
+                    pinForManagement = true
+                    pinProfile = profile
+                    pinValue = ""
+                    pinLockedUntilMillis = state.until.toEpochMilliseconds()
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(initialized, pickerVisible, selectedProfileId, activatedProfileId) {
+        val selected = profiles.firstOrNull { it.id == selectedProfileId }
+        selected?.let { profile ->
+            val activationNeeded = initialized && !pickerVisible
+            val activationIdle = activatedProfileId != profile.id && switchingProfile == null
+            if (activationNeeded && activationIdle) beginActivation(profile)
+        }
+    }
+
+    BackHandler(
+        enabled = addProfile || reconnectProfile != null || pinProfile != null || configuringPinProfile != null,
+    ) {
+        when {
+            addProfile -> addProfile = false
+            reconnectProfile != null -> {
+                reconnectProfile = null
+                recoverPinProfileId = null
+                pickerVisible = true
+            }
+            configuringPinProfile != null -> {
+                configuringPinProfile = null
+                firstConfiguredPin = null
+                configurationPin = ""
+                configurationCanRemove = false
+            }
+            pinProfile != null -> {
+                pinProfile = null
+                pinValue = ""
+                pinForManagement = false
+            }
+        }
+    }
+
+    Box(modifier.fillMaxSize().background(TvBackground)) {
+        val selectedProfile = profiles.firstOrNull { it.id == selectedProfileId }
+        when {
+            !legacyChecked || !initialized -> TvProfileStatusScreen(strings.loading)
+            switchingProfile != null -> TvProfileStatusScreen(strings.switchingProfile)
+            addProfile ->
                 TvConnectionScreen(
                     coordinator = koin.get<ServerConnectionCoordinator>(),
                     quickConnectCoordinator = koin.get<JellyfinQuickConnectCoordinator>(),
                     appVersion = appVersion,
                     strings = strings,
-                    onConnected = {},
+                    onConnected = {
+                        scope.launch {
+                            val connected =
+                                serverRepository
+                                    .currentServers()
+                                    .filter { it.type == ServerType.JELLYFIN && it.id !in connectionsBeforeAdd }
+                                    .maxByOrNull { it.updatedAt }
+                                    ?: return@launch
+                            val username = (connected.credentials as? StoredCredential.Jellyfin)?.username
+                            val created =
+                                profileRepository.createProfile(
+                                    displayName = username?.takeIf(String::isNotBlank) ?: connected.name,
+                                    jellyfinConnectionId = connected.id,
+                                )
+                            addProfile = false
+                            beginActivation(created)
+                        }
+                    },
+                    onDismiss = { addProfile = false },
                 )
-            } else {
+            reconnectProfile != null -> {
+                val profile = checkNotNull(reconnectProfile)
+                val connection = reconnectConnectionId?.let { id -> servers.firstOrNull { it.id == id } }
+                TvConnectionScreen(
+                    coordinator = koin.get<ServerConnectionCoordinator>(),
+                    quickConnectCoordinator = koin.get<JellyfinQuickConnectCoordinator>(),
+                    appVersion = appVersion,
+                    strings = strings,
+                    onConnected = {
+                        scope.launch {
+                            if (recoverPinProfileId == profile.id) {
+                                pinRepository.recoverAfterReauthentication(profile.id) { exactProfileId ->
+                                    exactProfileId == profile.id
+                                }
+                                recoverPinProfileId = null
+                            }
+                            beginActivation(profile)
+                        }
+                    },
+                    onDismiss = {
+                        reconnectProfile = null
+                        recoverPinProfileId = null
+                        pickerVisible = true
+                    },
+                    existingServerId = reconnectConnectionId,
+                    initialDisplayName = connection?.name ?: profile.displayName,
+                    initialBaseUrl = connection?.baseUrl.orEmpty(),
+                )
+            }
+            pinProfile != null -> {
+                val profile = checkNotNull(pinProfile)
+                val currentPinTime = remember(pinClockTick) { Clock.System.now().toEpochMilliseconds() }
+                val locked = pinLockedUntilMillis?.let { it > currentPinTime } == true
+                TvProfilePinScreen(
+                    profile = profile,
+                    pin = pinValue,
+                    strings = strings,
+                    remainingAttempts = pinRemainingAttempts,
+                    locked = locked,
+                    onDigit = { if (pinValue.length < 4) pinValue += it },
+                    onDelete = { if (pinValue.isNotEmpty()) pinValue = pinValue.dropLast(1) },
+                    onSubmit = {
+                        scope.launch {
+                            when (val result = pinRepository.verify(profile.id, pinValue)) {
+                                ProfilePinResult.Unlocked -> {
+                                    if (pinForManagement) {
+                                        pinProfile = null
+                                        pinForManagement = false
+                                        configuringPinProfile = profile
+                                        firstConfiguredPin = null
+                                        configurationPin = ""
+                                        configurationCanRemove = true
+                                    } else {
+                                        beginActivation(profile)
+                                    }
+                                }
+                                is ProfilePinResult.Rejected -> {
+                                    pinRemainingAttempts = result.remainingAttempts
+                                    pinValue = ""
+                                }
+                                is ProfilePinResult.Locked -> {
+                                    pinLockedUntilMillis = result.until.toEpochMilliseconds()
+                                    pinValue = ""
+                                }
+                            }
+                        }
+                    },
+                    onCancel = {
+                        pinProfile = null
+                        pinValue = ""
+                        pinForManagement = false
+                    },
+                    secondaryActionLabel = strings.reconnectProfile.takeIf { locked },
+                    onSecondaryAction =
+                        if (locked) {
+                            {
+                                scope.launch {
+                                    reconnectConnectionId = profileRepository.binding(profile.id)?.jellyfinConnectionId
+                                    recoverPinProfileId = profile.id
+                                    reconnectProfile = profile
+                                    pinProfile = null
+                                }
+                            }
+                        } else {
+                            null
+                        },
+                )
+            }
+            configuringPinProfile != null -> {
+                val profile = checkNotNull(configuringPinProfile)
+                TvProfilePinScreen(
+                    profile = profile,
+                    pin = configurationPin,
+                    strings = strings,
+                    remainingAttempts = null,
+                    locked = false,
+                    title =
+                        when {
+                            configurationPinError -> strings.pinMismatch
+                            firstConfiguredPin == null -> strings.setProfilePin
+                            else -> strings.confirmProfilePin
+                        },
+                    onDigit = { if (configurationPin.length < 4) configurationPin += it },
+                    onDelete = { if (configurationPin.isNotEmpty()) configurationPin = configurationPin.dropLast(1) },
+                    onSubmit = {
+                        val first = firstConfiguredPin
+                        if (first == null) {
+                            firstConfiguredPin = configurationPin
+                            configurationPin = ""
+                            configurationPinError = false
+                        } else if (first == configurationPin) {
+                            scope.launch {
+                                pinRepository.configure(profile.id, configurationPin)
+                                configuringPinProfile = null
+                                firstConfiguredPin = null
+                                configurationPin = ""
+                                configurationCanRemove = false
+                            }
+                        } else {
+                            firstConfiguredPin = null
+                            configurationPin = ""
+                            configurationPinError = true
+                        }
+                    },
+                    onCancel = {
+                        configuringPinProfile = null
+                        firstConfiguredPin = null
+                        configurationPin = ""
+                        configurationCanRemove = false
+                    },
+                    secondaryActionLabel = strings.removeProfilePin.takeIf { configurationCanRemove },
+                    onSecondaryAction =
+                        if (configurationCanRemove) {
+                            {
+                                scope.launch {
+                                    pinRepository.remove(profile.id)
+                                    configuringPinProfile = null
+                                    configurationCanRemove = false
+                                }
+                            }
+                        } else {
+                            null
+                        },
+                )
+            }
+            selectedProfile != null && !pickerVisible && activatedProfileId != selectedProfile.id ->
+                TvProfileStatusScreen(strings.switchingProfile)
+            profiles.isEmpty() ->
+                TvConnectionScreen(
+                    coordinator = koin.get<ServerConnectionCoordinator>(),
+                    quickConnectCoordinator = koin.get<JellyfinQuickConnectCoordinator>(),
+                    appVersion = appVersion,
+                    strings = strings,
+                    onConnected = {
+                        scope.launch {
+                            profileRepository.ensureLegacyDefaultProfile()?.let(::beginActivation)
+                        }
+                    },
+                )
+            pickerVisible || selectedProfile == null ->
+                TvProfilePickerScreen(
+                    profiles = profiles,
+                    strings = strings,
+                    onSelect = ::selectProfile,
+                    onAdd = {
+                        connectionsBeforeAdd = servers.map { it.id }.toSet()
+                        addProfile = true
+                    },
+                    onRemove = { removeProfile = it },
+                    onManagePin = ::manageProfilePin,
+                )
+            else ->
                 TvAuthenticatedApp(
                     playbackController = playbackController,
                     playerEngine = playerEngine,
@@ -156,8 +582,51 @@ fun TvJellystackRoot(
                     serverRepository = serverRepository,
                     strings = strings,
                     stopPlayback = stopPlayback,
+                    activeProfileName = selectedProfile.displayName,
+                    activeProfileId = selectedProfile.id,
+                    activeProfileGeneration = generation,
+                    onOpenProfiles = {
+                        stopPlayback()
+                        trailerPreviewController.stop(saveProgress = false)
+                        activeProfiles.clear()
+                        activatedProfileId = null
+                        pickerVisible = true
+                    },
+                    onAuthenticationExpired = {
+                        stopPlayback()
+                        trailerPreviewController.stop(saveProgress = false)
+                        scope.launch {
+                            reconnectConnectionId = profileRepository.binding(selectedProfile.id)?.jellyfinConnectionId
+                            activeProfiles.clear()
+                            activatedProfileId = null
+                            reconnectProfile = selectedProfile
+                        }
+                    },
                 )
-            }
+        }
+        removeProfile?.let { profile ->
+            TvRemoveProfileDialog(
+                profile = profile,
+                strings = strings,
+                onConfirm = {
+                    scope.launch {
+                        val wasActive = profile.id == selectedProfileId
+                        if (wasActive) {
+                            stopPlayback()
+                            trailerPreviewController.stop(saveProgress = false)
+                        }
+                        removalCoordinator.remove(profile.id)
+                        if (wasActive) {
+                            activeProfiles.clear()
+                            selectedProfileId = null
+                            activatedProfileId = null
+                        }
+                        removeProfile = null
+                        pickerVisible = true
+                    }
+                },
+                onDismiss = { removeProfile = null },
+            )
         }
     }
 }
@@ -174,6 +643,11 @@ private fun TvAuthenticatedApp(
     serverRepository: ServerRepository,
     strings: TvStrings,
     stopPlayback: () -> Unit,
+    activeProfileName: String = strings.profiles,
+    activeProfileId: String? = null,
+    activeProfileGeneration: Long = 0L,
+    onOpenProfiles: () -> Unit = {},
+    onAuthenticationExpired: () -> Unit = {},
 ) {
     val koin = remember { JellystackDI.koin }
     val rootScope = rememberCoroutineScope()
@@ -190,6 +664,7 @@ private fun TvAuthenticatedApp(
             )
         }
     val appStateHolder = rememberSaveable(saver = appStateSaver) { TvAppStateHolder() }
+    LaunchedEffect(activeProfileGeneration) { appStateHolder.resetForGeneration(activeProfileGeneration) }
     val appUiState = appStateHolder.state
     val focusMemory = appStateHolder.focusMemory
     val authenticatedEnvironmentIdentity =
@@ -336,7 +811,24 @@ private fun TvAuthenticatedApp(
     val recommendations by recommendationsCoordinator.state.collectAsStateWithLifecycle()
     val requests by requestsCoordinator.state.collectAsStateWithLifecycle()
     val details by recommendationsCoordinator.details.collectAsStateWithLifecycle()
-    val settings by settingsRepository.settings.collectAsStateWithLifecycle()
+    val deviceSettings by settingsRepository.settings.collectAsStateWithLifecycle()
+    val profilePreferencesRepository = remember(koin) { koin.get<ProfilePreferencesRepository>() }
+    val preferenceProfileId = activeProfileId ?: "legacy-tv-profile"
+    val profilePreferences by
+        profilePreferencesRepository
+            .preferences(preferenceProfileId)
+            .collectAsStateWithLifecycle()
+    val settings =
+        if (activeProfileId == null) {
+            deviceSettings
+        } else {
+            profilePreferences.applyTo(deviceSettings)
+        }
+    val currentSettings = {
+        val currentDeviceSettings = settingsRepository.settings.value
+        activeProfileId?.let { profilePreferencesRepository.preferences(it).value.applyTo(currentDeviceSettings) }
+            ?: currentDeviceSettings
+    }
     val playbackState by playbackController.state.collectAsStateWithLifecycle()
     val syncPlayState by syncPlay.state.collectAsStateWithLifecycle()
     val playbackIdentity =
@@ -356,6 +848,11 @@ private fun TvAuthenticatedApp(
         }
     }
     val sessionState by sessionRepository.state.collectAsStateWithLifecycle()
+    LaunchedEffect(sessionState) {
+        if ((sessionState as? JellyfinSessionState.Error)?.authenticationExpired == true) {
+            onAuthenticationExpired()
+        }
+    }
     val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateFlow
         .collectAsStateWithLifecycle()
     var savedSearchQuery by
@@ -418,7 +915,7 @@ private fun TvAuthenticatedApp(
             createContinuationCoordinator = { coordinatorScope ->
                 PlaybackContinuationCoordinator(
                     scope = coordinatorScope,
-                    modeProvider = { settingsRepository.settings.value.autoplayNextMode },
+                    modeProvider = { currentSettings().autoplayNextMode },
                     resolveNext = resolve@{ mediaId, seriesId ->
                         val cached = browseRepository.episodesForSeries(seriesId)
                         val episodes = if (cached.isEmpty()) browseRepository.refreshEpisodesForSeries(seriesId) else cached
@@ -431,8 +928,8 @@ private fun TvAuthenticatedApp(
                                     PlaybackRequest.from(next, detail, startPolicy = PlaybackStartPolicy.RESTART),
                                     environment,
                                 )
-                                playbackController.setPlaybackSpeed(settingsRepository.settings.value.defaultPlaybackSpeed)
-                                playbackController.setStatsForNerdsEnabled(settingsRepository.settings.value.statsForNerdsEnabled)
+                                playbackController.setPlaybackSpeed(currentSettings().defaultPlaybackSpeed)
+                                playbackController.setStatsForNerdsEnabled(currentSettings().statsForNerdsEnabled)
                             }
                         }
                     },
@@ -803,6 +1300,8 @@ private fun TvAuthenticatedApp(
                                             browseCoordinator.bootstrap(true)
                                             recommendationsCoordinator.refreshAll()
                                         },
+                                        profileId = activeProfileId,
+                                        profilePreferencesRepository = profilePreferencesRepository,
                                     )
                                 is TvRoute.JellyfinDetail ->
                                     TvJellyfinDetailScreen(
@@ -876,6 +1375,8 @@ private fun TvAuthenticatedApp(
                     selected = currentRoute,
                     expanded = appUiState.railExpanded,
                     strings = strings,
+                    profileName = activeProfileName,
+                    onProfile = onOpenProfiles,
                     onSelected = { route ->
                         selectTopLevel(route)
                         focusCoordinator.onUserMovement()
@@ -902,6 +1403,8 @@ private fun TvNavigationRail(
     selected: TvRoute,
     expanded: Boolean,
     strings: TvStrings,
+    profileName: String,
+    onProfile: () -> Unit,
     onSelected: (TvRoute) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -916,7 +1419,7 @@ private fun TvNavigationRail(
         )
     TvRouteFocusMaterializer(
         ownerId = "navigation-rail",
-        targetIds = entries.map { tvRailTargetId(it.first) }.toSet(),
+        targetIds = entries.map { tvRailTargetId(it.first) }.toSet() + TV_PROFILE_AVATAR_TARGET,
         fallbackTargetIds = setOf(tvRailTargetId(TvRoute.Home)),
     ) { true }
     Column(
@@ -928,6 +1431,25 @@ private fun TvNavigationRail(
                 .padding(horizontal = 10.dp, vertical = TvLayoutTokens.SafeInsets.vertical),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
+        val profileLabel = "${strings.profiles}: $profileName"
+        Row(
+            Modifier
+                .width(width - 20.dp)
+                .semantics(mergeDescendants = true) { contentDescription = profileLabel }
+                .tvFocusable(
+                    onClick = onProfile,
+                    enabled = tvNavigationRailItemsFocusable(expanded),
+                    shape =
+                        androidx.compose.foundation.shape
+                            .RoundedCornerShape(18.dp),
+                    focusTargetId = TV_PROFILE_AVATAR_TARGET.takeIf { expanded },
+                ).padding(horizontal = 14.dp, vertical = 15.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Icon(Icons.Default.AccountCircle, null, tint = TvPurple)
+            if (expanded) Text(profileName, color = TvText, fontSize = 18.sp, maxLines = 1)
+        }
         entries.forEachIndexed { index, (route, label, icon) ->
             val isSelected = selected.sameTopLevel(route)
             val targetId = tvRailTargetId(route)
