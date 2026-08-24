@@ -42,6 +42,28 @@ class SqlDelightProfileStore(
         )
     }
 
+    override suspend fun createProfileWithBinding(
+        profile: HouseholdProfile,
+        binding: ProfileConnectionBinding,
+    ) {
+        require(profile.id == binding.profileId)
+        queries.transaction {
+            queries.upsertProfile(
+                id = profile.id,
+                display_name = profile.displayName,
+                avatar_seed = profile.avatarSeed,
+                created_at = profile.createdAt.toEpochMilliseconds(),
+                updated_at = profile.updatedAt.toEpochMilliseconds(),
+                last_active_at = profile.lastActiveAt?.toEpochMilliseconds(),
+            )
+            queries.upsertBinding(
+                profile_id = binding.profileId,
+                jellyfin_connection_id = binding.jellyfinConnectionId,
+                seerr_connection_id = binding.seerrConnectionId,
+            )
+        }
+    }
+
     override suspend fun deleteProfile(profileId: String) {
         queries.transaction {
             queries.deleteSavedMediaByProfile(profileId)

@@ -11,6 +11,11 @@ interface ProfileStore {
 
     suspend fun upsertProfile(profile: HouseholdProfile)
 
+    suspend fun createProfileWithBinding(
+        profile: HouseholdProfile,
+        binding: ProfileConnectionBinding,
+    )
+
     suspend fun deleteProfile(profileId: String)
 
     suspend fun getBinding(profileId: String): ProfileConnectionBinding?

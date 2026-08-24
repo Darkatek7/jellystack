@@ -89,6 +89,75 @@ class ServerRepositoryTest {
         }
 
     @Test
+    fun authenticatedJellyfinRegistrationAllowsDistinctPrincipalsOnOneUrl() =
+        runTest {
+            val repo = repository { error("Connectivity must not be used") }
+
+            val first =
+                repo.registerAuthenticatedJellyfin(
+                    AuthenticatedJellyfinRegistration(
+                        name = "Alice",
+                        baseUrl = "https://media.example",
+                        credentials = jellyfinCredential("alice"),
+                    ),
+                )
+            val second =
+                repo.registerAuthenticatedJellyfin(
+                    AuthenticatedJellyfinRegistration(
+                        name = "Bob",
+                        baseUrl = "https://media.example/",
+                        credentials = jellyfinCredential("bob"),
+                    ),
+                )
+
+            assertTrue(first.id != second.id)
+            assertEquals(setOf("alice", "bob"), repo.currentServers().map { it.credentials.principal }.toSet())
+        }
+
+    @Test
+    fun passwordRegistrationChecksDuplicatesAfterAuthentication() =
+        runTest {
+            var authenticatedPrincipal = "alice"
+            val repo =
+                repository {
+                    ConnectivityResult.Success("ok", jellyfinCredential(authenticatedPrincipal))
+                }
+
+            val first =
+                repo.register(
+                    ServerRegistration(
+                        type = ServerType.JELLYFIN,
+                        name = "Alice",
+                        baseUrl = "https://media.example",
+                        credentials = CredentialInput.Jellyfin("Alice", "password"),
+                    ),
+                )
+            authenticatedPrincipal = "bob"
+            val second =
+                repo.register(
+                    ServerRegistration(
+                        type = ServerType.JELLYFIN,
+                        name = "Bob",
+                        baseUrl = "https://media.example/",
+                        credentials = CredentialInput.Jellyfin("Bob", "password"),
+                    ),
+                )
+
+            assertTrue(first.id != second.id)
+            authenticatedPrincipal = "alice"
+            assertFailsWith<DuplicateServerException> {
+                repo.register(
+                    ServerRegistration(
+                        type = ServerType.JELLYFIN,
+                        name = "Alice duplicate",
+                        baseUrl = "https://media.example",
+                        credentials = CredentialInput.Jellyfin("Alice", "password"),
+                    ),
+                )
+            }
+        }
+
+    @Test
     fun registersJellyfinServerAndPersistsCredentials() =
         runTest {
             val storedCredential =
@@ -382,7 +451,22 @@ class ServerRepositoryTest {
     }
 
     private fun successApiKey(): ConnectivityResult = ConnectivityResult.Success("ok", StoredCredential.ApiKey(apiKey = "dummy-api-key"))
+
+    private fun jellyfinCredential(userId: String) =
+        StoredCredential.Jellyfin(
+            username = userId,
+            deviceId = "device-$userId",
+            accessToken = "token-$userId",
+            userId = userId,
+        )
 }
+
+private val StoredCredential.principal: String?
+    get() =
+        when (this) {
+            is StoredCredential.Jellyfin -> userId
+            is StoredCredential.ApiKey -> userId
+        }
 
 private object FixedClock : kotlinx.datetime.Clock {
     private val instant = Instant.fromEpochMilliseconds(1_700_000_000_000)
