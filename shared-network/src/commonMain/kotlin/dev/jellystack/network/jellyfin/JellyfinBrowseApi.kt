@@ -82,6 +82,11 @@ class JellyfinBrowseApi(
         recursive: Boolean = true,
         filters: String? = null,
         searchTerm: String? = null,
+        sortBy: String = "SortName",
+        sortOrder: String = "Ascending",
+        isPlayed: Boolean? = null,
+        genres: List<String> = emptyList(),
+        years: List<Int> = emptyList(),
     ): JellyfinItemsResponse =
         client
             .request {
@@ -92,13 +97,16 @@ class JellyfinBrowseApi(
                 parameter("Recursive", recursive)
                 parameter("StartIndex", startIndex)
                 parameter("Limit", limit)
-                parameter("SortBy", "SortName")
-                parameter("SortOrder", "Ascending")
+                parameter("SortBy", sortBy)
+                parameter("SortOrder", sortOrder)
                 parameter("Fields", REQUIRED_FIELDS)
                 parameter("ImageTypeLimit", 1)
                 parameter("EnableImageTypes", "Primary,Backdrop,Thumb,Logo")
                 filters?.let { parameter("Filters", it) }
                 searchTerm?.takeIf { it.isNotBlank() }?.let { parameter("SearchTerm", it) }
+                isPlayed?.let { parameter("IsPlayed", it) }
+                genres.takeIf(List<String>::isNotEmpty)?.let { parameter("Genres", it.joinToString(",")) }
+                years.takeIf(List<Int>::isNotEmpty)?.let { parameter("Years", it.joinToString(",")) }
             }.body()
 
     suspend fun fetchLatestItems(

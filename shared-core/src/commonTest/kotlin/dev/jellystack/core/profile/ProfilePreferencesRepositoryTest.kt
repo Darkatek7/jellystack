@@ -1,5 +1,8 @@
 package dev.jellystack.core.profile
 
+import dev.jellystack.core.jellyfin.LibraryBrowseDirection
+import dev.jellystack.core.jellyfin.LibraryBrowseQuery
+import dev.jellystack.core.jellyfin.LibraryBrowseSort
 import dev.jellystack.core.preferences.AppLanguage
 import dev.jellystack.core.preferences.AppSettingsRepository
 import dev.jellystack.core.preferences.AutoplayNextMode
@@ -100,6 +103,44 @@ class ProfilePreferencesRepositoryTest {
         assertEquals(ProfilePreferences(), repository.preferences(PROFILE_A).value)
         assertEquals("en", repository.preferences(PROFILE_B).value.preferredAudioLanguage)
         assertEquals(AppLanguage.GERMAN, app.settings.value.appLanguage)
+    }
+
+    @Test
+    fun browseQueriesAreRememberedPerProfileAndLibrary() {
+        val storage = InMemorySettings()
+        val repository = ProfilePreferencesRepository(storage)
+        val firstQuery =
+            LibraryBrowseQuery(
+                sort = LibraryBrowseSort.DATE_ADDED,
+                direction = LibraryBrowseDirection.DESCENDING,
+                genres = setOf("Drama"),
+            )
+        val secondQuery = LibraryBrowseQuery(favoritesOnly = true)
+
+        repository.setLibraryBrowseQuery(PROFILE_A, "movies", firstQuery)
+        repository.setLibraryBrowseQuery(PROFILE_A, "shows", secondQuery)
+        repository.setLibraryBrowseQuery(PROFILE_B, "movies", secondQuery)
+
+        val recreated = ProfilePreferencesRepository(storage)
+        assertEquals(firstQuery, recreated.libraryBrowseQuery(PROFILE_A, "movies").value)
+        assertEquals(secondQuery, recreated.libraryBrowseQuery(PROFILE_A, "shows").value)
+        assertEquals(secondQuery, recreated.libraryBrowseQuery(PROFILE_B, "movies").value)
+        assertEquals(LibraryBrowseQuery.DEFAULT, recreated.libraryBrowseQuery(PROFILE_B, "shows").value)
+    }
+
+    @Test
+    fun defaultBrowseQueryRemovesStoredOverrideAndProfileDeletionClearsAllLibraries() {
+        val storage = InMemorySettings()
+        val repository = ProfilePreferencesRepository(storage)
+        repository.setLibraryBrowseQuery(PROFILE_A, "movies", LibraryBrowseQuery(favoritesOnly = true))
+        repository.setLibraryBrowseQuery(PROFILE_A, "shows", LibraryBrowseQuery(genres = setOf("Drama")))
+
+        repository.setLibraryBrowseQuery(PROFILE_A, "movies", LibraryBrowseQuery.DEFAULT)
+        assertEquals(LibraryBrowseQuery.DEFAULT, repository.libraryBrowseQuery(PROFILE_A, "movies").value)
+        repository.delete(PROFILE_A)
+
+        assertEquals(LibraryBrowseQuery.DEFAULT, repository.libraryBrowseQuery(PROFILE_A, "shows").value)
+        assertTrue(storage.keys.none { it.startsWith("profile.$PROFILE_A.") })
     }
 
     private companion object {

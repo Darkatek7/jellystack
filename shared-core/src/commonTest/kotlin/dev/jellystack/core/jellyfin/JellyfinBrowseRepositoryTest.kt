@@ -21,6 +21,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -512,6 +513,75 @@ class JellyfinBrowseRepositoryTest {
         }
 
     @Test
+    fun sessionBrowseQueryNeverMutatesCanonicalLibraryCache() =
+        runTest {
+            val headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+            val isolatedEngine =
+                MockEngine { request ->
+                    when (request.url.encodedPath) {
+                        "/Users/user-123/Views" -> respond(LIBRARIES_JSON, HttpStatusCode.OK, headers)
+                        "/Users/user-123/Items" -> {
+                            val body = if (request.url.parameters["Genres"] == "Drama") FILTERED_ITEMS_JSON else ITEMS_JSON
+                            respond(body, HttpStatusCode.OK, headers)
+                        }
+                        else -> error("Unexpected request path: ${request.url.encodedPath}")
+                    }
+                }
+            val isolatedClient = NetworkClientFactory.create(ClientConfig(engine = isolatedEngine, installLogging = false))
+            val isolatedItems = InMemoryItemStore()
+            val isolatedRepository =
+                JellyfinBrowseRepository(
+                    environmentProvider,
+                    InMemoryLibraryStore(),
+                    isolatedItems,
+                    InMemoryDetailStore(),
+                    apiFactory = { env ->
+                        JellyfinBrowseApi(
+                            isolatedClient,
+                            env.baseUrl,
+                            env.accessToken,
+                            env.deviceId,
+                            clientName = "Test",
+                            deviceName = env.deviceName,
+                            clientVersion = "1.0",
+                        )
+                    },
+                    clock = FixedClock,
+                )
+            isolatedRepository.refreshLibraries()
+            isolatedRepository.loadLibraryPage("lib-1", page = 0, pageSize = 30, refresh = true)
+            val canonicalBefore = isolatedRepository.cachedLibraryPage("lib-1", page = 0, pageSize = 30)
+
+            val filtered =
+                isolatedRepository.loadLibraryPage(
+                    libraryId = "lib-1",
+                    page = 0,
+                    pageSize = 30,
+                    query = LibraryBrowseQuery(genres = setOf("Drama")),
+                    cachePolicy = LibraryCachePolicy.SESSION_ONLY,
+                )
+
+            assertEquals(listOf("filtered-item"), filtered.items.map { it.id })
+            assertEquals(canonicalBefore, isolatedRepository.cachedLibraryPage("lib-1", page = 0, pageSize = 30))
+            assertNull(isolatedItems.get("filtered-item"))
+            isolatedClient.close()
+        }
+
+    @Test
+    fun nonDefaultQueryCannotUseCanonicalCachePolicy() =
+        runTest {
+            assertFailsWith<IllegalArgumentException> {
+                repository.loadLibraryPage(
+                    libraryId = "lib-1",
+                    page = 0,
+                    pageSize = 30,
+                    query = LibraryBrowseQuery(favoritesOnly = true),
+                    cachePolicy = LibraryCachePolicy.CANONICAL_DEFAULT,
+                )
+            }
+        }
+
+    @Test
     fun detailCacheIsIsolatedByManagedConnection() =
         runTest {
             var activeEnvironment = environment.copy(serverKey = "connection-a", userId = "user-a")
@@ -911,6 +981,21 @@ class JellyfinBrowseRepositoryTest {
                 }
               ],
               "TotalRecordCount": 2
+            }
+        """
+
+        private const val FILTERED_ITEMS_JSON = """
+            {
+              "Items": [
+                {
+                  "Id": "filtered-item",
+                  "Name": "Filtered",
+                  "Type": "Movie",
+                  "MediaType": "Video",
+                  "ProviderIds": {"Tmdb": "999"}
+                }
+              ],
+              "TotalRecordCount": 1
             }
         """
 

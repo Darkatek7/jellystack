@@ -87,6 +87,21 @@ internal interface JellyfinBrowseRepositoryApi {
         filters: String? = null,
     ): LibraryPage
 
+    suspend fun loadLibraryPage(
+        libraryId: String,
+        page: Int,
+        pageSize: Int,
+        query: LibraryBrowseQuery,
+        cachePolicy: LibraryCachePolicy,
+    ): LibraryPage =
+        loadLibraryPage(
+            libraryId = libraryId,
+            page = page,
+            pageSize = pageSize,
+            refresh = page == 0,
+            filters = query.takeIf { it.favoritesOnly }?.let { "IsFavorite" },
+        )
+
     suspend fun cachedLibraryPage(
         libraryId: String,
         page: Int,
@@ -262,6 +277,44 @@ class JellyfinBrowseRepository(
         }
         return LibraryPage(
             items = records.map { it.toDomain() },
+            totalRecordCount = response.totalRecordCount,
+        )
+    }
+
+    override suspend fun loadLibraryPage(
+        libraryId: String,
+        page: Int,
+        pageSize: Int,
+        query: LibraryBrowseQuery,
+        cachePolicy: LibraryCachePolicy,
+    ): LibraryPage {
+        require(cachePolicy == LibraryCachePolicy.SESSION_ONLY || query.isDefault) {
+            "Only the default browse query may update the canonical cache"
+        }
+        if (cachePolicy == LibraryCachePolicy.CANONICAL_DEFAULT) {
+            return loadLibraryPage(libraryId, page, pageSize, refresh = page == 0, filters = null)
+        }
+        val environment = environmentProvider.current() ?: return LibraryPage(emptyList(), null)
+        val libraryQuery = queryForLibrary(environment.serverKey, libraryId)
+        val includeItemTypes = query.networkMediaTypes() ?: libraryQuery.includeItemTypes
+        val response =
+            apiFor(environment).fetchLibraryItems(
+                userId = environment.userId,
+                libraryId = libraryId,
+                startIndex = page * pageSize,
+                limit = pageSize,
+                includeItemTypes = includeItemTypes,
+                recursive = libraryQuery.recursive,
+                filters = query.takeIf { it.favoritesOnly }?.let { "IsFavorite" },
+                sortBy = query.networkSortBy(),
+                sortOrder = query.networkSortOrder(),
+                isPlayed = query.networkPlayed(),
+                genres = query.networkGenres(),
+                years = query.networkYears(),
+            )
+        val now = clock.now()
+        return LibraryPage(
+            items = response.items.map { it.toRecord(environment, libraryId, now).toDomain() },
             totalRecordCount = response.totalRecordCount,
         )
     }

@@ -1,6 +1,7 @@
 package dev.jellystack.core.profile
 
 import com.russhwolf.settings.Settings
+import dev.jellystack.core.jellyfin.LibraryBrowseQuery
 import dev.jellystack.core.preferences.AppSettings
 import dev.jellystack.core.preferences.AutoplayNextMode
 import dev.jellystack.core.preferences.ResumeMode
@@ -8,6 +9,9 @@ import dev.jellystack.core.preferences.SubtitleMode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 data class ProfilePreferences(
     val preferredAudioLanguage: String? = null,
@@ -35,8 +39,29 @@ class ProfilePreferencesRepository(
     private val storage: Settings,
 ) {
     private val states = mutableMapOf<String, MutableStateFlow<ProfilePreferences>>()
+    private val browseQueryStates = mutableMapOf<Pair<String, String>, MutableStateFlow<LibraryBrowseQuery>>()
 
     fun preferences(profileId: String): StateFlow<ProfilePreferences> = stateFor(profileId).asStateFlow()
+
+    fun libraryBrowseQuery(
+        profileId: String,
+        libraryId: String,
+    ): StateFlow<LibraryBrowseQuery> = browseQueryState(profileId, libraryId).asStateFlow()
+
+    fun setLibraryBrowseQuery(
+        profileId: String,
+        libraryId: String,
+        query: LibraryBrowseQuery,
+    ) {
+        val state = browseQueryState(profileId, libraryId)
+        val storageKey = browseQueryKey(profileId, libraryId)
+        if (query.isDefault) {
+            storage.remove(storageKey)
+        } else {
+            storage.putString(storageKey, JSON.encodeToString(query))
+        }
+        state.value = query
+    }
 
     fun setPreferredAudioLanguage(
         profileId: String,
@@ -112,11 +137,27 @@ class ProfilePreferencesRepository(
         requireProfileId(profileId)
         storage.keys.filter { it.startsWith(prefix(profileId)) }.forEach(storage::remove)
         states.remove(profileId)?.value = ProfilePreferences()
+        browseQueryStates.keys.filter { it.first == profileId }.forEach { key ->
+            browseQueryStates.remove(key)?.value = LibraryBrowseQuery.DEFAULT
+        }
     }
 
     private fun stateFor(profileId: String): MutableStateFlow<ProfilePreferences> {
         requireProfileId(profileId)
         return states.getOrPut(profileId) { MutableStateFlow(read(profileId)) }
+    }
+
+    private fun browseQueryState(
+        profileId: String,
+        libraryId: String,
+    ): MutableStateFlow<LibraryBrowseQuery> {
+        requireLibraryId(libraryId)
+        return browseQueryStates.getOrPut(profileId to libraryId) {
+            val stored = storage.getStringOrNull(browseQueryKey(profileId, libraryId))
+            MutableStateFlow(
+                stored?.let { runCatching { JSON.decodeFromString<LibraryBrowseQuery>(it) }.getOrNull() } ?: LibraryBrowseQuery.DEFAULT,
+            )
+        }
     }
 
     private fun read(profileId: String): ProfilePreferences =
@@ -221,8 +262,17 @@ class ProfilePreferencesRepository(
 
     private fun prefix(profileId: String) = "profile.$profileId."
 
+    private fun browseQueryKey(
+        profileId: String,
+        libraryId: String,
+    ): String = "${prefix(profileId)}library_query.$libraryId"
+
     private fun requireProfileId(profileId: String) {
         require(profileId.isNotBlank() && profileId.none { it == '.' || it == '\n' || it == '\r' })
+    }
+
+    private fun requireLibraryId(libraryId: String) {
+        require(libraryId.isNotBlank() && libraryId.none { it == '\n' || it == '\r' })
     }
 
     private fun String?.normalizedLanguage(): String? = this?.trim()?.lowercase()?.takeIf(String::isNotBlank)
@@ -246,5 +296,6 @@ class ProfilePreferencesRepository(
         const val LEGACY_DEFAULT_PLAYBACK_SPEED = "settings.default_playback_speed"
         const val SHELF_SEPARATOR = "\u001f"
         val PLAYBACK_SPEEDS = setOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
+        val JSON = Json { ignoreUnknownKeys = true }
     }
 }
