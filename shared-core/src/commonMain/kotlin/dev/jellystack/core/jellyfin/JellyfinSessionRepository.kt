@@ -56,21 +56,37 @@ class JellyfinSessionRepository(
 ) {
     private val mutableState = MutableStateFlow<JellyfinSessionState>(JellyfinSessionState.Disconnected)
     val state: StateFlow<JellyfinSessionState> = mutableState.asStateFlow()
+    private var generation = 0L
+
+    fun isolatedSession(): JellyfinSessionRepository = JellyfinSessionRepository(environmentProvider, apiFactory)
+
+    fun close() {
+        generation += 1L
+        mutableState.value = JellyfinSessionState.Disconnected
+    }
 
     suspend fun refresh(): JellyfinSessionCapabilities {
+        generation += 1L
+        val refreshGeneration = generation
         val environment = environmentProvider.current()
         if (environment == null) {
-            mutableState.value = JellyfinSessionState.Disconnected
+            if (refreshGeneration == generation) mutableState.value = JellyfinSessionState.Disconnected
             return JellyfinSessionCapabilities.NONE
         }
-        mutableState.value = JellyfinSessionState.Loading
+        if (refreshGeneration == generation) mutableState.value = JellyfinSessionState.Loading
         return try {
             val user = apiFactory(environment).currentUser()
-            user.toCapabilities().also { mutableState.value = JellyfinSessionState.Ready(it) }
+            if (refreshGeneration != generation || environmentProvider.current() != environment) {
+                JellyfinSessionCapabilities.NONE
+            } else {
+                user.toCapabilities().also { mutableState.value = JellyfinSessionState.Ready(it) }
+            }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Throwable) {
-            mutableState.value = JellyfinSessionState.Error(failure.message ?: "Unable to load Jellyfin user policy")
+            if (refreshGeneration == generation && environmentProvider.current() == environment) {
+                mutableState.value = JellyfinSessionState.Error(failure.message ?: "Unable to load Jellyfin user policy")
+            }
             JellyfinSessionCapabilities.NONE
         }
     }

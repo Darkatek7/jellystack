@@ -3,6 +3,8 @@ package dev.jellystack.design.tv
 import dev.jellystack.core.jellyfin.JellyfinItem
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -12,6 +14,39 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class TvAppStateHolderTest {
+    @Test
+    fun closingAccountGenerationCancelsOldPrivatePublishersBeforeNextAccountStarts() =
+        runTest {
+            val accountA =
+                TvAccountGeneration(
+                    TvAuthenticatedEnvironmentIdentity("same-url-a", "principal-a"),
+                    backgroundScope,
+                )
+            val oldLoadStarted = CompletableDeferred<Unit>()
+            val releaseOldLoad = CompletableDeferred<Unit>()
+            val accountAShelves = mutableListOf<String>()
+            accountA.scope.launch {
+                oldLoadStarted.complete(Unit)
+                releaseOldLoad.await()
+                accountAShelves += "account-a-art-token-progress-detail-request"
+            }
+            oldLoadStarted.await()
+
+            accountA.close()
+            val accountB =
+                TvAccountGeneration(
+                    TvAuthenticatedEnvironmentIdentity("same-url-b", "principal-b"),
+                    backgroundScope,
+                )
+            val accountBShelves = mutableListOf<String>()
+            releaseOldLoad.complete(Unit)
+            runCurrent()
+
+            assertTrue(accountAShelves.isEmpty())
+            assertTrue(accountBShelves.isEmpty())
+            accountB.close()
+        }
+
     @Test
     fun navigationActionsProduceImmutableDeterministicState() {
         val holder = TvAppStateHolder()

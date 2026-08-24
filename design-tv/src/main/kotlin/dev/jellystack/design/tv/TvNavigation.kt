@@ -176,6 +176,44 @@ internal data class TvFocusSnapshot(
         get() = anchor.itemId
 }
 
+/**
+ * Keeps a process-restored semantic anchor pending while route content is still being discovered.
+ * The session deliberately owns the original snapshot so transient loading/status nodes cannot
+ * replace it before a real target or an authoritative fallback exists.
+ */
+internal class TvSemanticFocusRestorationSession(
+    private val snapshot: TvFocusSnapshot?,
+    val interactionRevision: Long,
+) {
+    var isPending: Boolean = true
+        private set
+
+    fun preferredTargetId(
+        availableTargets: List<TvFocusTarget>,
+        contentAuthoritativelyLoaded: Boolean,
+    ): String? {
+        if (!isPending) return null
+        val actionable = availableTargets.filter(TvFocusTarget::actionable)
+        val remembered = snapshot ?: return actionable.firstOrNull()?.targetId
+        actionable.firstOrNull { it.anchor == remembered.anchor }?.let { return it.targetId }
+        if (!contentAuthoritativelyLoaded) return null
+        val sameSection = actionable.filter { it.anchor.sectionId == remembered.anchor.sectionId }
+        return (sameSection.ifEmpty { actionable })
+            .minWithOrNull(
+                compareBy<TvFocusTarget> { kotlin.math.abs(it.horizontalCenter - remembered.horizontalCenter) }
+                    .thenBy { kotlin.math.abs(it.horizontalIndex - remembered.horizontalIndex) },
+            )?.targetId
+    }
+
+    fun complete() {
+        isPending = false
+    }
+
+    fun cancelAfterInteraction(interactionRevision: Long) {
+        if (interactionRevision != this.interactionRevision) isPending = false
+    }
+}
+
 @androidx.compose.runtime.Immutable
 internal data class TvFocusTarget(
     val targetId: String,

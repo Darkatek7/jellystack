@@ -1238,20 +1238,7 @@ internal fun TvLibraryScreen(
                         modifier =
                             Modifier
                                 .fillMaxWidth()
-                                .height(112.dp)
-                                .then(
-                                    if (state.libraryItems.isEmpty()) {
-                                        Modifier
-                                            .tvScreenEntryFocus(focusTargetId = TV_LIBRARY_LOADING_TARGET)
-                                            .tvFocusable(
-                                                onClick = {},
-                                                focusToNavigationRailOnLeft = true,
-                                                focusTargetId = TV_LIBRARY_LOADING_TARGET,
-                                            )
-                                    } else {
-                                        Modifier
-                                    },
-                                ),
+                                .height(112.dp),
                         contentAlignment = Alignment.Center,
                     ) {
                         CircularProgressIndicator(color = TvPurple)
@@ -1846,15 +1833,13 @@ internal fun TvDiscoverScreen(
 @Composable
 private fun TvFocusPlaceholder(
     label: String,
-    focusTargetId: String,
+    @Suppress("UNUSED_PARAMETER") focusTargetId: String,
 ) {
     Box(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .height(112.dp)
-                .tvScreenEntryFocus(focusTargetId = focusTargetId)
-                .tvFocusable(onClick = {}, focusToNavigationRailOnLeft = true, focusTargetId = focusTargetId),
+                .height(112.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(label, color = TvTextMuted, fontSize = 18.sp)

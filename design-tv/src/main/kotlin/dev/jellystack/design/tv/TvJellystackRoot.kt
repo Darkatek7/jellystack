@@ -57,6 +57,7 @@ import androidx.tv.material3.Text
 import dev.jellystack.core.di.JellystackDI
 import dev.jellystack.core.jellyfin.DetailTrailerResolver
 import dev.jellystack.core.jellyfin.HomeSectionsRepository
+import dev.jellystack.core.jellyfin.HomeSectionsState
 import dev.jellystack.core.jellyfin.JellyfinBrowseCoordinator
 import dev.jellystack.core.jellyfin.JellyfinBrowseRepository
 import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
@@ -70,6 +71,7 @@ import dev.jellystack.core.jellyfin.LocalTrailerResolver
 import dev.jellystack.core.jellyseerr.JellyseerrEnvironmentProvider
 import dev.jellystack.core.jellyseerr.JellyseerrMediaAvailability
 import dev.jellystack.core.jellyseerr.JellyseerrRecommendationsCoordinator
+import dev.jellystack.core.jellyseerr.JellyseerrRecommendationsState
 import dev.jellystack.core.jellyseerr.JellyseerrRepository
 import dev.jellystack.core.jellyseerr.JellyseerrRequestsCoordinator
 import dev.jellystack.core.jellyseerr.JellyseerrSearchItem
@@ -172,21 +174,70 @@ private fun TvAuthenticatedApp(
     stopPlayback: () -> Unit,
 ) {
     val koin = remember { JellystackDI.koin }
-    val scope = rememberCoroutineScope()
-    val browseRepository = remember { koin.get<JellyfinBrowseRepository>() }
-    val environmentProvider = remember { koin.get<JellyfinEnvironmentProvider>() }
-    val sessionRepository = remember { koin.get<JellyfinSessionRepository>() }
-    val browseCoordinator =
+    val rootScope = rememberCoroutineScope()
+    val activeJellyfinServer by
+        serverRepository
+            .observeActiveServer(ServerType.JELLYFIN)
+            .collectAsStateWithLifecycle(initialValue = serverRepository.activeServer(ServerType.JELLYFIN))
+    // Compose adapts the lifecycle-agnostic holder to process-death persistence at this root boundary.
+    val appStateSaver =
         remember {
+            Saver<TvAppStateHolder, String>(
+                save = { TvAppStatePersistence.encode(it.snapshot()) },
+                restore = { raw -> TvAppStatePersistence.decode(raw)?.let(::TvAppStateHolder) },
+            )
+        }
+    val appStateHolder = rememberSaveable(saver = appStateSaver) { TvAppStateHolder() }
+    val appUiState = appStateHolder.state
+    val focusMemory = appStateHolder.focusMemory
+    val authenticatedEnvironmentIdentity =
+        activeJellyfinServer?.let { server ->
+            (server.credentials as? StoredCredential.Jellyfin)?.let { credential ->
+                TvAuthenticatedEnvironmentIdentity(
+                    serverConnectionId = server.id,
+                    principalId = credential.userId,
+                )
+            }
+        }
+    var lastBoundIdentity by remember { mutableStateOf<TvAuthenticatedEnvironmentIdentity?>(null) }
+    LaunchedEffect(authenticatedEnvironmentIdentity) {
+        if (lastBoundIdentity != null && lastBoundIdentity != authenticatedEnvironmentIdentity) stopPlayback()
+        if (authenticatedEnvironmentIdentity == null) {
+            appStateHolder.deactivateEnvironment()
+        } else {
+            appStateHolder.activateEnvironment(authenticatedEnvironmentIdentity)
+        }
+        lastBoundIdentity = authenticatedEnvironmentIdentity
+    }
+    // Never construct or compose account state while its restored owner is unvalidated. On a
+    // principal change the old account group leaves composition before the clean generation enters.
+    if (appUiState.environmentIdentity != authenticatedEnvironmentIdentity || authenticatedEnvironmentIdentity == null) {
+        return
+    }
+    val accountGeneration =
+        remember(authenticatedEnvironmentIdentity, appUiState.activeProfileGeneration) {
+            TvAccountGeneration(authenticatedEnvironmentIdentity, rootScope)
+        }
+    val scope = accountGeneration.scope
+    DisposableEffect(accountGeneration) {
+        onDispose(accountGeneration::close)
+    }
+    val browseRepository = remember(accountGeneration) { koin.get<JellyfinBrowseRepository>() }
+    val environmentProvider = remember(accountGeneration) { koin.get<JellyfinEnvironmentProvider>() }
+    val sessionRepository =
+        remember(accountGeneration) { koin.get<JellyfinSessionRepository>().isolatedSession() }
+    val browseCoordinator =
+        remember(accountGeneration) {
             JellyfinBrowseCoordinator(
                 repository = browseRepository,
                 scope = scope,
                 favoritesStore = koin.get<JellyfinFavoritesStoreApi>(),
             )
         }
-    val homeSectionsRepository = remember { koin.get<HomeSectionsRepository>() }
+    val homeSectionsRepository =
+        remember(accountGeneration) { koin.get<HomeSectionsRepository>().isolatedSession() }
     val recommendationsCoordinator =
-        remember {
+        remember(accountGeneration) {
             JellyseerrRecommendationsCoordinator(
                 repository = koin.get<JellyseerrRepository>(),
                 environmentProvider = koin.get<JellyseerrEnvironmentProvider>(),
@@ -194,7 +245,7 @@ private fun TvAuthenticatedApp(
             )
         }
     val requestsCoordinator =
-        remember {
+        remember(accountGeneration) {
             JellyseerrRequestsCoordinator(
                 repository = koin.get<JellyseerrRepository>(),
                 environmentProvider = koin.get<JellyseerrEnvironmentProvider>(),
@@ -202,7 +253,7 @@ private fun TvAuthenticatedApp(
             )
         }
     val detailTrailerResolver =
-        remember {
+        remember(accountGeneration) {
             DetailTrailerResolver(
                 fetchLocalTrailers = browseRepository::fetchLocalTrailers,
                 fetchItemDetail = { browseRepository.getItemDetail(it, forceRefresh = false) },
@@ -224,14 +275,14 @@ private fun TvAuthenticatedApp(
             )
         }
     val localTrailerResolver =
-        remember {
+        remember(accountGeneration) {
             LocalTrailerResolver(
                 fetchLocalTrailers = browseRepository::fetchLocalTrailers,
                 fetchItemDetail = { browseRepository.getItemDetail(it, forceRefresh = false) },
             )
         }
     val trailerPreviewPlayer =
-        remember(trailerPreviewPlaybackController, trailerPreviewEngine, environmentProvider) {
+        remember(accountGeneration, trailerPreviewPlaybackController, trailerPreviewEngine, environmentProvider) {
             TvPlaybackTrailerPreviewPlayer(
                 controller = trailerPreviewPlaybackController,
                 engine = trailerPreviewEngine,
@@ -239,7 +290,7 @@ private fun TvAuthenticatedApp(
             )
         }
     val trailerPreviewCoordinator =
-        remember(localTrailerResolver, trailerPreviewPlayer) {
+        remember(accountGeneration, localTrailerResolver, trailerPreviewPlayer) {
             TvTrailerPreviewController(
                 scope = scope,
                 resolve = { target ->
@@ -259,7 +310,7 @@ private fun TvAuthenticatedApp(
             )
         }
     val syncPlay =
-        remember {
+        remember(accountGeneration) {
             SyncPlayCoordinator(
                 environmentProvider = environmentProvider,
                 playbackController = playbackController,
@@ -286,10 +337,6 @@ private fun TvAuthenticatedApp(
     val settings by settingsRepository.settings.collectAsStateWithLifecycle()
     val playbackState by playbackController.state.collectAsStateWithLifecycle()
     val syncPlayState by syncPlay.state.collectAsStateWithLifecycle()
-    val activeJellyfinServer by
-        serverRepository
-            .observeActiveServer(ServerType.JELLYFIN)
-            .collectAsStateWithLifecycle(initialValue = serverRepository.activeServer(ServerType.JELLYFIN))
     val playbackIdentity =
         activeJellyfinServer?.let { server ->
             (server.credentials as? StoredCredential.Jellyfin)?.let { credential ->
@@ -297,8 +344,8 @@ private fun TvAuthenticatedApp(
             }
         }
     val trailerPreviewState by trailerPreviewCoordinator.state.collectAsStateWithLifecycle()
-    val trailerPreviewProgress = remember { mutableStateOf(0f) }
-    LaunchedEffect(trailerPreviewPlaybackController) {
+    val trailerPreviewProgress = remember(accountGeneration) { mutableStateOf(0f) }
+    LaunchedEffect(accountGeneration, trailerPreviewPlaybackController) {
         trailerPreviewPlaybackController.state.collect { playbackState ->
             trailerPreviewProgress.value =
                 (playbackState as? PlaybackState.Active)?.let { active ->
@@ -309,47 +356,16 @@ private fun TvAuthenticatedApp(
     val sessionState by sessionRepository.state.collectAsStateWithLifecycle()
     val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateFlow
         .collectAsStateWithLifecycle()
-    // Compose adapts the lifecycle-agnostic holder to process-death persistence at this root boundary.
-    val appStateSaver =
-        remember {
-            Saver<TvAppStateHolder, String>(
-                save = { TvAppStatePersistence.encode(it.snapshot()) },
-                restore = { raw -> TvAppStatePersistence.decode(raw)?.let(::TvAppStateHolder) },
-            )
-        }
-    val appStateHolder = rememberSaveable(saver = appStateSaver) { TvAppStateHolder() }
-    val appUiState = appStateHolder.state
-    val focusMemory = appStateHolder.focusMemory
-    val authenticatedEnvironmentIdentity =
-        activeJellyfinServer?.let { server ->
-            (server.credentials as? StoredCredential.Jellyfin)?.let { credential ->
-                TvAuthenticatedEnvironmentIdentity(
-                    serverConnectionId = server.id,
-                    principalId = credential.userId,
-                )
-            }
-        }
-    LaunchedEffect(authenticatedEnvironmentIdentity) {
-        if (authenticatedEnvironmentIdentity == null) {
-            appStateHolder.deactivateEnvironment()
-        } else {
-            appStateHolder.activateEnvironment(authenticatedEnvironmentIdentity)
-        }
-    }
-    // Never compose a restored private route while its persisted owner is unvalidated. The effect
-    // above either binds a legacy snapshot, switches to a clean generation, or clears credentials.
-    if (appUiState.environmentIdentity != authenticatedEnvironmentIdentity || authenticatedEnvironmentIdentity == null) {
-        return
-    }
     val jellyfinSearchCoordinator =
-        remember(scope, browseRepository) {
+        remember(accountGeneration, scope, browseRepository) {
             TvJellyfinSearchCoordinator(scope = scope, searchItems = browseRepository::searchItems)
         }
     val jellyfinSearchState by jellyfinSearchCoordinator.state.collectAsStateWithLifecycle()
     DisposableEffect(jellyfinSearchCoordinator) {
         onDispose(jellyfinSearchCoordinator::shutdown)
     }
-    val segmentHttpClient = remember { NetworkClientFactory.create(ClientConfig(installLogging = false)) }
+    val segmentHttpClient =
+        remember(accountGeneration) { NetworkClientFactory.create(ClientConfig(installLogging = false)) }
     val playbackCommandRouter =
         remember(playbackController, syncPlay) {
             TvPlaybackCommandRouter(
@@ -432,13 +448,18 @@ private fun TvAuthenticatedApp(
         push(route)
     }
 
-    LaunchedEffect(settings.useServerHomeSections, settings.appLanguage, serverRepository.currentServers()) {
+    LaunchedEffect(
+        accountGeneration,
+        settings.useServerHomeSections,
+        settings.appLanguage,
+        serverRepository.currentServers(),
+    ) {
         homeSectionsRepository.refresh(
             enabledByUser = settings.useServerHomeSections,
             language = settings.appLanguage.languageTag,
         )
     }
-    LaunchedEffect(serverRepository.currentServers()) {
+    LaunchedEffect(accountGeneration, serverRepository.currentServers()) {
         sessionRepository.refresh()
     }
     LaunchedEffect(syncPlayAccess) {
@@ -455,7 +476,7 @@ private fun TvAuthenticatedApp(
             trailerPreviewCoordinator.clearFocus()
         }
     }
-    LaunchedEffect(serverRepository.currentServers()) { trailerPreviewCoordinator.invalidateCache() }
+    LaunchedEffect(accountGeneration, serverRepository.currentServers()) { trailerPreviewCoordinator.invalidateCache() }
     LaunchedEffect(lifecycleState) {
         if (lifecycleState.isAtLeast(Lifecycle.State.STARTED)) {
             appStateHolder.onForegrounded()
@@ -464,9 +485,12 @@ private fun TvAuthenticatedApp(
             trailerPreviewCoordinator.clearFocus()
         }
     }
-    DisposableEffect(Unit) {
+    DisposableEffect(accountGeneration, segmentHttpClient) {
         onDispose {
             browseCoordinator.shutdown()
+            homeSectionsRepository.close()
+            sessionRepository.close()
+            recommendationsCoordinator.shutdown()
             requestsCoordinator.shutdown()
             syncPlay.close()
             segmentHttpClient.close()
@@ -492,6 +516,31 @@ private fun TvAuthenticatedApp(
         currentRoute.focusRouteKey(
             if (currentRoute is TvRoute.Library) homeState.browsePath.map { it.id } else emptyList(),
         )
+    val focusContentAuthoritativelyLoaded =
+        when (currentRoute) {
+            TvRoute.Home ->
+                !homeState.isInitialLoading &&
+                    !homeState.isHomeLoading &&
+                    homeSections !is HomeSectionsState.Loading
+            is TvRoute.Library -> !homeState.isLibraryLoading && !homeState.isPageLoading
+            TvRoute.Search ->
+                jellyfinSearchState !is TvJellyfinSearchState.Loading &&
+                    (requests as? dev.jellystack.core.jellyseerr.JellyseerrRequestsState.Ready)?.isSearching != true
+            TvRoute.Discover ->
+                recommendations !is JellyseerrRecommendationsState.Loading &&
+                    (recommendations as? JellyseerrRecommendationsState.Ready)
+                        ?.rails
+                        ?.values
+                        ?.none { it.isLoading } != false
+            else -> true
+        }
+    val semanticRestorationSession =
+        remember(focusCoordinator, currentFocusRouteKey) {
+            TvSemanticFocusRestorationSession(
+                snapshot = focusMemory.restore(currentFocusRouteKey),
+                interactionRevision = focusCoordinator.currentInteractionRevision,
+            )
+        }
     val contentStartPadding by
         animateDpAsState(
             if (showRail && appUiState.railExpanded) 134.dp else 0.dp,
@@ -506,7 +555,16 @@ private fun TvAuthenticatedApp(
             cancelFocusRestoration = focusCoordinator::onUserMovement,
         )
     TvAppBackHandler(backDispatcher)
-    LaunchedEffect(showRail, appUiState.railExpanded, currentFocusRouteKey, appUiState.isForeground) {
+    val focusRegistrationRevision = focusCoordinator.registrationRevision
+    LaunchedEffect(
+        showRail,
+        appUiState.railExpanded,
+        currentFocusRouteKey,
+        appUiState.isForeground,
+        focusContentAuthoritativelyLoaded,
+        focusRegistrationRevision,
+        semanticRestorationSession,
+    ) {
         if (!showRail || !appUiState.isForeground) return@LaunchedEffect
         if (appUiState.railExpanded) {
             val railRestoration =
@@ -525,19 +583,52 @@ private fun TvAuthenticatedApp(
             }
         } else {
             // A missing content target must not turn route restoration (including Back) into a rail opener.
+            semanticRestorationSession.cancelAfterInteraction(focusCoordinator.currentInteractionRevision)
+            if (!semanticRestorationSession.isPending) return@LaunchedEffect
             val semanticTargetId =
-                focusMemory.resolve(currentFocusRouteKey, focusCoordinator.focusTargets(currentFocusRouteKey))?.targetId
-            focusCoordinator.restoreFocus(
-                routeKey = currentFocusRouteKey,
-                preferredTargetId = semanticTargetId,
-                requestFocus = { requester -> runCatching { requester.requestFocus() }.getOrDefault(false) },
-            )
+                semanticRestorationSession.preferredTargetId(
+                    availableTargets = focusCoordinator.focusTargets(currentFocusRouteKey),
+                    contentAuthoritativelyLoaded = focusContentAuthoritativelyLoaded,
+                ) ?: return@LaunchedEffect
+            val restoration =
+                focusCoordinator.restoreFocus(
+                    routeKey = currentFocusRouteKey,
+                    preferredTargetId = semanticTargetId,
+                    includeFallback = false,
+                    requiredInteractionRevision = semanticRestorationSession.interactionRevision,
+                    requestFocus = { requester -> runCatching { requester.requestFocus() }.getOrDefault(false) },
+                )
+            when (restoration) {
+                is TvFocusRestoration.Focused -> semanticRestorationSession.complete()
+                TvFocusRestoration.Cancelled ->
+                    semanticRestorationSession.cancelAfterInteraction(focusCoordinator.currentInteractionRevision)
+                TvFocusRestoration.Failed -> Unit
+            }
         }
     }
     LaunchedEffect(appUiState.railExpanded, currentRoute) {
         if (appUiState.railExpanded || currentRoute !is TvRoute.Home) trailerPreviewCoordinator.clearFocus()
     }
-    Box(Modifier.fillMaxSize()) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .onPreviewKeyEvent { event ->
+                if (
+                    event.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
+                    event.nativeKeyEvent.keyCode in
+                    setOf(
+                        android.view.KeyEvent.KEYCODE_DPAD_UP,
+                        android.view.KeyEvent.KEYCODE_DPAD_DOWN,
+                        android.view.KeyEvent.KEYCODE_DPAD_LEFT,
+                        android.view.KeyEvent.KEYCODE_DPAD_RIGHT,
+                        android.view.KeyEvent.KEYCODE_DPAD_CENTER,
+                    )
+                ) {
+                    focusCoordinator.onUserMovement()
+                }
+                false
+            },
+    ) {
         CompositionLocalProvider(
             LocalTvNavigationRailOpener provides {
                 if (!appStateHolder.state.railExpanded) {

@@ -225,6 +225,8 @@ internal fun TvDetailFocusLayout(
     heroContentDescription: String,
     hasPrimaryAction: Boolean = true,
     modifier: Modifier = Modifier,
+    awaitFocusStart: suspend (TvFocusDestination) -> Unit = {},
+    awaitFocusReady: suspend (TvFocusDestination) -> Unit = { withFrameNanos { } },
     heroContent: @Composable BoxScope.(primaryActionModifier: Modifier, actionRowModifier: Modifier) -> Unit,
     content: LazyListScope.(bodyFocusModifier: Modifier, sectionFocusModifiers: Map<String, TvDetailSectionFocusModifiers>) -> Unit,
 ) {
@@ -324,35 +326,56 @@ internal fun TvDetailFocusLayout(
 
     fun focusHero(cancelPersistedRestoration: Boolean = true) {
         ownDestination(TvFocusDestination.HERO, cancelPersistedRestoration)
+        val transactionId = focusTransactionId
         scope.launch {
+            awaitFocusStart(TvFocusDestination.HERO)
+            if (focusTransactionId != transactionId) return@launch
             listState.scrollToItem(0)
+            if (focusTransactionId != transactionId) return@launch
+            awaitFocusReady(TvFocusDestination.HERO)
+            if (focusTransactionId != transactionId) return@launch
             heroFocusRequester.requestFocus()
         }
     }
 
     fun focusPrimaryAction(cancelPersistedRestoration: Boolean = true) {
         ownDestination(TvFocusDestination.PRIMARY_ACTION, cancelPersistedRestoration)
+        val transactionId = focusTransactionId
         scope.launch {
+            awaitFocusStart(TvFocusDestination.PRIMARY_ACTION)
+            if (focusTransactionId != transactionId) return@launch
             listState.scrollToItem(0)
-            withFrameNanos { }
+            if (focusTransactionId != transactionId) return@launch
+            awaitFocusReady(TvFocusDestination.PRIMARY_ACTION)
+            if (focusTransactionId != transactionId) return@launch
             primaryActionFocusRequester.requestFocus()
         }
     }
 
     fun focusBodyFromHero(cancelPersistedRestoration: Boolean = true) {
         ownDestination(TvFocusDestination.BODY, cancelPersistedRestoration)
+        val transactionId = focusTransactionId
         scope.launch {
+            awaitFocusStart(TvFocusDestination.BODY)
+            if (focusTransactionId != transactionId) return@launch
             listState.scrollToItem(bodyLazyItemIndex)
-            withFrameNanos { }
+            if (focusTransactionId != transactionId) return@launch
+            awaitFocusReady(TvFocusDestination.BODY)
+            if (focusTransactionId != transactionId) return@launch
             bodyFocusRequester.requestFocus()
         }
     }
 
     fun focusBody(cancelPersistedRestoration: Boolean = true) {
         ownDestination(TvFocusDestination.BODY, cancelPersistedRestoration)
+        val transactionId = focusTransactionId
         scope.launch {
+            awaitFocusStart(TvFocusDestination.BODY)
+            if (focusTransactionId != transactionId) return@launch
             listState.scrollToItem(bodyLazyItemIndex)
-            withFrameNanos { }
+            if (focusTransactionId != transactionId) return@launch
+            awaitFocusReady(TvFocusDestination.BODY)
+            if (focusTransactionId != transactionId) return@launch
             bodyFocusRequester.requestFocus()
         }
     }
@@ -376,12 +399,18 @@ internal fun TvDetailFocusLayout(
         val focusRequester = requester(sectionId, itemId)
         val horizontalListState = horizontalListStates.getValue(sectionId)
         val horizontalItemIndex = section.itemIds.indexOf(itemId)
+        val transactionId = focusTransactionId
         scope.launch {
+            awaitFocusStart(TvFocusDestination.SECTION_ITEM)
+            if (focusTransactionId != transactionId) return@launch
             listState.scrollToItem(lazyItemIndex)
+            if (focusTransactionId != transactionId) return@launch
             horizontalListState.scrollToItem(horizontalItemIndex)
-            withFrameNanos { }
+            if (focusTransactionId != transactionId) return@launch
+            awaitFocusReady(TvFocusDestination.SECTION_ITEM)
+            if (focusTransactionId != transactionId) return@launch
             val focused = runCatching { focusRequester.requestFocus() }.getOrDefault(false)
-            if (!focused) focusBody(cancelPersistedRestoration)
+            if (!focused && focusTransactionId == transactionId) focusBody(cancelPersistedRestoration)
         }
     }
 

@@ -56,6 +56,9 @@ internal class TvFocusCoordinator<T : Any>(
 
     private var interactionRevision = 0L
 
+    internal val currentInteractionRevision: Long
+        get() = interactionRevision
+
     init {
         require(attachmentTimeoutMillis > 0)
         require(focusRequestAttempts > 0)
@@ -196,9 +199,11 @@ internal class TvFocusCoordinator<T : Any>(
         routeKey: Any,
         preferredTargetId: String? = null,
         includeFallback: Boolean = true,
+        requiredInteractionRevision: Long? = null,
         requestFocus: (T) -> Boolean,
     ): TvFocusRestoration<T> {
-        val restorationRevision = interactionRevision
+        val restorationRevision = requiredInteractionRevision ?: interactionRevision
+        if (interactionRevision != restorationRevision) return TvFocusRestoration.Cancelled
         return restorationLocks.getOrPut(routeKey) { Mutex() }.withLock {
             if (interactionRevision != restorationRevision) return TvFocusRestoration.Cancelled
             awaitRouteCapability(routeKey)

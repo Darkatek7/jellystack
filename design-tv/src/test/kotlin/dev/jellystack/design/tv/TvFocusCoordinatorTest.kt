@@ -8,10 +8,75 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class TvFocusCoordinatorTest {
+    @Test
+    fun semanticRestorationWaitsForLateActionableContentAndIgnoresStatusTargets() {
+        val snapshot =
+            TvFocusSnapshot(
+                anchor = TvFocusAnchor("continue", "episode-2", TvFocusDestination.SECTION_ITEM),
+                verticalIndex = 1,
+                horizontalIndex = 1,
+                horizontalCenter = 1f,
+            )
+        val session = TvSemanticFocusRestorationSession(snapshot, interactionRevision = 7L)
+        val loading = tvFocusTarget(TV_LIBRARY_LOADING_TARGET, actionable = false)
+
+        assertNull(session.preferredTargetId(listOf(loading), contentAuthoritativelyLoaded = false))
+
+        val lateTarget = tvHomeCardTargetId("continue", "episode-2")
+        assertEquals(
+            lateTarget,
+            session.preferredTargetId(
+                listOf(loading, tvFocusTarget(lateTarget)),
+                contentAuthoritativelyLoaded = false,
+            ),
+        )
+    }
+
+    @Test
+    fun semanticRestorationUsesNearestSurvivorOnlyAfterAuthoritativeLoad() {
+        val snapshot =
+            TvFocusSnapshot(
+                anchor = TvFocusAnchor("continue", "episode-2", TvFocusDestination.SECTION_ITEM),
+                verticalIndex = 1,
+                horizontalIndex = 2,
+                horizontalCenter = 2f,
+            )
+        val session = TvSemanticFocusRestorationSession(snapshot, interactionRevision = 4L)
+        val first = tvHomeCardTargetId("continue", "episode-1")
+        val nearest = tvHomeCardTargetId("continue", "episode-3")
+        val targets =
+            listOf(
+                tvFocusTarget(first, horizontalCenter = 0f, horizontalIndex = 0),
+                tvFocusTarget(nearest, horizontalCenter = 3f, horizontalIndex = 3),
+            )
+
+        assertNull(session.preferredTargetId(targets, contentAuthoritativelyLoaded = false))
+        assertEquals(nearest, session.preferredTargetId(targets, contentAuthoritativelyLoaded = true))
+    }
+
+    @Test
+    fun userMovementPermanentlyCancelsPendingSemanticRestoration() {
+        val snapshot =
+            TvFocusSnapshot(
+                anchor = TvFocusAnchor("continue", "episode-2", TvFocusDestination.SECTION_ITEM),
+                verticalIndex = 1,
+                horizontalIndex = 1,
+                horizontalCenter = 1f,
+            )
+        val session = TvSemanticFocusRestorationSession(snapshot, interactionRevision = 3L)
+        val exact = tvFocusTarget(tvHomeCardTargetId("continue", "episode-2"))
+
+        session.cancelAfterInteraction(interactionRevision = 4L)
+
+        assertNull(session.preferredTargetId(listOf(exact), contentAuthoritativelyLoaded = true))
+        assertFalse(session.isPending)
+    }
+
     @Test
     fun semanticRequesterRegistrationSurvivesCoordinatorDisposalAndReorder() =
         runTest {

@@ -36,6 +36,7 @@ import dev.jellystack.core.jellyseerr.JellyseerrMediaType
 import dev.jellystack.core.jellyseerr.JellyseerrPerson
 import dev.jellystack.core.jellyseerr.JellyseerrSearchItem
 import dev.jellystack.core.preferences.AppLanguage
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import org.junit.Assert.assertEquals
@@ -116,6 +117,51 @@ class TvDetailFocusTest {
         }
         composeRule.waitForIdle()
         body.assertIsFocused()
+        composeRule.runOnIdle {
+            assertEquals(
+                TvFocusDestination.BODY,
+                holder.focusMemory
+                    .restore(routeKey)
+                    ?.anchor
+                    ?.destination,
+            )
+        }
+    }
+
+    @Test
+    fun detailUserMovementCancelsRestoreAfterTransactionStarts() {
+        val routeKey = "jellyfin-detail:movie-cancel-started-restore"
+        val holder = holderRememberingCast(routeKey)
+        var cast by mutableStateOf<List<TvDetailCastItem>?>(null)
+        val restorationStarted = CompletableDeferred<Unit>()
+        val releaseRestoration = CompletableDeferred<Unit>()
+        setRestorationContent(
+            holder = holder,
+            routeKey = routeKey,
+            castProvider = { cast },
+            awaitFocusStart = { destination ->
+                if (destination == TvFocusDestination.SECTION_ITEM && !releaseRestoration.isCompleted) {
+                    restorationStarted.complete(Unit)
+                    releaseRestoration.await()
+                }
+            },
+        )
+        composeRule.onNodeWithTag("tv-detail-hero").assertIsFocused()
+        composeRule.runOnIdle {
+            cast =
+                listOf(
+                    TvDetailCastItem.Jellyfin(jellyfinPerson("person-0")),
+                    TvDetailCastItem.Jellyfin(jellyfinPerson("person-1")),
+                )
+        }
+        composeRule.waitUntil { restorationStarted.isCompleted }
+
+        composeRule.onNodeWithTag("tv-detail-hero").performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.onNodeWithTag("tv-detail-body-focus").assertIsFocused()
+        releaseRestoration.complete(Unit)
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("tv-detail-body-focus").assertIsFocused()
         composeRule.runOnIdle {
             assertEquals(
                 TvFocusDestination.BODY,
@@ -842,6 +888,8 @@ class TvDetailFocusTest {
     private fun setRestorationContent(
         holder: TvAppStateHolder,
         routeKey: String,
+        awaitFocusStart: suspend (TvFocusDestination) -> Unit = {},
+        awaitFocusReady: suspend (TvFocusDestination) -> Unit = {},
         castProvider: () -> List<TvDetailCastItem>?,
     ) {
         composeRule.setContent {
@@ -865,6 +913,8 @@ class TvDetailFocusTest {
                         heroContentDescription = "Restored details",
                         hasPrimaryAction = false,
                         modifier = Modifier.fillMaxSize(),
+                        awaitFocusStart = awaitFocusStart,
+                        awaitFocusReady = awaitFocusReady,
                         heroContent = { _, _ -> Box(Modifier.fillMaxSize()) },
                     ) { bodyFocusModifier, sectionFocusModifiers ->
                         item("overview") { Box(bodyFocusModifier.fillMaxWidth().height(600.dp)) }

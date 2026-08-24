@@ -60,29 +60,48 @@ class HomeSectionsRepository(
 ) {
     private val mutableState = MutableStateFlow<HomeSectionsState>(HomeSectionsState.Unavailable)
     val state: StateFlow<HomeSectionsState> = mutableState.asStateFlow()
+    private var generation = 0L
+
+    /** Creates an account-owned state session without sharing the singleton's last private result. */
+    fun isolatedSession(): HomeSectionsRepository = HomeSectionsRepository(environmentProvider, apiFactory)
+
+    /** Invalidates in-flight work before an authenticated account generation is discarded. */
+    fun close() {
+        generation += 1L
+        mutableState.value = HomeSectionsState.Unavailable
+    }
 
     suspend fun refresh(
         enabledByUser: Boolean,
         language: String?,
     ) {
+        generation += 1L
+        val refreshGeneration = generation
+
+        suspend fun isCurrent(environment: JellyfinEnvironment? = null): Boolean =
+            generation == refreshGeneration &&
+                (environment == null || environmentProvider.current() == environment)
+
         if (!enabledByUser) {
-            mutableState.value = HomeSectionsState.Unavailable
+            if (isCurrent()) mutableState.value = HomeSectionsState.Unavailable
             return
         }
         val environment = environmentProvider.current()
         if (environment == null) {
-            mutableState.value = HomeSectionsState.Unavailable
+            if (isCurrent()) mutableState.value = HomeSectionsState.Unavailable
             return
         }
-        mutableState.value = HomeSectionsState.Loading
+        if (isCurrent(environment)) mutableState.value = HomeSectionsState.Loading
         try {
             val api = apiFactory(environment)
             val meta = api.meta()
+            if (!isCurrent(environment)) return
             if (!meta.enabled || !api.ready()) {
-                mutableState.value = HomeSectionsState.Unavailable
+                if (isCurrent(environment)) mutableState.value = HomeSectionsState.Unavailable
                 return
             }
             val descriptors = loadAllDescriptors(api, environment.userId, language, meta.paginationEnabled, meta.numResultsPerPage)
+            if (!isCurrent(environment)) return
             val sections =
                 supervisorScope {
                     descriptors
@@ -112,6 +131,7 @@ class HomeSectionsRepository(
                         .filterNotNull()
                         .filter { it.items.isNotEmpty() }
                 }
+            if (!isCurrent(environment)) return
             if (sections.isEmpty()) {
                 mutableState.value = HomeSectionsState.Unavailable
             } else {
@@ -125,7 +145,7 @@ class HomeSectionsRepository(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Throwable) {
-            mutableState.value = HomeSectionsState.Unavailable
+            if (isCurrent(environment)) mutableState.value = HomeSectionsState.Unavailable
         }
     }
 
