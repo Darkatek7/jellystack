@@ -28,6 +28,63 @@ import kotlin.test.assertTrue
 
 class TvSearchStateTest {
     @Test
+    fun searchSessionStartsEditingAndBrowseModePreservesQueryAndSource() =
+        runTest {
+            val coordinator = TvJellyfinSearchCoordinator(this, debounceMillis = 0L) { emptyList() }
+
+            assertEquals(TvSearchMode.EDIT, coordinator.session.value.mode)
+            coordinator.search("dune")
+            coordinator.selectSource(TvSearchSource.SEERR)
+            coordinator.enterBrowseMode()
+
+            assertEquals(
+                TvSearchSessionState(
+                    query = "dune",
+                    source = TvSearchSource.SEERR,
+                    mode = TvSearchMode.BROWSE,
+                    queryGeneration = 1L,
+                ),
+                coordinator.session.value,
+            )
+
+            coordinator.enterEditMode()
+            assertEquals(TvSearchMode.EDIT, coordinator.session.value.mode)
+        }
+
+    @Test
+    fun restoredQueryIsReissuedExactlyOnceToBothSources() =
+        runTest {
+            val jellyfinQueries = mutableListOf<String>()
+            val seerrQueries = mutableListOf<String>()
+            val coordinator =
+                TvJellyfinSearchCoordinator(
+                    scope = this,
+                    debounceMillis = 0L,
+                    initialSession =
+                        TvSearchSessionState(
+                            query = "restored",
+                            source = TvSearchSource.ALL,
+                            mode = TvSearchMode.BROWSE,
+                            queryGeneration = 7L,
+                        ),
+                    submitSeerrSearch = seerrQueries::add,
+                    searchItems = { query ->
+                        jellyfinQueries += query
+                        listOf(item(query))
+                    },
+                )
+
+            advanceUntilIdle()
+            coordinator.restoreQuery("restored")
+            advanceUntilIdle()
+
+            assertEquals(listOf("restored"), jellyfinQueries)
+            assertEquals(listOf("restored"), seerrQueries)
+            assertEquals(TvSearchMode.BROWSE, coordinator.session.value.mode)
+            assertEquals(8L, coordinator.session.value.queryGeneration)
+        }
+
+    @Test
     fun jellyfinCoordinatorPublishesEverySemanticState() =
         runTest {
             var result: Result<List<JellyfinItem>> = Result.success(listOf(item("one")))
@@ -82,6 +139,23 @@ class TvSearchStateTest {
             val final = assertIs<TvJellyfinSearchState.Results>(coordinator.state.value)
             assertEquals("new", final.query)
             assertEquals("new", final.items.single().id)
+        }
+
+    @Test
+    fun retryKeepsQuerySourceAndModeWhileAdvancingGeneration() =
+        runTest {
+            val coordinator = TvJellyfinSearchCoordinator(this, debounceMillis = 0L) { emptyList() }
+            coordinator.search("arrival")
+            coordinator.selectSource(TvSearchSource.JELLYFIN)
+            coordinator.enterBrowseMode()
+            advanceUntilIdle()
+
+            coordinator.retry()
+
+            assertEquals("arrival", coordinator.session.value.query)
+            assertEquals(TvSearchSource.JELLYFIN, coordinator.session.value.source)
+            assertEquals(TvSearchMode.BROWSE, coordinator.session.value.mode)
+            assertEquals(2L, coordinator.session.value.queryGeneration)
         }
 
     @Test

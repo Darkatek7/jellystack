@@ -1,5 +1,6 @@
 package dev.jellystack.design.tv
 
+import androidx.compose.runtime.Immutable
 import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyseerr.JellyseerrMessageCode
 import dev.jellystack.core.jellyseerr.JellyseerrRecommendationsState
@@ -14,11 +15,22 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+internal enum class TvSearchMode { EDIT, BROWSE }
+
+@Immutable
+internal data class TvSearchSessionState(
+    val query: String = "",
+    val source: TvSearchSource = TvSearchSource.ALL,
+    val mode: TvSearchMode = TvSearchMode.EDIT,
+    val queryGeneration: Long = 0L,
+)
+
 internal sealed interface TvJellyfinSearchState {
     data object Idle : TvJellyfinSearchState
 
     data class Loading(
         val query: String,
+        val previousItems: List<JellyfinItem> = emptyList(),
     ) : TvJellyfinSearchState
 
     data class Results(
@@ -39,26 +51,75 @@ internal sealed interface TvJellyfinSearchState {
 internal class TvJellyfinSearchCoordinator(
     private val scope: CoroutineScope,
     private val debounceMillis: Long = 300L,
+    initialSession: TvSearchSessionState = TvSearchSessionState(),
+    private val submitSeerrSearch: (String) -> Unit = {},
     private val searchItems: suspend (String) -> List<JellyfinItem>,
 ) {
+    private val mutableSession = MutableStateFlow(initialSession.copy(query = initialSession.query.trim()))
+    val session: StateFlow<TvSearchSessionState> = mutableSession.asStateFlow()
+
     private val mutableState = MutableStateFlow<TvJellyfinSearchState>(TvJellyfinSearchState.Idle)
     val state: StateFlow<TvJellyfinSearchState> = mutableState.asStateFlow()
 
     private var searchJob: Job? = null
     private var generation = 0L
     private var lastQuery = ""
+    private var restoredQuerySubmitted = false
+
+    init {
+        if (initialSession.query.isNotBlank()) restoreQuery(initialSession.query)
+    }
 
     fun search(rawQuery: String) {
+        restoredQuerySubmitted = true
+        submitQuery(rawQuery, notifySeerr = true)
+    }
+
+    fun restoreQuery(rawQuery: String) {
+        val query = rawQuery.trim()
+        if (query.isEmpty() || restoredQuerySubmitted) return
+        restoredQuerySubmitted = true
+        submitQuery(query, notifySeerr = true)
+    }
+
+    fun selectSource(source: TvSearchSource) {
+        mutableSession.value = mutableSession.value.copy(source = source)
+    }
+
+    fun enterEditMode() {
+        mutableSession.value = mutableSession.value.copy(mode = TvSearchMode.EDIT)
+    }
+
+    fun enterBrowseMode() {
+        mutableSession.value = mutableSession.value.copy(mode = TvSearchMode.BROWSE)
+    }
+
+    private fun submitQuery(
+        rawQuery: String,
+        notifySeerr: Boolean,
+    ) {
         val query = rawQuery.trim()
         val requestGeneration = ++generation
         searchJob?.cancel()
         lastQuery = query
+        mutableSession.value =
+            mutableSession.value.copy(
+                query = query,
+                queryGeneration = mutableSession.value.queryGeneration + 1L,
+            )
+        if (notifySeerr) submitSeerrSearch(query)
         if (query.isEmpty()) {
             searchJob = null
             mutableState.value = TvJellyfinSearchState.Idle
             return
         }
-        mutableState.value = TvJellyfinSearchState.Loading(query)
+        val previousItems =
+            when (val current = mutableState.value) {
+                is TvJellyfinSearchState.Results -> current.items.takeIf { current.query == query }.orEmpty()
+                is TvJellyfinSearchState.Loading -> current.previousItems.takeIf { current.query == query }.orEmpty()
+                else -> emptyList()
+            }
+        mutableState.value = TvJellyfinSearchState.Loading(query, previousItems)
         searchJob =
             scope.launch {
                 delay(debounceMillis)
@@ -83,7 +144,7 @@ internal class TvJellyfinSearchCoordinator(
     }
 
     fun retry() {
-        if (lastQuery.isNotEmpty()) search(lastQuery)
+        if (lastQuery.isNotEmpty()) submitQuery(lastQuery, notifySeerr = false)
     }
 
     fun shutdown() {
@@ -139,7 +200,11 @@ private fun jellyfinSourceState(
     val queryMatches = state.queryOrNull() == query
     val items =
         if (isIncluded && queryMatches) {
-            (state as? TvJellyfinSearchState.Results)?.items.orEmpty()
+            when (state) {
+                is TvJellyfinSearchState.Results -> state.items
+                is TvJellyfinSearchState.Loading -> state.previousItems
+                else -> emptyList()
+            }
         } else {
             emptyList()
         }

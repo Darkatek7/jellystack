@@ -293,16 +293,18 @@ class TvComponentsTest {
     fun searchKeepsJellyfinResultsVisibleWhenSeerrFailsAndRetriesOnlySeerr() {
         val strings = TvStrings.current(AppLanguage.ENGLISH)
         var seerrRetries = 0
+        var session by mutableStateOf(TvSearchSessionState())
         val item = jellyfinItem("jellyfin-result", "Jellyfin result")
         composeRule.setContent {
             JellystackTvTheme {
                 TvSearchScreen(
+                    sessionState = session,
                     jellyfinState = TvJellyfinSearchState.Results("query", listOf(item)),
                     requestsState = seerrSearchFailure("query"),
                     homeState = JellyfinHomeState(),
                     strings = strings,
                     focusMemory = remember { TvFocusMemory() },
-                    onQueryChanged = {},
+                    onQueryChanged = { session = session.copy(query = it) },
                     onRetryJellyfin = {},
                     onRetrySeerr = { seerrRetries += 1 },
                     onJellyfinItem = {},
@@ -322,17 +324,19 @@ class TvComponentsTest {
     fun searchRetryRestoresFocusToTheQueryAfterTheRetryActionDisappears() {
         val strings = TvStrings.current(AppLanguage.ENGLISH)
         var requestsState by mutableStateOf<JellyseerrRequestsState>(seerrSearchFailure("query"))
+        var session by mutableStateOf(TvSearchSessionState())
         val focusCoordinator = TvFocusCoordinator<androidx.compose.ui.focus.FocusRequester>()
         composeRule.setContent {
             JellystackTvTheme {
                 TvRouteFocusScope(focusCoordinator, "search") {
                     TvSearchScreen(
+                        sessionState = session,
                         jellyfinState = TvJellyfinSearchState.Empty("query"),
                         requestsState = requestsState,
                         homeState = JellyfinHomeState(),
                         strings = strings,
                         focusMemory = remember { TvFocusMemory() },
-                        onQueryChanged = {},
+                        onQueryChanged = { session = session.copy(query = it) },
                         onRetryJellyfin = {},
                         onRetrySeerr = {
                             requestsState = seerrReady(query = "query", isSearching = true)
@@ -401,7 +405,7 @@ class TvComponentsTest {
     }
 
     @Test
-    fun discoverKeepsSuccessfulRailsVisibleAlongsideRailFailureAndRetry() {
+    fun discoverKeepsSuccessfulRailsVisibleAlongsideInlineRailFailure() {
         val strings = TvStrings.current(AppLanguage.ENGLISH)
         val item = seerrItem(42, "Available movie")
         val recommendations =
@@ -429,15 +433,14 @@ class TvComponentsTest {
 
         composeRule.onNodeWithContentDescription("Available movie").assertExists()
         composeRule.onNodeWithText(strings.discoverLoadFailed).assertExists()
-        composeRule.onNodeWithContentDescription(strings.retry).assertExists()
+        composeRule.onNodeWithContentDescription(strings.retry).assertDoesNotExist()
         composeRule.onNodeWithText(strings.noResults).assertDoesNotExist()
     }
 
     @Test
-    fun discoverRetryRestoresFocusToReplacementContent() {
+    fun discoverPartialFailureRefreshDoesNotStealItemFocus() {
         val strings = TvStrings.current(AppLanguage.ENGLISH)
         val oldItem = seerrItem(42, "Available movie")
-        val replacementItem = seerrItem(43, "Replacement movie")
         var recommendations by
             mutableStateOf<JellyseerrRecommendationsState>(
                 JellyseerrRecommendationsState.Ready(
@@ -460,46 +463,33 @@ class TvComponentsTest {
                         focusMemory = remember { TvFocusMemory() },
                         onItem = {},
                         onConnectSeerr = {},
-                        onRetry = {
-                            recommendations =
-                                JellyseerrRecommendationsState.Ready(
-                                    mapOf(
-                                        JellyseerrRecommendationRail.POPULAR_MOVIES to
-                                            recommendationRail(
-                                                JellyseerrRecommendationRail.POPULAR_MOVIES,
-                                                items = listOf(oldItem),
-                                                isLoading = true,
-                                            ),
-                                    ),
-                                )
-                        },
+                        onRetry = {},
                     )
                 }
             }
         }
 
         composeRule
-            .onNodeWithContentDescription(strings.retry)
+            .onNodeWithContentDescription("Available movie")
             .performSemanticsAction(SemanticsActions.RequestFocus)
-            .performClick()
-        composeRule.waitForIdle()
-
-        composeRule.onNodeWithContentDescription("Available movie").assertIsFocused()
+            .assertIsFocused()
         composeRule.runOnIdle {
             recommendations =
                 JellyseerrRecommendationsState.Ready(
                     mapOf(
+                        JellyseerrRecommendationRail.TRENDS to
+                            recommendationRail(JellyseerrRecommendationRail.TRENDS, errorMessage = "still offline"),
                         JellyseerrRecommendationRail.POPULAR_MOVIES to
                             recommendationRail(
                                 JellyseerrRecommendationRail.POPULAR_MOVIES,
-                                items = listOf(replacementItem),
+                                items = listOf(oldItem),
                             ),
                     ),
                 )
         }
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithContentDescription("Replacement movie").assertIsFocused()
+        composeRule.onNodeWithContentDescription("Available movie").assertIsFocused()
     }
 
     @Test
@@ -531,7 +521,8 @@ class TvComponentsTest {
             .performClick()
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithText(strings.loading).assertIsFocused()
+        composeRule.onNodeWithText(strings.loading).assertExists()
+        composeRule.onNodeWithContentDescription(strings.retry).assertDoesNotExist()
         composeRule.runOnIdle {
             recommendations =
                 JellyseerrRecommendationsState.Ready(
@@ -576,7 +567,8 @@ class TvComponentsTest {
             .performSemanticsAction(SemanticsActions.RequestFocus)
             .performClick()
         composeRule.waitForIdle()
-        composeRule.onNodeWithText(strings.loading).assertIsFocused()
+        composeRule.onNodeWithText(strings.loading).assertExists()
+        composeRule.onNodeWithContentDescription(strings.retry).assertDoesNotExist()
 
         composeRule.runOnIdle {
             recommendations = JellyseerrRecommendationsState.Error("still offline")

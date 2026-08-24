@@ -71,6 +71,18 @@ class TvAppStateHolderTest {
     }
 
     @Test
+    fun connectionsOpenedFromDiscoverReturnsToDiscover() {
+        val holder = TvAppStateHolder()
+
+        holder.selectTopLevel(TvRoute.Discover)
+        holder.push(tvConnectionsSettingsRoute())
+
+        assertEquals(tvConnectionsSettingsRoute(), holder.state.currentRoute)
+        assertTrue(holder.popRoute())
+        assertEquals(TvRoute.Discover, holder.state.currentRoute)
+    }
+
+    @Test
     fun lifecycleAndRailActionsAreExplicit() {
         val holder = TvAppStateHolder()
 

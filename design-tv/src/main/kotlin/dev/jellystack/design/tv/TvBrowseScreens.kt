@@ -12,6 +12,7 @@
 package dev.jellystack.design.tv
 
 import android.view.KeyEvent
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -62,7 +63,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
@@ -77,9 +77,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Icon
@@ -879,6 +881,7 @@ private fun TvJellyfinRow(
     listState: LazyListState,
     focusTargetId: (String) -> String,
     screenEntry: Boolean = false,
+    edgePadding: Dp = 6.dp,
     onVerticalMove: (JellyfinItem, TvHomeVerticalDirection) -> Unit = { _, _ -> },
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -888,7 +891,7 @@ private fun TvJellyfinRow(
             horizontalArrangement = Arrangement.spacedBy(18.dp),
             contentPadding =
                 androidx.compose.foundation.layout
-                    .PaddingValues(6.dp),
+                    .PaddingValues(edgePadding),
         ) {
             itemsIndexed(
                 items,
@@ -1387,22 +1390,27 @@ private fun TvDiscoverRetryFocusRecovery(
 
 @Composable
 internal fun TvSearchScreen(
+    sessionState: TvSearchSessionState = TvSearchSessionState(),
     jellyfinState: TvJellyfinSearchState,
     requestsState: JellyseerrRequestsState,
     homeState: JellyfinHomeState,
     strings: TvStrings,
     focusMemory: TvFocusMemory,
     onQueryChanged: (String) -> Unit,
+    onSourceChanged: (TvSearchSource) -> Unit = {},
+    onEnterEditMode: () -> Unit = {},
+    onEnterBrowseMode: () -> Unit = {},
     onRetryJellyfin: () -> Unit,
     onRetrySeerr: (String) -> Unit,
     onJellyfinItem: (JellyfinItem) -> Unit,
     onSeerrItem: (JellyseerrSearchItem) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var query by rememberSaveable { mutableStateOf("") }
-    var source by rememberSaveable { mutableStateOf(TvSearchSource.ALL) }
+    val query = sessionState.query
+    val source = sessionState.source
     val queryFocusRequester = remember { FocusRequester() }
     val sourceFocusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
     var retryFocusRequest by remember { mutableStateOf<TvRetryFocusRequest?>(null) }
     val presentation = tvSearchPresentation(query, source, jellyfinState, requestsState)
     val visibleJellyfin = presentation.jellyfinItems.isNotEmpty()
@@ -1446,6 +1454,25 @@ internal fun TvSearchScreen(
         fallbackTargetIds = setOf(TV_SEARCH_QUERY_TARGET),
     ) { targetId -> searchLocations[targetId]?.let { materializeTvLazyTarget(outerState, rowStates, it) } ?: false }
     TvRetryFocusRecovery(retryFocusRequest)
+    BackHandler(enabled = sessionState.mode == TvSearchMode.EDIT) {
+        keyboardController?.hide()
+        onEnterBrowseMode()
+    }
+    LaunchedEffect(sessionState.mode) {
+        // The field and source controls are emitted by the same lazy item. Waiting for
+        // placement prevents a fresh Search route from losing its initial focus request.
+        withFrameNanos { }
+        when (sessionState.mode) {
+            TvSearchMode.EDIT -> {
+                queryFocusRequester.requestFocus()
+                keyboardController?.show()
+            }
+            TvSearchMode.BROWSE -> {
+                keyboardController?.hide()
+                sourceFocusRequester.requestFocus()
+            }
+        }
+    }
     LazyColumn(
         state = outerState,
         modifier = modifier.fillMaxSize(),
@@ -1457,12 +1484,10 @@ internal fun TvSearchScreen(
             Spacer(Modifier.height(16.dp))
             OutlinedTextField(
                 value = query,
-                onValueChange = {
-                    query = it
-                    onQueryChanged(it)
-                },
+                onValueChange = onQueryChanged,
                 placeholder = { Text(strings.searchHint) },
                 singleLine = true,
+                readOnly = sessionState.mode == TvSearchMode.BROWSE,
                 colors = tvOutlinedTextFieldColors(),
                 modifier =
                     Modifier
@@ -1471,7 +1496,19 @@ internal fun TvSearchScreen(
                         .focusRequester(queryFocusRequester)
                         .fillMaxWidth(0.66f)
                         .height(64.dp)
-                        .tvReturnToNavigationRailOnLeft()
+                        .testTag("tv-search-query")
+                        .onPreviewKeyEvent { event ->
+                            if (
+                                sessionState.mode == TvSearchMode.BROWSE &&
+                                event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
+                                event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_CENTER
+                            ) {
+                                onEnterEditMode()
+                                true
+                            } else {
+                                false
+                            }
+                        }.tvReturnToNavigationRailOnLeft()
                         .focusProperties {
                             down = sourceFocusRequester
                             right = sourceFocusRequester
@@ -1481,21 +1518,23 @@ internal fun TvSearchScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 TvActionButton(
                     strings.all,
-                    { source = TvSearchSource.ALL },
-                    modifier = Modifier.focusRequester(sourceFocusRequester),
+                    { onSourceChanged(TvSearchSource.ALL) },
+                    modifier = Modifier.focusRequester(sourceFocusRequester).testTag("tv-search-source-all"),
                     primary = source == TvSearchSource.ALL,
                     focusToNavigationRailOnLeft = true,
                     focusTargetId = tvSearchSourceTargetId("all"),
                 )
                 TvActionButton(
                     "Jellyfin",
-                    { source = TvSearchSource.JELLYFIN },
+                    { onSourceChanged(TvSearchSource.JELLYFIN) },
+                    modifier = Modifier.testTag("tv-search-source-jellyfin"),
                     primary = source == TvSearchSource.JELLYFIN,
                     focusTargetId = tvSearchSourceTargetId("jellyfin"),
                 )
                 TvActionButton(
                     "Seerr",
-                    { source = TvSearchSource.SEERR },
+                    { onSourceChanged(TvSearchSource.SEERR) },
+                    modifier = Modifier.testTag("tv-search-source-seerr"),
                     primary = source == TvSearchSource.SEERR,
                     focusTargetId = tvSearchSourceTargetId("seerr"),
                 )
@@ -1532,6 +1571,7 @@ internal fun TvSearchScreen(
                     routeKey = "search",
                     listState = rowStates.getValue("jellyfin"),
                     focusTargetId = { itemId -> tvSearchResultTargetId("jellyfin", itemId) },
+                    edgePadding = 12.dp,
                 )
             }
         }
@@ -1562,6 +1602,7 @@ internal fun TvSearchScreen(
                     onSeerrItem,
                     listState = rowStates.getValue("seerr"),
                     focusTargetId = { id -> tvSearchResultTargetId("seerr", id) },
+                    edgePadding = 12.dp,
                 )
             }
         }
@@ -1638,7 +1679,6 @@ internal fun TvDiscoverScreen(
                 }
                 is TvDiscoverAvailability.Content -> {
                     if (availability.hasRailFailures) {
-                        put(TV_DISCOVER_RETRY_TARGET, TvLazyFocusLocation(outerIndex))
                         outerIndex++
                     }
                     populatedRails.forEach { rail ->
@@ -1673,18 +1713,14 @@ internal fun TvDiscoverScreen(
             TvDiscoverAvailability.Loading -> TV_DISCOVER_LOADING_TARGET
             is TvDiscoverAvailability.Failure -> TV_DISCOVER_RETRY_TARGET
             is TvDiscoverAvailability.Content ->
-                if (availability.hasRailFailures) {
-                    TV_DISCOVER_RETRY_TARGET
-                } else {
-                    firstPopulatedRail
-                        ?.let { rail ->
-                            availability.state.rails[rail]?.items?.firstOrNull()?.let {
-                                tvDiscoverItemTargetId(rail.name, "${it.mediaType}:${it.tmdbId}")
-                            }
-                        } ?: requestItems.firstOrNull()?.let {
-                        tvDiscoverItemTargetId("requests", it.id.toString())
-                    } ?: TV_DISCOVER_EMPTY_TARGET
-                }
+                firstPopulatedRail
+                    ?.let { rail ->
+                        availability.state.rails[rail]?.items?.firstOrNull()?.let {
+                            tvDiscoverItemTargetId(rail.name, "${it.mediaType}:${it.tmdbId}")
+                        }
+                    } ?: requestItems.firstOrNull()?.let {
+                    tvDiscoverItemTargetId("requests", it.id.toString())
+                } ?: TV_DISCOVER_EMPTY_TARGET
         }
     TvRouteFocusMaterializer(
         ownerId = "discover-lists",
@@ -1748,12 +1784,7 @@ internal fun TvDiscoverScreen(
             is TvDiscoverAvailability.Content -> {
                 if (availability.hasRailFailures) {
                     item("partial-error") {
-                        TvSearchSourceFailure(
-                            message = strings.discoverLoadFailed,
-                            retryLabel = strings.retry,
-                            focusTargetId = TV_DISCOVER_RETRY_TARGET,
-                            onRetry = ::retryAndRestoreFocus,
-                        )
+                        Text(strings.discoverLoadFailed, color = TvTextMuted)
                     }
                 }
                 JellyseerrRecommendationRail.entries.forEach { rail ->
@@ -1768,7 +1799,7 @@ internal fun TvDiscoverScreen(
                                 onItem,
                                 listState = rowStates.getValue(rail.name),
                                 focusTargetId = { id -> tvDiscoverItemTargetId(rail.name, id) },
-                                screenEntry = !availability.hasRailFailures && rail == firstPopulatedRail,
+                                screenEntry = rail == firstPopulatedRail,
                             )
                         }
                     }
@@ -1808,7 +1839,6 @@ internal fun TvDiscoverScreen(
                                 modifier =
                                     Modifier.tvScreenEntryFocus(
                                         availability is TvDiscoverAvailability.Content &&
-                                            !availability.hasRailFailures &&
                                             firstPopulatedRail == null &&
                                             index == 0,
                                         targetId,
@@ -1877,6 +1907,7 @@ private fun TvSeerrRow(
     listState: LazyListState,
     focusTargetId: (String) -> String,
     screenEntry: Boolean = false,
+    edgePadding: Dp = 6.dp,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         TvSectionTitle(title)
@@ -1885,7 +1916,7 @@ private fun TvSeerrRow(
             horizontalArrangement = Arrangement.spacedBy(18.dp),
             contentPadding =
                 androidx.compose.foundation.layout
-                    .PaddingValues(6.dp),
+                    .PaddingValues(edgePadding),
         ) {
             itemsIndexed(
                 items,

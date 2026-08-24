@@ -356,11 +356,37 @@ private fun TvAuthenticatedApp(
     val sessionState by sessionRepository.state.collectAsStateWithLifecycle()
     val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateFlow
         .collectAsStateWithLifecycle()
+    var savedSearchQuery by
+        rememberSaveable(authenticatedEnvironmentIdentity, appUiState.activeProfileGeneration) { mutableStateOf("") }
+    var savedSearchSource by
+        rememberSaveable(authenticatedEnvironmentIdentity, appUiState.activeProfileGeneration) {
+            mutableStateOf(TvSearchSource.ALL.name)
+        }
+    var savedSearchMode by
+        rememberSaveable(authenticatedEnvironmentIdentity, appUiState.activeProfileGeneration) {
+            mutableStateOf(TvSearchMode.EDIT.name)
+        }
     val jellyfinSearchCoordinator =
-        remember(accountGeneration, scope, browseRepository) {
-            TvJellyfinSearchCoordinator(scope = scope, searchItems = browseRepository::searchItems)
+        remember(accountGeneration, scope, browseRepository, requestsCoordinator) {
+            TvJellyfinSearchCoordinator(
+                scope = scope,
+                initialSession =
+                    TvSearchSessionState(
+                        query = savedSearchQuery,
+                        source = TvSearchSource.entries.firstOrNull { it.name == savedSearchSource } ?: TvSearchSource.ALL,
+                        mode = TvSearchMode.entries.firstOrNull { it.name == savedSearchMode } ?: TvSearchMode.EDIT,
+                    ),
+                submitSeerrSearch = requestsCoordinator::search,
+                searchItems = browseRepository::searchItems,
+            )
         }
     val jellyfinSearchState by jellyfinSearchCoordinator.state.collectAsStateWithLifecycle()
+    val searchSession by jellyfinSearchCoordinator.session.collectAsStateWithLifecycle()
+    LaunchedEffect(searchSession) {
+        savedSearchQuery = searchSession.query
+        savedSearchSource = searchSession.source.name
+        savedSearchMode = searchSession.mode.name
+    }
     DisposableEffect(jellyfinSearchCoordinator) {
         onDispose(jellyfinSearchCoordinator::shutdown)
     }
@@ -433,7 +459,6 @@ private fun TvAuthenticatedApp(
     }
 
     fun openSettingsConnections() {
-        selectTopLevel(TvRoute.Settings())
         push(tvConnectionsSettingsRoute())
     }
 
@@ -482,7 +507,7 @@ private fun TvAuthenticatedApp(
             appStateHolder.onForegrounded()
         } else {
             appStateHolder.onBackgrounded()
-            trailerPreviewCoordinator.clearFocus()
+            trailerPreviewCoordinator.onBackgrounded()
         }
     }
     DisposableEffect(accountGeneration, segmentHttpClient) {
@@ -613,6 +638,9 @@ private fun TvAuthenticatedApp(
         Modifier
             .fillMaxSize()
             .onPreviewKeyEvent { event ->
+                if (event.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
+                    trailerPreviewCoordinator.onUserInteraction()
+                }
                 if (
                     event.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
                     event.nativeKeyEvent.keyCode in
@@ -738,15 +766,16 @@ private fun TvAuthenticatedApp(
                                     )
                                 TvRoute.Search ->
                                     TvSearchScreen(
+                                        sessionState = searchSession,
                                         jellyfinState = jellyfinSearchState,
                                         requestsState = requests,
                                         homeState = homeState,
                                         strings = strings,
                                         focusMemory = focusMemory,
-                                        onQueryChanged = { query ->
-                                            requestsCoordinator.search(query)
-                                            jellyfinSearchCoordinator.search(query)
-                                        },
+                                        onQueryChanged = jellyfinSearchCoordinator::search,
+                                        onSourceChanged = jellyfinSearchCoordinator::selectSource,
+                                        onEnterEditMode = jellyfinSearchCoordinator::enterEditMode,
+                                        onEnterBrowseMode = jellyfinSearchCoordinator::enterBrowseMode,
                                         onRetryJellyfin = jellyfinSearchCoordinator::retry,
                                         onRetrySeerr = requestsCoordinator::retrySearch,
                                         onJellyfinItem = ::openJellyfinDetail,
