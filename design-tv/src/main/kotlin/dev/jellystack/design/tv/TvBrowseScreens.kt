@@ -2277,3 +2277,21 @@ internal fun JellyseerrRequestSummary.toSearchItem(): JellyseerrSearchItem? {
         requests = listOf(this),
     )
 }
+
+internal fun tvCinematicDiscoverInitialTargetId(
+    state: JellyseerrRecommendationsState.Ready,
+    requestItems: List<JellyseerrRequestSummary>,
+): String? {
+    val railTarget =
+        JellyseerrRecommendationRail.entries.firstNotNullOfOrNull { rail ->
+            state.rails[rail]?.items?.firstOrNull()?.let { item ->
+                tvCinematicFocusTargetId("discover-${rail.name.lowercase()}", item.cinematicKey())
+            }
+        }
+    if (railTarget != null) return railTarget
+    return requestItems
+        .firstNotNullOfOrNull { it.toSearchItem() }
+        ?.let { requestItem ->
+            tvCinematicFocusTargetId(DISCOVER_REQUESTS_ROW, "request:${requestItem.cinematicKey()}")
+        }
+}
