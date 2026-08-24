@@ -32,6 +32,7 @@ internal fun TvCinematicSearchContent(
     onToggleSeerrSaved: ((JellyseerrSearchItem) -> Unit)?,
     isJellyfinSaved: (JellyfinItem) -> Boolean,
     isSeerrSaved: (JellyseerrSearchItem) -> Boolean,
+    onRetryFailures: (() -> Unit)?,
     headerContent: @Composable () -> Unit,
 ) {
     val results = presentation.results
@@ -73,6 +74,21 @@ internal fun TvCinematicSearchContent(
                 onToggleSeerrSaved = onToggleSeerrSaved,
             ),
         headerContent = headerContent,
+        inlineStatusAction =
+            onRetryFailures?.let { retry ->
+                {
+                    TvActionButton(
+                        label = strings.retry,
+                        onClick = retry,
+                        focusTargetId =
+                            if (presentation.showJellyfinFailure) {
+                                TV_SEARCH_JELLYFIN_RETRY_TARGET
+                            } else {
+                                TV_SEARCH_SEERR_RETRY_TARGET
+                            },
+                    )
+                }
+            },
     )
 }
 

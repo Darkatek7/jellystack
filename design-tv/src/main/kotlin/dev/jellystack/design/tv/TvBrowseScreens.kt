@@ -1615,6 +1615,16 @@ internal fun TvSearchScreen(
             }
         }
     }
+
+    fun retryFailedSearchSources() {
+        if (presentation.showJellyfinFailure) onRetryJellyfin()
+        if (presentation.showSeerrFailure) onRetrySeerr()
+        retryFocusRequest =
+            TvRetryFocusRequest(
+                revision = (retryFocusRequest?.revision ?: 0L) + 1L,
+                preferredTargetId = TV_SEARCH_QUERY_TARGET,
+            )
+    }
     if (presentation.results.isNotEmpty()) {
         TvCinematicSearchContent(
             searchState = searchState,
@@ -1630,6 +1640,12 @@ internal fun TvSearchScreen(
             onToggleSeerrSaved = onToggleSeerrSaved,
             isJellyfinSaved = isJellyfinSaved,
             isSeerrSaved = isSeerrSaved,
+            onRetryFailures =
+                if (presentation.showJellyfinFailure || presentation.showSeerrFailure) {
+                    ::retryFailedSearchSources
+                } else {
+                    null
+                },
             headerContent = {
                 TvCinematicSearchHeader(
                     sessionState = sessionState,

@@ -71,6 +71,7 @@ internal fun TvCinematicBrowse(
     modifier: Modifier = Modifier,
     selectedItemActions: TvSelectedItemActions? = null,
     headerContent: (@Composable () -> Unit)? = null,
+    inlineStatusAction: (@Composable () -> Unit)? = null,
 ) {
     val focusAppearance = LocalTvFocusAppearance.current
     val platformContext = LocalPlatformContext.current
@@ -156,7 +157,7 @@ internal fun TvCinematicBrowse(
             }
             headerContent?.let { content -> item(key = "cinematic-header") { content() } }
             state.inlineStatus?.let { status ->
-                item(key = "cinematic-status") { TvCinematicStatusAnchor(status) }
+                item(key = "cinematic-status") { TvCinematicStatusAnchor(status, inlineStatusAction) }
             }
             items(items = state.rows, key = TvCinematicRow::id) { row ->
                 val rowState = rememberLazyListState()
@@ -339,18 +340,28 @@ internal fun tvCinematicFocusTargetId(
 ): String = "cinematic:row:$rowId:item:$cardId"
 
 @Composable
-private fun TvCinematicStatusAnchor(status: TvCinematicInlineStatus) {
+private fun TvCinematicStatusAnchor(
+    status: TvCinematicInlineStatus,
+    action: (@Composable () -> Unit)?,
+) {
     val color = if (status.kind == TvCinematicStatusKind.ERROR) Color(0xFFFFB4AB) else TvTextMuted
-    Text(
-        text = status.message,
-        color = color,
-        fontSize = 15.sp,
-        modifier =
-            Modifier
-                .testTag("cinematic-status")
-                .semantics {
-                    liveRegion = LiveRegionMode.Polite
-                    contentDescription = status.message
-                }.padding(vertical = 8.dp),
-    )
+    Row(
+        modifier = Modifier.fillMaxWidth().testTag("cinematic-status"),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = status.message,
+            color = color,
+            fontSize = 15.sp,
+            modifier =
+                Modifier
+                    .weight(1f)
+                    .semantics {
+                        liveRegion = LiveRegionMode.Polite
+                        contentDescription = status.message
+                    }.padding(vertical = 8.dp),
+        )
+        action?.invoke()
+    }
 }
