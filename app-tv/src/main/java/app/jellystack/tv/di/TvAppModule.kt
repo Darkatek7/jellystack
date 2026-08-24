@@ -15,6 +15,7 @@ import dev.jellystack.core.jellyseerr.ServerRepositoryJellyseerrEnvironmentProvi
 import dev.jellystack.core.profile.ActiveProfileRepository
 import dev.jellystack.core.profile.HouseholdProfileRepository
 import dev.jellystack.core.profile.ProfileEnvironmentProvider
+import dev.jellystack.core.profile.ProfileMyListRepository
 import dev.jellystack.core.profile.ProfilePinRepository
 import dev.jellystack.core.profile.ProfilePreferencesRepository
 import dev.jellystack.core.profile.ProfileRemovalCoordinator
@@ -49,6 +50,7 @@ val tvAppModule =
         single<JellyseerrRecommendationStore> { get<JellystackDatabase>().jellyseerrRecommendationStore() }
         single<JellyfinFavoritesStoreApi> { JellyfinFavoritesStore(get()) }
         single { ProfilePreferencesRepository(get()) }
+        single { ProfileMyListRepository(get()) }
         single { ActiveProfileRepository(get()) }
         single { ProfilePinRepository(get()) }
         single {

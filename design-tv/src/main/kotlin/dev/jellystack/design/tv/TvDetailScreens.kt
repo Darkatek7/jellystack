@@ -1379,6 +1379,8 @@ internal fun TvSeerrDetailScreen(
     requestsCoordinator: JellyseerrRequestsCoordinator,
     strings: TvStrings,
     onOpenItem: (JellyseerrSearchItem) -> Unit,
+    isInMyList: Boolean = false,
+    onToggleMyList: (JellyseerrSearchItem, Boolean) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
 ) {
     val uriHandler = LocalUriHandler.current
@@ -1413,6 +1415,7 @@ internal fun TvSeerrDetailScreen(
     val similar = detail?.enrichment?.similar.orEmpty()
     val hasRequestAction = activeRequest == null && (canRequestStandard || canRequest4k)
     val trailerUrl = detail?.trailer?.url ?: detail?.videos?.firstOrNull { it.url != null }?.url
+    val myListIsPrimary = !hasRequestAction && trailerUrl == null
     val uiState =
         buildTvSeerrDetailUiState(
             routeKey = route.focusRouteKey(),
@@ -1425,7 +1428,7 @@ internal fun TvSeerrDetailScreen(
     TvDetailFocusLayout(
         uiState = uiState,
         heroContentDescription = detail?.title ?: route.title,
-        hasPrimaryAction = hasRequestAction || trailerUrl != null,
+        hasPrimaryAction = true,
         modifier = modifier,
         heroContent = { primaryActionModifier, actionRowModifier ->
             AsyncImage(
@@ -1493,6 +1496,17 @@ internal fun TvSeerrDetailScreen(
                                 },
                         )
                     }
+                    TvActionButton(
+                        label = if (isInMyList) strings.remove else strings.myList,
+                        onClick = { onToggleMyList(fallbackItem, !isInMyList) },
+                        selected = isInMyList,
+                        modifier =
+                            if (myListIsPrimary) {
+                                primaryActionModifier.then(actionRowModifier)
+                            } else {
+                                actionRowModifier
+                            },
+                    )
                 }
             }
         },

@@ -101,6 +101,8 @@ import dev.jellystack.core.jellyseerr.JellyseerrRecommendationsState
 import dev.jellystack.core.jellyseerr.JellyseerrRequestSummary
 import dev.jellystack.core.jellyseerr.JellyseerrRequestsState
 import dev.jellystack.core.jellyseerr.JellyseerrSearchItem
+import dev.jellystack.core.profile.MediaIdentity
+import dev.jellystack.core.profile.MyListEntry
 import dev.jellystack.players.AndroidPlayerEngine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
@@ -180,6 +182,8 @@ internal fun TvHomeScreen(
     onHomeLibrary: (String, String) -> Unit,
     onLibrary: (JellyfinLibrary) -> Unit,
     onSeerrItem: (TvRoute.SeerrDetail) -> Unit,
+    myList: List<MyListEntry> = emptyList(),
+    onMyListEntry: (MyListEntry) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val heroPresentation =
@@ -193,9 +197,19 @@ internal fun TvHomeScreen(
             .orEmpty()
             .filter { it.items.isNotEmpty() }
     val focusRows =
-        remember(visibleSections, homeSections, state.continueWatching, state.nextUp, state.libraries) {
+        remember(visibleSections, homeSections, state.continueWatching, state.nextUp, state.libraries, myList) {
             buildList {
                 var lazyColumnIndex = 1
+                if (myList.isNotEmpty()) {
+                    add(
+                        TvHomeFocusRow(
+                            id = "my-list",
+                            lazyColumnIndex = lazyColumnIndex++,
+                            itemIds = myList.map { it.identity.tvMyListKey() },
+                            landscape = true,
+                        ),
+                    )
+                }
                 if (homeSections is HomeSectionsState.Ready) {
                     visibleSections.forEach { section ->
                         add(
@@ -233,6 +247,7 @@ internal fun TvHomeScreen(
     val rowListStates = rememberTvLazyRowStates(homeRowIds)
     val errorLazyColumnIndex =
         1 +
+            (if (myList.isNotEmpty()) 1 else 0) +
             if (homeSections is HomeSectionsState.Ready) {
                 visibleSections.size
             } else {
@@ -384,6 +399,25 @@ internal fun TvHomeScreen(
                 )
             }
         }
+        if (myList.isNotEmpty()) {
+            item(key = "my-list", contentType = "media-row") {
+                TvMyListRow(
+                    entries = myList,
+                    state = state,
+                    strings = strings,
+                    focusMemory = focusMemory,
+                    listState = rowListStates.getValue("my-list"),
+                    onEntry = onMyListEntry,
+                    onVerticalMove = { entry, direction ->
+                        onVerticalMove(
+                            TvHomeFocusOrigin.Row("my-list", entry.identity.tvMyListKey()),
+                            direction,
+                            entry.jellyfinItem,
+                        )
+                    },
+                )
+            }
+        }
         when (homeSections) {
             is HomeSectionsState.Ready -> {
                 items(
@@ -498,6 +532,60 @@ internal fun TvHomeScreen(
         }
     }
 }
+
+@Composable
+private fun TvMyListRow(
+    entries: List<MyListEntry>,
+    state: JellyfinHomeState,
+    strings: TvStrings,
+    focusMemory: TvFocusMemory,
+    listState: LazyListState,
+    onEntry: (MyListEntry) -> Unit,
+    onVerticalMove: (MyListEntry, TvHomeVerticalDirection) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        TvSectionTitle(strings.myList)
+        LazyRow(
+            state = listState,
+            horizontalArrangement = Arrangement.spacedBy(18.dp),
+            contentPadding =
+                androidx.compose.foundation.layout
+                    .PaddingValues(6.dp),
+        ) {
+            itemsIndexed(entries, key = { _, entry -> entry.identity.tvMyListKey() }) { index, entry ->
+                val item = entry.jellyfinItem
+                val artwork = item?.let(::resolveTvJellyfinArtwork)
+                val targetId = tvHomeCardTargetId("my-list", entry.identity.tvMyListKey())
+                TvMediaCard(
+                    title = entry.title,
+                    subtitle = if (entry.available) strings.play else strings.request,
+                    imageUrl =
+                        if (item != null) {
+                            jellyfinImageUrl(state.imageBaseUrl, state.imageAccessToken, artwork)
+                        } else {
+                            val saved = requireNotNull(entry.savedMedia)
+                            tmdbImageUrl(saved.backdropPath ?: saved.posterPath, backdrop = saved.backdropPath != null)
+                        },
+                    onClick = { onEntry(entry) },
+                    artworkFit =
+                        if (item != null && artwork?.imageType == "Primary") {
+                            TvMediaCardArtworkFit.CONTAIN_PORTRAIT
+                        } else {
+                            TvMediaCardArtworkFit.CROP
+                        },
+                    onFocused = {
+                        focusMemory.remember("home", "my-list", entry.identity.tvMyListKey(), horizontalIndex = index)
+                    },
+                    modifier = Modifier.tvHomeVerticalFocus { direction -> onVerticalMove(entry, direction) },
+                    focusTargetId = targetId,
+                    focusToNavigationRailOnLeft = index == 0,
+                )
+            }
+        }
+    }
+}
+
+private fun MediaIdentity.tvMyListKey(): String = "$mediaType:${provider.storageValue}:$providerId"
 
 internal fun shouldRequestHomeEntryFocus(
     hasRecentContent: Boolean,

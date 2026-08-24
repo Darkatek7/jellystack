@@ -11,8 +11,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -24,7 +22,6 @@ import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
-import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -36,6 +33,7 @@ import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.jellystack.core.jellyfin.JellyfinHomeState
@@ -166,14 +164,23 @@ class TvComponentsTest {
     }
 
     @Test
-    fun sectionTitleRendersWithBrightForegroundPixels() {
+    fun sectionTitleUsesReadableForegroundColor() {
+        val layoutResults = mutableListOf<TextLayoutResult>()
         composeRule.setContent {
             JellystackTvTheme {
                 TvSectionTitle("Section")
             }
         }
 
-        assertHasBrightPixels(composeRule.onNodeWithText("Section").captureToImage(), "TV section title")
+        composeRule.onNodeWithText("Section").performSemanticsAction(SemanticsActions.GetTextLayoutResult) { getResults ->
+            getResults(layoutResults)
+        }
+        assertEquals(
+            TvText,
+            layoutResults
+                .single()
+                .layoutInput.style.color,
+        )
     }
 
     @Test
@@ -737,18 +744,3 @@ private fun jellyfinItem(
     episodeTitle = null,
     lastPlayed = null,
 )
-
-private fun assertHasBrightPixels(
-    image: ImageBitmap,
-    label: String,
-) {
-    val pixels = image.toPixelMap()
-    var brightPixelCount = 0
-    for (y in 0 until pixels.height) {
-        for (x in 0 until pixels.width) {
-            val color = pixels[x, y]
-            if (color.alpha > 0.5f && color.red + color.green + color.blue > 2.4f) brightPixelCount++
-        }
-    }
-    assertTrue("Expected $label to contain bright foreground pixels.", brightPixelCount >= 8)
-}

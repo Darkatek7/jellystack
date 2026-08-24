@@ -82,11 +82,14 @@ import dev.jellystack.core.preferences.AppSettingsRepository
 import dev.jellystack.core.profile.ActiveProfileRepository
 import dev.jellystack.core.profile.HouseholdProfile
 import dev.jellystack.core.profile.HouseholdProfileRepository
+import dev.jellystack.core.profile.MyListEntry
+import dev.jellystack.core.profile.ProfileMyListRepository
 import dev.jellystack.core.profile.ProfilePinRepository
 import dev.jellystack.core.profile.ProfilePinResult
 import dev.jellystack.core.profile.ProfilePinState
 import dev.jellystack.core.profile.ProfilePreferencesRepository
 import dev.jellystack.core.profile.ProfileRemovalCoordinator
+import dev.jellystack.core.profile.mediaIdentity
 import dev.jellystack.core.server.ActiveServerPreferenceRepository
 import dev.jellystack.core.server.JellyfinQuickConnectCoordinator
 import dev.jellystack.core.server.ServerConnectionCoordinator
@@ -708,7 +711,10 @@ private fun TvAuthenticatedApp(
             JellyfinBrowseCoordinator(
                 repository = browseRepository,
                 scope = scope,
-                favoritesStore = koin.get<JellyfinFavoritesStoreApi>(),
+                favoritesStore =
+                    koin
+                        .get<JellyfinFavoritesStoreApi>()
+                        .scoped(authenticatedEnvironmentIdentity.serverConnectionId),
             )
         }
     val homeSectionsRepository =
@@ -811,6 +817,28 @@ private fun TvAuthenticatedApp(
     val recommendations by recommendationsCoordinator.state.collectAsStateWithLifecycle()
     val requests by requestsCoordinator.state.collectAsStateWithLifecycle()
     val details by recommendationsCoordinator.details.collectAsStateWithLifecycle()
+    val myListRepository = remember(accountGeneration) { koin.get<ProfileMyListRepository>() }
+    val myListProfileId = requiredProfileId(activeProfileId)
+    val savedMedia by
+        myListRepository
+            .observeSavedMedia(myListProfileId)
+            .collectAsStateWithLifecycle(initialValue = emptyList())
+    var favoriteItems by remember(accountGeneration) { mutableStateOf<Map<String, JellyfinItem>>(emptyMap()) }
+    var myList by remember(accountGeneration) { mutableStateOf<List<MyListEntry>>(emptyList()) }
+    LaunchedEffect(accountGeneration, homeState.favorites) {
+        favoriteItems =
+            runCatching { browseRepository.refreshFavoriteItems().associateBy(JellyfinItem::id) }
+                .getOrElse { emptyMap() }
+    }
+    LaunchedEffect(accountGeneration, homeState.favorites, favoriteItems, savedMedia) {
+        myList =
+            myListRepository.reconcile(
+                profileId = myListProfileId,
+                jellyfinFavoriteIds = homeState.favorites,
+                resolveFavorite = { itemId -> favoriteItems[itemId] ?: browseRepository.cachedItem(itemId) },
+                resolveIdentity = browseRepository::cachedItem,
+            )
+    }
     val deviceSettings by settingsRepository.settings.collectAsStateWithLifecycle()
     val profilePreferencesRepository = remember(koin) { koin.get<ProfilePreferencesRepository>() }
     val preferenceProfileId = activeProfileId ?: "legacy-tv-profile"
@@ -1238,6 +1266,11 @@ private fun TvAuthenticatedApp(
                                         onHomeLibrary = { libraryId, title -> push(TvRoute.Library(libraryId, title)) },
                                         onLibrary = { push(TvRoute.Library(it.id, it.name)) },
                                         onSeerrItem = ::openSeerr,
+                                        myList = myList,
+                                        onMyListEntry = { entry ->
+                                            entry.jellyfinItem?.let(::openJellyfinDetail)
+                                                ?: entry.savedMedia?.toTvRoute()?.let(::push)
+                                        },
                                     )
                                 is TvRoute.Library ->
                                     TvLibraryScreen(
@@ -1320,6 +1353,7 @@ private fun TvAuthenticatedApp(
                                     )
                                 is TvRoute.SeerrDetail -> {
                                     val key = route.mediaType to route.tmdbId
+                                    val routeItem = route.toSearchItem()
                                     TvSeerrDetailScreen(
                                         route = route,
                                         detailState = details[key],
@@ -1327,6 +1361,16 @@ private fun TvAuthenticatedApp(
                                         requestsCoordinator = requestsCoordinator,
                                         strings = strings,
                                         onOpenItem = ::openSeerr,
+                                        isInMyList = savedMedia.any { it.identity == routeItem.mediaIdentity() },
+                                        onToggleMyList = { item, save ->
+                                            scope.launch {
+                                                if (save) {
+                                                    myListRepository.saveSeerr(myListProfileId, item)
+                                                } else {
+                                                    myListRepository.removeSeerr(myListProfileId, item)
+                                                }
+                                            }
+                                        },
                                     )
                                 }
                                 TvRoute.Player ->

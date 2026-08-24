@@ -6,6 +6,8 @@ import dev.jellystack.core.jellyfin.JellyfinItemRecord
 import dev.jellystack.core.jellyfin.JellyfinItemStore
 import dev.jellystack.core.jellyfin.JellyfinLibraryRecord
 import dev.jellystack.core.jellyfin.JellyfinLibraryStore
+import dev.jellystack.core.profile.MediaIdentity
+import dev.jellystack.core.profile.MediaIdentityProvider
 import dev.jellystack.core.profile.MediaProviderIds
 import kotlinx.datetime.Instant
 
@@ -604,6 +606,24 @@ class SqlDelightJellyfinItemStore(
             }.executeAsList()
 
     override suspend fun get(itemId: String): JellyfinItemRecord? = queries.selectById(itemId).executeAsOneOrNull()?.toRecord()
+
+    override suspend fun findByProviderIdentity(
+        serverId: String,
+        identity: MediaIdentity,
+    ): JellyfinItemRecord? {
+        val jellyfinType = if (identity.mediaType == "tv") "series" else identity.mediaType
+        val row =
+            when (identity.provider) {
+                MediaIdentityProvider.TMDB ->
+                    queries.selectByTmdbId(serverId, jellyfinType, identity.providerId).executeAsOneOrNull()
+                MediaIdentityProvider.TVDB ->
+                    queries.selectByTvdbId(serverId, jellyfinType, identity.providerId).executeAsOneOrNull()
+                MediaIdentityProvider.SOURCE_LOCAL -> queries.selectById(identity.providerId).executeAsOneOrNull()
+            }
+        return row
+            ?.takeIf { it.server_id == serverId && it.type.lowercase() == jellyfinType }
+            ?.toRecord()
+    }
 
     private fun insert(record: JellyfinItemRecord) {
         queries.insertOrReplace(

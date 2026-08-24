@@ -1,5 +1,6 @@
 package dev.jellystack.core.jellyfin
 
+import dev.jellystack.core.profile.MediaIdentity
 import dev.jellystack.core.profile.MediaProviderIds
 import kotlinx.datetime.Instant
 
@@ -156,6 +157,11 @@ interface JellyfinItemStore {
     ): List<JellyfinItemRecord>
 
     suspend fun get(itemId: String): JellyfinItemRecord?
+
+    suspend fun findByProviderIdentity(
+        serverId: String,
+        identity: MediaIdentity,
+    ): JellyfinItemRecord? = null
 }
 
 interface JellyfinItemDetailStore {

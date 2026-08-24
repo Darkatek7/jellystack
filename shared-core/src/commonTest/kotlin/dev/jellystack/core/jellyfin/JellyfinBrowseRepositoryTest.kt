@@ -498,7 +498,64 @@ class JellyfinBrowseRepositoryTest {
                 detail.people,
             )
             assertEquals("603", detail.providerIds["Tmdb"])
-            assertNotNull(detailStore.get("item-1"))
+            assertNotNull(detailStore.get("srv-1:item-1"))
+        }
+
+    @Test
+    fun favoriteItemsAreFetchedWithMetadataAndCached() =
+        runTest {
+            val favorites = repository.refreshFavoriteItems()
+
+            assertEquals(listOf("item-1", "item-2"), favorites.map { it.id })
+            assertEquals("603", favorites.first().providerIds.tmdbId)
+            assertEquals("srv-1", itemStore.get("item-1")?.serverId)
+        }
+
+    @Test
+    fun detailCacheIsIsolatedByManagedConnection() =
+        runTest {
+            var activeEnvironment = environment.copy(serverKey = "connection-a", userId = "user-a")
+            var networkRequests = 0
+            val isolatedEngine =
+                MockEngine { request ->
+                    networkRequests++
+                    val user =
+                        request.url.encodedPath
+                            .substringAfter("/Users/")
+                            .substringBefore('/')
+                    respond(
+                        content = detailJson(user),
+                        status = HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                    )
+                }
+            val isolatedClient = NetworkClientFactory.create(ClientConfig(engine = isolatedEngine, installLogging = false))
+            val isolatedRepository =
+                JellyfinBrowseRepository(
+                    environmentProvider = JellyfinEnvironmentProvider { activeEnvironment },
+                    libraryStore = InMemoryLibraryStore(),
+                    itemStore = InMemoryItemStore(),
+                    detailStore = InMemoryDetailStore(),
+                    apiFactory = { env ->
+                        JellyfinBrowseApi(
+                            isolatedClient,
+                            env.baseUrl,
+                            env.accessToken,
+                            env.deviceId,
+                            clientName = "Test",
+                            deviceName = env.deviceName,
+                            clientVersion = "1.0",
+                        )
+                    },
+                    clock = FixedClock,
+                )
+
+            assertEquals("user-a", isolatedRepository.getItemDetail("shared")?.name)
+            activeEnvironment = environment.copy(serverKey = "connection-b", userId = "user-b")
+            assertEquals("user-b", isolatedRepository.getItemDetail("shared")?.name)
+            activeEnvironment = environment.copy(serverKey = "connection-a", userId = "user-a")
+            assertEquals("user-a", isolatedRepository.getItemDetail("shared")?.name)
+            assertEquals(2, networkRequests)
         }
 
     @Test
@@ -804,6 +861,8 @@ class JellyfinBrowseRepositoryTest {
     }
 
     companion object {
+        private fun detailJson(name: String): String = """{"Id":"shared","Name":"$name","Type":"Movie","MediaSources":[]}"""
+
         private const val LIBRARIES_JSON = """
             {
               "Items": [

@@ -8,6 +8,7 @@ import dev.jellystack.core.logging.JellystackLog
 import dev.jellystack.core.playback.OfflinePlaybackProgressReporter
 import dev.jellystack.core.playback.StreamingPlayStrategy
 import dev.jellystack.core.playback.StreamingProgressContext
+import dev.jellystack.core.profile.MediaIdentity
 import dev.jellystack.core.profile.MediaProviderIds
 import dev.jellystack.network.NetworkJson
 import dev.jellystack.network.jellyfin.JellyfinBrowseApi
@@ -29,6 +30,11 @@ import kotlinx.serialization.json.put
 typealias JellyfinBrowseApiFactory = (JellyfinEnvironment) -> JellyfinBrowseApi
 
 private const val FILTER_ERROR_PHRASE = "No media found with the specified filter"
+
+private fun detailCacheKey(
+    serverId: String,
+    itemId: String,
+): String = "$serverId:$itemId"
 
 data class LibraryPage(
     val items: List<JellyfinItem>,
@@ -132,7 +138,35 @@ class JellyfinBrowseRepository(
     JellyfinBrowseRepositoryApi {
     private val cachedApis = mutableMapOf<String, JellyfinBrowseApi>()
 
-    suspend fun cachedItem(itemId: String): JellyfinItem? = itemStore.get(itemId)?.toDomain()
+    suspend fun cachedItem(itemId: String): JellyfinItem? {
+        val environment = environmentProvider.current() ?: return null
+        return itemStore.get(itemId)?.takeIf { it.serverId == environment.serverKey }?.toDomain()
+    }
+
+    suspend fun cachedItem(identity: MediaIdentity): JellyfinItem? {
+        val environment = environmentProvider.current() ?: return null
+        return itemStore.findByProviderIdentity(environment.serverKey, identity)?.toDomain()
+    }
+
+    suspend fun refreshFavoriteItems(limit: Int = 10_000): List<JellyfinItem> {
+        val environment = environmentProvider.current() ?: return emptyList()
+        val response =
+            apiFor(environment).fetchLibraryItems(
+                userId = environment.userId,
+                libraryId = "",
+                startIndex = 0,
+                limit = limit.coerceIn(1, 10_000),
+                includeItemTypes = null,
+                recursive = true,
+                filters = "IsFavorite",
+            )
+        val records =
+            response.items.map { item ->
+                item.toRecord(environment, fallbackLibraryId = item.parentId, updatedAt = clock.now())
+            }
+        itemStore.upsert(records)
+        return records.map { it.toDomain() }
+    }
 
     override suspend fun refreshLibraries(): List<JellyfinLibrary> {
         val environment = environmentProvider.current() ?: return emptyList()
@@ -650,7 +684,8 @@ class JellyfinBrowseRepository(
     ): JellyfinItemDetail? {
         val environment = environmentProvider.current() ?: return null
         val now = clock.now()
-        val cached = detailStore.get(itemId)
+        val detailCacheKey = detailCacheKey(environment.serverKey, itemId)
+        val cached = detailStore.get(detailCacheKey)
         if (!forceRefresh && cached != null) {
             return cached.toDomain()
         }
@@ -658,13 +693,13 @@ class JellyfinBrowseRepository(
         val dto = api.fetchItemDetail(environment.userId, itemId)
         detailStore.upsert(
             JellyfinItemDetailRecord(
-                itemId = itemId,
+                itemId = detailCacheKey,
                 json = NetworkJson.default.encodeToString(dto),
                 updatedAt = now,
             ),
         )
         // Sync base item metadata with latest detail overview.
-        itemStore.get(itemId)?.let { existing ->
+        itemStore.get(itemId)?.takeIf { it.serverId == environment.serverKey }?.let { existing ->
             itemStore.upsert(
                 listOf(
                     existing.copy(
@@ -682,7 +717,8 @@ class JellyfinBrowseRepository(
     }
 
     suspend fun cachedItemDetail(itemId: String): JellyfinItemDetail? {
-        val record = detailStore.get(itemId) ?: return null
+        val environment = environmentProvider.current() ?: return null
+        val record = detailStore.get(detailCacheKey(environment.serverKey, itemId)) ?: return null
         return record.toDomain()
     }
 
@@ -693,7 +729,7 @@ class JellyfinBrowseRepository(
         val environment = environmentProvider.current() ?: return null
         val returnedUserData = apiFor(environment).setPlayedStatus(environment.userId, itemId, played)
         val now = clock.now()
-        val cachedRecord = detailStore.get(itemId)
+        val cachedRecord = detailStore.get(detailCacheKey(environment.serverKey, itemId))
         if (cachedRecord == null) {
             return getItemDetail(itemId, forceRefresh = true)
         }
@@ -711,7 +747,7 @@ class JellyfinBrowseRepository(
                 updatedAt = now,
             ),
         )
-        itemStore.get(itemId)?.let { item ->
+        itemStore.get(itemId)?.takeIf { it.serverId == environment.serverKey }?.let { item ->
             itemStore.upsert(
                 listOf(
                     item.copy(

@@ -37,9 +37,14 @@ import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.JellyfinLibrary
 import dev.jellystack.core.jellyfin.LibraryLoadErrorKind
 import dev.jellystack.core.preferences.AppLanguage
+import dev.jellystack.core.profile.MediaProviderIds
+import dev.jellystack.core.profile.MyListEntry
+import dev.jellystack.core.profile.SavedMediaRecord
+import dev.jellystack.core.profile.mediaIdentity
 import dev.jellystack.players.AndroidPlayerEngine
 import kotlinx.coroutines.delay
 import kotlinx.datetime.Clock
+import kotlinx.datetime.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -51,6 +56,56 @@ import kotlin.time.Duration.Companion.days
 class TvHomeScreenTest {
     @get:Rule
     val composeRule = createComposeRule()
+
+    @Test
+    fun myListOffersPlayForAvailableAndRequestForUnavailableTitles() {
+        lateinit var engine: AndroidPlayerEngine
+        val opened = mutableListOf<String>()
+        val available = item("available", "Available")
+        val unavailableSaved =
+            SavedMediaRecord(
+                profileId = "profile",
+                mediaType = "movie",
+                providerIds = MediaProviderIds(tmdbId = "99"),
+                title = "Unavailable",
+                posterPath = null,
+                backdropPath = null,
+                createdAt = Instant.fromEpochMilliseconds(1),
+                updatedAt = Instant.fromEpochMilliseconds(1),
+            )
+        val entries =
+            listOf(
+                MyListEntry(available.mediaIdentity(), available, null),
+                MyListEntry(unavailableSaved.identity, null, unavailableSaved),
+            )
+        composeRule.setContent {
+            val context = LocalContext.current
+            engine = remember(context) { AndroidPlayerEngine(context) }
+            TestHomeScreen(
+                state =
+                    JellyfinHomeState(
+                        recentMovies = listOf(item("hero", "Hero", Clock.System.now().toString())),
+                    ),
+                sections = HomeSectionsState.Loading,
+                engine = engine,
+                myList = entries,
+                onMyListEntry = { opened += it.title },
+            )
+        }
+
+        composeRule
+            .onNodeWithTag("tv-home-hero-carousel")
+            .assertIsFocused()
+            .performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.onNodeWithContentDescription("Play").assertIsFocused().performKeyInput {
+            pressKey(Key.DirectionDown)
+        }
+        composeRule.onNodeWithContentDescription("Available, Play").assertIsFocused().performClick()
+        composeRule.onNodeWithContentDescription("Available, Play").performKeyInput { pressKey(Key.DirectionRight) }
+        composeRule.onNodeWithContentDescription("Unavailable, Request").assertIsFocused().performClick()
+        composeRule.runOnIdle { assertEquals(listOf("Available", "Unavailable"), opened) }
+        composeRule.runOnIdle(engine::release)
+    }
 
     @Test
     fun recreatedHomeRestoresExactOffscreenCard() {
@@ -1167,6 +1222,8 @@ class TvHomeScreenTest {
         onHomeLibrary: (String, String) -> Unit = { _, _ -> },
         provideEntryFocus: Boolean = true,
         trailerPreviewState: TvTrailerPreviewState = TvTrailerPreviewState.Idle,
+        myList: List<MyListEntry> = emptyList(),
+        onMyListEntry: (MyListEntry) -> Unit = {},
     ) {
         val entryFocusRequester = remember { FocusRequester() }
         val focusCoordinator = remember { TvFocusCoordinator<FocusRequester>() }
@@ -1202,6 +1259,8 @@ class TvHomeScreenTest {
                     onHomeLibrary = onHomeLibrary,
                     onLibrary = {},
                     onSeerrItem = {},
+                    myList = myList,
+                    onMyListEntry = onMyListEntry,
                 )
             }
         }

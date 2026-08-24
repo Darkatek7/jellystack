@@ -3,6 +3,8 @@ package dev.jellystack.database
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import dev.jellystack.core.jellyfin.JellyfinItemRecord
 import dev.jellystack.core.profile.HouseholdProfile
+import dev.jellystack.core.profile.MediaIdentity
+import dev.jellystack.core.profile.MediaIdentityProvider
 import dev.jellystack.core.profile.MediaProviderIds
 import dev.jellystack.core.profile.ProfileConnectionBinding
 import dev.jellystack.core.profile.SavedMediaRecord
@@ -69,6 +71,51 @@ class SqlDelightProfileStoreTest {
             store.upsert(listOf(record))
 
             assertEquals(record.providerIds, store.get(record.id)?.providerIds)
+            assertEquals(
+                record.id,
+                store
+                    .findByProviderIdentity(
+                        "server",
+                        MediaIdentity("movie", MediaIdentityProvider.TMDB, "603"),
+                    )?.id,
+            )
+            assertNull(
+                store.findByProviderIdentity(
+                    "different-server",
+                    MediaIdentity("movie", MediaIdentityProvider.TMDB, "603"),
+                ),
+            )
+        }
+
+    @Test
+    fun jellyfinFavoritesAreIsolatedByManagedConnectionIdentity() =
+        runTest {
+            val favorites = JellyfinFavoritesStore(database)
+            val first = favorites.scoped("connection-a")
+            val second = favorites.scoped("connection-b")
+
+            first.replaceAll(setOf("item-a"))
+            second.replaceAll(setOf("item-b"))
+
+            assertEquals(setOf("item-a"), first.snapshot())
+            assertEquals(setOf("item-b"), second.snapshot())
+            first.delete("item-a")
+            assertEquals(emptySet(), first.snapshot())
+            assertEquals(setOf("item-b"), second.snapshot())
+        }
+
+    @Test
+    fun legacyFavoritesArePromotedOnceIntoTheExactManagedConnection() =
+        runTest {
+            val favorites = JellyfinFavoritesStore(database)
+            favorites.replaceAll(setOf("legacy-item"))
+
+            val promoted = favorites.scoped("connection-a")
+            val unrelated = favorites.scoped("connection-b")
+
+            assertEquals(setOf("legacy-item"), promoted.snapshot())
+            assertEquals(emptySet(), unrelated.snapshot())
+            assertEquals(emptySet(), favorites.snapshot())
         }
 
     private fun profile(

@@ -8,30 +8,52 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
 
-class JellyfinFavoritesStore(
-    database: JellystackDatabase,
+class JellyfinFavoritesStore private constructor(
+    private val queries: JellyfinFavoritesQueries,
+    private val scopeId: String = LEGACY_SCOPE,
 ) : JellyfinFavoritesStoreApi {
-    private val queries = database.jellyfinFavoritesQueries
+    constructor(database: JellystackDatabase) : this(database.jellyfinFavoritesQueries)
 
-    override fun snapshot(): Set<String> = queries.selectAll().executeAsList().toSet()
+    override fun scoped(scopeId: String): JellyfinFavoritesStoreApi {
+        require(scopeId.isNotBlank())
+        promoteLegacyFavorites(scopeId)
+        return JellyfinFavoritesStore(queries, scopeId)
+    }
 
-    override fun observe(): Flow<Set<String>> = queries.selectAll().asFlow().map { it.executeAsList().toSet() }
+    private fun promoteLegacyFavorites(targetScopeId: String) {
+        if (scopeId != LEGACY_SCOPE || targetScopeId == LEGACY_SCOPE) return
+        val legacyIds = queries.selectAll(LEGACY_SCOPE).executeAsList()
+        if (legacyIds.isEmpty()) return
+        queries.transaction {
+            val now = Clock.System.now().toEpochMilliseconds()
+            legacyIds.forEach { id -> queries.upsert(targetScopeId, id, now) }
+            queries.clear(LEGACY_SCOPE)
+        }
+    }
+
+    override fun snapshot(): Set<String> = queries.selectAll(scopeId).executeAsList().toSet()
+
+    override fun observe(): Flow<Set<String>> = queries.selectAll(scopeId).asFlow().map { it.executeAsList().toSet() }
 
     override suspend fun replaceAll(ids: Set<String>) =
         withContext(Dispatchers.Default) {
             queries.transaction {
-                queries.clear()
-                ids.forEach { id -> queries.upsert(id, Clock.System.now().toEpochMilliseconds()) }
+                queries.clear(scopeId)
+                ids.forEach { id -> queries.upsert(scopeId, id, Clock.System.now().toEpochMilliseconds()) }
             }
         }
 
     override suspend fun upsert(id: String) =
         withContext(Dispatchers.Default) {
-            queries.upsert(id, Clock.System.now().toEpochMilliseconds())
+            queries.upsert(scopeId, id, Clock.System.now().toEpochMilliseconds())
         }
 
     override suspend fun delete(id: String) =
         withContext(Dispatchers.Default) {
-            queries.delete(id)
+            queries.delete(scopeId, id)
         }
+
+    private companion object {
+        const val LEGACY_SCOPE = "legacy"
+    }
 }
