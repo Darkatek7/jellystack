@@ -79,16 +79,20 @@ class ServerRepository(
         mutex.withLock {
             validate(request)
             val normalizedUrl = normalizeBaseUrl(request.baseUrl)
-            val existing = store.findByTypeAndUrl(request.type, normalizedUrl)
-            if (existing != null && existing.id != request.id) {
-                throw DuplicateServerException(existing.id, request.type, normalizedUrl)
-            }
-
             val normalizedRequest = request.copy(baseUrl = normalizedUrl)
             when (val result = connectivity.test(normalizedRequest)) {
                 is ConnectivityResult.Failure ->
                     throw ConnectivityException(result.message, result.cause)
                 is ConnectivityResult.Success -> {
+                    val existing =
+                        store.findByIdentity(
+                            request.type,
+                            normalizedUrl,
+                            result.credentials.authenticatedPrincipal(),
+                        )
+                    if (existing != null && existing.id != request.id) {
+                        throw DuplicateServerException(existing.id, request.type, normalizedUrl)
+                    }
                     val record =
                         persist(
                             id = request.id,
@@ -115,7 +119,12 @@ class ServerRepository(
         mutex.withLock {
             validate(registration)
             val normalizedUrl = normalizeBaseUrl(registration.baseUrl)
-            val existing = store.findByTypeAndUrl(ServerType.JELLYFIN, normalizedUrl)
+            val existing =
+                store.findByIdentity(
+                    ServerType.JELLYFIN,
+                    normalizedUrl,
+                    registration.credentials.authenticatedPrincipal(),
+                )
             if (existing != null && existing.id != registration.id) {
                 throw DuplicateServerException(existing.id, ServerType.JELLYFIN, normalizedUrl)
             }
@@ -338,3 +347,9 @@ class ServerRepository(
         )
     }
 }
+
+private fun StoredCredential.authenticatedPrincipal(): String? =
+    when (this) {
+        is StoredCredential.Jellyfin -> userId.trim().takeIf(String::isNotEmpty)
+        is StoredCredential.ApiKey -> userId?.trim()?.takeIf(String::isNotEmpty)
+    }

@@ -37,9 +37,14 @@ import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.JellyfinLibrary
 import dev.jellystack.core.jellyfin.LibraryLoadErrorKind
 import dev.jellystack.core.preferences.AppLanguage
+import dev.jellystack.core.profile.MediaProviderIds
+import dev.jellystack.core.profile.MyListEntry
+import dev.jellystack.core.profile.SavedMediaRecord
+import dev.jellystack.core.profile.mediaIdentity
 import dev.jellystack.players.AndroidPlayerEngine
 import kotlinx.coroutines.delay
 import kotlinx.datetime.Clock
+import kotlinx.datetime.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -51,6 +56,56 @@ import kotlin.time.Duration.Companion.days
 class TvHomeScreenTest {
     @get:Rule
     val composeRule = createComposeRule()
+
+    @Test
+    fun myListOffersPlayForAvailableAndRequestForUnavailableTitles() {
+        lateinit var engine: AndroidPlayerEngine
+        val opened = mutableListOf<String>()
+        val available = item("available", "Available")
+        val unavailableSaved =
+            SavedMediaRecord(
+                profileId = "profile",
+                mediaType = "movie",
+                providerIds = MediaProviderIds(tmdbId = "99"),
+                title = "Unavailable",
+                posterPath = null,
+                backdropPath = null,
+                createdAt = Instant.fromEpochMilliseconds(1),
+                updatedAt = Instant.fromEpochMilliseconds(1),
+            )
+        val entries =
+            listOf(
+                MyListEntry(available.mediaIdentity(), available, null),
+                MyListEntry(unavailableSaved.identity, null, unavailableSaved),
+            )
+        composeRule.setContent {
+            val context = LocalContext.current
+            engine = remember(context) { AndroidPlayerEngine(context) }
+            TestHomeScreen(
+                state =
+                    JellyfinHomeState(
+                        recentMovies = listOf(item("hero", "Hero", Clock.System.now().toString())),
+                    ),
+                sections = HomeSectionsState.Loading,
+                engine = engine,
+                myList = entries,
+                onMyListEntry = { opened += it.title },
+            )
+        }
+
+        composeRule
+            .onNodeWithTag("tv-home-hero-carousel")
+            .assertIsFocused()
+            .performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.onNodeWithContentDescription("Play").assertIsFocused().performKeyInput {
+            pressKey(Key.DirectionDown)
+        }
+        composeRule.onNodeWithContentDescription("Available, Play").assertIsFocused().performClick()
+        composeRule.onNodeWithContentDescription("Available, Play").performKeyInput { pressKey(Key.DirectionRight) }
+        composeRule.onNodeWithContentDescription("Unavailable, Request").assertIsFocused().performClick()
+        composeRule.runOnIdle { assertEquals(listOf("Available", "Unavailable"), opened) }
+        composeRule.runOnIdle(engine::release)
+    }
 
     @Test
     fun recreatedHomeRestoresExactOffscreenCard() {
@@ -126,7 +181,8 @@ class TvHomeScreenTest {
     @Test
     fun recreatedLibraryRestoresExactOffscreenGridCard() {
         val shown = androidx.compose.runtime.mutableStateOf(true)
-        val preferred = androidx.compose.runtime.mutableStateOf<String?>(tvLibraryTargetId("library-27"))
+        val preferred =
+            androidx.compose.runtime.mutableStateOf<String?>(tvLibraryTargetId("library-27", sectionId = "libraries"))
         val libraries =
             (0..31).map { index ->
                 JellyfinLibrary("library-$index", "Library $index", null, index.toLong(), null)
@@ -308,7 +364,6 @@ class TvHomeScreenTest {
         val heroBounds = composeRule.onNodeWithTag("tv-home-hero-carousel").getUnclippedBoundsInRoot()
         val firstCardBounds = composeRule.onAllNodes(cardWithDescription("First media card"))[0].getUnclippedBoundsInRoot()
         assertEquals(360f, (heroBounds.bottom - heroBounds.top).value, 0.01f)
-        assertEquals(452f, firstCardBounds.top.value, 0.51f)
         assertEquals(tvHomeFirstCardTopDp().toFloat(), firstCardBounds.top.value, 0.51f)
         composeRule.runOnIdle(engine::release)
     }
@@ -990,7 +1045,7 @@ class TvHomeScreenTest {
                         onCancelPreview = {},
                         trailerPreviewEngine = engine,
                         previewSoundEnabled = false,
-                        previewProgress = 0f,
+                        previewProgress = remember { mutableStateOf(0f) },
                         onPlayItem = {},
                         onItem = {},
                         onHomeLibrary = { _, _ -> },
@@ -1167,6 +1222,8 @@ class TvHomeScreenTest {
         onHomeLibrary: (String, String) -> Unit = { _, _ -> },
         provideEntryFocus: Boolean = true,
         trailerPreviewState: TvTrailerPreviewState = TvTrailerPreviewState.Idle,
+        myList: List<MyListEntry> = emptyList(),
+        onMyListEntry: (MyListEntry) -> Unit = {},
     ) {
         val entryFocusRequester = remember { FocusRequester() }
         val focusCoordinator = remember { TvFocusCoordinator<FocusRequester>() }
@@ -1196,12 +1253,14 @@ class TvHomeScreenTest {
                     onCancelPreview = onCancelPreview,
                     trailerPreviewEngine = engine,
                     previewSoundEnabled = false,
-                    previewProgress = 0f,
+                    previewProgress = remember { mutableStateOf(0f) },
                     onPlayItem = onPlayItem,
                     onItem = onItem,
                     onHomeLibrary = onHomeLibrary,
                     onLibrary = {},
                     onSeerrItem = {},
+                    myList = myList,
+                    onMyListEntry = onMyListEntry,
                 )
             }
         }

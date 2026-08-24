@@ -25,9 +25,22 @@ interface ServerStore {
         baseUrl: String,
     ): ServerRecord?
 
+    suspend fun findByIdentity(
+        type: ServerType,
+        baseUrl: String,
+        authenticatedPrincipal: String?,
+    ): ServerRecord? =
+        list().firstOrNull { record ->
+            record.type == type &&
+                record.baseUrl == baseUrl &&
+                record.userId.normalizedPrincipal() == authenticatedPrincipal.normalizedPrincipal()
+        }
+
     suspend fun get(id: String): ServerRecord?
 
     suspend fun upsert(record: ServerRecord)
 
     suspend fun delete(id: String)
 }
+
+private fun String?.normalizedPrincipal(): String? = this?.trim()?.takeIf(String::isNotEmpty)

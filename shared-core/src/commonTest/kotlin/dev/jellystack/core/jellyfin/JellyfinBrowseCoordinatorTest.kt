@@ -463,6 +463,96 @@ class JellyfinBrowseCoordinatorTest {
         }
 
     @Test
+    fun nonDefaultQueryUsesSessionPagesAndKeepsPagingBoundaries() =
+        runTest {
+            val queryCalls = mutableListOf<Pair<Int, LibraryBrowseQuery>>()
+            val query =
+                LibraryBrowseQuery(
+                    sort = LibraryBrowseSort.DATE_ADDED,
+                    direction = LibraryBrowseDirection.DESCENDING,
+                    played = LibraryPlayedFilter.UNPLAYED,
+                )
+            val repository =
+                FakeBrowseRepository(
+                    loadPage = { _, _, _, _, _ -> LibraryPage(emptyList(), 0) },
+                    loadQueryPage = { _, page, _, requested, policy ->
+                        assertEquals(LibraryCachePolicy.SESSION_ONLY, policy)
+                        queryCalls += page to requested
+                        when (page) {
+                            0 -> LibraryPage(listOf(favoriteJellyfinItem("query-1"), favoriteJellyfinItem("query-2")), 3)
+                            else -> LibraryPage(listOf(favoriteJellyfinItem("query-3")), 3)
+                        }
+                    },
+                )
+            val coordinator =
+                JellyfinBrowseCoordinator(
+                    repository,
+                    backgroundScope,
+                    favoritesStore = FakeJellyfinFavoritesStore(),
+                    pageSize = 2,
+                    autoBootstrap = false,
+                )
+            coordinator.selectLibrary("lib-1")
+            coordinator.setLibraryBrowseQuery(query)
+            val firstPage = awaitState(coordinator) { !it.isLibraryLoading && it.libraryItems.size == 2 }
+
+            assertEquals(
+                listOf("query-1", "query-2"),
+                firstPage.libraryItems.map { it.id },
+            )
+            assertEquals(query, firstPage.libraryBrowseQuery)
+            coordinator.loadNextPage()
+            val secondPage = awaitState(coordinator) { !it.isPageLoading && it.currentPage == 1 }
+
+            assertEquals(
+                listOf("query-1", "query-2", "query-3"),
+                secondPage.libraryItems.map { it.id },
+            )
+            assertTrue(secondPage.endReached)
+            assertEquals(listOf(0 to query, 1 to query), queryCalls)
+        }
+
+    @Test
+    fun replacingQueryCancelsPreviousGenerationBeforeItCanPublish() =
+        runTest {
+            val firstStarted = CompletableDeferred<Unit>()
+            val releaseFirst = CompletableDeferred<Unit>()
+            val first = LibraryBrowseQuery(genres = setOf("Drama"))
+            val second = LibraryBrowseQuery(genres = setOf("Comedy"))
+            val repository =
+                FakeBrowseRepository(
+                    loadQueryPage = { _, _, _, query, _ ->
+                        if (query == first) {
+                            firstStarted.complete(Unit)
+                            withContext(NonCancellable) { releaseFirst.await() }
+                            LibraryPage(listOf(favoriteJellyfinItem("stale")), 1)
+                        } else {
+                            LibraryPage(listOf(favoriteJellyfinItem("current")), 1)
+                        }
+                    },
+                )
+            val coordinator =
+                JellyfinBrowseCoordinator(
+                    repository,
+                    backgroundScope,
+                    favoritesStore = FakeJellyfinFavoritesStore(),
+                    autoBootstrap = false,
+                )
+            coordinator.selectLibrary("lib-1")
+            coordinator.setLibraryBrowseQuery(first)
+            firstStarted.await()
+            coordinator.setLibraryBrowseQuery(second)
+            releaseFirst.complete(Unit)
+            val state = awaitState(coordinator) { !it.isLibraryLoading && it.libraryItems.isNotEmpty() }
+
+            assertEquals(second, state.libraryBrowseQuery)
+            assertEquals(
+                listOf("current"),
+                state.libraryItems.map { it.id },
+            )
+        }
+
+    @Test
     fun navigateUpRestoresParentItemsAndPageImmediately() =
         runTest {
             val childRequestStarted = CompletableDeferred<Unit>()
@@ -1532,6 +1622,10 @@ class JellyfinBrowseCoordinatorTest {
         private val cachedPages: Map<String, List<JellyfinItem>> = emptyMap(),
         private val loadPage: suspend (String, Int, Int, Boolean, String?) -> LibraryPage =
             { _, _, _, _, _ -> LibraryPage(emptyList(), 0) },
+        private val loadQueryPage: suspend (String, Int, Int, LibraryBrowseQuery, LibraryCachePolicy) -> LibraryPage =
+            { libraryId, page, pageSize, query, _ ->
+                loadPage(libraryId, page, pageSize, page == 0, query.takeIf { it.favoritesOnly }?.let { "IsFavorite" })
+            },
         private val loadRecentShows: suspend (String, Int) -> List<JellyfinItem> = { _, _ -> emptyList() },
         private val loadRecentMovies: suspend (String, Int) -> List<JellyfinItem> = { _, _ -> emptyList() },
         private val loadServerBaseUrl: suspend () -> String? = { "https://demo.jellyfin.org" },
@@ -1565,6 +1659,14 @@ class JellyfinBrowseCoordinatorTest {
             refresh: Boolean,
             filters: String?,
         ): LibraryPage = loadPage(libraryId, page, pageSize, refresh, filters)
+
+        override suspend fun loadLibraryPage(
+            libraryId: String,
+            page: Int,
+            pageSize: Int,
+            query: LibraryBrowseQuery,
+            cachePolicy: LibraryCachePolicy,
+        ): LibraryPage = loadQueryPage(libraryId, page, pageSize, query, cachePolicy)
 
         override suspend fun cachedLibraryPage(
             libraryId: String,

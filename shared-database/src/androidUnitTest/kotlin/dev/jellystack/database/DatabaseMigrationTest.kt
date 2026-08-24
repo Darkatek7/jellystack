@@ -6,6 +6,8 @@ import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFails
 import kotlin.test.assertTrue
 
 class DatabaseMigrationTest {
@@ -70,6 +72,56 @@ class DatabaseMigrationTest {
         assertTrue("jellyfin_favorites" in tablesFor(driver))
     }
 
+    @Test
+    fun createIncludesHouseholdProfilesSavedMediaAndProviderIds() {
+        JellystackDatabase.Schema.create(driver)
+
+        assertTrue(
+            tablesFor(driver).containsAll(
+                setOf("household_profiles", "profile_connection_bindings", "profile_saved_media"),
+            ),
+        )
+        assertTrue(columnsFor("jellyfin_items").containsAll(setOf("tmdb_id", "tvdb_id")))
+    }
+
+    @Test
+    fun migrateFromVersion7PreservesItemsAndAddsRelease2Schema() {
+        driver.execute(null, LEGACY_CREATE_ITEMS_AT_LATEST_KNOWN, 0)
+        driver.execute(
+            null,
+            "INSERT INTO jellyfin_items (id, server_id, name, type, updated_at) VALUES ('item', 'server', 'Movie', 'Movie', 1)",
+            0,
+        )
+        driver.execute(null, "PRAGMA user_version = $KNOWN_VERSION", 0)
+
+        JellystackDatabase.Schema.migrate(driver, KNOWN_VERSION, JellystackDatabase.Schema.version)
+
+        assertEquals(1L, scalarLong("SELECT COUNT(*) FROM jellyfin_items"))
+        assertTrue(columnsFor("jellyfin_items").containsAll(setOf("tmdb_id", "tvdb_id")))
+        assertTrue(
+            tablesFor(driver).containsAll(
+                setOf("household_profiles", "profile_connection_bindings", "profile_saved_media"),
+            ),
+        )
+    }
+
+    @Test
+    fun savedMediaIdentityIsUniqueWithinProfileButReusableAcrossProfiles() {
+        JellystackDatabase.Schema.create(driver)
+        driver.execute(null, "INSERT INTO household_profiles VALUES ('p1', 'One', 'one', 1, 1, NULL)", 0)
+        driver.execute(null, "INSERT INTO household_profiles VALUES ('p2', 'Two', 'two', 1, 1, NULL)", 0)
+        val insert =
+            "INSERT INTO profile_saved_media " +
+                "(profile_id, media_type, provider, provider_id, title, created_at, updated_at) " +
+                "VALUES (?, 'movie', 'tmdb', '603', 'The Matrix', 1, 1)"
+
+        driver.execute(null, insert, 1) { bindString(0, "p1") }
+        assertFails { driver.execute(null, insert, 1) { bindString(0, "p1") } }
+        driver.execute(null, insert, 1) { bindString(0, "p2") }
+
+        assertEquals(2L, scalarLong("SELECT COUNT(*) FROM profile_saved_media"))
+    }
+
     private fun columnsFor(table: String): Set<String> =
         driver
             .executeQuery(
@@ -100,6 +152,18 @@ class DatabaseMigrationTest {
                             }
                         },
                     )
+                },
+                parameters = 0,
+            ).value
+
+    private fun scalarLong(sql: String): Long =
+        driver
+            .executeQuery(
+                identifier = null,
+                sql = sql,
+                mapper = { cursor ->
+                    check(cursor.next().value)
+                    QueryResult.Value(requireNotNull(cursor.getLong(0)))
                 },
                 parameters = 0,
             ).value

@@ -5,6 +5,7 @@
     "LongMethod",
     "LongParameterList",
     "MaxLineLength",
+    "ReturnCount",
     "TooManyFunctions",
 )
 
@@ -29,6 +30,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -44,7 +46,9 @@ import androidx.compose.material.icons.filled.LocalMovies
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -54,6 +58,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onKeyEvent
@@ -143,6 +148,13 @@ internal fun tvJellyfinHeroTitlePresentation(
         textColor = TvText,
     )
 
+internal fun tvVisibleOfficialRating(rating: String?): String? {
+    val trimmed = rating?.trim().orEmpty()
+    if (trimmed.isEmpty()) return null
+    val numericRating = trimmed.toDoubleOrNull()
+    return trimmed.takeIf { numericRating == null || numericRating > 0.0 }
+}
+
 internal data class TvSeasonGroup(
     val seasonNumber: Int?,
     val episodes: List<JellyfinItem>,
@@ -188,65 +200,360 @@ internal suspend fun loadTvJellyfinDetailBase(
     return TvJellyfinDetailBase(item, detail)
 }
 
+internal data class TvDetailSectionFocusModifiers(
+    val navigationModifier: Modifier,
+    val itemModifiers: Map<String, Modifier>,
+    val itemFocusRequesters: Map<String, FocusRequester>,
+    val horizontalListState: LazyListState,
+) {
+    fun itemModifier(itemId: String): Modifier = itemModifiers[itemId] ?: Modifier
+
+    fun itemFocusRequester(itemId: String): FocusRequester? = itemFocusRequesters[itemId]
+}
+
+private data class TvPendingFocusRecovery(
+    val transactionId: Long,
+    val source: TvFocusAnchor,
+    val target: TvFocusAnchor,
+)
+
+private fun TvDetailSection.participatesInSectionFocus(): Boolean =
+    this is TvDetailSection.Episodes || this is TvDetailSection.Cast || this is TvDetailSection.Similar
+
 @Composable
 internal fun TvDetailFocusLayout(
-    routeKey: String,
+    uiState: TvDetailUiState,
     heroContentDescription: String,
-    bodyFocusItemIndex: Int = 1,
-    nextBodyItemIndex: Int? = null,
+    hasPrimaryAction: Boolean = true,
     modifier: Modifier = Modifier,
+    awaitFocusStart: suspend (TvFocusDestination) -> Unit = {},
+    awaitFocusReady: suspend (TvFocusDestination) -> Unit = { withFrameNanos { } },
     heroContent: @Composable BoxScope.(primaryActionModifier: Modifier, actionRowModifier: Modifier) -> Unit,
-    content: LazyListScope.(bodyFocusModifier: Modifier, lowerContentFocusModifier: Modifier) -> Unit,
+    content: LazyListScope.(bodyFocusModifier: Modifier, sectionFocusModifiers: Map<String, TvDetailSectionFocusModifiers>) -> Unit,
 ) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+    val routeKey = uiState.routeKey
+    val focusContext = LocalTvFocusContext.current
+    val persistedRouteKey = focusContext?.routeKey ?: routeKey
+    val focusMemory = focusContext?.focusMemory
     val heroFocusRequester = remember(routeKey) { FocusRequester() }
     val primaryActionFocusRequester = remember(routeKey) { FocusRequester() }
     val bodyFocusRequester = remember(routeKey) { FocusRequester() }
-    val lowerContentFocusRequester = remember(routeKey) { FocusRequester() }
+    val itemFocusRequesters = remember(routeKey) { mutableMapOf<String, FocusRequester>() }
+    val focusSections = uiState.sections.filter { it.participatesInSectionFocus() && it.itemIds.isNotEmpty() }
+    val horizontalListStates =
+        focusSections.associate { section ->
+            section.id to key(section.id) { rememberLazyListState() }
+        }
+    val bodySectionIndex = uiState.sections.indexOfFirst { it is TvDetailSection.Overview }.coerceAtLeast(0)
+    val bodyLazyItemIndex = bodySectionIndex + 1
+    var lastConfirmedItemAnchor by remember(routeKey) { mutableStateOf<TvFocusAnchor?>(null) }
+    var focusOwnership by remember(routeKey) { mutableStateOf<TvFocusDestination?>(null) }
+    var destinationIntent by remember(routeKey) { mutableStateOf<TvFocusDestination?>(TvFocusDestination.HERO) }
+    var pendingFocusRecovery by remember(routeKey) { mutableStateOf<TvPendingFocusRecovery?>(null) }
+    var focusTransactionId by remember(routeKey) { mutableStateOf(0L) }
+    var activeSectionIndex by remember(routeKey) { mutableStateOf(0) }
+    var activeItemIndex by remember(routeKey) { mutableStateOf(0) }
+    var pendingPersistedAnchor by
+        remember(routeKey, focusMemory) {
+            mutableStateOf(focusMemory?.restore(persistedRouteKey)?.anchor)
+        }
+    var restoringPersistedAnchor by remember(routeKey) { mutableStateOf<TvFocusAnchor?>(null) }
+    val restorationTargets =
+        buildList {
+            add(tvFocusTarget("detail:hero", actionable = true).copy(anchor = TvFocusAnchor("hero", null, TvFocusDestination.HERO)))
+            if (hasPrimaryAction) {
+                add(
+                    tvFocusTarget("detail:primary", actionable = true)
+                        .copy(anchor = TvFocusAnchor("actions", "primary", TvFocusDestination.PRIMARY_ACTION)),
+                )
+            }
+            add(tvFocusTarget("detail:body", actionable = true).copy(anchor = TvFocusAnchor("overview", null, TvFocusDestination.BODY)))
+            focusSections.forEach { section ->
+                section.itemIds.forEachIndexed { index, itemId ->
+                    add(
+                        TvFocusTarget(
+                            targetId = "detail:${section.id}:$itemId",
+                            anchor = TvFocusAnchor(section.id, itemId, TvFocusDestination.SECTION_ITEM),
+                            horizontalCenter = index.toFloat(),
+                            horizontalIndex = index,
+                        ),
+                    )
+                }
+            }
+        }
 
-    fun focusHero() {
+    fun rememberFocus(
+        anchor: TvFocusAnchor,
+        horizontalIndex: Int = 0,
+    ) {
+        if (pendingPersistedAnchor != null) {
+            if (restoringPersistedAnchor != anchor) return
+            pendingPersistedAnchor = null
+            restoringPersistedAnchor = null
+        }
+        focusMemory?.remember(
+            routeKey = persistedRouteKey,
+            anchor = anchor,
+            horizontalCenter = horizontalIndex.toFloat(),
+            horizontalIndex = horizontalIndex,
+        )
+    }
+
+    fun requesterKey(
+        sectionId: String,
+        itemId: String,
+    ): String = "$sectionId\u0000$itemId"
+
+    fun requester(
+        sectionId: String,
+        itemId: String,
+    ): FocusRequester = itemFocusRequesters.getOrPut(requesterKey(sectionId, itemId)) { FocusRequester() }
+
+    fun ownDestination(
+        destination: TvFocusDestination,
+        cancelPersistedRestoration: Boolean = true,
+    ) {
+        if (cancelPersistedRestoration) {
+            pendingPersistedAnchor = null
+            restoringPersistedAnchor = null
+        }
+        focusTransactionId += 1
+        pendingFocusRecovery = null
+        destinationIntent = destination
+        focusOwnership = null
+    }
+
+    fun focusHero(cancelPersistedRestoration: Boolean = true) {
+        ownDestination(TvFocusDestination.HERO, cancelPersistedRestoration)
+        val transactionId = focusTransactionId
         scope.launch {
+            awaitFocusStart(TvFocusDestination.HERO)
+            if (focusTransactionId != transactionId) return@launch
             listState.scrollToItem(0)
+            if (focusTransactionId != transactionId) return@launch
+            awaitFocusReady(TvFocusDestination.HERO)
+            if (focusTransactionId != transactionId) return@launch
             heroFocusRequester.requestFocus()
         }
     }
 
-    fun focusPrimaryAction() {
+    fun focusPrimaryAction(cancelPersistedRestoration: Boolean = true) {
+        ownDestination(TvFocusDestination.PRIMARY_ACTION, cancelPersistedRestoration)
+        val transactionId = focusTransactionId
         scope.launch {
+            awaitFocusStart(TvFocusDestination.PRIMARY_ACTION)
+            if (focusTransactionId != transactionId) return@launch
             listState.scrollToItem(0)
-            withFrameNanos { }
+            if (focusTransactionId != transactionId) return@launch
+            awaitFocusReady(TvFocusDestination.PRIMARY_ACTION)
+            if (focusTransactionId != transactionId) return@launch
             primaryActionFocusRequester.requestFocus()
         }
     }
 
-    fun focusBody() {
+    fun focusBodyFromHero(cancelPersistedRestoration: Boolean = true) {
+        ownDestination(TvFocusDestination.BODY, cancelPersistedRestoration)
+        val transactionId = focusTransactionId
         scope.launch {
-            listState.scrollToItem(bodyFocusItemIndex)
-            withFrameNanos { }
+            awaitFocusStart(TvFocusDestination.BODY)
+            if (focusTransactionId != transactionId) return@launch
+            listState.scrollToItem(bodyLazyItemIndex)
+            if (focusTransactionId != transactionId) return@launch
+            awaitFocusReady(TvFocusDestination.BODY)
+            if (focusTransactionId != transactionId) return@launch
             bodyFocusRequester.requestFocus()
         }
     }
 
-    fun focusLowerContent() {
-        val itemIndex = nextBodyItemIndex ?: return
+    fun focusBody(cancelPersistedRestoration: Boolean = true) {
+        ownDestination(TvFocusDestination.BODY, cancelPersistedRestoration)
+        val transactionId = focusTransactionId
         scope.launch {
-            listState.scrollToItem(itemIndex)
-            withFrameNanos { }
-            lowerContentFocusRequester.requestFocus()
+            awaitFocusStart(TvFocusDestination.BODY)
+            if (focusTransactionId != transactionId) return@launch
+            listState.scrollToItem(bodyLazyItemIndex)
+            if (focusTransactionId != transactionId) return@launch
+            awaitFocusReady(TvFocusDestination.BODY)
+            if (focusTransactionId != transactionId) return@launch
+            bodyFocusRequester.requestFocus()
         }
     }
 
+    fun focusSection(
+        sectionId: String,
+        preferredItemId: String? = null,
+        cancelPersistedRestoration: Boolean = true,
+    ) {
+        ownDestination(TvFocusDestination.SECTION_ITEM, cancelPersistedRestoration)
+        val section = uiState.section(sectionId) ?: return focusBody(cancelPersistedRestoration)
+        val itemId =
+            preferredItemId?.takeIf(section.itemIds::contains)
+                ?: section.itemIds.firstOrNull()
+                ?: return focusBody(cancelPersistedRestoration)
+        val lazyItemIndex =
+            uiState.sections
+                .indexOfFirst { it.id == sectionId }
+                .takeIf { it >= 0 }
+                ?.plus(1) ?: return focusBody(cancelPersistedRestoration)
+        val focusRequester = requester(sectionId, itemId)
+        val horizontalListState = horizontalListStates.getValue(sectionId)
+        val horizontalItemIndex = section.itemIds.indexOf(itemId)
+        val transactionId = focusTransactionId
+        scope.launch {
+            awaitFocusStart(TvFocusDestination.SECTION_ITEM)
+            if (focusTransactionId != transactionId) return@launch
+            listState.scrollToItem(lazyItemIndex)
+            if (focusTransactionId != transactionId) return@launch
+            horizontalListState.scrollToItem(horizontalItemIndex)
+            if (focusTransactionId != transactionId) return@launch
+            awaitFocusReady(TvFocusDestination.SECTION_ITEM)
+            if (focusTransactionId != transactionId) return@launch
+            val focused = runCatching { focusRequester.requestFocus() }.getOrDefault(false)
+            if (!focused && focusTransactionId == transactionId) focusBody(cancelPersistedRestoration)
+        }
+    }
+
+    fun recoveryTarget(source: TvFocusAnchor): TvFocusAnchor {
+        val resolvedSource = uiState.resolve(source)
+        if (resolvedSource != null) return source
+        val sameSection = uiState.section(source.sectionId.orEmpty())?.takeIf { it.participatesInSectionFocus() }
+        val fallbackSection =
+            sameSection ?: focusSections.getOrNull(activeSectionIndex.coerceIn(0, focusSections.lastIndex.coerceAtLeast(0)))
+        val fallbackItem =
+            fallbackSection?.itemIds?.getOrNull(activeItemIndex.coerceIn(0, fallbackSection.itemIds.lastIndex.coerceAtLeast(0)))
+        return if (fallbackSection != null && fallbackItem != null) {
+            TvFocusAnchor(fallbackSection.id, fallbackItem, TvFocusDestination.SECTION_ITEM)
+        } else {
+            TvFocusAnchor("overview", null, TvFocusDestination.BODY)
+        }
+    }
+
+    val recoverySource =
+        lastConfirmedItemAnchor?.takeIf { source ->
+            focusOwnership == TvFocusDestination.SECTION_ITEM && uiState.resolve(source) == null
+        }
+
     LaunchedEffect(routeKey) {
-        listState.scrollToItem(0)
-        heroFocusRequester.requestFocus()
+        if (pendingPersistedAnchor == null) {
+            focusHero(cancelPersistedRestoration = false)
+        } else if (
+            pendingPersistedAnchor?.destination == TvFocusDestination.SECTION_ITEM &&
+            uiState.section(pendingPersistedAnchor?.sectionId.orEmpty()) == null
+        ) {
+            focusHero(cancelPersistedRestoration = false)
+        }
+    }
+    LaunchedEffect(uiState.sections, pendingPersistedAnchor) {
+        val pending = pendingPersistedAnchor ?: return@LaunchedEffect
+        if (
+            pending.destination == TvFocusDestination.SECTION_ITEM &&
+            uiState.section(pending.sectionId.orEmpty()) == null
+        ) {
+            return@LaunchedEffect
+        }
+        val target = focusMemory?.resolve(persistedRouteKey, restorationTargets) ?: return@LaunchedEffect
+        restoringPersistedAnchor = target.anchor
+        when (target.anchor.destination) {
+            TvFocusDestination.HERO -> focusHero(cancelPersistedRestoration = false)
+            TvFocusDestination.PRIMARY_ACTION -> focusPrimaryAction(cancelPersistedRestoration = false)
+            TvFocusDestination.BODY -> focusBody(cancelPersistedRestoration = false)
+            TvFocusDestination.SECTION_ITEM ->
+                focusSection(
+                    sectionId = target.anchor.sectionId.orEmpty(),
+                    preferredItemId = target.anchor.itemId,
+                    cancelPersistedRestoration = false,
+                )
+        }
+    }
+    LaunchedEffect(uiState.sections, lastConfirmedItemAnchor) {
+        val anchor = lastConfirmedItemAnchor ?: return@LaunchedEffect
+        val resolved = uiState.resolve(anchor) ?: return@LaunchedEffect
+        activeSectionIndex = focusSections.indexOfFirst { it.id == anchor.sectionId }.coerceAtLeast(0)
+        activeItemIndex = resolved.itemIndex
+    }
+    LaunchedEffect(uiState.sections, recoverySource) {
+        val source = recoverySource ?: return@LaunchedEffect
+        focusTransactionId += 1
+        pendingFocusRecovery = TvPendingFocusRecovery(focusTransactionId, source, recoveryTarget(source))
+    }
+    LaunchedEffect(pendingFocusRecovery, uiState.sections) {
+        val pending = pendingFocusRecovery ?: return@LaunchedEffect
+
+        fun isCurrent(): Boolean =
+            pendingFocusRecovery?.transactionId == pending.transactionId &&
+                focusOwnership == TvFocusDestination.SECTION_ITEM &&
+                lastConfirmedItemAnchor == pending.source
+
+        val currentTarget =
+            pending.target.takeIf { it.destination == TvFocusDestination.BODY }
+                ?: recoveryTarget(pending.source)
+        if (currentTarget != pending.target) {
+            if (isCurrent()) pendingFocusRecovery = pending.copy(target = currentTarget)
+            return@LaunchedEffect
+        }
+        if (currentTarget.destination == TvFocusDestination.SECTION_ITEM) {
+            val sectionId = currentTarget.sectionId ?: return@LaunchedEffect
+            val itemId = currentTarget.itemId ?: return@LaunchedEffect
+            val lazyItemIndex =
+                uiState.sections
+                    .indexOfFirst { it.id == sectionId }
+                    .takeIf { it >= 0 }
+                    ?.plus(1)
+            if (lazyItemIndex == null) {
+                if (isCurrent()) {
+                    pendingFocusRecovery = pending.copy(target = TvFocusAnchor("overview", null, TvFocusDestination.BODY))
+                }
+                return@LaunchedEffect
+            }
+            val section = uiState.section(sectionId) ?: return@LaunchedEffect
+            val horizontalItemIndex = section.itemIds.indexOf(itemId).takeIf { it >= 0 }
+            val horizontalListState = horizontalListStates[sectionId]
+            if (horizontalItemIndex == null || horizontalListState == null) {
+                if (isCurrent()) {
+                    pendingFocusRecovery = pending.copy(target = TvFocusAnchor("overview", null, TvFocusDestination.BODY))
+                }
+                return@LaunchedEffect
+            }
+            listState.scrollToItem(lazyItemIndex)
+            if (!isCurrent()) return@LaunchedEffect
+            horizontalListState.scrollToItem(horizontalItemIndex)
+            if (!isCurrent()) return@LaunchedEffect
+            withFrameNanos { }
+            if (!isCurrent()) return@LaunchedEffect
+            val focused = runCatching { requester(sectionId, itemId).requestFocus() }.getOrDefault(false)
+            if (!focused && isCurrent()) {
+                pendingFocusRecovery = pending.copy(target = TvFocusAnchor("overview", null, TvFocusDestination.BODY))
+            }
+        } else {
+            destinationIntent = TvFocusDestination.BODY
+            listState.scrollToItem(bodyLazyItemIndex)
+            if (!isCurrent()) return@LaunchedEffect
+            withFrameNanos { }
+            if (!isCurrent()) return@LaunchedEffect
+            val focused = runCatching { bodyFocusRequester.requestFocus() }.getOrDefault(false)
+            if (isCurrent()) {
+                if (!focused) focusOwnership = null
+                destinationIntent = null
+                pendingFocusRecovery = null
+            }
+        }
     }
 
     val primaryActionModifier =
         Modifier
             .focusRequester(primaryActionFocusRequester)
             .testTag("tv-detail-primary-action")
-            .onPreviewKeyEvent { event ->
+            .onFocusChanged { focusState ->
+                if (focusState.isFocused && destinationIntent == TvFocusDestination.PRIMARY_ACTION) {
+                    focusOwnership = TvFocusDestination.PRIMARY_ACTION
+                    destinationIntent = null
+                }
+                if (focusState.isFocused) {
+                    rememberFocus(TvFocusAnchor("actions", "primary", TvFocusDestination.PRIMARY_ACTION))
+                }
+            }.onPreviewKeyEvent { event ->
                 if (
                     event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
                     event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_UP
@@ -279,33 +586,104 @@ internal fun TvDetailFocusLayout(
                 val isInitialDownPress =
                     event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN && event.nativeKeyEvent.repeatCount == 0
                 if (isInitialDownPress && event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_UP) {
-                    focusPrimaryAction()
+                    if (hasPrimaryAction) {
+                        focusPrimaryAction()
+                    } else {
+                        focusHero()
+                    }
                     true
-                } else if (nextBodyItemIndex != null && isInitialDownPress &&
+                } else if (focusSections.isNotEmpty() &&
+                    isInitialDownPress &&
                     event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_DOWN
                 ) {
-                    focusLowerContent()
+                    focusSection(focusSections.first().id)
                     true
                 } else {
                     false
+                }
+            }.onFocusChanged { focusState ->
+                if (focusState.isFocused) {
+                    rememberFocus(TvFocusAnchor("overview", null, TvFocusDestination.BODY))
+                    val pending = pendingFocusRecovery
+                    if (pending?.target?.destination == TvFocusDestination.BODY) {
+                        focusOwnership = TvFocusDestination.BODY
+                        destinationIntent = null
+                        pendingFocusRecovery = null
+                    } else if (destinationIntent == TvFocusDestination.BODY) {
+                        focusOwnership = TvFocusDestination.BODY
+                        destinationIntent = null
+                    }
                 }
             }.focusable()
-    val lowerContentFocusModifier =
-        Modifier
-            .focusRequester(lowerContentFocusRequester)
-            .testTag("tv-detail-lower-content-focus")
-            .onPreviewKeyEvent { event ->
-                if (
-                    event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
-                    event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_UP &&
-                    event.nativeKeyEvent.repeatCount == 0
-                ) {
-                    focusBody()
-                    true
-                } else {
-                    false
+    val sectionFocusModifiers =
+        focusSections
+            .mapIndexed { sectionIndex, section ->
+                val focusRequesters = section.itemIds.associateWith { itemId -> requester(section.id, itemId) }
+                val itemModifiers =
+                    section.itemIds.associateWith { itemId ->
+                        Modifier
+                            .testTag("tv-detail-section-${section.id}-item-$itemId")
+                            .onFocusChanged { focusState ->
+                                val itemAnchor = TvFocusAnchor(section.id, itemId, TvFocusDestination.SECTION_ITEM)
+                                if (focusState.isFocused) {
+                                    focusTransactionId += 1
+                                    pendingFocusRecovery = null
+                                    activeSectionIndex = sectionIndex
+                                    activeItemIndex = section.itemIds.indexOf(itemId).coerceAtLeast(0)
+                                    lastConfirmedItemAnchor = itemAnchor
+                                    rememberFocus(itemAnchor, activeItemIndex)
+                                    focusOwnership = TvFocusDestination.SECTION_ITEM
+                                    destinationIntent = null
+                                }
+                            }
+                    }
+                val navigationModifier =
+                    Modifier
+                        .onPreviewKeyEvent { event ->
+                            val isInitialPress =
+                                event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
+                                    event.nativeKeyEvent.repeatCount == 0
+                            if (!isInitialPress) {
+                                false
+                            } else {
+                                when (event.nativeKeyEvent.keyCode) {
+                                    KeyEvent.KEYCODE_DPAD_UP -> {
+                                        if (sectionIndex == 0) focusBody() else focusSection(focusSections[sectionIndex - 1].id)
+                                        true
+                                    }
+                                    KeyEvent.KEYCODE_DPAD_DOWN -> {
+                                        if (sectionIndex < focusSections.lastIndex) {
+                                            focusSection(focusSections[sectionIndex + 1].id)
+                                            true
+                                        } else {
+                                            false
+                                        }
+                                    }
+                                    else -> false
+                                }
+                            }
+                        }
+                section.id to
+                    TvDetailSectionFocusModifiers(
+                        navigationModifier = navigationModifier,
+                        itemModifiers = itemModifiers,
+                        itemFocusRequesters = focusRequesters,
+                        horizontalListState = horizontalListStates.getValue(section.id),
+                    )
+            }.toMap()
+
+    SideEffect {
+        val retainedRequesterKeys =
+            buildSet {
+                focusSections.forEach { section ->
+                    section.itemIds.forEach { itemId -> add(requesterKey(section.id, itemId)) }
                 }
+                listOfNotNull(pendingFocusRecovery?.source, pendingFocusRecovery?.target)
+                    .filter { it.destination == TvFocusDestination.SECTION_ITEM }
+                    .forEach { anchor -> add(requesterKey(anchor.sectionId.orEmpty(), anchor.itemId.orEmpty())) }
             }
+        itemFocusRequesters.keys.retainAll(retainedRequesterKeys)
+    }
 
     LazyColumn(
         state = listState,
@@ -320,26 +698,45 @@ internal fun TvDetailFocusLayout(
                     .focusRequester(heroFocusRequester)
                     .testTag("tv-detail-hero")
                     .semantics { contentDescription = heroContentDescription }
-                    .onKeyEvent { event ->
+                    .onFocusChanged { focusState ->
+                        if (focusState.isFocused && destinationIntent == TvFocusDestination.HERO) {
+                            focusOwnership = TvFocusDestination.HERO
+                            destinationIntent = null
+                        }
+                        if (focusState.isFocused) {
+                            rememberFocus(TvFocusAnchor("hero", null, TvFocusDestination.HERO))
+                        }
+                    }.onKeyEvent { event ->
                         if (
                             event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
                             event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_DOWN
                         ) {
-                            primaryActionFocusRequester.requestFocus()
+                            if (hasPrimaryAction) {
+                                focusPrimaryAction()
+                            } else {
+                                focusBodyFromHero()
+                            }
                             true
                         } else {
                             false
                         }
                     }.tvFocusable(
-                        onClick = { primaryActionFocusRequester.requestFocus() },
+                        onClick = {
+                            if (hasPrimaryAction) {
+                                focusPrimaryAction()
+                            } else {
+                                focusBodyFromHero()
+                            }
+                        },
                         shape = RoundedCornerShape(0.dp),
                         scale = 1f,
+                        showFocusBorder = false,
                     ),
             ) {
                 heroContent(primaryActionModifier, actionRowModifier)
             }
         }
-        content(bodyFocusModifier, lowerContentFocusModifier)
+        content(bodyFocusModifier, sectionFocusModifiers)
     }
 }
 
@@ -433,6 +830,31 @@ internal fun TvJellyfinDetailScreen(
     val logoTag = currentItem.seriesLogoImageTag ?: currentDetail.logoImageTag ?: currentItem.logoImageTag ?: currentItem.parentLogoImageTag
     val titlePresentation = tvJellyfinHeroTitlePresentation(currentItem.type, logoTag)
     val hasResumePosition = (currentItem.positionTicks ?: 0L) > 0L
+    val facts =
+        listOfNotNull(
+            currentDetail.productionYear?.toString(),
+            currentDetail.runTimeTicks?.let { "${it / 600_000_000L} min" },
+            tvVisibleOfficialRating(currentDetail.officialRating),
+            tvRatingLabel(currentDetail.communityRating),
+            currentDetail.mediaSources
+                .firstOrNull()
+                ?.streams
+                ?.firstOrNull { it.width != null }
+                ?.height
+                ?.let { "${it}p" },
+        )
+    val uiState =
+        buildTvJellyfinDetailUiState(
+            routeKey = route.itemId,
+            facts = facts,
+            overview = currentDetail.overview,
+            tagline = currentDetail.taglines.firstOrNull(),
+            seasonGroups = seasonGroups,
+            selectedSeasonIndex = selectedSeasonIndex,
+            episodes = visibleEpisodes,
+            cast = currentDetail.people,
+            similar = similar,
+        )
 
     fun startPlayback(startPolicy: PlaybackStartPolicy) {
         scope.launch {
@@ -447,11 +869,8 @@ internal fun TvJellyfinDetailScreen(
         }
     }
     TvDetailFocusLayout(
-        routeKey = route.itemId,
+        uiState = uiState,
         heroContentDescription = currentDetail.name,
-        bodyFocusItemIndex = 2,
-        nextBodyItemIndex =
-            if (episodes.isNotEmpty() || currentDetail.people.isNotEmpty() || similar.isNotEmpty()) 3 else null,
         modifier = modifier,
         heroContent = { primaryActionModifier, actionRowModifier ->
             AsyncImage(
@@ -462,7 +881,7 @@ internal fun TvJellyfinDetailScreen(
                         heroId,
                         backdropTag ?: currentDetail.primaryImageTag,
                         if (backdropTag != null) "Backdrop" else "Primary",
-                        1800,
+                        TvArtworkSize.HERO.maxWidth,
                     ),
                 contentDescription = currentDetail.name,
                 modifier = Modifier.fillMaxSize(),
@@ -479,7 +898,7 @@ internal fun TvJellyfinDetailScreen(
                 ),
             )
             Column(
-                Modifier.align(Alignment.BottomStart).padding(start = 108.dp, end = 42.dp, bottom = 38.dp).widthIn(max = 760.dp),
+                Modifier.align(Alignment.BottomStart).padding(start = 108.dp, end = 48.dp, bottom = 38.dp).widthIn(max = 760.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 if (titlePresentation.useGraphicLogo) {
@@ -491,7 +910,7 @@ internal fun TvJellyfinDetailScreen(
                                 logoId,
                                 checkNotNull(logoTag),
                                 "Logo",
-                                700,
+                                TvArtworkSize.LOGO.maxWidth,
                             ),
                         contentDescription = currentDetail.name,
                         modifier = Modifier.widthIn(max = 380.dp).heightIn(max = 120.dp),
@@ -587,117 +1006,16 @@ internal fun TvJellyfinDetailScreen(
                 }
             }
         },
-    ) { bodyFocusModifier, lowerContentFocusModifier ->
-        item("facts") {
-            Row(Modifier.padding(start = 108.dp, end = 42.dp), horizontalArrangement = Arrangement.spacedBy(22.dp)) {
-                listOfNotNull(
-                    currentDetail.productionYear?.toString(),
-                    currentDetail.runTimeTicks?.let { "${it / 600_000_000L} min" },
-                    currentDetail.officialRating,
-                    currentDetail.communityRating?.let { "★ %.1f".format(it) },
-                    currentDetail.mediaSources
-                        .firstOrNull()
-                        ?.streams
-                        ?.firstOrNull { it.width != null }
-                        ?.height
-                        ?.let { "${it}p" },
-                ).forEach { Text(it, color = TvTextMuted, fontSize = 18.sp) }
-            }
-        }
-        item("overview") {
-            Column(
-                bodyFocusModifier.padding(start = 108.dp, end = 42.dp).fillMaxWidth(0.78f),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                TvSectionTitle(strings.overview)
-                currentDetail.taglines.firstOrNull()?.let { Text(it, color = TvPurple, fontSize = 20.sp, fontWeight = FontWeight.SemiBold) }
-                Text(currentDetail.overview ?: strings.noOverview, color = TvText, fontSize = 20.sp, lineHeight = 29.sp)
-            }
-        }
-        if (episodes.isNotEmpty()) {
-            if (seasonGroups.size > 1) {
-                item("seasons") {
-                    Column(Modifier.padding(start = 108.dp, end = 42.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        TvSectionTitle(strings.seasons)
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
-                        ) {
-                            itemsIndexed(
-                                seasonGroups,
-                                key = { _, group -> "season-${group.seasonNumber ?: Int.MAX_VALUE}" },
-                            ) { index, group ->
-                                val label =
-                                    group.seasonNumber
-                                        ?.let { season -> strings.seasonNumber.format(season) }
-                                        ?: strings.specials
-                                TvActionButton(
-                                    label,
-                                    { selectedSeasonIndex = index },
-                                    primary = index == selectedSeasonIndex.coerceIn(seasonGroups.indices),
-                                    modifier = Modifier.widthIn(min = 150.dp),
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-            item("episodes") {
-                TvDetailItemRow(
-                    strings.episodes,
-                    visibleEpisodes,
-                    homeState,
-                    onOpenItem,
-                    firstItemModifier = lowerContentFocusModifier,
-                )
-            }
-        }
-        if (currentDetail.people.isNotEmpty()) {
-            item("cast") {
-                Column(Modifier.padding(start = 108.dp, end = 42.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    TvSectionTitle(strings.cast)
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                        items(currentDetail.people.take(16), key = { it.id }) { person ->
-                            TvMediaCard(
-                                title = person.name,
-                                subtitle = person.role,
-                                landscape = false,
-                                focusable = false,
-                                imageUrl =
-                                    jellyfinImageUrl(
-                                        homeState.imageBaseUrl,
-                                        homeState.imageAccessToken,
-                                        person.id,
-                                        person.primaryImageTag,
-                                        "Primary",
-                                        400,
-                                    ),
-                                onClick = {},
-                                modifier =
-                                    if (episodes.isEmpty() && person.id == currentDetail.people.first().id) {
-                                        lowerContentFocusModifier
-                                    } else {
-                                        Modifier
-                                    },
-                            )
-                        }
-                    }
-                }
-            }
-        }
-        if (similar.isNotEmpty()) {
-            item("similar") {
-                TvDetailItemRow(
-                    strings.similar,
-                    similar,
-                    homeState,
-                    onOpenItem,
-                    firstItemModifier =
-                        if (episodes.isEmpty() && currentDetail.people.isEmpty()) lowerContentFocusModifier else Modifier,
-                )
-            }
-        }
-        item { Spacer(Modifier.height(50.dp)) }
+    ) { bodyFocusModifier, sectionFocusModifiers ->
+        tvJellyfinDetailSections(
+            uiState = uiState,
+            homeState = homeState,
+            strings = strings,
+            bodyFocusModifier = bodyFocusModifier,
+            sectionFocusModifiers = sectionFocusModifiers,
+            onOpenItem = onOpenItem,
+            onSelectSeason = { selectedSeasonIndex = it },
+        )
     }
     resumeAskRequest?.let { request ->
         Dialog(onDismissRequest = { resumeAskRequest = null }) {
@@ -708,7 +1026,13 @@ internal fun TvJellyfinDetailScreen(
                     .padding(34.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp),
             ) {
-                Text(strings.resumeAskTitle, fontSize = 30.sp, fontWeight = FontWeight.Bold, color = TvText)
+                Text(
+                    strings.resumeAskTitle,
+                    modifier = Modifier.tvHeading(),
+                    fontSize = 30.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TvText,
+                )
                 Text(
                     strings.continueFrom.format(request.positionLabel),
                     fontSize = 19.sp,
@@ -739,24 +1063,175 @@ internal fun TvJellyfinDetailScreen(
     }
 }
 
+internal fun LazyListScope.tvJellyfinDetailSections(
+    uiState: TvDetailUiState,
+    homeState: JellyfinHomeState,
+    strings: TvStrings,
+    bodyFocusModifier: Modifier,
+    sectionFocusModifiers: Map<String, TvDetailSectionFocusModifiers>,
+    onOpenItem: (JellyfinItem) -> Unit,
+    onSelectSeason: (Int) -> Unit,
+) {
+    uiState.sections.forEach { section ->
+        when (section) {
+            is TvDetailSection.Facts ->
+                item(section.id) {
+                    Row(Modifier.padding(start = 108.dp, end = 48.dp), horizontalArrangement = Arrangement.spacedBy(22.dp)) {
+                        section.values.forEach { Text(it, color = TvTextMuted, fontSize = 18.sp) }
+                    }
+                }
+            is TvDetailSection.Overview ->
+                item(section.id) {
+                    Column(
+                        bodyFocusModifier.padding(start = 108.dp, end = 48.dp).fillMaxWidth(0.78f),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        TvSectionTitle(strings.overview)
+                        section.tagline?.let { Text(it, color = TvPurple, fontSize = 20.sp, fontWeight = FontWeight.SemiBold) }
+                        Text(section.text ?: strings.noOverview, color = TvText, fontSize = 20.sp, lineHeight = 29.sp)
+                    }
+                }
+            is TvDetailSection.Seasons ->
+                item(section.id) {
+                    Column(Modifier.padding(start = 108.dp, end = 48.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        TvSectionTitle(strings.seasons)
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                        ) {
+                            itemsIndexed(section.groups, key = {
+                                    _,
+                                    group,
+                                ->
+                                "season-${group.seasonNumber ?: Int.MAX_VALUE}"
+                            }) { index, group ->
+                                val label =
+                                    group.seasonNumber
+                                        ?.let { season -> strings.seasonNumber.format(season) }
+                                        ?: strings.specials
+                                TvActionButton(
+                                    label,
+                                    { onSelectSeason(index) },
+                                    primary = index == section.selectedIndex.coerceIn(section.groups.indices),
+                                    selected = index == section.selectedIndex.coerceIn(section.groups.indices),
+                                    modifier = Modifier.widthIn(min = 150.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+            is TvDetailSection.Episodes -> {
+                val focusModifiers = sectionFocusModifiers.getValue(section.id)
+                item(section.id) {
+                    TvDetailItemRow(strings.episodes, section.items, homeState, onOpenItem, focusModifiers)
+                }
+            }
+            is TvDetailSection.Cast -> {
+                val focusModifiers = sectionFocusModifiers.getValue(section.id)
+                val people = section.items.mapNotNull { it as? TvDetailCastItem.Jellyfin }
+                item(section.id) {
+                    Column(
+                        Modifier
+                            .padding(start = 108.dp, end = 48.dp)
+                            .then(focusModifiers.navigationModifier),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        TvSectionTitle(strings.cast)
+                        LazyRow(
+                            state = focusModifiers.horizontalListState,
+                            horizontalArrangement = Arrangement.spacedBy(18.dp),
+                        ) {
+                            items(people, key = TvDetailCastItem.Jellyfin::id, contentType = { "cast-card" }) { castItem ->
+                                val person = castItem.person
+                                TvMediaCard(
+                                    title = person.name,
+                                    subtitle = person.role,
+                                    format = TvMediaCardFormat.CAST_PORTRAIT,
+                                    imageUrl =
+                                        jellyfinImageUrl(
+                                            homeState.imageBaseUrl,
+                                            homeState.imageAccessToken,
+                                            person.id,
+                                            person.primaryImageTag,
+                                            "Primary",
+                                            TvArtworkSize.PORTRAIT_CARD.maxWidth,
+                                        ),
+                                    onClick = null,
+                                    modifier = focusModifiers.itemModifier(person.id),
+                                    providedFocusRequester = focusModifiers.itemFocusRequester(person.id),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            is TvDetailSection.Similar -> {
+                val focusModifiers = sectionFocusModifiers.getValue(section.id)
+                val items = section.items.mapNotNull { it as? TvDetailSimilarItem.Jellyfin }
+                item(section.id) {
+                    TvKeyedDetailItemRow(
+                        title = strings.similar,
+                        keyedItems = items.map { TvKeyedJellyfinDetailItem(it.id, it.item) },
+                        homeState = homeState,
+                        onOpenItem = onOpenItem,
+                        focusModifiers = focusModifiers,
+                    )
+                }
+            }
+            is TvDetailSection.Ratings -> Unit
+        }
+    }
+    item("detail-bottom-spacer") { Spacer(Modifier.height(50.dp)) }
+}
+
+private data class TvKeyedJellyfinDetailItem(
+    val id: String,
+    val item: JellyfinItem,
+)
+
 @Composable
 private fun TvDetailItemRow(
     title: String,
     items: List<JellyfinItem>,
     homeState: JellyfinHomeState,
     onOpenItem: (JellyfinItem) -> Unit,
-    firstItemModifier: Modifier = Modifier,
+    focusModifiers: TvDetailSectionFocusModifiers,
+) = TvKeyedDetailItemRow(
+    title = title,
+    keyedItems = items.map { TvKeyedJellyfinDetailItem(it.id, it) },
+    homeState = homeState,
+    onOpenItem = onOpenItem,
+    focusModifiers = focusModifiers,
+)
+
+@Composable
+private fun TvKeyedDetailItemRow(
+    title: String,
+    keyedItems: List<TvKeyedJellyfinDetailItem>,
+    homeState: JellyfinHomeState,
+    onOpenItem: (JellyfinItem) -> Unit,
+    focusModifiers: TvDetailSectionFocusModifiers,
 ) {
-    Column(Modifier.padding(start = 108.dp, end = 42.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(
+        Modifier
+            .padding(start = 108.dp, end = 48.dp)
+            .then(focusModifiers.navigationModifier),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
         TvSectionTitle(title)
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-            items(items, key = { it.id }) { item ->
+        LazyRow(
+            state = focusModifiers.horizontalListState,
+            horizontalArrangement = Arrangement.spacedBy(18.dp),
+        ) {
+            items(keyedItems, key = TvKeyedJellyfinDetailItem::id, contentType = { "media-card" }) { keyedItem ->
+                val item = keyedItem.item
+                val hasLandscapeArtwork = item.seriesThumbImageTag != null || item.thumbImageTag != null
                 TvMediaCard(
                     title = item.episodeTitle ?: item.name,
                     subtitle =
                         listOfNotNull(
                             item.productionYear?.toString(),
-                            item.communityRating?.let { "★ %.1f".format(it) },
+                            tvRatingLabel(item.communityRating),
                         ).joinToString("  •  "),
                     imageUrl =
                         jellyfinImageUrl(
@@ -764,14 +1239,136 @@ private fun TvDetailItemRow(
                             homeState.imageAccessToken,
                             item.seriesId ?: item.id,
                             item.seriesThumbImageTag ?: item.thumbImageTag ?: item.primaryImageTag,
-                            if (item.seriesThumbImageTag != null || item.thumbImageTag != null) "Thumb" else "Primary",
+                            if (hasLandscapeArtwork) "Thumb" else "Primary",
                         ),
+                    artworkFit =
+                        if (hasLandscapeArtwork) {
+                            TvMediaCardArtworkFit.CROP
+                        } else {
+                            TvMediaCardArtworkFit.CONTAIN_PORTRAIT
+                        },
                     onClick = { onOpenItem(item) },
-                    modifier = if (item.id == items.first().id) firstItemModifier else Modifier,
+                    modifier = focusModifiers.itemModifier(keyedItem.id),
+                    providedFocusRequester = focusModifiers.itemFocusRequester(keyedItem.id),
                 )
             }
         }
     }
+}
+
+internal fun LazyListScope.tvSeerrDetailSections(
+    uiState: TvDetailUiState,
+    strings: TvStrings,
+    bodyFocusModifier: Modifier,
+    sectionFocusModifiers: Map<String, TvDetailSectionFocusModifiers>,
+    onOpenItem: (JellyseerrSearchItem) -> Unit,
+) {
+    uiState.sections.forEach { section ->
+        when (section) {
+            is TvDetailSection.Overview ->
+                item(section.id) {
+                    Column(
+                        bodyFocusModifier.padding(horizontal = 58.dp).fillMaxWidth(0.72f),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        TvSectionTitle(strings.overview)
+                        section.tagline?.let { Text(it, color = TvPurple, fontSize = 20.sp, fontWeight = FontWeight.SemiBold) }
+                        Text(section.text ?: strings.noOverview, color = TvText, fontSize = 20.sp, lineHeight = 29.sp)
+                    }
+                }
+            is TvDetailSection.Ratings ->
+                item(section.id) {
+                    Row(Modifier.padding(horizontal = 58.dp), horizontalArrangement = Arrangement.spacedBy(22.dp)) {
+                        listOfNotNull(
+                            section.values.tmdb?.let { "TMDB %.1f".format(it) },
+                            section.values.imdb?.let { "IMDb %.1f".format(it) },
+                            section.values.rottenTomatoesCritics?.let { "RT Critics %.0f%%".format(it) },
+                            section.values.rottenTomatoesAudience?.let { "RT Audience %.0f%%".format(it) },
+                        ).forEach { value ->
+                            Box(
+                                Modifier
+                                    .background(TvSurfaceRaised, RoundedCornerShape(16.dp))
+                                    .padding(horizontal = 22.dp, vertical = 16.dp),
+                            ) {
+                                Text(value, color = TvText, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+                }
+            is TvDetailSection.Cast -> {
+                val focusModifiers = sectionFocusModifiers.getValue(section.id)
+                val people = section.items.mapNotNull { it as? TvDetailCastItem.Seerr }
+                item(section.id) {
+                    Column(
+                        Modifier
+                            .padding(horizontal = 58.dp)
+                            .then(focusModifiers.navigationModifier),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        TvSectionTitle(strings.cast)
+                        LazyRow(
+                            state = focusModifiers.horizontalListState,
+                            horizontalArrangement = Arrangement.spacedBy(18.dp),
+                        ) {
+                            items(people, key = TvDetailCastItem.Seerr::id, contentType = { "cast-card" }) { castItem ->
+                                val person = castItem.person
+                                TvMediaCard(
+                                    title = person.name,
+                                    imageUrl = tmdbImageUrl(person.profilePath),
+                                    onClick = null,
+                                    subtitle = person.character,
+                                    format = TvMediaCardFormat.CAST_PORTRAIT,
+                                    modifier = focusModifiers.itemModifier(castItem.id),
+                                    providedFocusRequester = focusModifiers.itemFocusRequester(castItem.id),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            is TvDetailSection.Similar -> {
+                val focusModifiers = sectionFocusModifiers.getValue(section.id)
+                val items = section.items.mapNotNull { it as? TvDetailSimilarItem.Seerr }
+                item(section.id) {
+                    Column(
+                        Modifier
+                            .padding(horizontal = 58.dp)
+                            .then(focusModifiers.navigationModifier),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        TvSectionTitle(strings.similar)
+                        LazyRow(
+                            state = focusModifiers.horizontalListState,
+                            horizontalArrangement = Arrangement.spacedBy(18.dp),
+                        ) {
+                            items(items, key = TvDetailSimilarItem.Seerr::id, contentType = { "media-card" }) { similarItem ->
+                                val item = similarItem.item
+                                TvMediaCard(
+                                    title = item.title,
+                                    imageUrl = tmdbImageUrl(item.backdropPath ?: item.posterPath, item.backdropPath != null),
+                                    onClick = { onOpenItem(item) },
+                                    subtitle = item.releaseYear,
+                                    artworkFit =
+                                        if (item.backdropPath == null && item.posterPath != null) {
+                                            TvMediaCardArtworkFit.CONTAIN_PORTRAIT
+                                        } else {
+                                            TvMediaCardArtworkFit.CROP
+                                        },
+                                    modifier = focusModifiers.itemModifier(similarItem.id),
+                                    providedFocusRequester = focusModifiers.itemFocusRequester(similarItem.id),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            is TvDetailSection.Facts,
+            is TvDetailSection.Seasons,
+            is TvDetailSection.Episodes,
+            -> Unit
+        }
+    }
+    item("detail-bottom-spacer") { Spacer(Modifier.height(50.dp)) }
 }
 
 @Composable
@@ -782,6 +1379,8 @@ internal fun TvSeerrDetailScreen(
     requestsCoordinator: JellyseerrRequestsCoordinator,
     strings: TvStrings,
     onOpenItem: (JellyseerrSearchItem) -> Unit,
+    isInMyList: Boolean = false,
+    onToggleMyList: (JellyseerrSearchItem, Boolean) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
 ) {
     val uriHandler = LocalUriHandler.current
@@ -813,161 +1412,135 @@ internal fun TvSeerrDetailScreen(
     LaunchedEffect(activeRequest?.id) {
         if (activeRequest != null) showRequestDialog = false
     }
-    Box(modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(26.dp)) {
-            item("hero") {
-                Box(Modifier.fillMaxWidth().height(520.dp)) {
-                    AsyncImage(
-                        model =
-                            tmdbImageUrl(
-                                detail?.backdropPath ?: route.backdropPath ?: detail?.posterPath ?: route.posterPath,
-                                backdrop = (detail?.backdropPath ?: route.backdropPath) != null,
-                            ),
-                        contentDescription = detail?.title ?: route.title,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop,
-                    )
-                    Box(
-                        Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.verticalGradient(
-                                    listOf(Color.Black.copy(0.1f), TvBackground.copy(0.2f), TvBackground),
-                                ),
-                            ),
-                    )
-                    Column(
-                        Modifier.align(Alignment.BottomStart).padding(start = 58.dp, bottom = 38.dp).fillMaxWidth(0.62f),
-                        verticalArrangement = Arrangement.spacedBy(13.dp),
-                    ) {
-                        Text(
-                            detail?.title ?: route.title,
-                            color = TvText,
-                            fontSize = 46.sp,
-                            lineHeight = 49.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 2,
-                        )
-                        Text((detail?.genres.orEmpty()).take(4).joinToString("  •  "), color = TvTextMuted, fontSize = 19.sp)
-                        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                            when {
-                                activeRequest != null ->
-                                    TvActionButton(
-                                        activeRequest.availability.standard.label(strings),
-                                        {},
-                                        enabled = false,
-                                        modifier = Modifier.width(250.dp),
-                                    )
-                                canRequestStandard || canRequest4k ->
-                                    TvActionButton(
-                                        strings.request,
-                                        primary = true,
-                                        onClick = { showRequestDialog = true },
-                                        modifier = Modifier.width(230.dp),
-                                    )
-                                readyRequests != null -> Text(strings.cannotRequest, color = TvTextMuted)
-                            }
-                            (detail?.trailer?.url ?: detail?.videos?.firstOrNull { it.url != null }?.url)?.let { trailerUrl ->
-                                TvActionButton(strings.trailer, { runCatching { uriHandler.openUri(trailerUrl) } })
-                            }
-                        }
-                    }
-                }
-            }
-            item("overview") {
-                Column(Modifier.padding(horizontal = 58.dp).fillMaxWidth(0.72f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    TvSectionTitle(strings.overview)
-                    detail?.tagline?.let { Text(it, color = TvPurple, fontSize = 20.sp, fontWeight = FontWeight.SemiBold) }
-                    Text(
-                        detail?.overview ?: route.overview ?: strings.noOverview,
-                        color = TvText,
-                        fontSize = 20.sp,
-                        lineHeight = 29.sp,
-                    )
-                }
-            }
-            detail?.ratings?.let { ratings ->
-                item("ratings") {
-                    Row(Modifier.padding(horizontal = 58.dp), horizontalArrangement = Arrangement.spacedBy(22.dp)) {
-                        listOfNotNull(
-                            ratings.tmdb?.let { "TMDB %.1f".format(it) },
-                            ratings.imdb?.let { "IMDb %.1f".format(it) },
-                            ratings.rottenTomatoesCritics?.let { "RT Critics %.0f%%".format(it) },
-                            ratings.rottenTomatoesAudience?.let { "RT Audience %.0f%%".format(it) },
-                        ).forEach { value ->
-                            Box(
-                                Modifier
-                                    .background(TvSurfaceRaised, RoundedCornerShape(16.dp))
-                                    .padding(horizontal = 22.dp, vertical = 16.dp),
-                            ) {
-                                Text(value, color = TvText, fontWeight = FontWeight.SemiBold)
-                            }
-                        }
-                    }
-                }
-            }
-            if (!detail?.cast.isNullOrEmpty()) {
-                item("cast") {
-                    Column(Modifier.padding(horizontal = 58.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        TvSectionTitle(strings.cast)
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                            items(detail!!.cast.take(16), key = { it.id }) { person ->
-                                TvMediaCard(
-                                    person.name,
-                                    tmdbImageUrl(person.profilePath),
-                                    {},
-                                    subtitle = person.character,
-                                    landscape = false,
-                                    focusable = false,
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-            val similar = detail?.enrichment?.similar.orEmpty()
-            if (similar.isNotEmpty()) {
-                item("similar") {
-                    Column(Modifier.padding(horizontal = 58.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        TvSectionTitle(strings.similar)
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                            items(similar, key = { "${it.mediaType}:${it.tmdbId}" }) { item ->
-                                TvMediaCard(
-                                    item.title,
-                                    tmdbImageUrl(item.backdropPath ?: item.posterPath, item.backdropPath != null),
-                                    { onOpenItem(item) },
-                                    subtitle = item.releaseYear,
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-            item { Spacer(Modifier.height(50.dp)) }
-        }
-        if (showRequestDialog && readyRequests != null) {
-            TvRequestDialog(
-                title = detail?.title ?: route.title,
-                mediaType = route.mediaType,
-                seasons =
-                    detail
-                        ?.seasons
-                        .orEmpty()
-                        .filter { it.seasonNumber > 0 }
-                        .map { it.seasonNumber },
-                requestsState = readyRequests,
-                strings = strings,
-                onDismiss = { showRequestDialog = false },
-                onSubmit = { profile, selection, variant ->
-                    requestsCoordinator.submitRequest(
-                        item = fallbackItem,
-                        profileSelection = profile,
-                        seasons = selection,
-                        variant = variant,
-                    )
-                },
+    val similar = detail?.enrichment?.similar.orEmpty()
+    val hasRequestAction = activeRequest == null && (canRequestStandard || canRequest4k)
+    val trailerUrl = detail?.trailer?.url ?: detail?.videos?.firstOrNull { it.url != null }?.url
+    val myListIsPrimary = !hasRequestAction && trailerUrl == null
+    val uiState =
+        buildTvSeerrDetailUiState(
+            routeKey = route.focusRouteKey(),
+            overview = detail?.overview ?: route.overview,
+            tagline = detail?.tagline,
+            ratings = detail?.ratings,
+            cast = detail?.cast.orEmpty(),
+            similar = similar,
+        )
+    TvDetailFocusLayout(
+        uiState = uiState,
+        heroContentDescription = detail?.title ?: route.title,
+        hasPrimaryAction = true,
+        modifier = modifier,
+        heroContent = { primaryActionModifier, actionRowModifier ->
+            AsyncImage(
+                model =
+                    tmdbImageUrl(
+                        detail?.backdropPath ?: route.backdropPath ?: detail?.posterPath ?: route.posterPath,
+                        backdrop = (detail?.backdropPath ?: route.backdropPath) != null,
+                    ),
+                contentDescription = detail?.title ?: route.title,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
             )
-        }
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color.Black.copy(0.1f), TvBackground.copy(0.2f), TvBackground),
+                        ),
+                    ),
+            )
+            Column(
+                Modifier.align(Alignment.BottomStart).padding(start = 58.dp, bottom = 38.dp).fillMaxWidth(0.62f),
+                verticalArrangement = Arrangement.spacedBy(13.dp),
+            ) {
+                Text(
+                    detail?.title ?: route.title,
+                    color = TvText,
+                    fontSize = 46.sp,
+                    lineHeight = 49.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                )
+                Text((detail?.genres.orEmpty()).take(4).joinToString("  •  "), color = TvTextMuted, fontSize = 19.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    when {
+                        activeRequest != null ->
+                            TvActionButton(
+                                activeRequest.availability.standard.label(strings),
+                                {},
+                                enabled = false,
+                                modifier = Modifier.width(250.dp),
+                            )
+                        hasRequestAction ->
+                            TvActionButton(
+                                strings.request,
+                                primary = true,
+                                onClick = { showRequestDialog = true },
+                                modifier =
+                                    primaryActionModifier
+                                        .then(actionRowModifier)
+                                        .width(TV_DETAIL_PRIMARY_ACTION_WIDTH_DP.dp),
+                            )
+                        readyRequests != null -> Text(strings.cannotRequest, color = TvTextMuted)
+                    }
+                    trailerUrl?.let { url ->
+                        TvActionButton(
+                            strings.trailer,
+                            { runCatching { uriHandler.openUri(url) } },
+                            modifier =
+                                if (hasRequestAction) {
+                                    actionRowModifier
+                                } else {
+                                    primaryActionModifier.then(actionRowModifier)
+                                },
+                        )
+                    }
+                    TvActionButton(
+                        label = if (isInMyList) strings.remove else strings.myList,
+                        onClick = { onToggleMyList(fallbackItem, !isInMyList) },
+                        selected = isInMyList,
+                        modifier =
+                            if (myListIsPrimary) {
+                                primaryActionModifier.then(actionRowModifier)
+                            } else {
+                                actionRowModifier
+                            },
+                    )
+                }
+            }
+        },
+    ) { bodyFocusModifier, sectionFocusModifiers ->
+        tvSeerrDetailSections(
+            uiState = uiState,
+            strings = strings,
+            bodyFocusModifier = bodyFocusModifier,
+            sectionFocusModifiers = sectionFocusModifiers,
+            onOpenItem = onOpenItem,
+        )
+    }
+    if (showRequestDialog && readyRequests != null) {
+        TvRequestDialog(
+            title = detail?.title ?: route.title,
+            mediaType = route.mediaType,
+            seasons =
+                detail
+                    ?.seasons
+                    .orEmpty()
+                    .filter { it.seasonNumber > 0 }
+                    .map { it.seasonNumber },
+            requestsState = readyRequests,
+            strings = strings,
+            onDismiss = { showRequestDialog = false },
+            onSubmit = { profile, selection, variant ->
+                requestsCoordinator.submitRequest(
+                    item = fallbackItem,
+                    profileSelection = profile,
+                    seasons = selection,
+                    variant = variant,
+                )
+            },
+        )
     }
 }
 
@@ -1029,11 +1602,13 @@ private fun TvRequestDialog(
                         strings.standard,
                         { variant = JellyseerrRequestVariant.STANDARD },
                         primary = variant == JellyseerrRequestVariant.STANDARD,
+                        selected = variant == JellyseerrRequestVariant.STANDARD,
                     )
                     TvActionButton(
                         "4K",
                         { variant = JellyseerrRequestVariant.FOUR_K },
                         primary = variant == JellyseerrRequestVariant.FOUR_K,
+                        selected = variant == JellyseerrRequestVariant.FOUR_K,
                     )
                 }
             }
@@ -1045,7 +1620,14 @@ private fun TvRequestDialog(
                         androidx.compose.foundation.layout
                             .PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                 ) {
-                    item { TvActionButton(strings.all, { allSeasons = true }, primary = allSeasons) }
+                    item {
+                        TvActionButton(
+                            strings.all,
+                            { allSeasons = true },
+                            primary = allSeasons,
+                            selected = allSeasons,
+                        )
+                    }
                     items(seasons) { season ->
                         val selected = allSeasons || season in selectedSeasons
                         TvActionButton(
@@ -1060,6 +1642,7 @@ private fun TvRequestDialog(
                                 }
                             },
                             primary = selected,
+                            selected = selected,
                         )
                     }
                 }
@@ -1077,6 +1660,7 @@ private fun TvRequestDialog(
                             strings.serverDefault,
                             { profile = JellyseerrRequestProfileSelection.ServerDefault },
                             primary = profile is JellyseerrRequestProfileSelection.ServerDefault,
+                            selected = profile is JellyseerrRequestProfileSelection.ServerDefault,
                         )
                     }
                     items(profiles, key = { "${it.serviceId}:${it.languageProfileId}:${it.profileId}" }) { option ->
@@ -1084,6 +1668,7 @@ private fun TvRequestDialog(
                             option.name,
                             { profile = JellyseerrRequestProfileSelection.Profile(option) },
                             primary = (profile as? JellyseerrRequestProfileSelection.Profile)?.option == option,
+                            selected = (profile as? JellyseerrRequestProfileSelection.Profile)?.option == option,
                         )
                     }
                 }

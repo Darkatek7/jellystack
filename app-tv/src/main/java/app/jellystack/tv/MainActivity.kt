@@ -18,6 +18,8 @@ import dev.jellystack.core.preferences.AppSettingsRepository
 import dev.jellystack.core.preferences.ResumeMode
 import dev.jellystack.core.preferences.StreamingQualityPreference
 import dev.jellystack.core.preferences.SubtitleMode
+import dev.jellystack.core.profile.ActiveProfileRepository
+import dev.jellystack.core.profile.ProfilePreferencesRepository
 import dev.jellystack.design.tv.TvJellystackRoot
 import dev.jellystack.players.AndroidPlaybackSessionBridge
 import dev.jellystack.players.AndroidPlayerEngine
@@ -38,10 +40,13 @@ class MainActivity : AppCompatActivity() {
     private lateinit var playbackBridge: AndroidPlaybackSessionBridge
     private lateinit var trailerPreviewEngine: AndroidPlayerEngine
     private lateinit var trailerPreviewController: PlaybackController
+    private lateinit var platformActions: TvPlatformActionCoordinator<KeyEvent>
+    private lateinit var voiceSearch: AndroidTvVoiceSearch
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.decorView.setViewTreeNavigationEventDispatcherOwner(this)
+        voiceSearch = AndroidTvVoiceSearch.create(this)
         playerEngine =
             AndroidPlayerEngine(
                 context = applicationContext,
@@ -49,6 +54,8 @@ class MainActivity : AppCompatActivity() {
             )
         val koin = JellystackDI.koin
         val settingsRepository = koin.get<AppSettingsRepository>()
+        val activeProfileRepository = koin.get<ActiveProfileRepository>()
+        val profilePreferencesRepository = koin.get<ProfilePreferencesRepository>()
         val browseRepository = koin.get<JellyfinBrowseRepository>()
         val playbackSettings =
             SharedPreferencesSettings(
@@ -66,7 +73,13 @@ class MainActivity : AppCompatActivity() {
                 playerEngine = playerEngine,
                 streamingProgressReporter = JellyfinStreamingProgressReporter(browseRepository),
                 subtitlePreferenceStore = SettingsSubtitlePreferenceStore(playbackSettings),
-                playbackPreferencesProvider = PlaybackPreferencesProvider { settingsRepository.settings.value },
+                playbackPreferencesProvider =
+                    PlaybackPreferencesProvider {
+                        val deviceSettings = settingsRepository.settings.value
+                        activeProfileRepository.profileId.value
+                            ?.let { profilePreferencesRepository.preferences(it).value.applyTo(deviceSettings) }
+                            ?: deviceSettings
+                    },
             )
         trailerPreviewController = createTrailerPreviewController(settingsRepository)
         playbackBridge =
@@ -77,17 +90,36 @@ class MainActivity : AppCompatActivity() {
                 seekBackMs = { settingsRepository.settings.value.seekBackSeconds * 1_000L },
                 seekForwardMs = { settingsRepository.settings.value.seekForwardSeconds * 1_000L },
             )
+        platformActions =
+            TvPlatformActionCoordinator(
+                object : TvPlatformActions<KeyEvent> {
+                    override fun setKeepScreenOn(enabled: Boolean) {
+                        if (enabled) {
+                            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                        } else {
+                            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                        }
+                    }
+
+                    override fun markPlaybackStarted() = playbackBridge.markPlaybackStarted()
+
+                    override fun handleMediaKey(event: KeyEvent): Boolean = playbackBridge.handleMediaKeyEvent(event)
+
+                    override fun stopTrailer() = trailerPreviewController.stop(saveProgress = false)
+
+                    override fun stopPlayback() = playbackBridge.stopPlayback()
+
+                    override fun releaseTrailer() = trailerPreviewController.release()
+
+                    override fun releaseBridge() = playbackBridge.release()
+
+                    override fun releasePlayback() = playbackController.release()
+                },
+            )
         lifecycleScope.launch {
-            var playbackWasActive = false
             playbackController.state.collect { state ->
                 val playbackIsActive = state is PlaybackState.Active || state is PlaybackState.Preparing
-                if (playbackIsActive) {
-                    window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                } else {
-                    window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                }
-                if (playbackIsActive && !playbackWasActive) playbackBridge.markPlaybackStarted()
-                playbackWasActive = playbackIsActive
+                platformActions.onPlaybackActivityChanged(playbackIsActive)
             }
         }
         setContent {
@@ -98,6 +130,8 @@ class MainActivity : AppCompatActivity() {
                 trailerPreviewEngine = trailerPreviewEngine,
                 appVersion = BuildConfig.VERSION_NAME,
                 stopPlayback = playbackBridge::stopPlayback,
+                coldLaunch = savedInstanceState == null,
+                voiceSearch = voiceSearch,
             )
         }
     }
@@ -128,20 +162,17 @@ class MainActivity : AppCompatActivity() {
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val isPlaybackVisible = playbackController.state.value is PlaybackState.Active
-        if (isPlaybackVisible && playbackBridge.handleMediaKeyEvent(event)) return true
+        if (platformActions.dispatchMediaKey(event, isPlaybackVisible)) return true
         return super.dispatchKeyEvent(event)
     }
 
     override fun onStop() {
-        trailerPreviewController.stop(saveProgress = false)
-        if (!isChangingConfigurations) playbackBridge.stopPlayback()
+        platformActions.onStop(isChangingConfigurations)
         super.onStop()
     }
 
     override fun onDestroy() {
-        trailerPreviewController.release()
-        playbackBridge.release()
-        playbackController.release()
+        platformActions.onDestroy()
         super.onDestroy()
     }
 }

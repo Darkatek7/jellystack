@@ -1,0 +1,41 @@
+ALTER TABLE jellyfin_items ADD COLUMN tmdb_id TEXT;
+ALTER TABLE jellyfin_items ADD COLUMN tvdb_id TEXT;
+
+CREATE TABLE household_profiles (
+    id TEXT NOT NULL PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    avatar_seed TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    last_active_at INTEGER
+);
+
+CREATE TABLE profile_connection_bindings (
+    profile_id TEXT NOT NULL PRIMARY KEY,
+    jellyfin_connection_id TEXT NOT NULL,
+    seerr_connection_id TEXT,
+    FOREIGN KEY (profile_id) REFERENCES household_profiles(id) ON DELETE CASCADE
+);
+
+CREATE INDEX profile_bindings_jellyfin_connection
+ON profile_connection_bindings(jellyfin_connection_id);
+
+CREATE INDEX profile_bindings_seerr_connection
+ON profile_connection_bindings(seerr_connection_id);
+
+CREATE TABLE profile_saved_media (
+    profile_id TEXT NOT NULL,
+    media_type TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    provider_id TEXT NOT NULL,
+    tmdb_id TEXT,
+    tvdb_id TEXT,
+    source_local_id TEXT,
+    title TEXT NOT NULL,
+    poster_path TEXT,
+    backdrop_path TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (profile_id, media_type, provider, provider_id),
+    FOREIGN KEY (profile_id) REFERENCES household_profiles(id) ON DELETE CASCADE
+);

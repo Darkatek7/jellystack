@@ -1,5 +1,7 @@
 package dev.jellystack.core.jellyfin
 
+import dev.jellystack.core.profile.MediaProviderIds
+
 data class JellyfinLibrary(
     val id: String,
     val name: String,
@@ -47,6 +49,7 @@ data class JellyfinItem(
     val seriesLogoImageTag: String? = null,
     val seriesArtImageTag: String? = null,
     val seriesBannerImageTag: String? = null,
+    val providerIds: MediaProviderIds = MediaProviderIds(sourceLocalId = id),
 )
 
 data class JellyfinItemDetail(

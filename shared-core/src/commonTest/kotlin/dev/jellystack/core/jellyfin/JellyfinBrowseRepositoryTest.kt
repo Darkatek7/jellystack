@@ -21,6 +21,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -384,8 +385,21 @@ class JellyfinBrowseRepositoryTest {
             val items = repository.loadLibraryPage(libraryId = "lib-1", page = 0, pageSize = 2, refresh = true)
 
             assertEquals(2, items.items.size)
+            assertEquals(
+                "603",
+                items.items
+                    .first()
+                    .providerIds.tmdbId,
+            )
+            assertEquals(
+                "item-1",
+                items.items
+                    .first()
+                    .providerIds.sourceLocalId,
+            )
             val stored = itemStore.listByLibrary(environment.serverKey, "lib-1", limit = 10, offset = 0)
             assertEquals(2, stored.size)
+            assertEquals("603", stored.single { it.id == "item-1" }.providerIds.tmdbId)
         }
 
     @Test
@@ -485,7 +499,133 @@ class JellyfinBrowseRepositoryTest {
                 detail.people,
             )
             assertEquals("603", detail.providerIds["Tmdb"])
-            assertNotNull(detailStore.get("item-1"))
+            assertNotNull(detailStore.get("srv-1:item-1"))
+        }
+
+    @Test
+    fun favoriteItemsAreFetchedWithMetadataAndCached() =
+        runTest {
+            val favorites = repository.refreshFavoriteItems()
+
+            assertEquals(listOf("item-1", "item-2"), favorites.map { it.id })
+            assertEquals("603", favorites.first().providerIds.tmdbId)
+            assertEquals("srv-1", itemStore.get("item-1")?.serverId)
+        }
+
+    @Test
+    fun sessionBrowseQueryNeverMutatesCanonicalLibraryCache() =
+        runTest {
+            val headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+            val isolatedEngine =
+                MockEngine { request ->
+                    when (request.url.encodedPath) {
+                        "/Users/user-123/Views" -> respond(LIBRARIES_JSON, HttpStatusCode.OK, headers)
+                        "/Users/user-123/Items" -> {
+                            val body = if (request.url.parameters["Genres"] == "Drama") FILTERED_ITEMS_JSON else ITEMS_JSON
+                            respond(body, HttpStatusCode.OK, headers)
+                        }
+                        else -> error("Unexpected request path: ${request.url.encodedPath}")
+                    }
+                }
+            val isolatedClient = NetworkClientFactory.create(ClientConfig(engine = isolatedEngine, installLogging = false))
+            val isolatedItems = InMemoryItemStore()
+            val isolatedRepository =
+                JellyfinBrowseRepository(
+                    environmentProvider,
+                    InMemoryLibraryStore(),
+                    isolatedItems,
+                    InMemoryDetailStore(),
+                    apiFactory = { env ->
+                        JellyfinBrowseApi(
+                            isolatedClient,
+                            env.baseUrl,
+                            env.accessToken,
+                            env.deviceId,
+                            clientName = "Test",
+                            deviceName = env.deviceName,
+                            clientVersion = "1.0",
+                        )
+                    },
+                    clock = FixedClock,
+                )
+            isolatedRepository.refreshLibraries()
+            isolatedRepository.loadLibraryPage("lib-1", page = 0, pageSize = 30, refresh = true)
+            val canonicalBefore = isolatedRepository.cachedLibraryPage("lib-1", page = 0, pageSize = 30)
+
+            val filtered =
+                isolatedRepository.loadLibraryPage(
+                    libraryId = "lib-1",
+                    page = 0,
+                    pageSize = 30,
+                    query = LibraryBrowseQuery(genres = setOf("Drama")),
+                    cachePolicy = LibraryCachePolicy.SESSION_ONLY,
+                )
+
+            assertEquals(listOf("filtered-item"), filtered.items.map { it.id })
+            assertEquals(canonicalBefore, isolatedRepository.cachedLibraryPage("lib-1", page = 0, pageSize = 30))
+            assertNull(isolatedItems.get("filtered-item"))
+            isolatedClient.close()
+        }
+
+    @Test
+    fun nonDefaultQueryCannotUseCanonicalCachePolicy() =
+        runTest {
+            assertFailsWith<IllegalArgumentException> {
+                repository.loadLibraryPage(
+                    libraryId = "lib-1",
+                    page = 0,
+                    pageSize = 30,
+                    query = LibraryBrowseQuery(favoritesOnly = true),
+                    cachePolicy = LibraryCachePolicy.CANONICAL_DEFAULT,
+                )
+            }
+        }
+
+    @Test
+    fun detailCacheIsIsolatedByManagedConnection() =
+        runTest {
+            var activeEnvironment = environment.copy(serverKey = "connection-a", userId = "user-a")
+            var networkRequests = 0
+            val isolatedEngine =
+                MockEngine { request ->
+                    networkRequests++
+                    val user =
+                        request.url.encodedPath
+                            .substringAfter("/Users/")
+                            .substringBefore('/')
+                    respond(
+                        content = detailJson(user),
+                        status = HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                    )
+                }
+            val isolatedClient = NetworkClientFactory.create(ClientConfig(engine = isolatedEngine, installLogging = false))
+            val isolatedRepository =
+                JellyfinBrowseRepository(
+                    environmentProvider = JellyfinEnvironmentProvider { activeEnvironment },
+                    libraryStore = InMemoryLibraryStore(),
+                    itemStore = InMemoryItemStore(),
+                    detailStore = InMemoryDetailStore(),
+                    apiFactory = { env ->
+                        JellyfinBrowseApi(
+                            isolatedClient,
+                            env.baseUrl,
+                            env.accessToken,
+                            env.deviceId,
+                            clientName = "Test",
+                            deviceName = env.deviceName,
+                            clientVersion = "1.0",
+                        )
+                    },
+                    clock = FixedClock,
+                )
+
+            assertEquals("user-a", isolatedRepository.getItemDetail("shared")?.name)
+            activeEnvironment = environment.copy(serverKey = "connection-b", userId = "user-b")
+            assertEquals("user-b", isolatedRepository.getItemDetail("shared")?.name)
+            activeEnvironment = environment.copy(serverKey = "connection-a", userId = "user-a")
+            assertEquals("user-a", isolatedRepository.getItemDetail("shared")?.name)
+            assertEquals(2, networkRequests)
         }
 
     @Test
@@ -791,6 +931,8 @@ class JellyfinBrowseRepositoryTest {
     }
 
     companion object {
+        private fun detailJson(name: String): String = """{"Id":"shared","Name":"$name","Type":"Movie","MediaSources":[]}"""
+
         private const val LIBRARIES_JSON = """
             {
               "Items": [
@@ -818,6 +960,7 @@ class JellyfinBrowseRepositoryTest {
                   "Type": "Movie",
                   "MediaType": "Video",
                   "Overview": "A sample overview",
+                  "ProviderIds": {"Tmdb": "603", "Tvdb": ""},
                   "RunTimeTicks": 36000000000,
                   "ImageTags": {"Primary": "tag-primary"},
                   "UserData": {
@@ -838,6 +981,21 @@ class JellyfinBrowseRepositoryTest {
                 }
               ],
               "TotalRecordCount": 2
+            }
+        """
+
+        private const val FILTERED_ITEMS_JSON = """
+            {
+              "Items": [
+                {
+                  "Id": "filtered-item",
+                  "Name": "Filtered",
+                  "Type": "Movie",
+                  "MediaType": "Video",
+                  "ProviderIds": {"Tmdb": "999"}
+                }
+              ],
+              "TotalRecordCount": 1
             }
         """
 

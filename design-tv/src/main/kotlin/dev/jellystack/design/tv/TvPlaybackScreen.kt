@@ -11,6 +11,7 @@
 package dev.jellystack.design.tv
 
 import android.view.KeyEvent
+import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
@@ -108,12 +109,21 @@ internal fun TvPlaybackScreen(
             strings = strings,
         )
     val standaloneActions = playbackActions.filter { it.id in promptState.visibleActionIds }
+    val subtitleBottomPaddingFraction =
+        tvSubtitleBottomPaddingFraction(
+            controlsVisible = controlsVisible,
+            standaloneActionsVisible = standaloneActions.isNotEmpty(),
+            panelOpen = navigation.current != TvPlayerPanel.NONE,
+        )
 
     LaunchedEffect(playbackActions.map { it.id }, controlsVisible) {
         promptCoordinator.onPresentationChanged(
             actionIds = playbackActions.map { it.id },
             controlsVisible = controlsVisible,
         )
+    }
+    LaunchedEffect(engine, subtitleBottomPaddingFraction) {
+        engine.setSubtitleBottomPaddingFraction(subtitleBottomPaddingFraction)
     }
 
     LaunchedEffect(controlsVisible, navigation.current, interactionGeneration, active?.isPaused) {
@@ -128,7 +138,12 @@ internal fun TvPlaybackScreen(
             if (controlsVisible) controlsFocusRequester.requestFocus() else playerFocusRequester.requestFocus()
         }
     }
-    DisposableEffect(engine) { onDispose(stopPlayback) }
+    DisposableEffect(engine) {
+        onDispose {
+            engine.setSubtitleBottomPaddingFraction(TV_SUBTITLE_NORMAL_PADDING_FRACTION)
+            stopPlayback()
+        }
+    }
     DisposableEffect(promptCoordinator) { onDispose(promptCoordinator::release) }
 
     val activatePlaybackAction: (TvPlaybackActionModel) -> Unit = { action ->
@@ -137,6 +152,14 @@ internal fun TvPlaybackScreen(
             TvPlaybackActionKind.PLAY_NEXT -> onPlayNext()
         }
     }
+    val handlePlaybackBack = {
+        when {
+            navigation.current != TvPlayerPanel.NONE -> navigation = navigation.back()
+            controlsVisible -> controlsVisible = false
+            else -> onClose()
+        }
+    }
+    TvPlayerBackHandler(handlePlaybackBack)
 
     Box(
         modifier =
@@ -195,11 +218,7 @@ internal fun TvPlaybackScreen(
                                 false
                             }
                         KeyEvent.KEYCODE_BACK -> {
-                            when {
-                                navigation.current != TvPlayerPanel.NONE -> navigation = navigation.back()
-                                controlsVisible -> controlsVisible = false
-                                else -> onClose()
-                            }
+                            handlePlaybackBack()
                             true
                         }
                         else -> false
@@ -309,6 +328,11 @@ internal fun TvPlaybackScreen(
             )
         }
     }
+}
+
+@Composable
+internal fun TvPlayerBackHandler(onBack: () -> Unit) {
+    BackHandler(onBack = onBack)
 }
 
 @Composable

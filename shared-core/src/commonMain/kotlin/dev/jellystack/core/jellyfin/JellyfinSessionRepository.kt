@@ -3,9 +3,12 @@ package dev.jellystack.core.jellyfin
 import dev.jellystack.network.ClientConfig
 import dev.jellystack.network.NetworkClientFactory
 import dev.jellystack.network.jellyfin.JellyfinActivityEntryDto
+import dev.jellystack.network.jellyfin.JellyfinAuthenticationException
 import dev.jellystack.network.jellyfin.JellyfinSessionApi
 import dev.jellystack.network.jellyfin.JellyfinUserDto
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.ClientRequestException
+import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -45,6 +48,7 @@ sealed interface JellyfinSessionState {
 
     data class Error(
         val message: String,
+        val authenticationExpired: Boolean = false,
     ) : JellyfinSessionState
 }
 
@@ -56,27 +60,54 @@ class JellyfinSessionRepository(
 ) {
     private val mutableState = MutableStateFlow<JellyfinSessionState>(JellyfinSessionState.Disconnected)
     val state: StateFlow<JellyfinSessionState> = mutableState.asStateFlow()
+    private var generation = 0L
+
+    fun isolatedSession(): JellyfinSessionRepository = JellyfinSessionRepository(environmentProvider, apiFactory)
+
+    fun close() {
+        generation += 1L
+        mutableState.value = JellyfinSessionState.Disconnected
+    }
 
     suspend fun refresh(): JellyfinSessionCapabilities {
+        generation += 1L
+        val refreshGeneration = generation
         val environment = environmentProvider.current()
         if (environment == null) {
-            mutableState.value = JellyfinSessionState.Disconnected
+            if (refreshGeneration == generation) mutableState.value = JellyfinSessionState.Disconnected
             return JellyfinSessionCapabilities.NONE
         }
-        mutableState.value = JellyfinSessionState.Loading
+        if (refreshGeneration == generation) mutableState.value = JellyfinSessionState.Loading
         return try {
             val user = apiFactory(environment).currentUser()
-            user.toCapabilities().also { mutableState.value = JellyfinSessionState.Ready(it) }
+            if (refreshGeneration != generation || environmentProvider.current() != environment) {
+                JellyfinSessionCapabilities.NONE
+            } else {
+                user.toCapabilities().also { mutableState.value = JellyfinSessionState.Ready(it) }
+            }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Throwable) {
-            mutableState.value = JellyfinSessionState.Error(failure.message ?: "Unable to load Jellyfin user policy")
+            if (refreshGeneration == generation && environmentProvider.current() == environment) {
+                mutableState.value =
+                    JellyfinSessionState.Error(
+                        message = failure.message ?: "Unable to load Jellyfin user policy",
+                        authenticationExpired = failure.isAuthenticationExpired(),
+                    )
+            }
             JellyfinSessionCapabilities.NONE
         }
     }
 
     suspend fun api(): JellyfinSessionApi? = environmentProvider.current()?.let(apiFactory)
 }
+
+private fun Throwable.isAuthenticationExpired(): Boolean =
+    this is JellyfinAuthenticationException ||
+        (
+            this is ClientRequestException &&
+                (response.status == HttpStatusCode.Unauthorized || response.status == HttpStatusCode.Forbidden)
+        )
 
 data class JellyfinAdminOverview(
     val serverName: String?,

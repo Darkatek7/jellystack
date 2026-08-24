@@ -34,31 +34,6 @@ internal fun reconcileTvHomeCarouselSelection(
     currentId: String?,
 ): String? = currentId?.takeIf { it in candidateIds } ?: candidateIds.firstOrNull()
 
-/** Delay before the unfocused hero advances; null disables auto-advance entirely. */
-internal const val TV_CAROUSEL_AUTO_ADVANCE_MS = 8_000L
-
-internal fun tvCarouselAutoAdvanceDelayMs(
-    heroFocused: Boolean,
-    candidateCount: Int,
-    previewActive: Boolean,
-): Long? =
-    when {
-        candidateCount <= 1 -> null
-        heroFocused -> null
-        previewActive -> null
-        else -> TV_CAROUSEL_AUTO_ADVANCE_MS
-    }
-
-/** Wrapping next-selection used by the auto-advancer (manual moves clamp instead). */
-internal fun advanceTvHomeCarousel(
-    candidateIds: List<String>,
-    currentId: String?,
-): String? {
-    if (candidateIds.isEmpty()) return null
-    val currentIndex = currentId?.let(candidateIds::indexOf).takeIf { it != null && it >= 0 } ?: -1
-    return candidateIds[(currentIndex + 1) % candidateIds.size]
-}
-
 internal fun moveTvHomeCarouselManually(
     candidateIds: List<String>,
     state: TvHomeCarouselState,

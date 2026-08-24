@@ -69,6 +69,32 @@ class TvLibraryPagingTest {
         )
     }
 
+    @Test
+    fun pagingThresholdUsesAdaptiveColumnCount() {
+        assertTrue(
+            shouldLoadNextLibraryPage(
+                lastVisibleIndex = 20,
+                totalItemCount = 30,
+                isLibraryLoading = false,
+                isPageLoading = false,
+                endReached = false,
+                hasError = false,
+                columnCount = 5,
+            ),
+        )
+        assertFalse(
+            shouldLoadNextLibraryPage(
+                lastVisibleIndex = 18,
+                totalItemCount = 30,
+                isLibraryLoading = false,
+                isPageLoading = false,
+                endReached = false,
+                hasError = false,
+                columnCount = 5,
+            ),
+        )
+    }
+
     private fun assertPagingBlocked(
         isLibraryLoading: Boolean = false,
         isPageLoading: Boolean = false,

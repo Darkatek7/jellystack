@@ -1,15 +1,208 @@
 package dev.jellystack.design.tv
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class TvFocusCoordinatorTest {
+    @Test
+    fun semanticRestorationWaitsForLateActionableContentAndIgnoresStatusTargets() {
+        val snapshot =
+            TvFocusSnapshot(
+                anchor = TvFocusAnchor("continue", "episode-2", TvFocusDestination.SECTION_ITEM),
+                verticalIndex = 1,
+                horizontalIndex = 1,
+                horizontalCenter = 1f,
+            )
+        val session = TvSemanticFocusRestorationSession(snapshot, interactionRevision = 7L)
+        val loading = tvFocusTarget(TV_LIBRARY_LOADING_TARGET, actionable = false)
+
+        assertNull(session.preferredTargetId(listOf(loading), contentAuthoritativelyLoaded = false))
+
+        val lateTarget = tvHomeCardTargetId("continue", "episode-2")
+        assertEquals(
+            lateTarget,
+            session.preferredTargetId(
+                listOf(loading, tvFocusTarget(lateTarget)),
+                contentAuthoritativelyLoaded = false,
+            ),
+        )
+    }
+
+    @Test
+    fun semanticRestorationUsesNearestSurvivorOnlyAfterAuthoritativeLoad() {
+        val snapshot =
+            TvFocusSnapshot(
+                anchor = TvFocusAnchor("continue", "episode-2", TvFocusDestination.SECTION_ITEM),
+                verticalIndex = 1,
+                horizontalIndex = 2,
+                horizontalCenter = 2f,
+            )
+        val session = TvSemanticFocusRestorationSession(snapshot, interactionRevision = 4L)
+        val first = tvHomeCardTargetId("continue", "episode-1")
+        val nearest = tvHomeCardTargetId("continue", "episode-3")
+        val targets =
+            listOf(
+                tvFocusTarget(first, horizontalCenter = 0f, horizontalIndex = 0),
+                tvFocusTarget(nearest, horizontalCenter = 3f, horizontalIndex = 3),
+            )
+
+        assertNull(session.preferredTargetId(targets, contentAuthoritativelyLoaded = false))
+        assertEquals(nearest, session.preferredTargetId(targets, contentAuthoritativelyLoaded = true))
+    }
+
+    @Test
+    fun userMovementPermanentlyCancelsPendingSemanticRestoration() {
+        val snapshot =
+            TvFocusSnapshot(
+                anchor = TvFocusAnchor("continue", "episode-2", TvFocusDestination.SECTION_ITEM),
+                verticalIndex = 1,
+                horizontalIndex = 1,
+                horizontalCenter = 1f,
+            )
+        val session = TvSemanticFocusRestorationSession(snapshot, interactionRevision = 3L)
+        val exact = tvFocusTarget(tvHomeCardTargetId("continue", "episode-2"))
+
+        session.cancelAfterInteraction(interactionRevision = 4L)
+
+        assertNull(session.preferredTargetId(listOf(exact), contentAuthoritativelyLoaded = true))
+        assertFalse(session.isPending)
+    }
+
+    @Test
+    fun semanticRequesterRegistrationSurvivesCoordinatorDisposalAndReorder() =
+        runTest {
+            val memory = TvFocusMemory()
+            memory.remember(
+                "home",
+                TvFocusAnchor("continue", "episode-2", TvFocusDestination.SECTION_ITEM),
+                horizontalCenter = 400f,
+                horizontalIndex = 1,
+            )
+            val recreated = TvFocusCoordinator<String>()
+            recreated.register(
+                "home",
+                tvHomeCardTargetId("continue", "episode-3"),
+                "requester-3",
+                focusTarget =
+                    TvFocusTarget(
+                        tvHomeCardTargetId("continue", "episode-3"),
+                        TvFocusAnchor("continue", "episode-3", TvFocusDestination.SECTION_ITEM),
+                        430f,
+                        2,
+                    ),
+            )
+            recreated.register(
+                "home",
+                tvHomeCardTargetId("continue", "episode-1"),
+                "requester-1",
+                focusTarget =
+                    TvFocusTarget(
+                        tvHomeCardTargetId("continue", "episode-1"),
+                        TvFocusAnchor("continue", "episode-1", TvFocusDestination.SECTION_ITEM),
+                        100f,
+                        0,
+                    ),
+            )
+            val preferred = memory.resolve("home", recreated.focusTargets("home"))?.targetId
+
+            assertEquals(
+                TvFocusRestoration.Focused("requester-3"),
+                recreated.restoreFocus("home", preferredTargetId = preferred) { true },
+            )
+        }
+
+    @Test
+    fun semanticResolutionIncludesOffscreenMaterializerTargets() =
+        runTest {
+            val coordinator = TvFocusCoordinator<String>()
+            coordinator.registerMaterializer(
+                routeKey = "home",
+                ownerId = "continue-row",
+                targetIds =
+                    linkedSetOf(
+                        tvHomeCardTargetId("continue", "episode-1"),
+                        tvHomeCardTargetId("continue", "episode-2"),
+                        tvHomeCardTargetId("continue", "episode-3"),
+                    ),
+                materialize = { false },
+            )
+
+            assertEquals(
+                listOf("episode-1", "episode-2", "episode-3"),
+                coordinator.focusTargets("home").map { it.anchor.itemId },
+            )
+        }
+
+    @Test
+    fun materializerOrderDefinesFirstActionableWhenOffscreenDescriptorsHaveNoCoordinates() =
+        runTest {
+            val coordinator = TvFocusCoordinator<String>()
+            val first = tvHomeCardTargetId("continue", "episode-1")
+            val second = tvHomeCardTargetId("continue", "episode-2")
+            val third = tvHomeCardTargetId("continue", "episode-3")
+            coordinator.register(
+                routeKey = "home",
+                targetId = first,
+                target = "requester-1",
+                focusTarget = tvFocusTarget(first, horizontalCenter = 200f),
+            )
+            coordinator.registerMaterializer(
+                routeKey = "home",
+                ownerId = "continue-row",
+                targetIds = linkedSetOf(first, second, third),
+                materialize = { false },
+            )
+
+            val targets = coordinator.focusTargets("home")
+            assertEquals(listOf(first, second, third), targets.map { it.targetId })
+            assertEquals(listOf(0f, 1f, 2f), targets.map { it.horizontalCenter })
+            assertEquals(listOf(0, 1, 2), targets.map { it.horizontalIndex })
+        }
+
+    @Test
+    fun secondQueuedRestorationCancelsWhenUserMovesWhileItWaitsForLock() =
+        runTest {
+            val firstFrame = CompletableDeferred<Unit>()
+            val releaseFirst = CompletableDeferred<Unit>()
+            var frames = 0
+            val coordinator =
+                TvFocusCoordinator<String>(
+                    awaitFocusFrame = {
+                        frames += 1
+                        if (frames == 1) {
+                            firstFrame.complete(Unit)
+                            releaseFirst.await()
+                        }
+                    },
+                )
+            coordinator.register("home", "card", "requester")
+            val requested = mutableListOf<String>()
+            val first = async { coordinator.restoreFocus("home", preferredTargetId = "card") { false } }
+            firstFrame.await()
+            val second =
+                async {
+                    coordinator.restoreFocus("home", preferredTargetId = "card") {
+                        requested += it
+                        true
+                    }
+                }
+            launch { coordinator.onUserMovement() }.join()
+            releaseFirst.complete(Unit)
+
+            first.await()
+            assertEquals(TvFocusRestoration.Cancelled, second.await())
+            assertTrue(requested.isEmpty())
+        }
+
     @Test
     fun restorationWaitsForLateMaterializerRegistration() =
         runTest {
@@ -121,6 +314,29 @@ class TvFocusCoordinatorTest {
 
             assertEquals(TvFocusRestoration.Focused("continue-3"), coordinator.restoreFocus("home") { true })
             assertEquals(TvFocusRestoration.Focused("audio"), coordinator.restoreFocus("settings") { true })
+        }
+
+    @Test
+    fun settingsLandingAndCategoriesRestoreTheirExactTargetsIndependently() =
+        runTest {
+            val coordinator = TvFocusCoordinator<String>()
+            val landingRoute = TvRoute.Settings().focusRouteKey()
+            val playbackRoute = tvSettingsRoute(TvSettingsCategory.PLAYBACK).focusRouteKey()
+            val audioRoute = tvSettingsRoute(TvSettingsCategory.AUDIO_SUBTITLES).focusRouteKey()
+            val landingTarget = tvSettingsCategoryTargetId(TvSettingsCategory.CONNECTIONS)
+            val playbackTarget = tvSettingsControlTargetId("playback-speed")
+            val audioTarget = tvSettingsControlTargetId("subtitle-background")
+
+            coordinator.register(landingRoute, landingTarget)
+            coordinator.register(playbackRoute, playbackTarget)
+            coordinator.register(audioRoute, audioTarget)
+            coordinator.rememberFocused(landingRoute, landingTarget)
+            coordinator.rememberFocused(playbackRoute, playbackTarget)
+            coordinator.rememberFocused(audioRoute, audioTarget)
+
+            assertEquals(TvFocusRestoration.Focused(landingTarget), coordinator.restoreFocus(landingRoute) { true })
+            assertEquals(TvFocusRestoration.Focused(playbackTarget), coordinator.restoreFocus(playbackRoute) { true })
+            assertEquals(TvFocusRestoration.Focused(audioTarget), coordinator.restoreFocus(audioRoute) { true })
         }
 
     @Test
@@ -264,19 +480,6 @@ class TvFocusCoordinatorTest {
         }
 
     @Test
-    fun rapidRepeatedLeftAndRailCloseAreIdempotent() {
-        val coordinator = TvFocusCoordinator<String>()
-
-        assertTrue(coordinator.openRail(repeatCount = 0))
-        assertFalse(coordinator.openRail(repeatCount = 1))
-        assertFalse(coordinator.openRail(repeatCount = 0))
-        assertTrue(coordinator.isRailVisible)
-        assertTrue(coordinator.closeRail())
-        assertFalse(coordinator.closeRail())
-        assertFalse(coordinator.isRailVisible)
-    }
-
-    @Test
     fun routeKeysSeparateLibraryListIdsPathsSettingsAndOtherRoots() {
         assertEquals("home", TvRoute.Home.focusRouteKey())
         assertEquals("library:list", TvRoute.Library().focusRouteKey())
@@ -313,8 +516,7 @@ class TvFocusCoordinatorTest {
                 TvFocusRestoration.Focused("empty-placeholder"),
                 coordinator.restoreFocus("library:empty") { true },
             )
-            coordinator.openRail()
-            coordinator.closeRail()
+            coordinator.onUserMovement()
             assertEquals(TvFocusRestoration.Focused("retry"), coordinator.restoreFocus("library:error") { true })
         }
 }

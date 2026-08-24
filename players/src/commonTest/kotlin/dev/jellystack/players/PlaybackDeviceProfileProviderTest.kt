@@ -58,6 +58,21 @@ class PlaybackDeviceProfileProviderTest {
     }
 
     @Test
+    fun unknownRuntimeCapabilitiesAdvertiseFallbackOnlyForTranscoding() {
+        val profile =
+            PlaybackDeviceProfileFactory.create(
+                name = "Unknown runtime",
+                capabilities = selectTvDecoderCapabilities(PlaybackCapabilitySnapshot.failed()),
+            )
+
+        assertTrue(profile.directPlayProfiles.isEmpty())
+        assertEquals(listOf("ts", "mp4"), profile.transcodingProfiles.map { it.container })
+        assertTrue(profile.transcodingProfiles.all { it.videoCodec == "h264" })
+        assertTrue(profile.transcodingProfiles.all { it.audioCodec == "aac" })
+        assertTrue(profile.transcodingProfiles.all { it.maxAudioChannels == "2" })
+    }
+
+    @Test
     fun detectedCapabilitiesNeverInventUnsupportedH264Profiles() {
         val profile =
             PlaybackDeviceProfileFactory.create(

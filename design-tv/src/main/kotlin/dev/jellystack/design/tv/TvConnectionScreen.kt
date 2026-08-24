@@ -157,6 +157,7 @@ internal fun TvConnectionScreen(
                                         down = displayNameFocus
                                     },
                             primary = method == JellyfinSignInMethod.QUICK_CONNECT,
+                            selected = method == JellyfinSignInMethod.QUICK_CONNECT,
                         )
                         TvActionButton(
                             strings.password,
@@ -169,6 +170,7 @@ internal fun TvConnectionScreen(
                                         down = displayNameFocus
                                     },
                             primary = method == JellyfinSignInMethod.PASSWORD,
+                            selected = method == JellyfinSignInMethod.PASSWORD,
                         )
                     }
                     TvTextField(

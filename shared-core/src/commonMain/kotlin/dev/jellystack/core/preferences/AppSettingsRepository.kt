@@ -66,6 +66,10 @@ class AppSettingsRepository(
     fun setTrailerPreviewSoundEnabled(value: Boolean) =
         update(KEY_TRAILER_PREVIEW_SOUND_ENABLED, value) { copy(trailerPreviewSoundEnabled = value) }
 
+    fun setMotionPreference(value: MotionPreference) = update(KEY_MOTION_PREFERENCE, value.name) { copy(motionPreference = value) }
+
+    fun setHighContrastFocus(value: Boolean) = update(KEY_HIGH_CONTRAST_FOCUS, value) { copy(highContrastFocus = value) }
+
     fun setSpotlightIntervalSeconds(value: Int) {
         val normalized = value.takeIf(SPOTLIGHT_INTERVAL_SECONDS::contains) ?: 6
         storage.putInt(KEY_SPOTLIGHT_INTERVAL, normalized)
@@ -106,6 +110,8 @@ class AppSettingsRepository(
             useServerHomeSections = storage.getBoolean(KEY_USE_SERVER_HOME_SECTIONS, true),
             trailerPreviewsEnabled = storage.getBoolean(KEY_TRAILER_PREVIEWS_ENABLED, true),
             trailerPreviewSoundEnabled = storage.getBoolean(KEY_TRAILER_PREVIEW_SOUND_ENABLED, true),
+            motionPreference = enumValue(KEY_MOTION_PREFERENCE, MotionPreference.SYSTEM),
+            highContrastFocus = storage.getBoolean(KEY_HIGH_CONTRAST_FOCUS, false),
             spotlightIntervalSeconds =
                 storage.getInt(KEY_SPOTLIGHT_INTERVAL, 6).takeIf(SPOTLIGHT_INTERVAL_SECONDS::contains) ?: 6,
             downloadsWifiOnly = storage.getBoolean(KEY_DOWNLOADS_WIFI_ONLY, false),
@@ -175,6 +181,8 @@ class AppSettingsRepository(
         const val KEY_USE_SERVER_HOME_SECTIONS = "settings.use_server_home_sections"
         const val KEY_TRAILER_PREVIEWS_ENABLED = "settings.trailer_previews_enabled"
         const val KEY_TRAILER_PREVIEW_SOUND_ENABLED = "settings.trailer_preview_sound_enabled"
+        const val KEY_MOTION_PREFERENCE = "settings.motion_preference"
+        const val KEY_HIGH_CONTRAST_FOCUS = "settings.high_contrast_focus"
         const val KEY_SPOTLIGHT_INTERVAL = "settings.spotlight_interval_seconds"
         const val KEY_DOWNLOADS_WIFI_ONLY = "settings.downloads_wifi_only"
         const val KEY_DEFAULT_PLAYBACK_SPEED = "settings.default_playback_speed"

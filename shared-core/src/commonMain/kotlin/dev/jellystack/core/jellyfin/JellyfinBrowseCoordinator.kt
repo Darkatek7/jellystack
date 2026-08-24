@@ -36,6 +36,7 @@ data class JellyfinHomeState(
     val totalLibraryItemCount: Long? = null,
     val favorites: Set<String> = emptySet(),
     val browsePath: List<LibraryBrowseEntry> = emptyList(),
+    val libraryBrowseQuery: LibraryBrowseQuery = LibraryBrowseQuery.DEFAULT,
 ) {
     val errorMessage: String?
         get() = homeErrorMessage ?: libraryErrorMessage
@@ -53,6 +54,7 @@ private data class LibraryPageSnapshot(
     val currentPage: Int,
     val endReached: Boolean,
     val totalLibraryItemCount: Long?,
+    val libraryBrowseQuery: LibraryBrowseQuery,
 )
 
 private data class HomeFeedResults(
@@ -82,6 +84,7 @@ private fun JellyfinHomeState.snapshot(): LibraryPageSnapshot =
         currentPage = currentPage,
         endReached = endReached,
         totalLibraryItemCount = totalLibraryItemCount,
+        libraryBrowseQuery = libraryBrowseQuery,
     )
 
 fun JellyfinItem.isBrowseContainer(): Boolean =
@@ -374,10 +377,29 @@ class JellyfinBrowseCoordinator internal constructor(
                 currentPage = 0,
                 endReached = false,
                 totalLibraryItemCount = null,
+                libraryBrowseQuery = LibraryBrowseQuery.DEFAULT,
                 libraryErrorMessage = null,
                 libraryErrorKind = null,
             )
         }
+        launchLibraryPageLoad(page = 0, refresh = true)
+    }
+
+    fun setLibraryBrowseQuery(query: LibraryBrowseQuery) {
+        val current = mutableState.value
+        if (current.selectedLibraryId == null || current.libraryBrowseQuery == query) return
+        invalidateBrowseLoad()
+        favoritesParentSnapshot = null
+        mutableState.value =
+            current.copy(
+                libraryBrowseQuery = query,
+                libraryItems = emptyList(),
+                currentPage = 0,
+                endReached = false,
+                totalLibraryItemCount = null,
+                libraryErrorMessage = null,
+                libraryErrorKind = null,
+            )
         launchLibraryPageLoad(page = 0, refresh = true)
     }
 
@@ -429,6 +451,7 @@ class JellyfinBrowseCoordinator internal constructor(
         mutableState.value =
             current.copy(
                 browsePath = current.browsePath + LibraryBrowseEntry(item.id, item.name),
+                libraryBrowseQuery = LibraryBrowseQuery.DEFAULT,
                 libraryItems = emptyList(),
                 currentPage = 0,
                 endReached = false,
@@ -454,6 +477,7 @@ class JellyfinBrowseCoordinator internal constructor(
                 currentPage = parent.currentPage,
                 endReached = parent.endReached,
                 totalLibraryItemCount = parent.totalLibraryItemCount,
+                libraryBrowseQuery = parent.libraryBrowseQuery,
                 isLibraryLoading = false,
                 isPageLoading = false,
                 libraryErrorMessage = null,
@@ -550,13 +574,26 @@ class JellyfinBrowseCoordinator internal constructor(
                         pageSize = pageSize,
                         refresh = refresh,
                     )
-                } ?: repository.loadLibraryPage(
-                    libraryId = selectedId,
-                    page = page,
-                    pageSize = pageSize,
-                    refresh = refresh,
-                    filters = filters,
-                )
+                } ?: run {
+                    val query = stateBefore.libraryBrowseQuery
+                    if (filters == null && !query.isDefault) {
+                        repository.loadLibraryPage(
+                            libraryId = selectedId,
+                            page = page,
+                            pageSize = pageSize,
+                            query = query,
+                            cachePolicy = LibraryCachePolicy.SESSION_ONLY,
+                        )
+                    } else {
+                        repository.loadLibraryPage(
+                            libraryId = selectedId,
+                            page = page,
+                            pageSize = pageSize,
+                            refresh = refresh,
+                            filters = filters,
+                        )
+                    }
+                }
             }
             val libraryPage = requestPage()
             val (items, totalRecordCount) = libraryPage

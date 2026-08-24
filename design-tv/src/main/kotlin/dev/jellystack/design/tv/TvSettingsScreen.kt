@@ -12,10 +12,10 @@ package dev.jellystack.design.tv
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -24,19 +24,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -44,13 +44,16 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.jellystack.core.preferences.AppLanguage
 import dev.jellystack.core.preferences.AppSettings
 import dev.jellystack.core.preferences.AppSettingsRepository
@@ -61,412 +64,12 @@ import dev.jellystack.core.preferences.StreamingQualityPreference
 import dev.jellystack.core.preferences.SubtitleBackground
 import dev.jellystack.core.preferences.SubtitleMode
 import dev.jellystack.core.preferences.SubtitleTextSize
-import dev.jellystack.core.server.JellyfinQuickConnectCoordinator
 import dev.jellystack.core.server.SeerrConnectionResult
 import dev.jellystack.core.server.SeerrLoginCredentials
 import dev.jellystack.core.server.SeerrServerInput
 import dev.jellystack.core.server.ServerConnectionCoordinator
-import dev.jellystack.core.server.ServerRepository
 import dev.jellystack.players.PlaybackSegmentType
 import kotlinx.coroutines.launch
-
-@Composable
-@Suppress("CyclomaticComplexMethod")
-internal fun TvSettingsScreen(
-    settings: AppSettings,
-    repository: AppSettingsRepository,
-    serverRepository: ServerRepository,
-    connectionCoordinator: ServerConnectionCoordinator,
-    quickConnectCoordinator: JellyfinQuickConnectCoordinator,
-    appVersion: String,
-    strings: TvStrings,
-    onServersChanged: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val scope = rememberCoroutineScope()
-    val servers by serverRepository.observeServers().collectAsStateWithLifecycle()
-    val jellyfinServer = servers.firstOrNull { it.type == dev.jellystack.core.server.ServerType.JELLYFIN }
-    val seerrServer = servers.firstOrNull { it.type == dev.jellystack.core.server.ServerType.JELLYSEERR }
-    var showJellyfinConnect by remember { mutableStateOf(false) }
-    var showSeerrConnect by remember { mutableStateOf(false) }
-    var choiceDialog by remember { mutableStateOf<TvChoiceDialogState?>(null) }
-    var pendingServerRemoval by remember { mutableStateOf<dev.jellystack.core.server.ManagedServer?>(null) }
-    val listState = rememberLazyListState()
-    val primarySettingTargetIds =
-        listOf(
-            "language",
-            "quality",
-            "audio-language",
-            "subtitle-language",
-            "subtitle-mode",
-            "subtitle-size",
-            "subtitle-background",
-            "autoplay",
-            "resume",
-            "seek-back",
-            "seek-forward",
-            "playback-speed",
-            "stats",
-            "home-sections",
-            "trailer-previews",
-            "trailer-preview-sound",
-        ).map(::tvSettingsControlTargetId)
-    val segmentSettingTargetIds = PlaybackSegmentType.entries.map(::tvSettingsSegmentControlTargetId)
-    val serverActionTargetIds =
-        buildList {
-            servers.forEach { add(tvSettingsServerActionTargetId(it.id, "remove")) }
-            add(tvSettingsServerActionTargetId(jellyfinServer?.id ?: "new:jellyfin", "manage"))
-            add(tvSettingsServerActionTargetId(seerrServer?.id ?: "new:seerr", "manage"))
-        }
-    val targetLocations =
-        buildMap {
-            primarySettingTargetIds.forEach { put(it, 2) }
-            segmentSettingTargetIds.forEach { put(it, 3) }
-            serverActionTargetIds.forEach { put(it, 5) }
-        }
-    TvRouteFocusMaterializer(
-        ownerId = "settings-list",
-        targetIds = targetLocations.keys,
-        fallbackTargetIds = setOf(primarySettingTargetIds.first()),
-    ) { targetId ->
-        targetLocations[targetId]?.let { index ->
-            listState.scrollToItem(index)
-            true
-        } ?: false
-    }
-
-    fun showChoices(
-        title: String,
-        options: List<TvChoiceOption>,
-    ) {
-        choiceDialog = TvChoiceDialogState(title, options)
-    }
-    if (showJellyfinConnect) {
-        TvConnectionScreen(
-            coordinator = connectionCoordinator,
-            quickConnectCoordinator = quickConnectCoordinator,
-            appVersion = appVersion,
-            strings = strings,
-            onConnected = {
-                showJellyfinConnect = false
-                onServersChanged()
-            },
-            onDismiss = { showJellyfinConnect = false },
-            existingServerId = jellyfinServer?.id,
-            initialDisplayName = jellyfinServer?.name ?: "Jellyfin",
-            initialBaseUrl = jellyfinServer?.baseUrl.orEmpty(),
-        )
-        return
-    }
-    LazyColumn(
-        state = listState,
-        modifier = modifier.fillMaxSize(),
-        contentPadding = TvScreenPadding,
-        verticalArrangement = Arrangement.spacedBy(18.dp),
-    ) {
-        item { Text(strings.settings, color = TvText, fontSize = 38.sp, fontWeight = FontWeight.Bold) }
-        item { TvSectionTitle(strings.appearancePlayback) }
-        item {
-            TvSettingsGrid {
-                TvSettingTile(
-                    strings.language,
-                    settings.appLanguage.label(strings),
-                    focusToNavigationRailOnLeft = true,
-                    screenEntry = true,
-                    focusTargetId = tvSettingsControlTargetId("language"),
-                ) {
-                    showChoices(
-                        strings.language,
-                        AppLanguage.entries.map { value ->
-                            TvChoiceOption(value.label(strings), value == settings.appLanguage) {
-                                repository.setAppLanguage(value)
-                            }
-                        },
-                    )
-                }
-                TvSettingTile(
-                    strings.quality,
-                    settings.wifiStreamingQuality.label(strings),
-                    focusTargetId = tvSettingsControlTargetId("quality"),
-                ) {
-                    showChoices(
-                        strings.quality,
-                        tvQualityOptions().map { value ->
-                            TvChoiceOption(value.label(strings), value == settings.wifiStreamingQuality) {
-                                repository.setWifiStreamingQuality(value)
-                            }
-                        },
-                    )
-                }
-                TvSettingTile(
-                    strings.audioLanguage,
-                    settings.preferredAudioLanguage ?: strings.serverDefault,
-                    focusTargetId = tvSettingsControlTargetId("audio-language"),
-                ) {
-                    showChoices(
-                        strings.audioLanguage,
-                        preferredLanguageOptions(strings, settings.preferredAudioLanguage) {
-                            repository.setPreferredAudioLanguage(it)
-                        },
-                    )
-                }
-                TvSettingTile(
-                    strings.subtitleLanguage,
-                    settings.preferredSubtitleLanguage ?: strings.serverDefault,
-                    focusToNavigationRailOnLeft = true,
-                    focusTargetId = tvSettingsControlTargetId("subtitle-language"),
-                ) {
-                    showChoices(
-                        strings.subtitleLanguage,
-                        preferredLanguageOptions(strings, settings.preferredSubtitleLanguage) {
-                            repository.setPreferredSubtitleLanguage(it)
-                        },
-                    )
-                }
-                TvSettingTile(
-                    strings.subtitleMode,
-                    settings.subtitleMode.label(strings),
-                    focusTargetId = tvSettingsControlTargetId("subtitle-mode"),
-                ) {
-                    showChoices(
-                        strings.subtitleMode,
-                        SubtitleMode.entries.map { value ->
-                            TvChoiceOption(value.label(strings), value == settings.subtitleMode) { repository.setSubtitleMode(value) }
-                        },
-                    )
-                }
-                TvSettingTile(
-                    strings.subtitleSize,
-                    settings.subtitleTextSize.label(strings),
-                    focusTargetId = tvSettingsControlTargetId("subtitle-size"),
-                ) {
-                    showChoices(
-                        strings.subtitleSize,
-                        SubtitleTextSize.entries.map { value ->
-                            TvChoiceOption(value.label(strings), value == settings.subtitleTextSize) {
-                                repository.setSubtitleTextSize(value)
-                            }
-                        },
-                    )
-                }
-                TvSettingTile(
-                    strings.subtitleBackground,
-                    settings.subtitleBackground.label(strings),
-                    focusToNavigationRailOnLeft = true,
-                    focusTargetId = tvSettingsControlTargetId("subtitle-background"),
-                ) {
-                    showChoices(
-                        strings.subtitleBackground,
-                        SubtitleBackground.entries.map { value ->
-                            TvChoiceOption(value.label(strings), value == settings.subtitleBackground) {
-                                repository.setSubtitleBackground(value)
-                            }
-                        },
-                    )
-                }
-                TvSettingTile(
-                    strings.autoplay,
-                    settings.autoplayNextMode.label(strings),
-                    focusTargetId = tvSettingsControlTargetId("autoplay"),
-                ) {
-                    showChoices(
-                        strings.autoplay,
-                        AutoplayNextMode.entries.map { value ->
-                            TvChoiceOption(value.label(strings), value == settings.autoplayNextMode) {
-                                repository.setAutoplayNextMode(value)
-                            }
-                        },
-                    )
-                }
-                TvSettingTile(
-                    strings.resume,
-                    settings.resumeMode.label(strings),
-                    focusTargetId = tvSettingsControlTargetId("resume"),
-                ) {
-                    showChoices(
-                        strings.resume,
-                        ResumeMode.entries.map { value ->
-                            TvChoiceOption(value.label(strings), value == settings.resumeMode) { repository.setResumeMode(value) }
-                        },
-                    )
-                }
-                TvSettingTile(
-                    strings.seekBack,
-                    "${settings.seekBackSeconds}s",
-                    focusToNavigationRailOnLeft = true,
-                    focusTargetId = tvSettingsControlTargetId("seek-back"),
-                ) {
-                    showChoices(
-                        strings.seekBack,
-                        tvSeekOptions().map { value ->
-                            TvChoiceOption("${value}s", value == settings.seekBackSeconds) { repository.setSeekBackSeconds(value) }
-                        },
-                    )
-                }
-                TvSettingTile(
-                    strings.seekForward,
-                    "${settings.seekForwardSeconds}s",
-                    focusTargetId = tvSettingsControlTargetId("seek-forward"),
-                ) {
-                    showChoices(
-                        strings.seekForward,
-                        tvSeekOptions().map { value ->
-                            TvChoiceOption("${value}s", value == settings.seekForwardSeconds) { repository.setSeekForwardSeconds(value) }
-                        },
-                    )
-                }
-                TvSettingTile(
-                    strings.playbackSpeed,
-                    "${settings.defaultPlaybackSpeed}x",
-                    focusTargetId = tvSettingsControlTargetId("playback-speed"),
-                ) {
-                    showChoices(
-                        strings.playbackSpeed,
-                        tvSpeedOptions().map { value ->
-                            TvChoiceOption("${value}x", value == settings.defaultPlaybackSpeed) {
-                                repository.setDefaultPlaybackSpeed(value)
-                            }
-                        },
-                    )
-                }
-                TvSettingTile(
-                    strings.statsForNerds,
-                    if (settings.statsForNerdsEnabled) strings.on else strings.off,
-                    focusToNavigationRailOnLeft = true,
-                    focusTargetId = tvSettingsControlTargetId("stats"),
-                ) {
-                    repository.setStatsForNerdsEnabled(!settings.statsForNerdsEnabled)
-                }
-                TvSettingTile(
-                    strings.homeSections,
-                    if (settings.useServerHomeSections) strings.on else strings.off,
-                    focusTargetId = tvSettingsControlTargetId("home-sections"),
-                ) {
-                    repository.setUseServerHomeSections(!settings.useServerHomeSections)
-                }
-                TvSettingTile(
-                    strings.trailerPreviews,
-                    if (settings.trailerPreviewsEnabled) strings.on else strings.off,
-                    focusTargetId = tvSettingsControlTargetId("trailer-previews"),
-                ) {
-                    repository.setTrailerPreviewsEnabled(!settings.trailerPreviewsEnabled)
-                }
-                TvSettingTile(
-                    strings.trailerPreviewSound,
-                    if (settings.trailerPreviewSoundEnabled) strings.on else strings.off,
-                    focusToNavigationRailOnLeft = true,
-                    enabled = settings.trailerPreviewsEnabled,
-                    focusTargetId = tvSettingsControlTargetId("trailer-preview-sound"),
-                ) {
-                    repository.setTrailerPreviewSoundEnabled(!settings.trailerPreviewSoundEnabled)
-                }
-            }
-        }
-        item {
-            TvSegmentSkipSettings(
-                settings = settings,
-                strings = strings,
-                onModeSelected = { type, mode -> repository.setSegmentSkipMode(type, mode) },
-            )
-        }
-        item { TvSectionTitle(strings.connections) }
-        item {
-            Column(
-                Modifier.fillMaxWidth().background(TvSurface, RoundedCornerShape(22.dp)).padding(22.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                servers.forEach { server ->
-                    key(server.id) {
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text(server.name, color = TvText, fontSize = 21.sp, fontWeight = FontWeight.SemiBold)
-                                Text("${server.type.name.label()}  •  ${strings.connected}", color = TvTextMuted)
-                            }
-                            TvActionButton(
-                                strings.remove,
-                                { pendingServerRemoval = server },
-                                focusToNavigationRailOnLeft = true,
-                                focusTargetId = tvSettingsServerActionTargetId(server.id, "remove"),
-                            )
-                        }
-                    }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    TvActionButton(
-                        if (jellyfinServer == null) strings.addJellyfin else strings.manageJellyfin,
-                        { showJellyfinConnect = true },
-                        primary = jellyfinServer == null,
-                        focusToNavigationRailOnLeft = true,
-                        focusTargetId =
-                            tvSettingsServerActionTargetId(jellyfinServer?.id ?: "new:jellyfin", "manage"),
-                    )
-                    TvActionButton(
-                        if (seerrServer == null) strings.addSeerr else strings.manageSeerr,
-                        { showSeerrConnect = true },
-                        primary = seerrServer == null,
-                        focusTargetId = tvSettingsServerActionTargetId(seerrServer?.id ?: "new:seerr", "manage"),
-                    )
-                }
-            }
-        }
-        item { Text("Jellystack TV $appVersion", color = TvTextMuted) }
-        item { Spacer(Modifier.height(40.dp)) }
-    }
-    if (showSeerrConnect) {
-        TvSeerrConnectDialog(
-            coordinator = connectionCoordinator,
-            appVersion = appVersion,
-            strings = strings,
-            existingServerId = seerrServer?.id,
-            initialUrl = seerrServer?.baseUrl.orEmpty(),
-            onDismiss = { showSeerrConnect = false },
-            onConnected = {
-                showSeerrConnect = false
-                onServersChanged()
-            },
-        )
-    }
-    choiceDialog?.let { dialog ->
-        TvChoiceDialog(dialog, cancelLabel = strings.cancel, onDismiss = { choiceDialog = null }) { option ->
-            option.onSelect()
-            choiceDialog = null
-        }
-    }
-    pendingServerRemoval?.let { target ->
-        Dialog(onDismissRequest = { pendingServerRemoval = null }) {
-            Column(
-                Modifier
-                    .width(620.dp)
-                    .background(TvSurfaceRaised, RoundedCornerShape(26.dp))
-                    .padding(28.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                Text(
-                    strings.removeServerConfirm.format(target.name),
-                    color = TvText,
-                    fontSize = 28.sp,
-                    fontWeight = FontWeight.Bold,
-                )
-                Text(strings.removeServerMessage, color = TvTextMuted, fontSize = 17.sp)
-                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    TvActionButton(
-                        strings.remove,
-                        primary = true,
-                        modifier = Modifier.width(180.dp),
-                        onClick = {
-                            pendingServerRemoval = null
-                            scope.launch {
-                                serverRepository.remove(target.id)
-                                onServersChanged()
-                            }
-                        },
-                    )
-                    TvActionButton(strings.cancel, onClick = { pendingServerRemoval = null })
-                }
-            }
-        }
-    }
-}
 
 @Composable
 internal fun TvSegmentSkipSettings(
@@ -474,11 +77,12 @@ internal fun TvSegmentSkipSettings(
     strings: TvStrings,
     onModeSelected: (PlaybackSegmentType, SegmentSkipMode) -> Unit,
     modifier: Modifier = Modifier,
+    showTitle: Boolean = true,
 ) {
     var choiceDialog by remember { mutableStateOf<TvChoiceDialogState?>(null) }
     val models = tvSegmentSkipSettingModels(settings, strings, onModeSelected)
     Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        TvSectionTitle(strings.segmentSkipping)
+        if (showTitle) TvSectionTitle(strings.segmentSkipping)
         Text(strings.serverSegmentExplanation, color = TvTextMuted, fontSize = 17.sp)
         TvSettingsGrid {
             models.forEachIndexed { index, model ->
@@ -510,19 +114,19 @@ internal fun TvSegmentSkipSettings(
     }
 }
 
-private data class TvChoiceOption(
+internal data class TvChoiceOption(
     val label: String,
     val selected: Boolean,
     val onSelect: () -> Unit,
 )
 
-private data class TvChoiceDialogState(
+internal data class TvChoiceDialogState(
     val title: String,
     val options: List<TvChoiceOption>,
 )
 
 @Composable
-private fun TvChoiceDialog(
+internal fun TvChoiceDialog(
     state: TvChoiceDialogState,
     cancelLabel: String,
     onDismiss: () -> Unit,
@@ -548,6 +152,7 @@ private fun TvChoiceDialog(
                         { onSelect(option) },
                         modifier = if (index == initialIndex) Modifier.focusRequester(initialFocus) else Modifier,
                         primary = option.selected,
+                        selected = option.selected,
                     )
                 }
             }
@@ -558,18 +163,28 @@ private fun TvChoiceDialog(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun TvSettingsGrid(content: @Composable androidx.compose.foundation.layout.FlowRowScope.() -> Unit) {
-    androidx.compose.foundation.layout.FlowRow(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-        maxItemsInEachRow = 3,
-        content = content,
-    )
+internal fun TvSettingsGrid(content: @Composable androidx.compose.foundation.layout.FlowRowScope.() -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val fontScale = LocalDensity.current.fontScale
+        val columns = tvSettingsColumnCount(maxWidth.value, fontScale)
+        val spacing = TvLayoutTokens.CardSpacing
+        val tileWidth = (maxWidth - (spacing * (columns - 1))) / columns
+        CompositionLocalProvider(LocalTvSettingsTileWidth provides tileWidth) {
+            androidx.compose.foundation.layout.FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(spacing),
+                verticalArrangement = Arrangement.spacedBy(spacing),
+                maxItemsInEachRow = columns,
+                content = content,
+            )
+        }
+    }
 }
 
+private val LocalTvSettingsTileWidth = staticCompositionLocalOf { 260.dp }
+
 @Composable
-private fun TvSettingTile(
+internal fun TvSettingTile(
     title: String,
     value: String,
     focusToNavigationRailOnLeft: Boolean = false,
@@ -577,16 +192,19 @@ private fun TvSettingTile(
     enabled: Boolean = true,
     focusTargetId: String,
     modifier: Modifier = Modifier,
+    checked: Boolean? = null,
     onClick: () -> Unit,
 ) {
     Column(
         modifier
             .tvScreenEntryFocus(screenEntry, focusTargetId)
-            .width(330.dp)
+            .width(LocalTvSettingsTileWidth.current)
             .height(112.dp)
             .graphicsLayer { alpha = if (enabled) 1f else 0.46f }
             .background(TvSurface, RoundedCornerShape(20.dp))
-            .tvFocusable(
+            .semantics {
+                checked?.let { toggleableState = if (it) ToggleableState.On else ToggleableState.Off }
+            }.tvFocusable(
                 onClick = onClick,
                 enabled = enabled,
                 shape = RoundedCornerShape(20.dp),
@@ -601,7 +219,7 @@ private fun TvSettingTile(
 }
 
 @Composable
-private fun TvSeerrConnectDialog(
+internal fun TvSeerrConnectDialog(
     coordinator: ServerConnectionCoordinator,
     appVersion: String,
     strings: TvStrings,
@@ -656,6 +274,7 @@ private fun TvSeerrConnectDialog(
                                     down = usernameFocus
                                 },
                         primary = useJellyfin,
+                        selected = useJellyfin,
                     )
                     TvActionButton(
                         strings.seerrAccount,
@@ -668,6 +287,7 @@ private fun TvSeerrConnectDialog(
                                     down = usernameFocus
                                 },
                         primary = !useJellyfin,
+                        selected = !useJellyfin,
                     )
                 }
                 OutlinedTextField(
@@ -753,14 +373,14 @@ private fun TvSeerrConnectDialog(
     }
 }
 
-private fun AppLanguage.label(strings: TvStrings): String =
+internal fun AppLanguage.label(strings: TvStrings): String =
     when (this) {
         AppLanguage.SYSTEM -> strings.systemDefault
         AppLanguage.ENGLISH -> strings.english
         AppLanguage.GERMAN -> strings.german
     }
 
-private fun SubtitleMode.label(strings: TvStrings): String =
+internal fun SubtitleMode.label(strings: TvStrings): String =
     when (this) {
         SubtitleMode.SERVER_DEFAULT -> strings.serverDefault
         SubtitleMode.OFF -> strings.off
@@ -769,7 +389,7 @@ private fun SubtitleMode.label(strings: TvStrings): String =
         SubtitleMode.PREFERRED_WHEN_AUDIO_DIFFERS -> strings.preferredWhenAudioDiffers
     }
 
-private fun SubtitleTextSize.label(strings: TvStrings): String =
+internal fun SubtitleTextSize.label(strings: TvStrings): String =
     when (this) {
         SubtitleTextSize.SYSTEM -> strings.systemDefault
         SubtitleTextSize.SMALL -> strings.small
@@ -777,7 +397,7 @@ private fun SubtitleTextSize.label(strings: TvStrings): String =
         SubtitleTextSize.LARGE -> strings.large
     }
 
-private fun SubtitleBackground.label(strings: TvStrings): String =
+internal fun SubtitleBackground.label(strings: TvStrings): String =
     when (this) {
         SubtitleBackground.SYSTEM -> strings.systemDefault
         SubtitleBackground.NONE -> strings.none
@@ -785,21 +405,21 @@ private fun SubtitleBackground.label(strings: TvStrings): String =
         SubtitleBackground.DARK -> strings.dark
     }
 
-private fun AutoplayNextMode.label(strings: TvStrings): String =
+internal fun AutoplayNextMode.label(strings: TvStrings): String =
     when (this) {
         AutoplayNextMode.OFF -> strings.off
         AutoplayNextMode.COUNTDOWN -> strings.countdown
         AutoplayNextMode.IMMEDIATE -> strings.immediate
     }
 
-private fun SegmentSkipMode.label(strings: TvStrings): String =
+internal fun SegmentSkipMode.label(strings: TvStrings): String =
     when (this) {
         SegmentSkipMode.OFF -> strings.off
         SegmentSkipMode.SHOW_BUTTON -> strings.showSkipButton
         SegmentSkipMode.AUTO_SKIP -> strings.skipAutomatically
     }
 
-private fun AppSettingsRepository.setSegmentSkipMode(
+internal fun AppSettingsRepository.setSegmentSkipMode(
     type: PlaybackSegmentType,
     mode: SegmentSkipMode,
 ) {
@@ -815,19 +435,19 @@ private fun AppSettingsRepository.setSegmentSkipMode(
 private fun tvSettingsSegmentControlTargetId(type: PlaybackSegmentType): String =
     tvSettingsControlTargetId("segment-${type.name.lowercase()}")
 
-private fun ResumeMode.label(strings: TvStrings): String =
+internal fun ResumeMode.label(strings: TvStrings): String =
     when (this) {
         ResumeMode.RESUME -> strings.continueLabel
         ResumeMode.ASK -> strings.ask
         ResumeMode.RESTART -> strings.restart
     }
 
-private fun String.label() = lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() }
+internal fun String.label() = lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() }
 
-private fun StreamingQualityPreference.label(strings: TvStrings): String =
+internal fun StreamingQualityPreference.label(strings: TvStrings): String =
     maxHeight?.let { "${it}p  •  ${(maxBitrate ?: 0) / 1_000_000f} Mbps" } ?: strings.automatic
 
-private fun tvQualityOptions(): List<StreamingQualityPreference> =
+internal fun tvQualityOptions(): List<StreamingQualityPreference> =
     listOf(
         StreamingQualityPreference.AUTO,
         StreamingQualityPreference.MBPS_120_2160P,
@@ -837,11 +457,11 @@ private fun tvQualityOptions(): List<StreamingQualityPreference> =
         StreamingQualityPreference.MBPS_4_720P,
     )
 
-private fun tvSeekOptions() = listOf(5, 10, 15, 30, 60)
+internal fun tvSeekOptions() = listOf(5, 10, 15, 30, 60)
 
-private fun tvSpeedOptions() = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
+internal fun tvSpeedOptions() = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
 
-private fun preferredLanguageOptions(
+internal fun preferredLanguageOptions(
     strings: TvStrings,
     selected: String?,
     onSelect: (String?) -> Unit,

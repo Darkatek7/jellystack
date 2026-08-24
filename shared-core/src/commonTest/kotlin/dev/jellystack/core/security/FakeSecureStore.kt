@@ -17,4 +17,6 @@ class FakeSecureStore : SecureStore {
     }
 
     fun peek(key: String): SecretValue? = items[key]
+
+    fun snapshot(): Map<String, String> = items.mapValues { (_, value) -> value.reveal() }
 }

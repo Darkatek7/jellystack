@@ -74,6 +74,49 @@ class JellyfinBrowseApiTest {
         }
 
     @Test
+    fun browseQueryParametersAreForwardedWithoutImplicitFilters() =
+        runTest {
+            var parameters: Map<String, List<String>> = emptyMap()
+            val engine =
+                MockEngine { request ->
+                    parameters =
+                        request.url.parameters
+                            .entries()
+                            .associate { it.key to it.value }
+                    respond(
+                        """{"Items":[],"TotalRecordCount":0}""",
+                        HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                    )
+                }
+            val client = NetworkClientFactory.create(ClientConfig(engine = engine, installLogging = false))
+            val api = JellyfinBrowseApi(client, baseUrl = "https://example.test", accessToken = "dummy-access-token")
+
+            api.fetchLibraryItems(
+                userId = "u-1",
+                libraryId = "mixed",
+                startIndex = 30,
+                limit = 30,
+                includeItemTypes = "Movie,Series",
+                filters = "IsFavorite",
+                sortBy = "ProductionYear",
+                sortOrder = "Descending",
+                isPlayed = false,
+                genres = listOf("Action", "Science Fiction"),
+                years = listOf(1999, 2025),
+            )
+
+            assertEquals(listOf("ProductionYear"), parameters["SortBy"])
+            assertEquals(listOf("Descending"), parameters["SortOrder"])
+            assertEquals(listOf("false"), parameters["IsPlayed"])
+            assertEquals(listOf("IsFavorite"), parameters["Filters"])
+            assertEquals(listOf("Action,Science Fiction"), parameters["Genres"])
+            assertEquals(listOf("1999,2025"), parameters["Years"])
+            assertEquals(listOf("Movie,Series"), parameters["IncludeItemTypes"])
+            client.close()
+        }
+
+    @Test
     fun fetchItemDetailRequestsRichMetadataFields() =
         runTest {
             var requestedFields = ""
