@@ -13,7 +13,6 @@ import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -147,7 +146,7 @@ class TvSearchInteractionTest {
             }
         }
 
-        composeRule.onNodeWithText(strings.discoverLoadFailed).assertExists()
+        composeRule.onNodeWithContentDescription(strings.discoverLoadFailed).assertExists()
         composeRule.onNodeWithContentDescription(strings.retry).assertDoesNotExist()
         composeRule.onNodeWithContentDescription("Available movie").assertExists()
     }

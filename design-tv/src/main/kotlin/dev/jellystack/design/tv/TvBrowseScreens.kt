@@ -155,7 +155,9 @@ private suspend fun materializeTvRowItem(
 
 internal fun tvHomeHeroHeightDp(): Int = TV_HOME_HERO_HEIGHT_DP
 
-internal fun tvHomeFirstCardTopDp(): Int = 20 + TV_HOME_HERO_HEIGHT_DP + 28 + 24 + 14 + 6
+internal fun tvHomeFirstCardTopDp(): Int =
+    TvLayoutTokens.SafeInsets.vertical.value
+        .toInt() + TV_HOME_HERO_HEIGHT_DP + 28 + 24 + 14 + 6
 
 internal enum class TvSearchSource { ALL, JELLYFIN, SEERR }
 
@@ -473,6 +475,7 @@ internal fun TvHomeScreen(
                         state.libraries,
                         state,
                         strings.myMedia,
+                        strings,
                         focusMemory,
                         onLibrary,
                         listState = rowListStates.getValue("libraries"),
@@ -759,7 +762,7 @@ private fun TvHeroSlide(
             val metadata =
                 listOfNotNull(
                     item.productionYear?.toString(),
-                    item.communityRating?.let { rating -> "%.1f".format(rating) },
+                    tvRatingLabel(item.communityRating),
                     item.officialRating,
                 ).joinToString("  •  ")
             if (metadata.isNotBlank()) Text(metadata, color = TvTextMuted, fontSize = 15.sp)
@@ -944,6 +947,7 @@ private fun TvLibraryRow(
     libraries: List<JellyfinLibrary>,
     state: JellyfinHomeState,
     title: String,
+    strings: TvStrings,
     focusMemory: TvFocusMemory,
     onLibrary: (JellyfinLibrary) -> Unit,
     listState: LazyListState,
@@ -969,7 +973,7 @@ private fun TvLibraryRow(
                 val targetId = tvHomeCardTargetId(rowKey, library.id)
                 TvMediaCard(
                     title = library.name,
-                    subtitle = library.itemCount?.let { "$it items" },
+                    subtitle = library.itemCount?.let(strings::itemCount),
                     imageUrl = jellyfinImageUrl(state.imageBaseUrl, state.imageAccessToken, library.id, library.primaryImageTag),
                     artworkFit = TvMediaCardArtworkFit.CONTAIN_PORTRAIT,
                     onClick = { onLibrary(library) },
@@ -1027,7 +1031,7 @@ private fun TvHomeSectionRow(
                     subtitle =
                         listOfNotNull(
                             item.productionYear?.toString(),
-                            item.communityRating?.let { "★ %.1f".format(it) },
+                            tvRatingLabel(item.communityRating),
                         ).joinToString("  •  ").ifBlank { null },
                     imageUrl = resolveTvHomeSectionImageUrl(item, imageBaseUrl, imageAccessToken),
                     artworkFit =
@@ -1128,7 +1132,9 @@ internal fun TvLibraryScreen(
     ) { targetId ->
         locations[targetId]?.let { index ->
             gridState.scrollToItem(index)
-            true
+            withTimeoutOrNull(TV_FOCUS_MATERIALIZATION_TIMEOUT_MS) {
+                snapshotFlow { gridState.layoutInfo.visibleItemsInfo.any { it.index == index } }.first { it }
+            } ?: false
         } ?: false
     }
     LaunchedEffect(
@@ -1170,7 +1176,13 @@ internal fun TvLibraryScreen(
         horizontalArrangement = Arrangement.spacedBy(18.dp),
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) {
-            Text(route.title ?: strings.library, color = TvText, fontSize = 38.sp, fontWeight = FontWeight.Bold)
+            Text(
+                route.title ?: strings.library,
+                modifier = Modifier.tvHeading(),
+                color = TvText,
+                fontSize = 38.sp,
+                fontWeight = FontWeight.Bold,
+            )
         }
         if (route.libraryId == null) {
             gridItemsIndexed(
@@ -1181,7 +1193,7 @@ internal fun TvLibraryScreen(
                 val targetId = tvLibraryTargetId(library.id, "libraries")
                 TvMediaCard(
                     title = library.name,
-                    subtitle = library.itemCount?.let { "$it items" },
+                    subtitle = library.itemCount?.let(strings::itemCount),
                     imageUrl = jellyfinImageUrl(state.imageBaseUrl, state.imageAccessToken, library.id, library.primaryImageTag),
                     artworkFit = TvMediaCardArtworkFit.CONTAIN_PORTRAIT,
                     onClick = { onSelectLibrary(library.id) },
@@ -1480,7 +1492,7 @@ internal fun TvSearchScreen(
         verticalArrangement = Arrangement.spacedBy(24.dp),
     ) {
         item("header") {
-            Text(strings.search, color = TvText, fontSize = 38.sp, fontWeight = FontWeight.Bold)
+            Text(strings.search, modifier = Modifier.tvHeading(), color = TvText, fontSize = 38.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(16.dp))
             OutlinedTextField(
                 value = query,
@@ -1521,6 +1533,7 @@ internal fun TvSearchScreen(
                     { onSourceChanged(TvSearchSource.ALL) },
                     modifier = Modifier.focusRequester(sourceFocusRequester).testTag("tv-search-source-all"),
                     primary = source == TvSearchSource.ALL,
+                    selected = source == TvSearchSource.ALL,
                     focusToNavigationRailOnLeft = true,
                     focusTargetId = tvSearchSourceTargetId("all"),
                 )
@@ -1529,6 +1542,7 @@ internal fun TvSearchScreen(
                     { onSourceChanged(TvSearchSource.JELLYFIN) },
                     modifier = Modifier.testTag("tv-search-source-jellyfin"),
                     primary = source == TvSearchSource.JELLYFIN,
+                    selected = source == TvSearchSource.JELLYFIN,
                     focusTargetId = tvSearchSourceTargetId("jellyfin"),
                 )
                 TvActionButton(
@@ -1536,12 +1550,13 @@ internal fun TvSearchScreen(
                     { onSourceChanged(TvSearchSource.SEERR) },
                     modifier = Modifier.testTag("tv-search-source-seerr"),
                     primary = source == TvSearchSource.SEERR,
+                    selected = source == TvSearchSource.SEERR,
                     focusTargetId = tvSearchSourceTargetId("seerr"),
                 )
             }
         }
         searchingIndex?.let {
-            item("searching") { Text(strings.searching, color = TvTextMuted) }
+            item("searching") { TvStatusAnchor(strings.searching) }
         }
         jellyfinFailureIndex?.let {
             item("jellyfin-error") {
@@ -1607,7 +1622,7 @@ internal fun TvSearchScreen(
             }
         }
         emptyIndex?.let {
-            item("empty") { Text(strings.noResults, color = TvTextMuted) }
+            item("empty") { TvStatusAnchor(strings.noResults) }
         }
     }
 }
@@ -1624,7 +1639,7 @@ private fun TvSearchSourceFailure(
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(message, color = TvTextMuted, modifier = Modifier.weight(1f))
+        Text(message, color = TvTextMuted, modifier = Modifier.weight(1f).tvStatusSemantics(message))
         TvActionButton(
             label = retryLabel,
             onClick = onRetry,
@@ -1754,7 +1769,9 @@ internal fun TvDiscoverScreen(
         contentPadding = TvScreenPadding,
         verticalArrangement = Arrangement.spacedBy(28.dp),
     ) {
-        item("header") { Text(strings.discover, color = TvText, fontSize = 38.sp, fontWeight = FontWeight.Bold) }
+        item("header") {
+            Text(strings.discover, modifier = Modifier.tvHeading(), color = TvText, fontSize = 38.sp, fontWeight = FontWeight.Bold)
+        }
         when (availability) {
             TvDiscoverAvailability.MissingConnection ->
                 item("connect") {
@@ -1784,7 +1801,7 @@ internal fun TvDiscoverScreen(
             is TvDiscoverAvailability.Content -> {
                 if (availability.hasRailFailures) {
                     item("partial-error") {
-                        Text(strings.discoverLoadFailed, color = TvTextMuted)
+                        TvStatusAnchor(strings.discoverLoadFailed)
                     }
                 }
                 JellyseerrRecommendationRail.entries.forEach { rail ->
@@ -1865,15 +1882,10 @@ private fun TvFocusPlaceholder(
     label: String,
     @Suppress("UNUSED_PARAMETER") focusTargetId: String,
 ) {
-    Box(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .height(112.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(label, color = TvTextMuted, fontSize = 18.sp)
-    }
+    TvStatusAnchor(
+        label = label,
+        modifier = Modifier.height(112.dp),
+    )
 }
 
 internal data class TvSeerrCardArtwork(
@@ -1951,7 +1963,7 @@ private fun JellyfinItem.subtitleText(): String? =
     listOfNotNull(
         productionYear?.toString(),
         if (type.equals("Episode", true)) "S${parentIndexNumber ?: 0} E${indexNumber ?: 0}" else null,
-        communityRating?.let { "★ %.1f".format(it) },
+        tvRatingLabel(communityRating),
     ).joinToString("  •  ").ifBlank { null }
 
 private fun JellyseerrRequestSummary.toSearchItem(): JellyseerrSearchItem? {

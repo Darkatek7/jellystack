@@ -3,7 +3,6 @@
 package dev.jellystack.design.tv
 
 import android.view.KeyEvent
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -47,11 +46,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -101,7 +102,7 @@ internal fun Modifier.tvFocusable(
     onClick: (() -> Unit)?,
     enabled: Boolean = true,
     shape: RoundedCornerShape = RoundedCornerShape(16.dp),
-    scale: Float = 1.045f,
+    scale: Float = TvLayoutTokens.FOCUS_SCALE,
     onFocused: (() -> Unit)? = null,
     onFocusChanged: ((Boolean) -> Unit)? = null,
     focusToNavigationRailOnLeft: Boolean = false,
@@ -186,13 +187,6 @@ private fun Modifier.tvFocusDecoration(
 ): Modifier {
     var focused by remember { mutableStateOf(false) }
     val animatedScale by animateFloatAsState(if (focused) scale else 1f, label = "tv-focus-scale")
-    val borderColor by animateColorAsState(if (focused) TvPurple else Color.Transparent, label = "tv-focus-color")
-    val borderModifier =
-        if (showFocusBorder) {
-            Modifier.border(if (focused) 1.5.dp else 0.dp, borderColor.copy(alpha = 0.9f), shape)
-        } else {
-            Modifier
-        }
     return this
         .onFocusChanged {
             val becameFocused = it.isFocused && !focused
@@ -204,6 +198,9 @@ private fun Modifier.tvFocusDecoration(
         }.graphicsLayer {
             scaleX = animatedScale
             scaleY = animatedScale
+            shadowElevation = if (focused) 12.dp.toPx() else 0f
+            ambientShadowColor = Color.Black
+            spotShadowColor = TvPurpleStrong
         }.drawBehind {
             if (focused) {
                 drawRoundRect(
@@ -213,8 +210,32 @@ private fun Modifier.tvFocusDecoration(
                             .CornerRadius(22.dp.toPx()),
                 )
             }
-        }.then(borderModifier)
-        .clip(shape)
+        }.drawWithContent {
+            drawContent()
+            if (focused && showFocusBorder) {
+                drawRoundRect(
+                    color = TvLayoutTokens.FocusDarkRing,
+                    cornerRadius =
+                        androidx.compose.ui.geometry
+                            .CornerRadius(18.dp.toPx()),
+                    style = Stroke(width = 5.dp.toPx()),
+                )
+                drawRoundRect(
+                    color = TvLayoutTokens.FocusLightRing,
+                    cornerRadius =
+                        androidx.compose.ui.geometry
+                            .CornerRadius(17.dp.toPx()),
+                    style = Stroke(width = 2.dp.toPx()),
+                )
+                drawRoundRect(
+                    color = TvLayoutTokens.FocusAccentRing,
+                    cornerRadius =
+                        androidx.compose.ui.geometry
+                            .CornerRadius(16.dp.toPx()),
+                    style = Stroke(width = 1.dp.toPx()),
+                )
+            }
+        }.clip(shape)
 }
 
 @Composable
@@ -224,6 +245,7 @@ internal fun TvActionButton(
     modifier: Modifier = Modifier,
     leading: (@Composable () -> Unit)? = null,
     primary: Boolean = false,
+    selected: Boolean = false,
     destructive: Boolean = false,
     enabled: Boolean = true,
     focusToNavigationRailOnLeft: Boolean = false,
@@ -244,9 +266,24 @@ internal fun TvActionButton(
                         else -> TvSurfaceRaised
                     },
                     shape,
-                ).semantics(mergeDescendants = true) {
+                ).drawBehind {
+                    if (selected) {
+                        drawRoundRect(
+                            color = TvPurple,
+                            topLeft =
+                                androidx.compose.ui.geometry
+                                    .Offset(3.dp.toPx(), size.height * 0.2f),
+                            size =
+                                androidx.compose.ui.geometry
+                                    .Size(4.dp.toPx(), size.height * 0.6f),
+                            cornerRadius =
+                                androidx.compose.ui.geometry
+                                    .CornerRadius(2.dp.toPx()),
+                        )
+                    }
+                }.semantics(mergeDescendants = true) {
                     contentDescription = label
-                    selected = primary
+                    this.selected = selected
                     if (destructive) tvDestructiveAction = true
                 }.tvFocusable(
                     onClick = onClick,
@@ -325,8 +362,10 @@ internal fun TvCompactActionButton(
                 .width(TV_DETAIL_COMPACT_ACTION_WIDTH_DP.dp)
                 .height(TV_DETAIL_COMPACT_ACTION_HEIGHT_DP.dp)
                 .background(if (selected) TvPurpleStrong.copy(alpha = 0.42f) else Color.Black.copy(alpha = 0.52f), shape)
-                .semantics(mergeDescendants = true) { contentDescription = label }
-                .tvFocusable(onClick = onClick, shape = shape, scale = 1.06f)
+                .semantics(mergeDescendants = true) {
+                    contentDescription = label
+                    this.selected = selected
+                }.tvFocusable(onClick = onClick, shape = shape, scale = 1.06f)
                 .padding(horizontal = 10.dp, vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterVertically),
@@ -364,8 +403,13 @@ internal fun TvMediaCard(
 ) {
     val shape = RoundedCornerShape(18.dp)
     var focused by remember { mutableStateOf(false) }
-    val cardWidth = if (format == TvMediaCardFormat.LANDSCAPE) 250.dp else 140.dp
-    val aspectRatio = if (format == TvMediaCardFormat.LANDSCAPE) 16f / 9f else 2f / 3f
+    val cardWidth = if (format == TvMediaCardFormat.LANDSCAPE) TvLayoutTokens.LandscapeArtworkWidth else 140.dp
+    val aspectRatio =
+        if (format == TvMediaCardFormat.LANDSCAPE) {
+            TvLayoutTokens.LandscapeArtworkWidth.value / TvLayoutTokens.LandscapeArtworkHeight.value
+        } else {
+            2f / 3f
+        }
     val bringIntoViewRequester = remember { BringIntoViewRequester() }
     LaunchedEffect(focused) {
         if (focused) {
@@ -404,8 +448,13 @@ internal fun TvMediaCard(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .aspectRatio(aspectRatio)
-                    .clip(shape),
+                    .then(
+                        if (format == TvMediaCardFormat.LANDSCAPE) {
+                            Modifier.height(TvLayoutTokens.LandscapeArtworkHeight)
+                        } else {
+                            Modifier.aspectRatio(aspectRatio)
+                        },
+                    ).clip(shape),
         ) {
             TvMediaCardContent(
                 title = title,
@@ -417,8 +466,38 @@ internal fun TvMediaCard(
                 previewSoundEnabled = previewSoundEnabled,
                 previewProgress = previewProgress,
                 previewSurfaceTestTag = previewSurfaceTestTag,
+                showMetadataOverlay = format != TvMediaCardFormat.LANDSCAPE,
             )
         }
+        if (format == TvMediaCardFormat.LANDSCAPE) {
+            TvMediaCardMetadataBand(title = title, subtitle = subtitle)
+        }
+    }
+}
+
+@Composable
+private fun TvMediaCardMetadataBand(
+    title: String,
+    subtitle: String?,
+) {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(TvLayoutTokens.LandscapeMetadataBandHeight)
+                .background(Color(0xFF11121B))
+                .padding(horizontal = 14.dp, vertical = 7.dp),
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            title,
+            color = TvText,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 17.sp,
+        )
+        subtitle?.let { Text(it, color = TvTextMuted, fontSize = 13.sp, maxLines = 1) }
     }
 }
 
@@ -433,6 +512,7 @@ private fun BoxScope.TvMediaCardContent(
     previewSoundEnabled: Boolean,
     previewProgress: State<Float>?,
     previewSurfaceTestTag: String?,
+    showMetadataOverlay: Boolean,
 ) {
     if (previewing && previewEngine != null) {
         TvTrailerPreviewSurface(
@@ -452,20 +532,34 @@ private fun BoxScope.TvMediaCardContent(
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.58f)))
         AsyncImage(
             model = imageUrl,
-            contentDescription = title,
+            contentDescription = null,
             contentScale = ContentScale.Fit,
             modifier = Modifier.fillMaxSize(),
         )
     } else if (imageUrl != null) {
         AsyncImage(
             model = imageUrl,
-            contentDescription = title,
+            contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
         )
     } else {
-        Box(Modifier.fillMaxSize().background(TvSurfaceRaised), contentAlignment = Alignment.Center) {
-            Icon(Icons.Default.ImageNotSupported, contentDescription = null, tint = TvTextMuted)
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.linearGradient(
+                        listOf(Color(0xFF292A3D), Color(0xFF151622), Color(0xFF30234A)),
+                    ),
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Default.ImageNotSupported,
+                contentDescription = null,
+                tint = TvTextMuted,
+                modifier = Modifier.size(38.dp),
+            )
         }
     }
     Box(
@@ -490,19 +584,21 @@ private fun BoxScope.TvMediaCardContent(
             modifier = Modifier.fillMaxSize(),
         )
     }
-    Column(
-        modifier = Modifier.align(Alignment.BottomStart).padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        Text(
-            title,
-            color = TvText,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 18.sp,
-        )
-        subtitle?.let { Text(it, color = TvTextMuted, fontSize = 14.sp, maxLines = 1) }
+    if (showMetadataOverlay) {
+        Column(
+            modifier = Modifier.align(Alignment.BottomStart).padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                title,
+                color = TvText,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 18.sp,
+            )
+            subtitle?.let { Text(it, color = TvTextMuted, fontSize = 14.sp, maxLines = 1) }
+        }
     }
 }
 
@@ -560,7 +656,7 @@ internal fun TvLoading(
     modifier: Modifier = Modifier,
 ) {
     Column(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier.fillMaxSize().tvStatusSemantics(label),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
@@ -577,14 +673,20 @@ internal fun TvSectionTitle(
 ) {
     Text(
         title,
-        modifier = modifier.padding(horizontal = 6.dp),
+        modifier = modifier.padding(horizontal = 6.dp).tvHeading(),
         color = TvText,
         fontSize = 20.sp,
         fontWeight = FontWeight.Bold,
     )
 }
 
-internal val TvScreenPadding = PaddingValues(start = 92.dp, end = 36.dp, top = 20.dp, bottom = 54.dp)
+internal val TvScreenPadding =
+    PaddingValues(
+        start = 92.dp,
+        end = TvLayoutTokens.SafeInsets.horizontal,
+        top = TvLayoutTokens.SafeInsets.vertical,
+        bottom = 54.dp,
+    )
 
 @Composable
 internal fun tvOutlinedTextFieldColors() =

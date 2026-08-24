@@ -834,7 +834,7 @@ internal fun TvJellyfinDetailScreen(
             currentDetail.productionYear?.toString(),
             currentDetail.runTimeTicks?.let { "${it / 600_000_000L} min" },
             tvVisibleOfficialRating(currentDetail.officialRating),
-            currentDetail.communityRating?.let { "★ %.1f".format(it) },
+            tvRatingLabel(currentDetail.communityRating),
             currentDetail.mediaSources
                 .firstOrNull()
                 ?.streams
@@ -897,7 +897,7 @@ internal fun TvJellyfinDetailScreen(
                 ),
             )
             Column(
-                Modifier.align(Alignment.BottomStart).padding(start = 108.dp, end = 42.dp, bottom = 38.dp).widthIn(max = 760.dp),
+                Modifier.align(Alignment.BottomStart).padding(start = 108.dp, end = 48.dp, bottom = 38.dp).widthIn(max = 760.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 if (titlePresentation.useGraphicLogo) {
@@ -1025,7 +1025,13 @@ internal fun TvJellyfinDetailScreen(
                     .padding(34.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp),
             ) {
-                Text(strings.resumeAskTitle, fontSize = 30.sp, fontWeight = FontWeight.Bold, color = TvText)
+                Text(
+                    strings.resumeAskTitle,
+                    modifier = Modifier.tvHeading(),
+                    fontSize = 30.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TvText,
+                )
                 Text(
                     strings.continueFrom.format(request.positionLabel),
                     fontSize = 19.sp,
@@ -1069,14 +1075,14 @@ internal fun LazyListScope.tvJellyfinDetailSections(
         when (section) {
             is TvDetailSection.Facts ->
                 item(section.id) {
-                    Row(Modifier.padding(start = 108.dp, end = 42.dp), horizontalArrangement = Arrangement.spacedBy(22.dp)) {
+                    Row(Modifier.padding(start = 108.dp, end = 48.dp), horizontalArrangement = Arrangement.spacedBy(22.dp)) {
                         section.values.forEach { Text(it, color = TvTextMuted, fontSize = 18.sp) }
                     }
                 }
             is TvDetailSection.Overview ->
                 item(section.id) {
                     Column(
-                        bodyFocusModifier.padding(start = 108.dp, end = 42.dp).fillMaxWidth(0.78f),
+                        bodyFocusModifier.padding(start = 108.dp, end = 48.dp).fillMaxWidth(0.78f),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         TvSectionTitle(strings.overview)
@@ -1086,7 +1092,7 @@ internal fun LazyListScope.tvJellyfinDetailSections(
                 }
             is TvDetailSection.Seasons ->
                 item(section.id) {
-                    Column(Modifier.padding(start = 108.dp, end = 42.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column(Modifier.padding(start = 108.dp, end = 48.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         TvSectionTitle(strings.seasons)
                         LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -1106,6 +1112,7 @@ internal fun LazyListScope.tvJellyfinDetailSections(
                                     label,
                                     { onSelectSeason(index) },
                                     primary = index == section.selectedIndex.coerceIn(section.groups.indices),
+                                    selected = index == section.selectedIndex.coerceIn(section.groups.indices),
                                     modifier = Modifier.widthIn(min = 150.dp),
                                 )
                             }
@@ -1124,7 +1131,7 @@ internal fun LazyListScope.tvJellyfinDetailSections(
                 item(section.id) {
                     Column(
                         Modifier
-                            .padding(start = 108.dp, end = 42.dp)
+                            .padding(start = 108.dp, end = 48.dp)
                             .then(focusModifiers.navigationModifier),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
@@ -1206,7 +1213,7 @@ private fun TvKeyedDetailItemRow(
 ) {
     Column(
         Modifier
-            .padding(start = 108.dp, end = 42.dp)
+            .padding(start = 108.dp, end = 48.dp)
             .then(focusModifiers.navigationModifier),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -1223,7 +1230,7 @@ private fun TvKeyedDetailItemRow(
                     subtitle =
                         listOfNotNull(
                             item.productionYear?.toString(),
-                            item.communityRating?.let { "★ %.1f".format(it) },
+                            tvRatingLabel(item.communityRating),
                         ).joinToString("  •  "),
                     imageUrl =
                         jellyfinImageUrl(
@@ -1581,11 +1588,13 @@ private fun TvRequestDialog(
                         strings.standard,
                         { variant = JellyseerrRequestVariant.STANDARD },
                         primary = variant == JellyseerrRequestVariant.STANDARD,
+                        selected = variant == JellyseerrRequestVariant.STANDARD,
                     )
                     TvActionButton(
                         "4K",
                         { variant = JellyseerrRequestVariant.FOUR_K },
                         primary = variant == JellyseerrRequestVariant.FOUR_K,
+                        selected = variant == JellyseerrRequestVariant.FOUR_K,
                     )
                 }
             }
@@ -1597,7 +1606,14 @@ private fun TvRequestDialog(
                         androidx.compose.foundation.layout
                             .PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                 ) {
-                    item { TvActionButton(strings.all, { allSeasons = true }, primary = allSeasons) }
+                    item {
+                        TvActionButton(
+                            strings.all,
+                            { allSeasons = true },
+                            primary = allSeasons,
+                            selected = allSeasons,
+                        )
+                    }
                     items(seasons) { season ->
                         val selected = allSeasons || season in selectedSeasons
                         TvActionButton(
@@ -1612,6 +1628,7 @@ private fun TvRequestDialog(
                                 }
                             },
                             primary = selected,
+                            selected = selected,
                         )
                     }
                 }
@@ -1629,6 +1646,7 @@ private fun TvRequestDialog(
                             strings.serverDefault,
                             { profile = JellyseerrRequestProfileSelection.ServerDefault },
                             primary = profile is JellyseerrRequestProfileSelection.ServerDefault,
+                            selected = profile is JellyseerrRequestProfileSelection.ServerDefault,
                         )
                     }
                     items(profiles, key = { "${it.serviceId}:${it.languageProfileId}:${it.profileId}" }) { option ->
@@ -1636,6 +1654,7 @@ private fun TvRequestDialog(
                             option.name,
                             { profile = JellyseerrRequestProfileSelection.Profile(option) },
                             primary = (profile as? JellyseerrRequestProfileSelection.Profile)?.option == option,
+                            selected = (profile as? JellyseerrRequestProfileSelection.Profile)?.option == option,
                         )
                     }
                 }

@@ -289,7 +289,9 @@ internal fun TvSettingsLandingScreen(
         contentPadding = TvScreenPadding,
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
-        item { Text(strings.settings, color = TvText, fontSize = 38.sp, fontWeight = FontWeight.Bold) }
+        item {
+            Text(strings.settings, modifier = Modifier.tvHeading(), color = TvText, fontSize = 38.sp, fontWeight = FontWeight.Bold)
+        }
         item { Text(strings.settingsChooseCategory, color = TvTextMuted, fontSize = 19.sp) }
         item {
             TvSettingsGrid {
@@ -335,7 +337,7 @@ internal fun TvSettingsCategoryPage(
         contentPadding = TvScreenPadding,
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
-        item { Text(title, color = TvText, fontSize = 38.sp, fontWeight = FontWeight.Bold) }
+        item { Text(title, modifier = Modifier.tvHeading(), color = TvText, fontSize = 38.sp, fontWeight = FontWeight.Bold) }
         item { content() }
         item { Spacer(Modifier.height(40.dp)) }
     }
@@ -367,6 +369,7 @@ private fun TvAppearanceSettings(
             strings.homeSections,
             if (settings.useServerHomeSections) strings.on else strings.off,
             focusTargetId = tvSettingsControlTargetId("home-sections"),
+            checked = settings.useServerHomeSections,
         ) {
             repository.setUseServerHomeSections(!settings.useServerHomeSections)
         }
@@ -467,6 +470,7 @@ internal fun TvPlaybackSettings(
             if (settings.statsForNerdsEnabled) strings.on else strings.off,
             focusToNavigationRailOnLeft = true,
             focusTargetId = tvSettingsControlTargetId("stats"),
+            checked = settings.statsForNerdsEnabled,
         ) {
             repository.setStatsForNerdsEnabled(!settings.statsForNerdsEnabled)
         }
@@ -474,6 +478,7 @@ internal fun TvPlaybackSettings(
             strings.trailerPreviews,
             if (settings.trailerPreviewsEnabled) strings.on else strings.off,
             focusTargetId = tvSettingsControlTargetId("trailer-previews"),
+            checked = settings.trailerPreviewsEnabled,
         ) {
             repository.setTrailerPreviewsEnabled(!settings.trailerPreviewsEnabled)
         }
@@ -482,6 +487,7 @@ internal fun TvPlaybackSettings(
             if (settings.trailerPreviewSoundEnabled) strings.on else strings.off,
             enabled = settings.trailerPreviewsEnabled,
             focusTargetId = tvSettingsControlTargetId("trailer-preview-sound"),
+            checked = settings.trailerPreviewSoundEnabled,
         ) {
             repository.setTrailerPreviewSoundEnabled(!settings.trailerPreviewSoundEnabled)
         }

@@ -1,5 +1,6 @@
 package dev.jellystack.design.tv
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.PlayArrow
@@ -14,9 +15,14 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
@@ -75,6 +81,49 @@ class TvComponentsTest {
             .performKeyInput { pressKey(Key.DirectionCenter) }
 
         composeRule.runOnIdle { assertEquals(1, clicks) }
+    }
+
+    @Test
+    fun primaryActionAndSelectedChoiceExposeDifferentSemantics() {
+        composeRule.setContent {
+            JellystackTvTheme {
+                Column {
+                    TvActionButton("Primary", {}, primary = true)
+                    TvActionButton("Choice", {}, primary = true, selected = true)
+                }
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Primary").assertIsNotSelected()
+        composeRule.onNodeWithContentDescription("Choice").assertIsSelected()
+    }
+
+    @Test
+    fun headingsTogglesAndStatusExposeTvAccessibilitySemantics() {
+        composeRule.setContent {
+            JellystackTvTheme {
+                Column {
+                    TvSectionTitle("Heading")
+                    TvPlayerOptionRow(
+                        icon = Icons.Default.HighQuality,
+                        title = "Stats",
+                        summary = "On",
+                        selected = true,
+                        checked = true,
+                        onClick = {},
+                    )
+                    TvStatusAnchor("Loading")
+                }
+            }
+        }
+
+        composeRule.onNodeWithText("Heading").assert(SemanticsMatcher.expectValue(SemanticsProperties.Heading, Unit))
+        composeRule.onNodeWithContentDescription("Stats, On").assertIsOn()
+        composeRule
+            .onNodeWithContentDescription("Loading")
+            .assert(SemanticsMatcher.expectValue(TvStatusKey, true))
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, androidx.compose.ui.semantics.LiveRegionMode.Polite))
+            .assert(SemanticsMatcher.keyNotDefined(SemanticsActions.OnClick))
     }
 
     @Test
@@ -205,7 +254,8 @@ class TvComponentsTest {
         composeRule.mainClock.advanceTimeBy(500)
         val focused = card.getUnclippedBoundsInRoot()
 
-        assertEquals(16f / 9f, (before.right - before.left).value / (before.bottom - before.top).value, 0.05f)
+        assertEquals(232f, (before.right - before.left).value, 1f)
+        assertEquals(187f, (before.bottom - before.top).value, 1f)
         assertEquals((before.right - before.left).value, (focused.right - focused.left).value, 0.1f)
         assertEquals((before.bottom - before.top).value, (focused.bottom - focused.top).value, 0.1f)
     }
@@ -236,7 +286,7 @@ class TvComponentsTest {
     }
 
     @Test
-    fun upcomingDiscoverRailUsesTheStandardLandscapeCardFormat() {
+    fun upcomingDiscoverRailUsesArtworkPlusOpaqueMetadataBand() {
         val item =
             JellyseerrSearchItem(
                 tmdbId = 42,
@@ -282,11 +332,8 @@ class TvComponentsTest {
         val bounds = composeRule.onNodeWithContentDescription("Upcoming item, 2026").getUnclippedBoundsInRoot()
         val width = (bounds.right - bounds.left).value
         val height = (bounds.bottom - bounds.top).value
-        assertTrue(
-            "Discover cards should be 16:9 landscape",
-            width > height,
-        )
-        assertEquals(16f / 9f, width / height, 0.05f)
+        assertTrue("Discover cards should remain landscape", width > height)
+        assertEquals(232f / 187f, width / height, 0.05f)
     }
 
     @Test
@@ -315,7 +362,7 @@ class TvComponentsTest {
 
         composeRule.onNode(hasSetTextAction()).performTextInput("query")
         composeRule.onNodeWithContentDescription("Jellyfin result").assertExists()
-        composeRule.onNodeWithText(strings.seerrSearchFailed).assertExists()
+        composeRule.onNodeWithContentDescription(strings.seerrSearchFailed).assertExists()
         composeRule.onNodeWithContentDescription(strings.retry).performClick()
         composeRule.runOnIdle { assertEquals(1, seerrRetries) }
     }
@@ -398,7 +445,7 @@ class TvComponentsTest {
             }
         }
 
-        composeRule.onNodeWithText(strings.discoverLoadFailed).assertExists()
+        composeRule.onNodeWithContentDescription(strings.discoverLoadFailed).assertExists()
         composeRule.onNodeWithContentDescription(strings.connectSeerr).assertDoesNotExist()
         composeRule.onNodeWithContentDescription(strings.retry).performClick()
         composeRule.runOnIdle { assertEquals(1, retries) }
@@ -432,7 +479,7 @@ class TvComponentsTest {
         }
 
         composeRule.onNodeWithContentDescription("Available movie").assertExists()
-        composeRule.onNodeWithText(strings.discoverLoadFailed).assertExists()
+        composeRule.onNodeWithContentDescription(strings.discoverLoadFailed).assertExists()
         composeRule.onNodeWithContentDescription(strings.retry).assertDoesNotExist()
         composeRule.onNodeWithText(strings.noResults).assertDoesNotExist()
     }
@@ -521,7 +568,7 @@ class TvComponentsTest {
             .performClick()
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithText(strings.loading).assertExists()
+        composeRule.onNodeWithContentDescription(strings.loading).assertExists()
         composeRule.onNodeWithContentDescription(strings.retry).assertDoesNotExist()
         composeRule.runOnIdle {
             recommendations =
@@ -567,7 +614,7 @@ class TvComponentsTest {
             .performSemanticsAction(SemanticsActions.RequestFocus)
             .performClick()
         composeRule.waitForIdle()
-        composeRule.onNodeWithText(strings.loading).assertExists()
+        composeRule.onNodeWithContentDescription(strings.loading).assertExists()
         composeRule.onNodeWithContentDescription(strings.retry).assertDoesNotExist()
 
         composeRule.runOnIdle {

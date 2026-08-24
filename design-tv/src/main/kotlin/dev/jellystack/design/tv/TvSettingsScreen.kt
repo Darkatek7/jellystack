@@ -12,6 +12,7 @@ package dev.jellystack.design.tv
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
@@ -28,12 +29,14 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -41,6 +44,10 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -145,6 +152,7 @@ internal fun TvChoiceDialog(
                         { onSelect(option) },
                         modifier = if (index == initialIndex) Modifier.focusRequester(initialFocus) else Modifier,
                         primary = option.selected,
+                        selected = option.selected,
                     )
                 }
             }
@@ -156,14 +164,24 @@ internal fun TvChoiceDialog(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun TvSettingsGrid(content: @Composable androidx.compose.foundation.layout.FlowRowScope.() -> Unit) {
-    androidx.compose.foundation.layout.FlowRow(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-        maxItemsInEachRow = 3,
-        content = content,
-    )
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val fontScale = LocalDensity.current.fontScale
+        val columns = tvSettingsColumnCount(maxWidth.value, fontScale)
+        val spacing = TvLayoutTokens.CardSpacing
+        val tileWidth = (maxWidth - (spacing * (columns - 1))) / columns
+        CompositionLocalProvider(LocalTvSettingsTileWidth provides tileWidth) {
+            androidx.compose.foundation.layout.FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(spacing),
+                verticalArrangement = Arrangement.spacedBy(spacing),
+                maxItemsInEachRow = columns,
+                content = content,
+            )
+        }
+    }
 }
+
+private val LocalTvSettingsTileWidth = staticCompositionLocalOf { 260.dp }
 
 @Composable
 internal fun TvSettingTile(
@@ -174,16 +192,19 @@ internal fun TvSettingTile(
     enabled: Boolean = true,
     focusTargetId: String,
     modifier: Modifier = Modifier,
+    checked: Boolean? = null,
     onClick: () -> Unit,
 ) {
     Column(
         modifier
             .tvScreenEntryFocus(screenEntry, focusTargetId)
-            .width(330.dp)
+            .width(LocalTvSettingsTileWidth.current)
             .height(112.dp)
             .graphicsLayer { alpha = if (enabled) 1f else 0.46f }
             .background(TvSurface, RoundedCornerShape(20.dp))
-            .tvFocusable(
+            .semantics {
+                checked?.let { toggleableState = if (it) ToggleableState.On else ToggleableState.Off }
+            }.tvFocusable(
                 onClick = onClick,
                 enabled = enabled,
                 shape = RoundedCornerShape(20.dp),
@@ -253,6 +274,7 @@ internal fun TvSeerrConnectDialog(
                                     down = usernameFocus
                                 },
                         primary = useJellyfin,
+                        selected = useJellyfin,
                     )
                     TvActionButton(
                         strings.seerrAccount,
@@ -265,6 +287,7 @@ internal fun TvSeerrConnectDialog(
                                     down = usernameFocus
                                 },
                         primary = !useJellyfin,
+                        selected = !useJellyfin,
                     )
                 }
                 OutlinedTextField(

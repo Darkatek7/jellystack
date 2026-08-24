@@ -126,7 +126,8 @@ class TvHomeScreenTest {
     @Test
     fun recreatedLibraryRestoresExactOffscreenGridCard() {
         val shown = androidx.compose.runtime.mutableStateOf(true)
-        val preferred = androidx.compose.runtime.mutableStateOf<String?>(tvLibraryTargetId("library-27"))
+        val preferred =
+            androidx.compose.runtime.mutableStateOf<String?>(tvLibraryTargetId("library-27", sectionId = "libraries"))
         val libraries =
             (0..31).map { index ->
                 JellyfinLibrary("library-$index", "Library $index", null, index.toLong(), null)
@@ -308,7 +309,6 @@ class TvHomeScreenTest {
         val heroBounds = composeRule.onNodeWithTag("tv-home-hero-carousel").getUnclippedBoundsInRoot()
         val firstCardBounds = composeRule.onAllNodes(cardWithDescription("First media card"))[0].getUnclippedBoundsInRoot()
         assertEquals(360f, (heroBounds.bottom - heroBounds.top).value, 0.01f)
-        assertEquals(452f, firstCardBounds.top.value, 0.51f)
         assertEquals(tvHomeFirstCardTopDp().toFloat(), firstCardBounds.top.value, 0.51f)
         composeRule.runOnIdle(engine::release)
     }

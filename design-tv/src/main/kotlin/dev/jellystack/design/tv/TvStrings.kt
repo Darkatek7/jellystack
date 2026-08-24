@@ -209,7 +209,11 @@ internal data class TvStrings(
     val modeDirect: String,
     val modeHls: String,
     val modeLocal: String,
+    private val itemSingular: String,
+    private val itemPlural: String,
 ) {
+    fun itemCount(count: Long): String = "$count ${if (count == 1L) itemSingular else itemPlural}"
+
     companion object {
         fun current(language: AppLanguage): TvStrings {
             val german =
@@ -430,6 +434,8 @@ internal data class TvStrings(
                 modeDirect = "Direct",
                 modeHls = "Transcode (HLS)",
                 modeLocal = "Local",
+                itemSingular = "item",
+                itemPlural = "items",
             )
 
         private val German =
@@ -646,6 +652,8 @@ internal data class TvStrings(
                 modeDirect = "Direkt",
                 modeHls = "Transcode (HLS)",
                 modeLocal = "Lokal",
+                itemSingular = "Element",
+                itemPlural = "Elemente",
             )
     }
 }

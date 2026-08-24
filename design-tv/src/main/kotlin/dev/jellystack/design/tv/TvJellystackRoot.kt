@@ -11,7 +11,6 @@ package dev.jellystack.design.tv
 
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -44,6 +43,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -566,11 +568,6 @@ private fun TvAuthenticatedApp(
                 interactionRevision = focusCoordinator.currentInteractionRevision,
             )
         }
-    val contentStartPadding by
-        animateDpAsState(
-            if (showRail && appUiState.railExpanded) 134.dp else 0.dp,
-            label = "tv-content-rail-safe-area",
-        )
     val backDispatcher =
         TvAppBackDispatcher(
             holder = appStateHolder,
@@ -668,7 +665,7 @@ private fun TvAuthenticatedApp(
             NavDisplay(
                 backStack = appUiState.backStack,
                 onBack = { backDispatcher.dispatch() },
-                modifier = Modifier.fillMaxSize().padding(start = contentStartPadding),
+                modifier = Modifier.fillMaxSize(),
                 entryProvider = { route ->
                     NavEntry(route) {
                         val entryRouteKey =
@@ -863,7 +860,7 @@ private fun TvAuthenticatedApp(
             if (appUiState.railExpanded) {
                 Box(
                     Modifier
-                        .width(280.dp)
+                        .width(TvLayoutTokens.ExpandedRailWidth + 56.dp)
                         .fillMaxHeight()
                         .background(
                             androidx.compose.ui.graphics.Brush.horizontalGradient(
@@ -908,7 +905,7 @@ private fun TvNavigationRail(
     onSelected: (TvRoute) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val width by animateDpAsState(if (expanded) 226.dp else 72.dp, label = "tv-rail-width")
+    val width = if (expanded) TvLayoutTokens.ExpandedRailWidth else TvLayoutTokens.CollapsedRailWidth
     val entries =
         listOf(
             Triple(TvRoute.Home as TvRoute, strings.home, Icons.Default.Home),
@@ -928,7 +925,7 @@ private fun TvNavigationRail(
                 .width(width)
                 .fillMaxHeight()
                 .background(Color(0xE60B0C14))
-                .padding(horizontal = 10.dp, vertical = 34.dp),
+                .padding(horizontal = 10.dp, vertical = TvLayoutTokens.SafeInsets.vertical),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         entries.forEachIndexed { index, (route, label, icon) ->
@@ -952,7 +949,10 @@ private fun TvNavigationRail(
                         if (isSelected) TvPurpleStrong.copy(alpha = 0.48f) else Color.Transparent,
                         androidx.compose.foundation.shape
                             .RoundedCornerShape(18.dp),
-                    ).tvFocusable(
+                    ).semantics(mergeDescendants = true) {
+                        contentDescription = label
+                        this.selected = isSelected
+                    }.tvFocusable(
                         onClick = { onSelected(route) },
                         enabled = tvNavigationRailItemsFocusable(expanded),
                         shape =
@@ -963,7 +963,7 @@ private fun TvNavigationRail(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Icon(icon, label, tint = if (isSelected) TvPurple else TvTextMuted)
+                Icon(icon, null, tint = if (isSelected) TvPurple else TvTextMuted)
                 if (expanded) Text(label, color = if (isSelected) TvText else TvTextMuted, fontSize = 18.sp)
             }
         }
