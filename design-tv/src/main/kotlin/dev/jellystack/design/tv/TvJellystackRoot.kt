@@ -144,6 +144,7 @@ fun TvJellystackRoot(
     stopPlayback: () -> Unit,
     modifier: Modifier = Modifier,
     coldLaunch: Boolean = true,
+    voiceSearch: TvVoiceSearchPort = UnsupportedTvVoiceSearch,
 ) {
     val koin = remember { JellystackDI.koin }
     val serverRepository = remember(koin) { koin.get<ServerRepository>() }
@@ -165,6 +166,7 @@ fun TvJellystackRoot(
             strings = strings,
             stopPlayback = stopPlayback,
             coldLaunch = coldLaunch,
+            voiceSearch = voiceSearch,
             modifier = modifier,
         )
     }
@@ -183,6 +185,7 @@ private fun TvProfileHost(
     strings: TvStrings,
     stopPlayback: () -> Unit,
     coldLaunch: Boolean,
+    voiceSearch: TvVoiceSearchPort,
     modifier: Modifier,
 ) {
     val koin = remember { JellystackDI.koin }
@@ -608,6 +611,7 @@ private fun TvProfileHost(
                             reconnectProfile = selectedProfile
                         }
                     },
+                    voiceSearch = voiceSearch,
                 )
         }
         removeProfile?.let { profile ->
@@ -654,6 +658,7 @@ private fun TvAuthenticatedApp(
     activeProfileGeneration: Long = 0L,
     onOpenProfiles: () -> Unit = {},
     onAuthenticationExpired: () -> Unit = {},
+    voiceSearch: TvVoiceSearchPort = UnsupportedTvVoiceSearch,
 ) {
     val koin = remember { JellystackDI.koin }
     val rootScope = rememberCoroutineScope()
@@ -707,6 +712,8 @@ private fun TvAuthenticatedApp(
     }
     val browseRepository = remember(accountGeneration) { koin.get<JellyfinBrowseRepository>() }
     val environmentProvider = remember(accountGeneration) { koin.get<JellyfinEnvironmentProvider>() }
+    val seerrRepository = remember(accountGeneration) { koin.get<JellyseerrRepository>() }
+    val seerrEnvironmentProvider = remember(accountGeneration) { koin.get<JellyseerrEnvironmentProvider>() }
     val sessionRepository =
         remember(accountGeneration) { koin.get<JellyfinSessionRepository>().isolatedSession() }
     val browseCoordinator =
@@ -725,16 +732,16 @@ private fun TvAuthenticatedApp(
     val recommendationsCoordinator =
         remember(accountGeneration) {
             JellyseerrRecommendationsCoordinator(
-                repository = koin.get<JellyseerrRepository>(),
-                environmentProvider = koin.get<JellyseerrEnvironmentProvider>(),
+                repository = seerrRepository,
+                environmentProvider = seerrEnvironmentProvider,
                 scope = scope,
             )
         }
     val requestsCoordinator =
         remember(accountGeneration) {
             JellyseerrRequestsCoordinator(
-                repository = koin.get<JellyseerrRepository>(),
-                environmentProvider = koin.get<JellyseerrEnvironmentProvider>(),
+                repository = seerrRepository,
+                environmentProvider = seerrEnvironmentProvider,
                 scope = scope,
             )
         }
@@ -896,9 +903,9 @@ private fun TvAuthenticatedApp(
         rememberSaveable(authenticatedEnvironmentIdentity, appUiState.activeProfileGeneration) {
             mutableStateOf(TvSearchMode.EDIT.name)
         }
-    val jellyfinSearchCoordinator =
-        remember(accountGeneration, scope, browseRepository, requestsCoordinator) {
-            TvJellyfinSearchCoordinator(
+    val searchCoordinator =
+        remember(accountGeneration, scope, browseRepository, seerrRepository, seerrEnvironmentProvider, voiceSearch) {
+            TvSearchCoordinator(
                 scope = scope,
                 initialSession =
                     TvSearchSessionState(
@@ -906,19 +913,29 @@ private fun TvAuthenticatedApp(
                         source = TvSearchSource.entries.firstOrNull { it.name == savedSearchSource } ?: TvSearchSource.ALL,
                         mode = TvSearchMode.entries.firstOrNull { it.name == savedSearchMode } ?: TvSearchMode.EDIT,
                     ),
-                submitSeerrSearch = requestsCoordinator::search,
-                searchItems = browseRepository::searchItems,
+                voiceSearch = voiceSearch,
+                sources =
+                    TvSearchSources(
+                        jellyfin = browseRepository::searchItems,
+                        seerr = { query ->
+                            seerrEnvironmentProvider
+                                .current()
+                                ?.let { environment ->
+                                    seerrRepository.search(environment, query)
+                                }.orEmpty()
+                        },
+                    ),
             )
         }
-    val jellyfinSearchState by jellyfinSearchCoordinator.state.collectAsStateWithLifecycle()
-    val searchSession by jellyfinSearchCoordinator.session.collectAsStateWithLifecycle()
+    val searchState by searchCoordinator.state.collectAsStateWithLifecycle()
+    val searchSession = searchState.session
     LaunchedEffect(searchSession) {
         savedSearchQuery = searchSession.query
         savedSearchSource = searchSession.source.name
         savedSearchMode = searchSession.mode.name
     }
-    DisposableEffect(jellyfinSearchCoordinator) {
-        onDispose(jellyfinSearchCoordinator::shutdown)
+    DisposableEffect(searchCoordinator) {
+        onDispose(searchCoordinator::shutdown)
     }
     val segmentHttpClient =
         remember(accountGeneration) { NetworkClientFactory.create(ClientConfig(installLogging = false)) }
@@ -1079,8 +1096,7 @@ private fun TvAuthenticatedApp(
                     homeSections !is HomeSectionsState.Loading
             is TvRoute.Library -> !homeState.isLibraryLoading && !homeState.isPageLoading
             TvRoute.Search ->
-                jellyfinSearchState !is TvJellyfinSearchState.Loading &&
-                    (requests as? dev.jellystack.core.jellyseerr.JellyseerrRequestsState.Ready)?.isSearching != true
+                !searchState.jellyfin.isLoading && !searchState.seerr.isLoading
             TvRoute.Discover ->
                 recommendations !is JellyseerrRecommendationsState.Loading &&
                     (recommendations as? JellyseerrRecommendationsState.Ready)
@@ -1344,18 +1360,17 @@ private fun TvAuthenticatedApp(
                                 }
                                 TvRoute.Search ->
                                     TvSearchScreen(
-                                        sessionState = searchSession,
-                                        jellyfinState = jellyfinSearchState,
-                                        requestsState = requests,
+                                        searchState = searchState,
                                         homeState = homeState,
                                         strings = strings,
                                         focusMemory = focusMemory,
-                                        onQueryChanged = jellyfinSearchCoordinator::search,
-                                        onSourceChanged = jellyfinSearchCoordinator::selectSource,
-                                        onEnterEditMode = jellyfinSearchCoordinator::enterEditMode,
-                                        onEnterBrowseMode = jellyfinSearchCoordinator::enterBrowseMode,
-                                        onRetryJellyfin = jellyfinSearchCoordinator::retry,
-                                        onRetrySeerr = requestsCoordinator::retrySearch,
+                                        onQueryChanged = searchCoordinator::search,
+                                        onSourceChanged = searchCoordinator::selectSource,
+                                        onEnterEditMode = searchCoordinator::enterEditMode,
+                                        onEnterBrowseMode = searchCoordinator::enterBrowseMode,
+                                        onRetryJellyfin = searchCoordinator::retryJellyfin,
+                                        onRetrySeerr = searchCoordinator::retrySeerr,
+                                        onVoiceSearch = searchCoordinator::launchVoiceSearch,
                                         onJellyfinItem = ::openJellyfinDetail,
                                         onSeerrItem = ::openSeerr,
                                     )

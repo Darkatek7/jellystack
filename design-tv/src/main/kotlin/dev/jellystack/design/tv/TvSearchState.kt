@@ -1,10 +1,11 @@
+@file:Suppress("TooManyFunctions")
+
 package dev.jellystack.design.tv
 
 import androidx.compose.runtime.Immutable
 import dev.jellystack.core.jellyfin.JellyfinItem
-import dev.jellystack.core.jellyseerr.JellyseerrMessageCode
+import dev.jellystack.core.jellyseerr.JellyseerrMediaType
 import dev.jellystack.core.jellyseerr.JellyseerrRecommendationsState
-import dev.jellystack.core.jellyseerr.JellyseerrRequestsState
 import dev.jellystack.core.jellyseerr.JellyseerrSearchItem
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -25,126 +26,225 @@ internal data class TvSearchSessionState(
     val queryGeneration: Long = 0L,
 )
 
-internal sealed interface TvJellyfinSearchState {
-    data object Idle : TvJellyfinSearchState
+@Immutable
+internal data class TvSearchSourceResult<T>(
+    val query: String = "",
+    val items: List<T> = emptyList(),
+    val isLoading: Boolean = false,
+    val errorMessage: String? = null,
+)
 
-    data class Loading(
-        val query: String,
-        val previousItems: List<JellyfinItem> = emptyList(),
-    ) : TvJellyfinSearchState
+@Immutable
+internal data class TvSearchUiState(
+    val session: TvSearchSessionState = TvSearchSessionState(),
+    val jellyfin: TvSearchSourceResult<JellyfinItem> = TvSearchSourceResult(),
+    val seerr: TvSearchSourceResult<JellyseerrSearchItem> = TvSearchSourceResult(),
+    val voiceAvailability: TvVoiceSearchAvailability = TvVoiceSearchAvailability.UNAVAILABLE,
+    val isVoiceListening: Boolean = false,
+    val voiceError: String? = null,
+) {
+    val showVoiceAction: Boolean
+        get() = voiceAvailability == TvVoiceSearchAvailability.AVAILABLE
 
-    data class Results(
-        val query: String,
-        val items: List<JellyfinItem>,
-    ) : TvJellyfinSearchState
-
-    data class Empty(
-        val query: String,
-    ) : TvJellyfinSearchState
-
-    data class Failure(
-        val query: String,
-        val message: String?,
-    ) : TvJellyfinSearchState
+    companion object {
+        fun completed(
+            query: String,
+            source: TvSearchSource = TvSearchSource.ALL,
+            jellyfin: List<JellyfinItem> = emptyList(),
+            seerr: List<JellyseerrSearchItem> = emptyList(),
+        ): TvSearchUiState =
+            TvSearchUiState(
+                session = TvSearchSessionState(query = query, source = source, mode = TvSearchMode.BROWSE),
+                jellyfin = TvSearchSourceResult(query = query, items = jellyfin),
+                seerr = TvSearchSourceResult(query = query, items = seerr),
+            )
+    }
 }
 
-internal class TvJellyfinSearchCoordinator(
+internal data class TvSearchSources(
+    val jellyfin: suspend (String) -> List<JellyfinItem>,
+    val seerr: suspend (String) -> List<JellyseerrSearchItem>,
+)
+
+internal class TvSearchCoordinator(
     private val scope: CoroutineScope,
     private val debounceMillis: Long = 300L,
     initialSession: TvSearchSessionState = TvSearchSessionState(),
-    private val submitSeerrSearch: (String) -> Unit = {},
-    private val searchItems: suspend (String) -> List<JellyfinItem>,
+    private val voiceSearch: TvVoiceSearchPort = UnsupportedTvVoiceSearch,
+    private val sources: TvSearchSources,
 ) {
-    private val mutableSession = MutableStateFlow(initialSession.copy(query = initialSession.query.trim()))
-    val session: StateFlow<TvSearchSessionState> = mutableSession.asStateFlow()
+    private val normalizedInitialSession = initialSession.copy(query = initialSession.query.trim())
+    private val mutableState =
+        MutableStateFlow(
+            TvSearchUiState(
+                session = normalizedInitialSession,
+                voiceAvailability = voiceSearch.availability,
+            ),
+        )
+    val state: StateFlow<TvSearchUiState> = mutableState.asStateFlow()
 
-    private val mutableState = MutableStateFlow<TvJellyfinSearchState>(TvJellyfinSearchState.Idle)
-    val state: StateFlow<TvJellyfinSearchState> = mutableState.asStateFlow()
+    private val mutableSession = MutableStateFlow(normalizedInitialSession)
+    val session: StateFlow<TvSearchSessionState> = mutableSession.asStateFlow()
 
     private var searchJob: Job? = null
     private var generation = 0L
-    private var lastQuery = ""
     private var restoredQuerySubmitted = false
 
     init {
-        if (initialSession.query.isNotBlank()) restoreQuery(initialSession.query)
+        if (normalizedInitialSession.query.isNotEmpty()) restoreQuery(normalizedInitialSession.query)
     }
 
     fun search(rawQuery: String) {
         restoredQuerySubmitted = true
-        submitQuery(rawQuery, notifySeerr = true)
+        submitQuery(rawQuery, SearchTargets.BOTH)
     }
 
     fun restoreQuery(rawQuery: String) {
         val query = rawQuery.trim()
         if (query.isEmpty() || restoredQuerySubmitted) return
         restoredQuerySubmitted = true
-        submitQuery(query, notifySeerr = true)
+        submitQuery(query, SearchTargets.BOTH)
     }
 
-    fun selectSource(source: TvSearchSource) {
-        mutableSession.value = mutableSession.value.copy(source = source)
+    fun selectSource(source: TvSearchSource) = updateSession { it.copy(source = source) }
+
+    fun enterEditMode() = updateSession { it.copy(mode = TvSearchMode.EDIT) }
+
+    fun enterBrowseMode() = updateSession { it.copy(mode = TvSearchMode.BROWSE) }
+
+    fun retryJellyfin() {
+        if (mutableState.value.session.query
+                .isNotEmpty()
+        ) {
+            submitQuery(mutableState.value.session.query, SearchTargets.JELLYFIN)
+        }
     }
 
-    fun enterEditMode() {
-        mutableSession.value = mutableSession.value.copy(mode = TvSearchMode.EDIT)
+    fun retrySeerr() {
+        if (mutableState.value.session.query
+                .isNotEmpty()
+        ) {
+            submitQuery(mutableState.value.session.query, SearchTargets.SEERR)
+        }
     }
 
-    fun enterBrowseMode() {
-        mutableSession.value = mutableSession.value.copy(mode = TvSearchMode.BROWSE)
+    fun launchVoiceSearch() {
+        val available = voiceSearch.availability == TvVoiceSearchAvailability.AVAILABLE
+        if (!available || mutableState.value.isVoiceListening) return
+        mutableState.value = mutableState.value.copy(isVoiceListening = true, voiceError = null)
+        voiceSearch.launch(::handleVoiceResult)
+    }
+
+    fun clearVoiceError() {
+        mutableState.value = mutableState.value.copy(voiceError = null)
+    }
+
+    private fun handleVoiceResult(result: TvVoiceSearchResult) {
+        when (result) {
+            is TvVoiceSearchResult.Success -> {
+                mutableState.value = mutableState.value.copy(isVoiceListening = false, voiceError = null)
+                val query = result.text.trim()
+                if (query.isNotEmpty()) {
+                    submitQuery(query, SearchTargets.BOTH)
+                    enterBrowseMode()
+                }
+            }
+            TvVoiceSearchResult.Cancelled ->
+                mutableState.value = mutableState.value.copy(isVoiceListening = false, voiceError = null)
+            is TvVoiceSearchResult.Error ->
+                mutableState.value =
+                    mutableState.value.copy(
+                        isVoiceListening = false,
+                        voiceError = result.message ?: "Voice search failed",
+                    )
+        }
     }
 
     private fun submitQuery(
         rawQuery: String,
-        notifySeerr: Boolean,
+        targets: SearchTargets,
     ) {
         val query = rawQuery.trim()
         val requestGeneration = ++generation
         searchJob?.cancel()
-        lastQuery = query
-        mutableSession.value =
-            mutableSession.value.copy(
+        val current = mutableState.value
+        val sameQuery = current.session.query == query
+        val nextSession =
+            current.session.copy(
                 query = query,
-                queryGeneration = mutableSession.value.queryGeneration + 1L,
+                queryGeneration = current.session.queryGeneration + 1L,
             )
-        if (notifySeerr) submitSeerrSearch(query)
+        mutableSession.value = nextSession
         if (query.isEmpty()) {
             searchJob = null
-            mutableState.value = TvJellyfinSearchState.Idle
+            mutableState.value =
+                current.copy(
+                    session = nextSession,
+                    jellyfin = TvSearchSourceResult(),
+                    seerr = TvSearchSourceResult(),
+                    voiceError = null,
+                )
             return
         }
-        val previousItems =
-            when (val current = mutableState.value) {
-                is TvJellyfinSearchState.Results -> current.items.takeIf { current.query == query }.orEmpty()
-                is TvJellyfinSearchState.Loading -> current.previousItems.takeIf { current.query == query }.orEmpty()
-                else -> emptyList()
-            }
-        mutableState.value = TvJellyfinSearchState.Loading(query, previousItems)
+        mutableState.value =
+            current.copy(
+                session = nextSession,
+                jellyfin = current.jellyfin.start(query, targets.includesJellyfin, sameQuery),
+                seerr = current.seerr.start(query, targets.includesSeerr, sameQuery),
+                voiceError = null,
+            )
         searchJob =
             scope.launch {
                 delay(debounceMillis)
-                if (requestGeneration != generation) return@launch
-                val nextState =
-                    runCatching { searchItems(query) }
-                        .fold(
-                            onSuccess = { items ->
-                                if (items.isEmpty()) {
-                                    TvJellyfinSearchState.Empty(query)
-                                } else {
-                                    TvJellyfinSearchState.Results(query, items)
-                                }
-                            },
-                            onFailure = { error ->
-                                if (error is CancellationException) throw error
-                                TvJellyfinSearchState.Failure(query, error.message)
-                            },
-                        )
-                if (requestGeneration == generation) mutableState.value = nextState
+                if (targets.includesJellyfin) launch { completeJellyfin(query, requestGeneration) }
+                if (targets.includesSeerr) launch { completeSeerr(query, requestGeneration) }
             }
     }
 
-    fun retry() {
-        if (lastQuery.isNotEmpty()) submitQuery(lastQuery, notifySeerr = false)
+    private suspend fun completeJellyfin(
+        query: String,
+        requestGeneration: Long,
+    ) {
+        val result = runCatching { sources.jellyfin(query) }
+        if (requestGeneration != generation) return
+        result.fold(
+            onSuccess = { items ->
+                mutableState.value = mutableState.value.copy(jellyfin = TvSearchSourceResult(query, items))
+            },
+            onFailure = { error ->
+                if (error is CancellationException) throw error
+                mutableState.value =
+                    mutableState.value.copy(
+                        jellyfin = mutableState.value.jellyfin.copy(isLoading = false, errorMessage = error.message),
+                    )
+            },
+        )
+    }
+
+    private suspend fun completeSeerr(
+        query: String,
+        requestGeneration: Long,
+    ) {
+        val result = runCatching { sources.seerr(query) }
+        if (requestGeneration != generation) return
+        result.fold(
+            onSuccess = { items ->
+                mutableState.value = mutableState.value.copy(seerr = TvSearchSourceResult(query, items))
+            },
+            onFailure = { error ->
+                if (error is CancellationException) throw error
+                mutableState.value =
+                    mutableState.value.copy(
+                        seerr = mutableState.value.seerr.copy(isLoading = false, errorMessage = error.message),
+                    )
+            },
+        )
+    }
+
+    private fun updateSession(transform: (TvSearchSessionState) -> TvSearchSessionState) {
+        val next = transform(mutableState.value.session)
+        mutableSession.value = next
+        mutableState.value = mutableState.value.copy(session = next)
     }
 
     fun shutdown() {
@@ -152,9 +252,41 @@ internal class TvJellyfinSearchCoordinator(
         searchJob?.cancel()
         searchJob = null
     }
+
+    private enum class SearchTargets(
+        val includesJellyfin: Boolean,
+        val includesSeerr: Boolean,
+    ) {
+        BOTH(true, true),
+        JELLYFIN(true, false),
+        SEERR(false, true),
+    }
 }
 
+private fun <T> TvSearchSourceResult<T>.start(
+    query: String,
+    included: Boolean,
+    sameQuery: Boolean,
+): TvSearchSourceResult<T> =
+    when {
+        !included -> this
+        sameQuery -> copy(query = query, isLoading = true, errorMessage = null)
+        else -> TvSearchSourceResult(query = query, isLoading = true)
+    }
+
+internal enum class TvSearchResultAction { PLAY, REQUEST }
+
+@Immutable
+internal data class TvSearchResult(
+    val key: String,
+    val jellyfinItem: JellyfinItem? = null,
+    val seerrItem: JellyseerrSearchItem? = null,
+    val action: TvSearchResultAction,
+)
+
+@Immutable
 internal data class TvSearchPresentation(
+    val results: List<TvSearchResult>,
     val jellyfinItems: List<JellyfinItem>,
     val seerrItems: List<JellyseerrSearchItem>,
     val showSearching: Boolean,
@@ -163,111 +295,89 @@ internal data class TvSearchPresentation(
     val showSeerrFailure: Boolean,
 )
 
-private data class TvSearchSourceState<T>(
-    val items: List<T>,
-    val isLoading: Boolean,
-    val hasFailure: Boolean,
-)
-
-internal fun tvSearchPresentation(
-    rawQuery: String,
-    source: TvSearchSource,
-    jellyfinState: TvJellyfinSearchState,
-    requestsState: JellyseerrRequestsState,
-): TvSearchPresentation {
-    val query = rawQuery.trim()
-    val jellyfin = jellyfinSourceState(query, source, jellyfinState)
-    val seerr = seerrSourceState(query, source, requestsState)
-    val hasItems = jellyfin.items.isNotEmpty() || seerr.items.isNotEmpty()
-    val isLoading = jellyfin.isLoading || seerr.isLoading
-    val hasFailure = jellyfin.hasFailure || seerr.hasFailure
+internal fun tvSearchPresentation(state: TvSearchUiState): TvSearchPresentation {
+    val query = state.session.query.trim()
+    val jellyfinItems =
+        state.jellyfin.items
+            .takeIf { state.jellyfin.query == query }
+            .orEmpty()
+    val seerrItems =
+        state.seerr.items
+            .takeIf { state.seerr.query == query }
+            .orEmpty()
+    val results = reconcileSearchResults(state.session.source, jellyfinItems, seerrItems)
+    val visibleJellyfin = results.mapNotNull(TvSearchResult::jellyfinItem)
+    val visibleSeerr = results.filter { it.jellyfinItem == null }.mapNotNull(TvSearchResult::seerrItem)
+    val isLoading = state.jellyfin.isLoading || state.seerr.isLoading
+    val hasFailure = state.jellyfin.errorMessage != null || state.seerr.errorMessage != null
     return TvSearchPresentation(
-        jellyfinItems = jellyfin.items,
-        seerrItems = seerr.items,
-        showSearching = query.isNotEmpty() && !hasItems && isLoading,
-        showNoResults = query.isNotEmpty() && !hasItems && !isLoading && !hasFailure,
-        showJellyfinFailure = query.isNotEmpty() && jellyfin.hasFailure,
-        showSeerrFailure = query.isNotEmpty() && seerr.hasFailure,
+        results = results,
+        jellyfinItems = visibleJellyfin,
+        seerrItems = visibleSeerr,
+        showSearching = query.isNotEmpty() && results.isEmpty() && isLoading,
+        showNoResults = query.isNotEmpty() && results.isEmpty() && !isLoading && !hasFailure,
+        showJellyfinFailure = query.isNotEmpty() && state.jellyfin.errorMessage != null,
+        showSeerrFailure = query.isNotEmpty() && state.seerr.errorMessage != null,
     )
 }
 
-private fun jellyfinSourceState(
-    query: String,
+private fun reconcileSearchResults(
     source: TvSearchSource,
-    state: TvJellyfinSearchState,
-): TvSearchSourceState<JellyfinItem> {
-    val isIncluded = source != TvSearchSource.SEERR
-    val queryMatches = state.queryOrNull() == query
-    val items =
-        if (isIncluded && queryMatches) {
-            when (state) {
-                is TvJellyfinSearchState.Results -> state.items
-                is TvJellyfinSearchState.Loading -> state.previousItems
-                else -> emptyList()
+    jellyfinItems: List<JellyfinItem>,
+    seerrItems: List<JellyseerrSearchItem>,
+): List<TvSearchResult> =
+    when (source) {
+        TvSearchSource.JELLYFIN -> jellyfinItems.map { it.toSearchResult() }
+        TvSearchSource.SEERR -> seerrItems.map { it.toSearchResult() }
+        TvSearchSource.ALL -> {
+            val remainingSeerr = seerrItems.toMutableList()
+            buildList {
+                jellyfinItems.forEach { jellyfin ->
+                    val matchIndex = remainingSeerr.indexOfFirst { seerr -> exactProviderMatch(jellyfin, seerr) }
+                    val seerr = if (matchIndex >= 0) remainingSeerr.removeAt(matchIndex) else null
+                    add(jellyfin.toSearchResult(seerr))
+                }
+                remainingSeerr.forEach { add(it.toSearchResult()) }
             }
-        } else {
-            emptyList()
         }
-    return TvSearchSourceState(
-        items = items,
-        isLoading = isIncluded && queryMatches && state is TvJellyfinSearchState.Loading,
-        hasFailure = isIncluded && queryMatches && state is TvJellyfinSearchState.Failure,
-    )
-}
-
-private fun seerrSourceState(
-    query: String,
-    source: TvSearchSource,
-    state: JellyseerrRequestsState,
-): TvSearchSourceState<JellyseerrSearchItem> {
-    val isIncluded = source != TvSearchSource.JELLYFIN
-    val ready = state as? JellyseerrRequestsState.Ready
-    val queryMatches = ready?.query?.trim() == query
-    val items =
-        if (isIncluded && queryMatches) {
-            ready?.searchResults.orEmpty()
-        } else {
-            emptyList()
-        }
-    val isLoading =
-        isIncluded &&
-            when (state) {
-                JellyseerrRequestsState.Loading -> true
-                is JellyseerrRequestsState.Ready -> !queryMatches || state.isSearching
-                else -> false
-            }
-    return TvSearchSourceState(
-        items = items,
-        isLoading = isLoading,
-        hasFailure = isIncluded && isSeerrSearchFailure(state, queryMatches, query),
-    )
-}
-
-private fun isSeerrSearchFailure(
-    state: JellyseerrRequestsState,
-    queryMatches: Boolean,
-    query: String,
-): Boolean =
-    when (state) {
-        is JellyseerrRequestsState.Error -> true
-        is JellyseerrRequestsState.Ready -> {
-            val message = state.message
-            queryMatches &&
-                !state.isSearching &&
-                message?.code == JellyseerrMessageCode.SearchFailed &&
-                message.subject?.trim() == query
-        }
-        else -> false
     }
 
-private fun TvJellyfinSearchState.queryOrNull(): String? =
-    when (this) {
-        TvJellyfinSearchState.Idle -> null
-        is TvJellyfinSearchState.Loading -> query
-        is TvJellyfinSearchState.Results -> query
-        is TvJellyfinSearchState.Empty -> query
-        is TvJellyfinSearchState.Failure -> query
+private fun JellyfinItem.toSearchResult(seerrItem: JellyseerrSearchItem? = null): TvSearchResult =
+    TvSearchResult(
+        key = "jellyfin:$id",
+        jellyfinItem = this,
+        seerrItem = seerrItem,
+        action = TvSearchResultAction.PLAY,
+    )
+
+private fun JellyseerrSearchItem.toSearchResult(): TvSearchResult =
+    TvSearchResult(
+        key = "seerr:${mediaType.name.lowercase()}:$tmdbId",
+        seerrItem = this,
+        action = TvSearchResultAction.REQUEST,
+    )
+
+private fun exactProviderMatch(
+    jellyfin: JellyfinItem,
+    seerr: JellyseerrSearchItem,
+): Boolean {
+    if (jellyfin.searchMediaType() != seerr.mediaType) return false
+    val jellyfinTmdb = jellyfin.providerIds.tmdbId.normalizedProviderId()
+    val jellyfinTvdb = jellyfin.providerIds.tvdbId.normalizedProviderId()
+    val seerrTmdb = seerr.tmdbId.takeIf { it > 0 }?.toString()
+    val seerrTvdb = seerr.tvdbId?.takeIf { it > 0 }?.toString()
+    return (jellyfinTmdb != null && jellyfinTmdb == seerrTmdb) ||
+        (jellyfinTvdb != null && jellyfinTvdb == seerrTvdb)
+}
+
+private fun JellyfinItem.searchMediaType(): JellyseerrMediaType? =
+    when (type.lowercase()) {
+        "movie" -> JellyseerrMediaType.MOVIE
+        "series" -> JellyseerrMediaType.TV
+        else -> null
     }
+
+private fun String?.normalizedProviderId(): String? = this?.trim()?.trimStart('0')?.takeIf(String::isNotEmpty)
 
 internal sealed interface TvDiscoverAvailability {
     data object Loading : TvDiscoverAvailability

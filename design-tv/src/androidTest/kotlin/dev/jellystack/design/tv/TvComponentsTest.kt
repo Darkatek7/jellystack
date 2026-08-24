@@ -347,18 +347,24 @@ class TvComponentsTest {
     fun searchKeepsJellyfinResultsVisibleWhenSeerrFailsAndRetriesOnlySeerr() {
         val strings = TvStrings.current(AppLanguage.ENGLISH)
         var seerrRetries = 0
-        var session by mutableStateOf(TvSearchSessionState())
         val item = jellyfinItem("jellyfin-result", "Jellyfin result")
+        var searchState by
+            mutableStateOf(
+                TvSearchUiState(
+                    jellyfin = TvSearchSourceResult(query = "query", items = listOf(item)),
+                    seerr = TvSearchSourceResult(query = "query", errorMessage = "offline"),
+                ),
+            )
         composeRule.setContent {
             JellystackTvTheme {
                 TvSearchScreen(
-                    sessionState = session,
-                    jellyfinState = TvJellyfinSearchState.Results("query", listOf(item)),
-                    requestsState = seerrSearchFailure("query"),
+                    searchState = searchState,
                     homeState = JellyfinHomeState(),
                     strings = strings,
                     focusMemory = remember { TvFocusMemory() },
-                    onQueryChanged = { session = session.copy(query = it) },
+                    onQueryChanged = { query ->
+                        searchState = searchState.copy(session = searchState.session.copy(query = query))
+                    },
                     onRetryJellyfin = {},
                     onRetrySeerr = { seerrRetries += 1 },
                     onJellyfinItem = {},
@@ -377,23 +383,31 @@ class TvComponentsTest {
     @Test
     fun searchRetryRestoresFocusToTheQueryAfterTheRetryActionDisappears() {
         val strings = TvStrings.current(AppLanguage.ENGLISH)
-        var requestsState by mutableStateOf<JellyseerrRequestsState>(seerrSearchFailure("query"))
-        var session by mutableStateOf(TvSearchSessionState())
+        var searchState by
+            mutableStateOf(
+                TvSearchUiState(
+                    jellyfin = TvSearchSourceResult(query = "query"),
+                    seerr = TvSearchSourceResult(query = "query", errorMessage = "offline"),
+                ),
+            )
         val focusCoordinator = TvFocusCoordinator<androidx.compose.ui.focus.FocusRequester>()
         composeRule.setContent {
             JellystackTvTheme {
                 TvRouteFocusScope(focusCoordinator, "search") {
                     TvSearchScreen(
-                        sessionState = session,
-                        jellyfinState = TvJellyfinSearchState.Empty("query"),
-                        requestsState = requestsState,
+                        searchState = searchState,
                         homeState = JellyfinHomeState(),
                         strings = strings,
                         focusMemory = remember { TvFocusMemory() },
-                        onQueryChanged = { session = session.copy(query = it) },
+                        onQueryChanged = { query ->
+                            searchState = searchState.copy(session = searchState.session.copy(query = query))
+                        },
                         onRetryJellyfin = {},
                         onRetrySeerr = {
-                            requestsState = seerrReady(query = "query", isSearching = true)
+                            searchState =
+                                searchState.copy(
+                                    seerr = searchState.seerr.copy(isLoading = true, errorMessage = null),
+                                )
                         },
                         onJellyfinItem = {},
                         onSeerrItem = {},

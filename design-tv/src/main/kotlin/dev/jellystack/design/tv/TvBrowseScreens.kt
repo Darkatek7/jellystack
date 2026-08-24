@@ -51,6 +51,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedTextField
@@ -1524,9 +1525,7 @@ private fun TvDiscoverRetryFocusRecovery(
 
 @Composable
 internal fun TvSearchScreen(
-    sessionState: TvSearchSessionState = TvSearchSessionState(),
-    jellyfinState: TvJellyfinSearchState,
-    requestsState: JellyseerrRequestsState,
+    searchState: TvSearchUiState = TvSearchUiState(),
     homeState: JellyfinHomeState,
     strings: TvStrings,
     focusMemory: TvFocusMemory,
@@ -1535,18 +1534,20 @@ internal fun TvSearchScreen(
     onEnterEditMode: () -> Unit = {},
     onEnterBrowseMode: () -> Unit = {},
     onRetryJellyfin: () -> Unit,
-    onRetrySeerr: (String) -> Unit,
+    onRetrySeerr: () -> Unit,
+    onVoiceSearch: () -> Unit = {},
     onJellyfinItem: (JellyfinItem) -> Unit,
     onSeerrItem: (JellyseerrSearchItem) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val sessionState = searchState.session
     val query = sessionState.query
     val source = sessionState.source
     val queryFocusRequester = remember { FocusRequester() }
     val sourceFocusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
     var retryFocusRequest by remember { mutableStateOf<TvRetryFocusRequest?>(null) }
-    val presentation = tvSearchPresentation(query, source, jellyfinState, requestsState)
+    val presentation = tvSearchPresentation(searchState)
     val visibleJellyfin = presentation.jellyfinItems.isNotEmpty()
     val visibleSeerr = presentation.seerrItems.isNotEmpty()
     val outerState = rememberLazyListState()
@@ -1561,6 +1562,7 @@ internal fun TvSearchScreen(
     val searchLocations =
         buildMap {
             put(TV_SEARCH_QUERY_TARGET, TvLazyFocusLocation(0))
+            if (searchState.showVoiceAction) put(TV_SEARCH_VOICE_TARGET, TvLazyFocusLocation(0))
             TvSearchSource.entries.forEach { put(tvSearchSourceTargetId(it.name.lowercase()), TvLazyFocusLocation(0)) }
             jellyfinFailureIndex?.let {
                 put(TV_SEARCH_JELLYFIN_RETRY_TARGET, TvLazyFocusLocation(it))
@@ -1675,6 +1677,20 @@ internal fun TvSearchScreen(
                     selected = source == TvSearchSource.SEERR,
                     focusTargetId = tvSearchSourceTargetId("seerr"),
                 )
+                if (searchState.showVoiceAction) {
+                    TvActionButton(
+                        label = if (searchState.isVoiceListening) strings.searching else strings.search,
+                        onClick = onVoiceSearch,
+                        enabled = !searchState.isVoiceListening,
+                        leading = { Icon(Icons.Default.Mic, contentDescription = null, tint = TvText) },
+                        modifier = Modifier.testTag("tv-search-voice"),
+                        focusTargetId = TV_SEARCH_VOICE_TARGET,
+                    )
+                }
+            }
+            searchState.voiceError?.let { message ->
+                Spacer(Modifier.height(12.dp))
+                TvStatusAnchor("${strings.requestFailed}: $message")
             }
         }
         searchingIndex?.let {
@@ -1719,7 +1735,7 @@ internal fun TvSearchScreen(
                     retryLabel = strings.retry,
                     focusTargetId = TV_SEARCH_SEERR_RETRY_TARGET,
                     onRetry = {
-                        onRetrySeerr(query)
+                        onRetrySeerr()
                         retryFocusRequest =
                             TvRetryFocusRequest(
                                 revision = (retryFocusRequest?.revision ?: 0L) + 1L,

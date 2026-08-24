@@ -13,6 +13,7 @@ import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -38,22 +39,65 @@ class TvSearchInteractionTest {
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
     @Test
-    fun backLeavesEditingWithoutClearingQueryAndCenterReopensIt() {
+    fun voiceActionIsAbsentUntilTheRuntimeRecognizerIsAvailable() {
         val strings = TvStrings.current(AppLanguage.ENGLISH)
-        var session by mutableStateOf(TvSearchSessionState(query = "dune"))
+        var searchState by mutableStateOf(TvSearchUiState())
+        var launches = 0
         composeRule.setContent {
             JellystackTvTheme {
                 TvSearchScreen(
-                    sessionState = session,
-                    jellyfinState = TvJellyfinSearchState.Empty("dune"),
-                    requestsState = JellyseerrRequestsState.MissingServer,
+                    searchState = searchState,
                     homeState = JellyfinHomeState(),
                     strings = strings,
                     focusMemory = remember { TvFocusMemory() },
-                    onQueryChanged = { session = session.copy(query = it) },
-                    onSourceChanged = { session = session.copy(source = it) },
-                    onEnterEditMode = { session = session.copy(mode = TvSearchMode.EDIT) },
-                    onEnterBrowseMode = { session = session.copy(mode = TvSearchMode.BROWSE) },
+                    onQueryChanged = {},
+                    onRetryJellyfin = {},
+                    onRetrySeerr = {},
+                    onVoiceSearch = { launches += 1 },
+                    onJellyfinItem = {},
+                    onSeerrItem = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("tv-search-voice").assertDoesNotExist()
+        composeRule.runOnUiThread {
+            searchState = searchState.copy(voiceAvailability = TvVoiceSearchAvailability.AVAILABLE)
+        }
+        composeRule.onNodeWithTag("tv-search-voice").assertExists().performClick()
+        composeRule.runOnIdle { assertEquals(1, launches) }
+    }
+
+    @Test
+    fun backLeavesEditingWithoutClearingQueryAndCenterReopensIt() {
+        val strings = TvStrings.current(AppLanguage.ENGLISH)
+        var searchState by
+            mutableStateOf(
+                TvSearchUiState(
+                    session = TvSearchSessionState(query = "dune"),
+                    jellyfin = TvSearchSourceResult(query = "dune"),
+                    seerr = TvSearchSourceResult(query = "dune"),
+                ),
+            )
+        composeRule.setContent {
+            JellystackTvTheme {
+                TvSearchScreen(
+                    searchState = searchState,
+                    homeState = JellyfinHomeState(),
+                    strings = strings,
+                    focusMemory = remember { TvFocusMemory() },
+                    onQueryChanged = { query ->
+                        searchState = searchState.copy(session = searchState.session.copy(query = query))
+                    },
+                    onSourceChanged = { source ->
+                        searchState = searchState.copy(session = searchState.session.copy(source = source))
+                    },
+                    onEnterEditMode = {
+                        searchState = searchState.copy(session = searchState.session.copy(mode = TvSearchMode.EDIT))
+                    },
+                    onEnterBrowseMode = {
+                        searchState = searchState.copy(session = searchState.session.copy(mode = TvSearchMode.BROWSE))
+                    },
                     onRetryJellyfin = {},
                     onRetrySeerr = {},
                     onJellyfinItem = {},
@@ -69,16 +113,16 @@ class TvSearchInteractionTest {
             }.getOrDefault(false)
         }
         composeRule.runOnUiThread { composeRule.activity.onBackPressedDispatcher.onBackPressed() }
-        composeRule.waitUntil { session.mode == TvSearchMode.BROWSE }
+        composeRule.waitUntil { searchState.session.mode == TvSearchMode.BROWSE }
         composeRule.onNodeWithTag("tv-search-source-all").assertIsFocused()
-        assertEquals("dune", session.query)
+        assertEquals("dune", searchState.session.query)
 
         composeRule.onNodeWithTag("tv-search-source-all").performKeyInput { pressKey(Key.DirectionUp) }
         composeRule.onNodeWithTag("tv-search-query").assertIsFocused()
         composeRule.onNodeWithTag("tv-search-query").performKeyInput { pressKey(Key.DirectionCenter) }
-        composeRule.waitUntil { session.mode == TvSearchMode.EDIT }
+        composeRule.waitUntil { searchState.session.mode == TvSearchMode.EDIT }
 
-        assertEquals("dune", session.query)
+        assertEquals("dune", searchState.session.query)
     }
 
     @Test
@@ -88,14 +132,12 @@ class TvSearchInteractionTest {
         composeRule.setContent {
             JellystackTvTheme {
                 TvSearchScreen(
-                    sessionState =
-                        TvSearchSessionState(
+                    searchState =
+                        TvSearchUiState.completed(
                             query = "dune",
                             source = TvSearchSource.JELLYFIN,
-                            mode = TvSearchMode.BROWSE,
+                            jellyfin = listOf(item),
                         ),
-                    jellyfinState = TvJellyfinSearchState.Results("dune", listOf(item)),
-                    requestsState = JellyseerrRequestsState.MissingServer,
                     homeState = JellyfinHomeState(),
                     strings = strings,
                     focusMemory = remember { TvFocusMemory() },

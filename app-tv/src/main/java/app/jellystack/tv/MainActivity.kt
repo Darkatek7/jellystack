@@ -41,10 +41,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var trailerPreviewEngine: AndroidPlayerEngine
     private lateinit var trailerPreviewController: PlaybackController
     private lateinit var platformActions: TvPlatformActionCoordinator<KeyEvent>
+    private lateinit var voiceSearch: AndroidTvVoiceSearch
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.decorView.setViewTreeNavigationEventDispatcherOwner(this)
+        voiceSearch = AndroidTvVoiceSearch.create(this)
         playerEngine =
             AndroidPlayerEngine(
                 context = applicationContext,
@@ -129,6 +131,7 @@ class MainActivity : AppCompatActivity() {
                 appVersion = BuildConfig.VERSION_NAME,
                 stopPlayback = playbackBridge::stopPlayback,
                 coldLaunch = savedInstanceState == null,
+                voiceSearch = voiceSearch,
             )
         }
     }
