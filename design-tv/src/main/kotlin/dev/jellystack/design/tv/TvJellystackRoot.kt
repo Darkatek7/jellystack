@@ -1275,7 +1275,16 @@ private fun TvAuthenticatedApp(
                                                 ?: entry.savedMedia?.toTvRoute()?.let(::push)
                                         },
                                     )
-                                is TvRoute.Library ->
+                                is TvRoute.Library -> {
+                                    val library = homeState.libraries.firstOrNull { it.id == route.libraryId }
+                                    val rememberedQuery =
+                                        if (activeProfileId != null && route.libraryId != null) {
+                                            profilePreferencesRepository
+                                                .libraryBrowseQuery(activeProfileId, route.libraryId)
+                                                .value
+                                        } else {
+                                            dev.jellystack.core.jellyfin.LibraryBrowseQuery.DEFAULT
+                                        }
                                     TvLibraryScreen(
                                         route = route,
                                         state = homeState,
@@ -1293,7 +1302,46 @@ private fun TvAuthenticatedApp(
                                         onOpenContainer = browseCoordinator::openContainer,
                                         onLoadMore = browseCoordinator::loadNextPage,
                                         onRetry = browseCoordinator::refreshSelectedLibrary,
+                                        homeSections = homeSections,
+                                        myListItems = myList.mapNotNull { it.jellyfinItem },
+                                        collectionType = library?.collectionType,
+                                        rememberedQuery = rememberedQuery,
+                                        onModeChanged = { mode ->
+                                            when {
+                                                mode == route.mode -> Unit
+                                                mode == TvLibraryMode.ALL_TITLES -> push(route.copy(mode = mode))
+                                                route.mode == TvLibraryMode.ALL_TITLES -> appStateHolder.popRoute()
+                                                else -> Unit
+                                            }
+                                        },
+                                        onQueryChanged = { query ->
+                                            val profileId = activeProfileId
+                                            val libraryId = route.libraryId
+                                            if (profileId != null && libraryId != null) {
+                                                profilePreferencesRepository.setLibraryBrowseQuery(profileId, libraryId, query)
+                                            }
+                                            browseCoordinator.setLibraryBrowseQuery(query)
+                                        },
+                                        onPlayItem = { item ->
+                                            scope.launch {
+                                                val detail = browseRepository.getItemDetail(item.id) ?: return@launch
+                                                val environment = environmentProvider.current() ?: return@launch
+                                                playbackController.play(PlaybackRequest.from(item, detail), environment)
+                                                playbackController.setPlaybackSpeed(settings.defaultPlaybackSpeed)
+                                                playbackController.setStatsForNerdsEnabled(settings.statsForNerdsEnabled)
+                                                push(TvRoute.Player)
+                                            }
+                                        },
+                                        onToggleFavorite = { item -> scope.launch { browseCoordinator.toggleFavorite(item) } },
+                                        onTogglePlayed = { item, played ->
+                                            scope.launch {
+                                                browseRepository.setPlayedStatus(item.id, played)
+                                                browseCoordinator.refreshSelectedLibrary()
+                                            }
+                                        },
+                                        cinematicModesEnabled = true,
                                     )
+                                }
                                 TvRoute.Search ->
                                     TvSearchScreen(
                                         sessionState = searchSession,

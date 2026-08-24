@@ -17,6 +17,7 @@ sealed interface TvRoute : NavKey {
     data class Library(
         val libraryId: String? = null,
         val title: String? = null,
+        val mode: TvLibraryMode = TvLibraryMode.BROWSE,
     ) : TvRoute
 
     @Serializable
@@ -65,6 +66,7 @@ internal fun TvRoute.focusRouteKey(libraryPath: List<String> = emptyList()): Str
                         append("/path:")
                         append(libraryPath.joinToString("/"))
                     }
+                    if (mode == TvLibraryMode.ALL_TITLES) append(":all-titles")
                 }
             }
         TvRoute.Search -> "search"
@@ -157,6 +159,7 @@ internal fun tvBackAction(
     when {
         currentRoute is TvRoute.Library &&
             currentRoute.libraryId != null &&
+            currentRoute.mode == TvLibraryMode.BROWSE &&
             currentRoute.libraryId == selectedLibraryId &&
             libraryPathDepth > 0 -> TvBackAction.POP_LIBRARY_PATH
         backStackSize > 1 -> TvBackAction.POP_ROUTE
@@ -239,6 +242,10 @@ internal fun tvFocusTarget(
                 TvFocusAnchor("hero-actions", targetId.substringAfterLast(':'), TvFocusDestination.PRIMARY_ACTION) to false
             targetId.startsWith("home:row:") && ":item:" in targetId -> {
                 val value = targetId.removePrefix("home:row:")
+                TvFocusAnchor(value.substringBefore(":item:"), value.substringAfter(":item:"), TvFocusDestination.SECTION_ITEM) to false
+            }
+            targetId.startsWith("cinematic:row:") && ":item:" in targetId -> {
+                val value = targetId.removePrefix("cinematic:row:")
                 TvFocusAnchor(value.substringBefore(":item:"), value.substringAfter(":item:"), TvFocusDestination.SECTION_ITEM) to false
             }
             targetId.startsWith("library:") && ":item:" in targetId -> {

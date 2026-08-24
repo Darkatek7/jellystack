@@ -7,6 +7,20 @@ import kotlin.test.assertTrue
 
 class TvBackNavigationTest {
     @Test
+    fun allTitlesBackReturnsToBrowseBeforePoppingFolderPath() {
+        assertEquals(
+            TvBackAction.POP_ROUTE,
+            tvBackAction(
+                currentRoute = TvRoute.Library("library", "Movies", TvLibraryMode.ALL_TITLES),
+                backStackSize = 3,
+                libraryPathDepth = 2,
+                railVisible = false,
+                selectedLibraryId = "library",
+            ),
+        )
+    }
+
+    @Test
     fun nestedLibraryPathPopsBeforeRouteOrRail() {
         assertEquals(
             TvBackAction.POP_LIBRARY_PATH,

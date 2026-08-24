@@ -93,6 +93,7 @@ import dev.jellystack.core.jellyfin.HomeSectionsState
 import dev.jellystack.core.jellyfin.JellyfinHomeState
 import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.JellyfinLibrary
+import dev.jellystack.core.jellyfin.LibraryBrowseQuery
 import dev.jellystack.core.jellyfin.LibraryLoadErrorKind
 import dev.jellystack.core.jellyfin.SpotlightCandidate
 import dev.jellystack.core.jellyfin.isBrowseContainer
@@ -111,7 +112,7 @@ import kotlinx.datetime.Clock
 import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
 
 private const val TV_HOME_HERO_HEIGHT_DP = 360
-private const val TV_FOCUS_MATERIALIZATION_TIMEOUT_MS = 1_000L
+internal const val TV_FOCUS_MATERIALIZATION_TIMEOUT_MS = 1_000L
 
 private data class TvLazyFocusLocation(
     val verticalIndex: Int,
@@ -1193,9 +1194,42 @@ internal fun TvLibraryScreen(
     onOpenContainer: (JellyfinItem) -> Unit,
     onLoadMore: () -> Unit,
     onRetry: () -> Unit,
+    homeSections: HomeSectionsState = HomeSectionsState.Unavailable,
+    myListItems: List<JellyfinItem> = emptyList(),
+    collectionType: String? = null,
+    rememberedQuery: LibraryBrowseQuery = LibraryBrowseQuery.DEFAULT,
+    onModeChanged: (TvLibraryMode) -> Unit = {},
+    onQueryChanged: (LibraryBrowseQuery) -> Unit = {},
+    onPlayItem: (JellyfinItem) -> Unit = {},
+    onToggleFavorite: (JellyfinItem) -> Unit = {},
+    onTogglePlayed: (JellyfinItem, Boolean) -> Unit = { _, _ -> },
+    cinematicModesEnabled: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     LaunchedEffect(route.libraryId) { route.libraryId?.let(onSelectLibrary) }
+    if (route.libraryId != null && cinematicModesEnabled) {
+        TvSelectedLibraryScreen(
+            route = route,
+            state = state,
+            homeSections = homeSections,
+            myListItems = myListItems,
+            strings = strings,
+            focusMemory = focusMemory,
+            collectionType = collectionType,
+            rememberedQuery = rememberedQuery,
+            onModeChanged = onModeChanged,
+            onQueryChanged = onQueryChanged,
+            onOpenItem = onOpenItem,
+            onOpenContainer = onOpenContainer,
+            onPlayItem = onPlayItem,
+            onToggleFavorite = onToggleFavorite,
+            onTogglePlayed = onTogglePlayed,
+            onLoadMore = onLoadMore,
+            onRetry = onRetry,
+            modifier = modifier,
+        )
+        return
+    }
     val routeKey = route.focusRouteKey(state.browsePath.map { it.id })
     val gridState = rememberLazyGridState()
     val itemTargetIds =
@@ -1419,6 +1453,7 @@ internal fun shouldLoadNextLibraryPage(
     isPageLoading: Boolean,
     endReached: Boolean,
     hasError: Boolean,
+    columnCount: Int = 4,
 ): Boolean {
     val pagingBlocked =
         listOf(
@@ -1430,11 +1465,10 @@ internal fun shouldLoadNextLibraryPage(
             hasError,
         ).any { it }
     if (pagingBlocked) return false
-    val thresholdIndex = (totalItemCount - 1 - LIBRARY_PREFETCH_ITEM_COUNT).coerceAtLeast(0)
+    val prefetchItemCount = columnCount.coerceAtLeast(1) * 2
+    val thresholdIndex = (totalItemCount - 1 - prefetchItemCount).coerceAtLeast(0)
     return lastVisibleIndex >= thresholdIndex
 }
-
-private const val LIBRARY_PREFETCH_ITEM_COUNT = 8
 
 private data class TvRetryFocusRequest(
     val revision: Long,
@@ -1966,7 +2000,7 @@ internal fun TvDiscoverScreen(
 }
 
 @Composable
-private fun TvFocusPlaceholder(
+internal fun TvFocusPlaceholder(
     label: String,
     @Suppress("UNUSED_PARAMETER") focusTargetId: String,
 ) {
@@ -2047,7 +2081,7 @@ private fun TvSeerrRow(
 internal fun JellyseerrSearchItem.toTvRoute(): TvRoute.SeerrDetail =
     TvRoute.SeerrDetail(tmdbId, mediaType, title, overview, posterPath, backdropPath, releaseYear, tvdbId)
 
-private fun JellyfinItem.subtitleText(): String? =
+internal fun JellyfinItem.subtitleText(): String? =
     listOfNotNull(
         productionYear?.toString(),
         if (type.equals("Episode", true)) "S${parentIndexNumber ?: 0} E${indexNumber ?: 0}" else null,

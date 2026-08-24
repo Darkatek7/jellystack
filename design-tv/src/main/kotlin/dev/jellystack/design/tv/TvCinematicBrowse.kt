@@ -1,4 +1,4 @@
-@file:Suppress("FunctionNaming", "LongMethod", "LongParameterList")
+@file:Suppress("FunctionNaming", "LongMethod", "LongParameterList", "MaxLineLength")
 
 package dev.jellystack.design.tv
 
@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Favorite
@@ -31,9 +32,11 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -55,6 +58,8 @@ import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 
 @Composable
 internal fun TvCinematicBrowse(
@@ -64,6 +69,7 @@ internal fun TvCinematicBrowse(
     onCardClick: (TvCinematicCard) -> Unit,
     modifier: Modifier = Modifier,
     selectedItemActions: TvSelectedItemActions? = null,
+    headerContent: (@Composable () -> Unit)? = null,
 ) {
     val focusAppearance = LocalTvFocusAppearance.current
     val platformContext = LocalPlatformContext.current
@@ -96,10 +102,39 @@ internal fun TvCinematicBrowse(
     val loadedBackdrop by backdropController.state.collectAsState()
     val backdrop = loadedBackdrop.takeIf { it.url != null } ?: state.backdrop
     val focusedCard = state.focusedCard
+    val columnState = rememberLazyListState()
+    val rowStates = remember { mutableStateMapOf<String, androidx.compose.foundation.lazy.LazyListState>() }
+    val rowHeaderCount = 1 + (if (headerContent != null) 1 else 0) + (if (state.inlineStatus != null) 1 else 0)
+    val targetLocations =
+        remember(state.rows, rowHeaderCount) {
+            buildMap {
+                state.rows.forEachIndexed { rowIndex, row ->
+                    row.cards.forEachIndexed { cardIndex, card ->
+                        put(tvCinematicFocusTargetId(row.id, card.id), Triple(row.id, rowHeaderCount + rowIndex, cardIndex))
+                    }
+                }
+            }
+        }
+    TvRouteFocusMaterializer(
+        ownerId = "cinematic-browse",
+        targetIds = targetLocations.keys,
+        fallbackTargetIds = setOfNotNull(targetLocations.keys.firstOrNull()),
+    ) { targetId ->
+        val location = targetLocations[targetId] ?: return@TvRouteFocusMaterializer false
+        columnState.scrollToItem(location.second)
+        val rowState =
+            rowStates[location.first]
+                ?: withTimeoutOrNull(TV_FOCUS_MATERIALIZATION_TIMEOUT_MS) {
+                    snapshotFlow { rowStates[location.first] }.first { it != null }
+                }
+        rowState?.scrollToItem(location.third)
+        rowState != null
+    }
 
     Box(modifier.fillMaxSize().background(TvBackground)) {
         TvCinematicBackdropLayer(backdrop, focusAppearance.reducedMotion)
         LazyColumn(
+            state = columnState,
             modifier =
                 Modifier
                     .fillMaxSize()
@@ -118,12 +153,19 @@ internal fun TvCinematicBrowse(
                     labels = actionLabels,
                 )
             }
+            headerContent?.let { content -> item(key = "cinematic-header") { content() } }
             state.inlineStatus?.let { status ->
                 item(key = "cinematic-status") { TvCinematicStatusAnchor(status) }
             }
             items(items = state.rows, key = TvCinematicRow::id) { row ->
+                val rowState = rememberLazyListState()
+                DisposableEffect(row.id, rowState) {
+                    rowStates[row.id] = rowState
+                    onDispose { rowStates.remove(row.id, rowState) }
+                }
                 TvCinematicBrowseRow(
                     row = row,
+                    rowState = rowState,
                     onCardFocused = { card ->
                         val anchor = TvFocusAnchor(row.id, card.id, TvFocusDestination.SECTION_ITEM)
                         backdropController.focus(card)
@@ -214,7 +256,7 @@ private fun TvCinematicMetadata(
 }
 
 @Composable
-private fun TvSelectedItemActionStrip(
+internal fun TvSelectedItemActionStrip(
     card: TvCinematicCard,
     labels: TvSelectedItemActionLabels,
     actions: TvSelectedItemActions,
@@ -253,6 +295,7 @@ private fun TvSelectedItemActionStrip(
 @Composable
 private fun TvCinematicBrowseRow(
     row: TvCinematicRow,
+    rowState: androidx.compose.foundation.lazy.LazyListState,
     onCardFocused: (TvCinematicCard) -> Unit,
     onCardClick: (TvCinematicCard) -> Unit,
 ) {
@@ -265,6 +308,7 @@ private fun TvCinematicBrowseRow(
             modifier = Modifier.semantics { heading() }.testTag("cinematic-row-title-${row.id}"),
         )
         LazyRow(
+            state = rowState,
             contentPadding = PaddingValues(horizontal = TvLayoutTokens.FocusHaloPadding),
             horizontalArrangement = Arrangement.spacedBy(TvLayoutTokens.CardSpacing),
         ) {
@@ -276,13 +320,18 @@ private fun TvCinematicBrowseRow(
                     selected = card.selected,
                     onClick = { onCardClick(card) },
                     onFocused = { onCardFocused(card) },
-                    focusTargetId = "${row.id}:${card.id}",
+                    focusTargetId = tvCinematicFocusTargetId(row.id, card.id),
                     modifier = Modifier.testTag("cinematic-card-${row.id}-${card.id}"),
                 )
             }
         }
     }
 }
+
+internal fun tvCinematicFocusTargetId(
+    rowId: String,
+    cardId: String,
+): String = "cinematic:row:$rowId:item:$cardId"
 
 @Composable
 private fun TvCinematicStatusAnchor(status: TvCinematicInlineStatus) {

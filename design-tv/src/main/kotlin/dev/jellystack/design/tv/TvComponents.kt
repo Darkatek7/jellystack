@@ -384,7 +384,7 @@ internal fun TvCompactActionButton(
     }
 }
 
-internal enum class TvMediaCardFormat { LANDSCAPE, CAST_PORTRAIT }
+internal enum class TvMediaCardFormat { LANDSCAPE, POSTER, CAST_PORTRAIT }
 
 internal enum class TvMediaCardArtworkFit { CROP, CONTAIN_PORTRAIT }
 
@@ -493,10 +493,10 @@ internal fun TvMediaCard(
                 previewSoundEnabled = previewSoundEnabled,
                 previewProgress = previewProgress,
                 previewSurfaceTestTag = previewSurfaceTestTag,
-                showMetadataOverlay = format != TvMediaCardFormat.LANDSCAPE,
+                showMetadataOverlay = format == TvMediaCardFormat.CAST_PORTRAIT,
             )
         }
-        if (format == TvMediaCardFormat.LANDSCAPE) {
+        if (format != TvMediaCardFormat.CAST_PORTRAIT) {
             TvMediaCardMetadataBand(title = title, subtitle = subtitle)
         }
     }
