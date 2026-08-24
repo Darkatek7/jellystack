@@ -7,11 +7,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.performClick
 import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.ui.NavDisplay
 import androidx.test.espresso.Espresso.pressBack
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import dev.jellystack.core.preferences.AppLanguage
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Rule
@@ -47,17 +51,40 @@ class TvBackDispatcherIntegrationTest {
     }
 
     @Test
-    fun topLevelBackRemainsUnconsumedForSystemOwner() {
+    fun topLevelBackRequestsExitConfirmationBeforeReachingSystemOwner() {
         val holder = TvAppStateHolder()
         val systemExits = mutableIntStateOf(0)
-        composeRule.setContent { BackHarness(holder, mutableIntStateOf(0), systemExits) }
+        val exitRequests = mutableIntStateOf(0)
+        composeRule.setContent { BackHarness(holder, mutableIntStateOf(0), systemExits, exitRequests = exitRequests) }
 
         pressBack()
 
         composeRule.runOnIdle {
             assertEquals(listOf(TvRoute.Home), holder.state.backStack)
-            assertEquals(1, systemExits.intValue)
+            assertEquals(0, systemExits.intValue)
+            assertEquals(1, exitRequests.intValue)
             assertFalse(holder.state.railExpanded)
+        }
+    }
+
+    @Test
+    fun discoverBackReturnsHomeBeforeRequestingExitConfirmation() {
+        val holder = TvAppStateHolder().apply { selectTopLevel(TvRoute.Discover) }
+        val systemExits = mutableIntStateOf(0)
+        val exitRequests = mutableIntStateOf(0)
+        composeRule.setContent { BackHarness(holder, mutableIntStateOf(0), systemExits, exitRequests = exitRequests) }
+
+        pressBack()
+        composeRule.runOnIdle {
+            assertEquals(listOf(TvRoute.Home), holder.state.backStack)
+            assertEquals(0, exitRequests.intValue)
+            assertEquals(0, systemExits.intValue)
+        }
+
+        pressBack()
+        composeRule.runOnIdle {
+            assertEquals(1, exitRequests.intValue)
+            assertEquals(0, systemExits.intValue)
         }
     }
 
@@ -77,12 +104,32 @@ class TvBackDispatcherIntegrationTest {
         }
     }
 
+    @Test
+    fun exitConfirmationDefaultsToCancelAndRequiresExplicitConfirmation() {
+        val strings = TvStrings.current(AppLanguage.ENGLISH)
+        val confirmations = mutableIntStateOf(0)
+        composeRule.setContent {
+            JellystackTvTheme {
+                TvExitConfirmationDialog(
+                    strings = strings,
+                    onConfirm = { confirmations.intValue += 1 },
+                    onDismiss = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription(strings.cancel).assertIsFocused()
+        composeRule.onNodeWithContentDescription(strings.exitApp).performClick()
+        composeRule.runOnIdle { assertEquals(1, confirmations.intValue) }
+    }
+
     @Composable
     private fun BackHarness(
         holder: TvAppStateHolder,
         pathDepth: MutableState<Int>,
         systemExits: MutableState<Int>,
         playerBacks: MutableState<Int>? = null,
+        exitRequests: MutableState<Int>? = null,
     ) {
         BackHandler { systemExits.value += 1 }
         val dispatcher =
@@ -93,7 +140,7 @@ class TvBackDispatcherIntegrationTest {
                 popLibraryPath = { pathDepth.value -= 1 },
                 cancelFocusRestoration = {},
             )
-        TvAppBackHandler(dispatcher)
+        TvAppBackHandler(dispatcher) { exitRequests?.value = (exitRequests?.value ?: 0) + 1 }
         Box(Modifier.fillMaxSize()) {
             NavDisplay(
                 backStack = holder.state.backStack,

@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Color
 import android.net.Uri
 import android.util.TypedValue
+import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.media3.common.AudioAttributes
@@ -186,8 +187,17 @@ class AndroidPlayerEngine(
         exoPlayer.setAudioAttributes(mediaAudioAttributes, enabled)
     }
 
-    fun createVideoSurface(context: Context): View =
-        PlayerView(context).apply {
+    fun createVideoSurface(
+        context: Context,
+        textureBacked: Boolean = false,
+    ): View =
+        (
+            if (textureBacked) {
+                LayoutInflater.from(context).inflate(R.layout.jellystack_texture_player_view, null, false) as PlayerView
+            } else {
+                PlayerView(context)
+            }
+        ).apply {
             layoutParams =
                 ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,

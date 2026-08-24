@@ -134,7 +134,7 @@ internal fun tvRailTargetId(route: TvRoute): String =
             else -> route.focusRouteKey()
         }
 
-internal enum class TvBackAction { POP_LIBRARY_PATH, POP_ROUTE, CLOSE_RAIL, SYSTEM_EXIT }
+internal enum class TvBackAction { POP_LIBRARY_PATH, POP_ROUTE, CLOSE_RAIL, RETURN_HOME, SYSTEM_EXIT }
 
 /**
  * Persists the navigation back stack across process death. TV systems kill background apps
@@ -165,6 +165,7 @@ internal fun tvBackAction(
             libraryPathDepth > 0 -> TvBackAction.POP_LIBRARY_PATH
         backStackSize > 1 -> TvBackAction.POP_ROUTE
         railVisible -> TvBackAction.CLOSE_RAIL
+        currentRoute != TvRoute.Home -> TvBackAction.RETURN_HOME
         else -> TvBackAction.SYSTEM_EXIT
     }
 
@@ -218,6 +219,29 @@ internal class TvSemanticFocusRestorationSession(
     fun cancelAfterInteraction(interactionRevision: Long) {
         if (interactionRevision != this.interactionRevision) isPending = false
     }
+}
+
+internal suspend fun <T : Any> TvSemanticFocusRestorationSession.restoreOnce(
+    coordinator: TvFocusCoordinator<T>,
+    routeKey: Any,
+    preferredTargetId: String?,
+    requestFocus: (T) -> Boolean,
+): TvFocusRestoration<T> {
+    cancelAfterInteraction(coordinator.currentInteractionRevision)
+    if (!isPending) return TvFocusRestoration.Cancelled
+    return coordinator
+        .restoreFocus(
+            routeKey = routeKey,
+            preferredTargetId = preferredTargetId,
+            requiredInteractionRevision = interactionRevision,
+            requestFocus = requestFocus,
+        ).also { restoration ->
+            when (restoration) {
+                is TvFocusRestoration.Focused -> complete()
+                TvFocusRestoration.Cancelled -> cancelAfterInteraction(coordinator.currentInteractionRevision)
+                TvFocusRestoration.Failed -> Unit
+            }
+        }
 }
 
 @androidx.compose.runtime.Immutable
@@ -386,7 +410,7 @@ internal class TvAppBackDispatcher(
 
     /** Navigation3 owns Back whenever it has a previous entry; the root only handles non-route layers. */
     val rootHandlerEnabled: Boolean
-        get() = holder.state.backStack.size == 1 && action != TvBackAction.SYSTEM_EXIT
+        get() = holder.state.backStack.size == 1
 
     fun dispatch(): Boolean {
         val consumed =
@@ -399,6 +423,10 @@ internal class TvAppBackDispatcher(
                 TvBackAction.POP_ROUTE -> holder.popRoute()
                 TvBackAction.CLOSE_RAIL -> {
                     holder.closeRail()
+                    true
+                }
+                TvBackAction.RETURN_HOME -> {
+                    holder.selectTopLevel(TvRoute.Home)
                     true
                 }
                 TvBackAction.SYSTEM_EXIT -> false

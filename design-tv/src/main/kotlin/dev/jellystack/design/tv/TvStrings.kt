@@ -213,6 +213,7 @@ internal data class TvStrings(
     val profiles: String,
     val chooseProfile: String,
     val addProfile: String,
+    val manageProfiles: String,
     val removeProfile: String,
     val removeProfileMessage: String,
     val enterProfilePin: String,
@@ -248,6 +249,13 @@ internal data class TvStrings(
     private val itemSingular: String,
     private val itemPlural: String,
 ) {
+    val exitAppTitle: String
+        get() = if (cancel == "Abbrechen") "Jellystack beenden?" else "Exit Jellystack?"
+    val exitAppMessage: String
+        get() = if (cancel == "Abbrechen") "Möchtest du die App schließen?" else "Do you want to close the app?"
+    val exitApp: String
+        get() = if (cancel == "Abbrechen") "Beenden" else "Exit"
+
     fun itemCount(count: Long): String = "$count ${if (count == 1L) itemSingular else itemPlural}"
 
     companion object {
@@ -474,6 +482,7 @@ internal data class TvStrings(
                 profiles = "Profiles",
                 chooseProfile = "Who's watching?",
                 addProfile = "Add profile",
+                manageProfiles = "Manage profiles",
                 removeProfile = "Remove profile",
                 removeProfileMessage =
                     "This removes local preferences, saves and PIN only. " +
@@ -730,6 +739,7 @@ internal data class TvStrings(
                 profiles = "Profile",
                 chooseProfile = "Wer schaut?",
                 addProfile = "Profil hinzufügen",
+                manageProfiles = "Profile verwalten",
                 removeProfile = "Profil entfernen",
                 removeProfileMessage =
                     "Nur lokale Einstellungen, Merkliste und PIN werden entfernt. Das Serverkonto bleibt bestehen.",

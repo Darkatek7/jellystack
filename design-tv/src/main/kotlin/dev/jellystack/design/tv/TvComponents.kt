@@ -37,7 +37,6 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -61,7 +60,6 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.SemanticsPropertyReceiver
@@ -403,11 +401,6 @@ internal fun TvMediaCard(
     onFocused: (() -> Unit)? = null,
     onFocusChanged: ((Boolean) -> Unit)? = null,
     focusToNavigationRailOnLeft: Boolean = false,
-    previewing: Boolean = false,
-    previewEngine: AndroidPlayerEngine? = null,
-    previewSoundEnabled: Boolean = true,
-    previewProgress: State<Float>? = null,
-    previewSurfaceTestTag: String? = null,
     focusTargetId: String? = null,
     providedFocusRequester: FocusRequester? = null,
 ) {
@@ -488,11 +481,6 @@ internal fun TvMediaCard(
                 imageUrl = imageUrl,
                 subtitle = subtitle,
                 artworkFit = artworkFit,
-                previewing = previewing,
-                previewEngine = previewEngine,
-                previewSoundEnabled = previewSoundEnabled,
-                previewProgress = previewProgress,
-                previewSurfaceTestTag = previewSurfaceTestTag,
                 showMetadataOverlay = format == TvMediaCardFormat.CAST_PORTRAIT,
             )
         }
@@ -534,22 +522,9 @@ private fun BoxScope.TvMediaCardContent(
     imageUrl: String?,
     subtitle: String?,
     artworkFit: TvMediaCardArtworkFit,
-    previewing: Boolean,
-    previewEngine: AndroidPlayerEngine?,
-    previewSoundEnabled: Boolean,
-    previewProgress: State<Float>?,
-    previewSurfaceTestTag: String?,
     showMetadataOverlay: Boolean,
 ) {
-    if (previewing && previewEngine != null) {
-        TvTrailerPreviewSurface(
-            previewEngine = previewEngine,
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .then(previewSurfaceTestTag?.let { Modifier.testTag(it) } ?: Modifier),
-        )
-    } else if (imageUrl != null && artworkFit == TvMediaCardArtworkFit.CONTAIN_PORTRAIT) {
+    if (imageUrl != null && artworkFit == TvMediaCardArtworkFit.CONTAIN_PORTRAIT) {
         AsyncImage(
             model = imageUrl,
             contentDescription = null,
@@ -604,13 +579,6 @@ private fun BoxScope.TvMediaCardContent(
                 ),
             ),
     )
-    if (previewing) {
-        TvTrailerPreviewChrome(
-            previewSoundEnabled = previewSoundEnabled,
-            previewProgress = previewProgress?.value ?: 0f,
-            modifier = Modifier.fillMaxSize(),
-        )
-    }
     if (showMetadataOverlay) {
         Column(
             modifier = Modifier.align(Alignment.BottomStart).padding(14.dp),
@@ -635,7 +603,7 @@ internal fun TvTrailerPreviewSurface(
     modifier: Modifier = Modifier,
 ) {
     AndroidView(
-        factory = { previewEngine.createVideoSurface(it) },
+        factory = { previewEngine.createVideoSurface(it, textureBacked = true) },
         update = previewEngine::updateVideoSurface,
         onRelease = previewEngine::releaseVideoSurface,
         modifier = modifier,
@@ -709,7 +677,7 @@ internal fun TvSectionTitle(
 
 internal val TvScreenPadding =
     PaddingValues(
-        start = 92.dp,
+        start = TvLayoutTokens.ContentStart,
         end = TvLayoutTokens.SafeInsets.horizontal,
         top = TvLayoutTokens.SafeInsets.vertical,
         bottom = 54.dp,
@@ -854,6 +822,16 @@ internal fun jellyfinImageUrl(
     val tagQuery = tag?.takeIf(String::isNotBlank)?.let { "tag=$it&" }.orEmpty()
     return "${baseUrl.trimEnd('/')}/Items/$itemId/Images/$type?${tagQuery}maxWidth=$maxWidth&quality=90" +
         token?.takeIf { it.isNotBlank() }?.let { "&api_key=$it" }.orEmpty()
+}
+
+internal fun jellyfinUserImageUrl(
+    baseUrl: String?,
+    token: String?,
+    userId: String,
+): String? {
+    if (baseUrl.isNullOrBlank() || userId.isBlank()) return null
+    return "${baseUrl.trimEnd('/')}/Users/$userId/Images/Primary?maxWidth=160&quality=90" +
+        token?.takeIf(String::isNotBlank)?.let { "&api_key=$it" }.orEmpty()
 }
 
 internal fun tmdbImageUrl(

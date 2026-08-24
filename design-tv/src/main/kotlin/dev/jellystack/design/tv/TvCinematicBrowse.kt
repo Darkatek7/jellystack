@@ -1,12 +1,8 @@
-@file:Suppress("FunctionNaming", "LongMethod", "LongParameterList", "MaxLineLength")
+@file:Suppress("CyclomaticComplexMethod", "FunctionNaming", "LongMethod", "LongParameterList", "MaxLineLength")
 
 package dev.jellystack.design.tv
 
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
+import android.view.KeyEvent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,11 +11,11 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
@@ -30,18 +26,19 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
@@ -49,17 +46,17 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Icon
 import androidx.tv.material3.Text
 import coil3.SingletonImageLoader
-import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
+import dev.jellystack.players.AndroidPlayerEngine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
 @Composable
@@ -70,8 +67,15 @@ internal fun TvCinematicBrowse(
     onCardClick: (TvCinematicCard) -> Unit,
     modifier: Modifier = Modifier,
     selectedItemActions: TvSelectedItemActions? = null,
+    showFocusedMetadata: Boolean = true,
+    resetVerticalFocusToFirstCard: Boolean = false,
+    topHeaderContent: (@Composable () -> Unit)? = null,
     headerContent: (@Composable () -> Unit)? = null,
     inlineStatusAction: (@Composable () -> Unit)? = null,
+    previewing: Boolean = false,
+    previewEngine: AndroidPlayerEngine? = null,
+    previewSoundEnabled: Boolean = true,
+    previewProgress: State<Float>? = null,
 ) {
     val focusAppearance = LocalTvFocusAppearance.current
     val platformContext = LocalPlatformContext.current
@@ -104,9 +108,13 @@ internal fun TvCinematicBrowse(
     val loadedBackdrop by backdropController.state.collectAsState()
     val backdrop = loadedBackdrop.takeIf { it.url != null } ?: state.backdrop
     val focusedCard = state.focusedCard
+    var actionOriginRequester by remember { androidx.compose.runtime.mutableStateOf<androidx.compose.ui.focus.FocusRequester?>(null) }
+    val focusContext = LocalTvFocusContext.current
     val columnState = rememberLazyListState()
     val rowStates = remember { mutableStateMapOf<String, androidx.compose.foundation.lazy.LazyListState>() }
-    val rowHeaderCount = 1 + (if (headerContent != null) 1 else 0) + (if (state.inlineStatus != null) 1 else 0)
+    val rowHeaderCount =
+        (if (headerContent != null) 1 else 0) +
+            (if (state.inlineStatus != null) 1 else 0)
     val targetLocations =
         remember(state.rows, rowHeaderCount) {
             buildMap {
@@ -123,7 +131,7 @@ internal fun TvCinematicBrowse(
         fallbackTargetIds = setOfNotNull(targetLocations.keys.firstOrNull()),
     ) { targetId ->
         val location = targetLocations[targetId] ?: return@TvRouteFocusMaterializer false
-        columnState.scrollToItem(location.second)
+        columnState.scrollToItem(tvCinematicMaterializationColumnIndex(location.second, rowHeaderCount))
         val rowState =
             rowStates[location.first]
                 ?: withTimeoutOrNull(TV_FOCUS_MATERIALIZATION_TIMEOUT_MS) {
@@ -134,27 +142,37 @@ internal fun TvCinematicBrowse(
     }
 
     Box(modifier.fillMaxSize().background(TvBackground)) {
-        TvCinematicBackdropLayer(backdrop, focusAppearance.reducedMotion)
+        TvCinematicPreviewStage(
+            backdrop = backdrop,
+            hero = state.hero,
+            focusedCard = focusedCard.takeIf { showFocusedMetadata },
+            actions = selectedItemActions,
+            labels = actionLabels,
+            reducedMotion = focusAppearance.reducedMotion,
+            contentTopInset = if (topHeaderContent != null) TV_CINEMATIC_FIXED_HEADER_HEIGHT else 0.dp,
+            onActionDown = {
+                actionOriginRequester?.let { requester -> runCatching { requester.requestFocus() }.getOrDefault(false) }
+                    ?: false
+            },
+            previewing = previewing,
+            previewEngine = previewEngine,
+            previewSoundEnabled = previewSoundEnabled,
+            previewProgress = previewProgress,
+        )
         LazyColumn(
             state = columnState,
             modifier =
                 Modifier
                     .fillMaxSize()
                     .padding(
-                        horizontal = TvLayoutTokens.SafeInsets.horizontal,
-                        vertical = TvLayoutTokens.SafeInsets.vertical,
+                        start = TvLayoutTokens.ContentStart,
+                        end = TvLayoutTokens.SafeInsets.horizontal,
+                        top = TV_CINEMATIC_ROWS_TOP,
+                        bottom = TvLayoutTokens.SafeInsets.vertical,
                     ),
             contentPadding = PaddingValues(bottom = TvLayoutTokens.FocusHaloPadding),
             verticalArrangement = Arrangement.spacedBy(22.dp),
         ) {
-            item(key = "cinematic-metadata") {
-                TvCinematicMetadata(
-                    hero = state.hero,
-                    focusedCard = focusedCard,
-                    actions = selectedItemActions,
-                    labels = actionLabels,
-                )
-            }
             headerContent?.let { content -> item(key = "cinematic-header") { content() } }
             state.inlineStatus?.let { status ->
                 item(key = "cinematic-status") { TvCinematicStatusAnchor(status, inlineStatusAction) }
@@ -168,8 +186,39 @@ internal fun TvCinematicBrowse(
                 TvCinematicBrowseRow(
                     row = row,
                     rowState = rowState,
-                    onCardFocused = { card ->
+                    onVerticalMove = { direction ->
+                        if (!resetVerticalFocusToFirstCard || focusContext == null) {
+                            false
+                        } else {
+                            val rowIndex = state.rows.indexOfFirst { it.id == row.id }
+                            val targetRowIndex =
+                                rowIndex +
+                                    when (direction) {
+                                        TvHomeVerticalDirection.UP -> -1
+                                        TvHomeVerticalDirection.DOWN -> 1
+                                    }
+                            val targetRow = state.rows.getOrNull(targetRowIndex)
+                            val targetCard = targetRow?.cards?.firstOrNull()
+                            if (targetRow == null || targetCard == null) {
+                                false
+                            } else {
+                                scope.launch {
+                                    focusContext.coordinator.restoreFocus(
+                                        routeKey = focusContext.routeKey,
+                                        preferredTargetId = tvCinematicFocusTargetId(targetRow.id, targetCard.id),
+                                        includeFallback = false,
+                                        requestFocus = { requester ->
+                                            runCatching { requester.requestFocus() }.getOrDefault(false)
+                                        },
+                                    )
+                                }
+                                true
+                            }
+                        }
+                    },
+                    onCardFocused = { card, requester ->
                         val anchor = TvFocusAnchor(row.id, card.id, TvFocusDestination.SECTION_ITEM)
+                        actionOriginRequester = requester
                         backdropController.focus(card)
                         onCardFocused(anchor, card)
                     },
@@ -177,93 +226,47 @@ internal fun TvCinematicBrowse(
                 )
             }
         }
+        topHeaderContent?.let { content ->
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        start = TvLayoutTokens.ContentStart,
+                        end = TvLayoutTokens.SafeInsets.horizontal,
+                        top = TvLayoutTokens.SafeInsets.vertical,
+                    ),
+            ) {
+                content()
+            }
+        }
     }
 }
 
-@Composable
-private fun TvCinematicBackdropLayer(
-    backdrop: TvCinematicBackdrop,
-    reducedMotion: Boolean,
-) {
-    val transitionMillis = if (reducedMotion) 0 else backdrop.transitionMillis
-    AnimatedContent(
-        targetState = backdrop.url,
-        modifier = Modifier.fillMaxSize().testTag("cinematic-backdrop"),
-        transitionSpec = {
-            fadeIn(tween(transitionMillis)) togetherWith fadeOut(tween(transitionMillis))
-        },
-        label = "cinematic-backdrop-crossfade",
-    ) { url ->
-        if (url == null) {
-            Box(Modifier.fillMaxSize().background(TvBackground))
-        } else {
-            AsyncImage(
-                model = url,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
-    }
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(
-                Brush.horizontalGradient(
-                    listOf(TvBackground, TvBackground.copy(alpha = 0.82f), TvBackground.copy(alpha = 0.35f)),
-                ),
-            ),
-    )
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(Color.Transparent, TvBackground.copy(alpha = 0.94f)))),
-    )
-}
+private val TV_CINEMATIC_FIXED_HEADER_HEIGHT = 70.dp
 
-@Composable
-private fun TvCinematicMetadata(
-    hero: TvCinematicHero?,
-    focusedCard: TvCinematicCard?,
-    actions: TvSelectedItemActions?,
-    labels: TvSelectedItemActionLabels,
-) {
-    val title = focusedCard?.title ?: hero?.title
-    val subtitle = focusedCard?.subtitle ?: hero?.overview
-    Column(
-        modifier = Modifier.fillMaxWidth().heightIn(min = 126.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.Bottom),
-    ) {
-        hero?.eyebrow?.takeIf { focusedCard == null }?.let {
-            Text(it, color = TvPurple, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-        }
-        title?.let {
-            Text(
-                it,
-                color = TvText,
-                fontSize = 30.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.semantics { heading() },
-            )
-        }
-        subtitle?.let {
-            Text(it, color = TvTextMuted, fontSize = 15.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        }
-        if (focusedCard != null && actions != null) {
-            TvSelectedItemActionStrip(focusedCard, labels, actions)
-        }
-    }
-}
+internal fun tvCinematicMaterializationColumnIndex(
+    rowIndex: Int,
+    headerCount: Int,
+): Int = if (rowIndex == headerCount) 0 else rowIndex
 
 @Composable
 internal fun TvSelectedItemActionStrip(
     card: TvCinematicCard,
     labels: TvSelectedItemActionLabels,
     actions: TvSelectedItemActions,
+    onDown: (() -> Boolean)? = null,
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.testTag("cinematic-action-strip")) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        modifier =
+            Modifier
+                .onPreviewKeyEvent { event ->
+                    event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
+                        event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_DOWN &&
+                        shouldHandleTvHomeVerticalKey(event.nativeKeyEvent.repeatCount) &&
+                        onDown?.invoke() == true
+                }.testTag("cinematic-action-strip"),
+    ) {
         TvActionButton(
             label = actions.primaryLabel ?: if (card.resumeFraction != null) labels.resume else labels.play,
             onClick = actions.onPlayOrResume,
@@ -302,7 +305,8 @@ internal fun TvSelectedItemActionStrip(
 private fun TvCinematicBrowseRow(
     row: TvCinematicRow,
     rowState: androidx.compose.foundation.lazy.LazyListState,
-    onCardFocused: (TvCinematicCard) -> Unit,
+    onVerticalMove: (TvHomeVerticalDirection) -> Boolean,
+    onCardFocused: (TvCinematicCard, androidx.compose.ui.focus.FocusRequester) -> Unit,
     onCardClick: (TvCinematicCard) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -318,21 +322,47 @@ private fun TvCinematicBrowseRow(
             contentPadding = PaddingValues(horizontal = TvLayoutTokens.FocusHaloPadding),
             horizontalArrangement = Arrangement.spacedBy(TvLayoutTokens.CardSpacing),
         ) {
-            items(items = row.cards, key = TvCinematicCard::id) { card ->
+            itemsIndexed(items = row.cards, key = { _, card -> card.id }) { index, card ->
+                val cardFocusRequester =
+                    remember(card.id) {
+                        androidx.compose.ui.focus
+                            .FocusRequester()
+                    }
                 TvMediaCard(
                     title = card.title,
                     subtitle = card.subtitle,
                     imageUrl = card.artworkUrl,
                     selected = card.selected,
                     onClick = { onCardClick(card) },
-                    onFocused = { onCardFocused(card) },
+                    onFocused = { onCardFocused(card, cardFocusRequester) },
                     focusTargetId = tvCinematicFocusTargetId(row.id, card.id),
-                    modifier = Modifier.testTag("cinematic-card-${row.id}-${card.id}"),
+                    modifier =
+                        Modifier
+                            .tvReturnToNavigationRailOnLeft(enabled = index == 0)
+                            .tvCinematicVerticalFocus(onVerticalMove)
+                            .testTag("cinematic-card-${row.id}-${card.id}"),
+                    providedFocusRequester = cardFocusRequester,
                 )
             }
         }
     }
 }
+
+private fun Modifier.tvCinematicVerticalFocus(onVerticalMove: (TvHomeVerticalDirection) -> Boolean): Modifier =
+    onPreviewKeyEvent { event ->
+        if (
+            event.nativeKeyEvent.action != KeyEvent.ACTION_DOWN ||
+            !shouldHandleTvHomeVerticalKey(event.nativeKeyEvent.repeatCount)
+        ) {
+            false
+        } else {
+            when (event.nativeKeyEvent.keyCode) {
+                KeyEvent.KEYCODE_DPAD_UP -> onVerticalMove(TvHomeVerticalDirection.UP)
+                KeyEvent.KEYCODE_DPAD_DOWN -> onVerticalMove(TvHomeVerticalDirection.DOWN)
+                else -> false
+            }
+        }
+    }
 
 internal fun tvCinematicFocusTargetId(
     rowId: String,

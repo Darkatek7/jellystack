@@ -8,6 +8,12 @@ import kotlin.test.assertTrue
 
 class TvCinematicLayoutTest {
     @Test
+    fun firstRowMaterializationKeepsItsContextVisible() {
+        assertEquals(0, tvCinematicMaterializationColumnIndex(rowIndex = 1, headerCount = 1))
+        assertEquals(3, tvCinematicMaterializationColumnIndex(rowIndex = 3, headerCount = 1))
+    }
+
+    @Test
     fun landscapeGeometryAndActionsMeetTenFootContract() {
         val geometry = tvCinematicGeometry()
 

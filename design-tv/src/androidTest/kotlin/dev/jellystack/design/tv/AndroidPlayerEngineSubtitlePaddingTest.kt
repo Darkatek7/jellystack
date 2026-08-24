@@ -1,5 +1,6 @@
 package dev.jellystack.design.tv
 
+import android.view.TextureView
 import android.view.View
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -10,6 +11,25 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class AndroidPlayerEngineSubtitlePaddingTest {
+    @Test
+    fun trailerSurfaceUsesTextureViewSoItCannotPunchThroughAnotherRoute() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+
+        instrumentation.runOnMainSync {
+            val engine = AndroidPlayerEngine(context)
+            try {
+                val surface = engine.createVideoSurface(context, textureBacked = true)
+                val videoSurface = surface.javaClass.getMethod("getVideoSurfaceView").invoke(surface)
+
+                assertEquals(TextureView::class.java, videoSurface?.javaClass)
+                engine.releaseVideoSurface(surface)
+            } finally {
+                engine.release()
+            }
+        }
+    }
+
     @Test
     fun paddingSetBeforeSurfaceAttachmentIsClampedAndApplied() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()

@@ -75,6 +75,7 @@ internal fun TvSettingsScreen(
     strings: TvStrings,
     onOpenCategory: (TvSettingsCategory) -> Unit,
     onServersChanged: () -> Unit,
+    onSeerrConnected: suspend (ManagedServer) -> Unit = {},
     modifier: Modifier = Modifier,
     profileId: String? = null,
     profilePreferencesRepository: ProfilePreferencesRepository? = null,
@@ -215,7 +216,8 @@ internal fun TvSettingsScreen(
             existingServerId = seerrServer?.id,
             initialUrl = seerrServer?.baseUrl.orEmpty(),
             onDismiss = { showSeerrConnect = false },
-            onConnected = {
+            onConnected = { server ->
+                onSeerrConnected(server)
                 showSeerrConnect = false
                 onServersChanged()
             },

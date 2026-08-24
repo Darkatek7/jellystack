@@ -85,6 +85,30 @@ class TvLibraryBrowsePresentationTest {
     }
 
     @Test
+    fun movieBrowseRejectsServerRowsFromOtherOrUnidentifiedLibraries() {
+        val movie = item("movie", "Movie", libraryId = "movies")
+        val show = item("show", "Show", libraryId = "shows", type = "Series")
+        val unidentifiedMovie = item("unknown", "Unknown movie", libraryId = null)
+        val sections =
+            HomeSectionsState.Ready(
+                sections =
+                    listOf(
+                        section("movies", "Curated movies", movie),
+                        section("shows", "Latest shows", show),
+                        section("unknown", "My requests", unidentifiedMovie),
+                    ),
+                imageBaseUrl = "",
+                imageAccessToken = "",
+            )
+        val state = JellyfinHomeState(selectedLibraryId = "movies")
+
+        val rows = buildTvLibraryBrowseRows(state, sections, emptyList(), labels(), "movies")
+
+        assertEquals(listOf("server:movies"), rows.map(TvCinematicRow::id))
+        assertEquals(listOf("movie"), rows.single().cards.map(TvCinematicCard::id))
+    }
+
+    @Test
     fun adaptiveGridUsesFiveColumnsAndLargeTextUsesFour() {
         assertEquals(5, tvLibraryAllTitlesColumnCount(960f, fontScale = 1f))
         assertEquals(4, tvLibraryAllTitlesColumnCount(960f, fontScale = 1.5f))
@@ -116,13 +140,14 @@ class TvLibraryBrowsePresentationTest {
         id: String,
         name: String,
         libraryId: String?,
+        type: String = "Movie",
     ) = JellyfinItem(
         id = id,
         libraryId = libraryId,
         name = name,
         sortName = name,
         overview = null,
-        type = "Movie",
+        type = type,
         mediaType = "Video",
         locationType = null,
         taglines = emptyList(),
@@ -148,5 +173,30 @@ class TvLibraryBrowsePresentationTest {
         seasonId = null,
         episodeTitle = null,
         lastPlayed = null,
+    )
+
+    private fun section(
+        id: String,
+        title: String,
+        item: JellyfinItem,
+    ) = HomeSection(
+        id = id,
+        title = title,
+        viewMode = HomeSectionViewMode.LANDSCAPE,
+        displayTitle = true,
+        showDetailsMenu = false,
+        items =
+            listOf(
+                HomeSectionItem(
+                    id = item.id,
+                    name = item.name,
+                    overview = null,
+                    productionYear = null,
+                    communityRating = null,
+                    imageUrl = null,
+                    jellyfinItem = item,
+                    action = HomeSectionAction.JELLYFIN,
+                ),
+            ),
     )
 }

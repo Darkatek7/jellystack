@@ -49,7 +49,7 @@ class TvBackNavigationTest {
     }
 
     @Test
-    fun topLevelCollapsedRailDelegatesBackToSystem() {
+    fun onlyHomeDelegatesCollapsedTopLevelBackToExit() {
         assertEquals(
             TvBackAction.SYSTEM_EXIT,
             tvBackAction(
@@ -61,7 +61,7 @@ class TvBackNavigationTest {
             ),
         )
         assertEquals(
-            TvBackAction.SYSTEM_EXIT,
+            TvBackAction.RETURN_HOME,
             tvBackAction(
                 TvRoute.Settings(),
                 backStackSize = 1,
@@ -70,6 +70,38 @@ class TvBackNavigationTest {
                 selectedLibraryId = null,
             ),
         )
+    }
+
+    @Test
+    fun topLevelDispatcherOwnsBackSoTheAppCanConfirmExit() {
+        val holder = TvAppStateHolder()
+        val dispatcher =
+            TvAppBackDispatcher(
+                holder = holder,
+                libraryPathDepth = { 0 },
+                selectedLibraryId = { null },
+                popLibraryPath = {},
+                cancelFocusRestoration = {},
+            )
+
+        assertTrue(dispatcher.rootHandlerEnabled)
+        assertFalse(dispatcher.dispatch())
+    }
+
+    @Test
+    fun nonHomeTopLevelBackReturnsHomeBeforeExit() {
+        val holder = TvAppStateHolder().apply { selectTopLevel(TvRoute.Discover) }
+        val dispatcher =
+            TvAppBackDispatcher(
+                holder = holder,
+                libraryPathDepth = { 0 },
+                selectedLibraryId = { null },
+                popLibraryPath = {},
+                cancelFocusRestoration = {},
+            )
+
+        assertTrue(dispatcher.dispatch())
+        assertEquals(listOf(TvRoute.Home), holder.state.backStack)
     }
 
     @Test
@@ -99,7 +131,7 @@ class TvBackNavigationTest {
             ),
         )
         assertEquals(
-            TvBackAction.SYSTEM_EXIT,
+            TvBackAction.RETURN_HOME,
             tvBackAction(
                 TvRoute.Settings(),
                 backStackSize = 1,
@@ -113,7 +145,7 @@ class TvBackNavigationTest {
     @Test
     fun topLevelLibraryListIgnoresAStaleNestedBrowsePath() {
         assertEquals(
-            TvBackAction.SYSTEM_EXIT,
+            TvBackAction.RETURN_HOME,
             tvBackAction(
                 TvRoute.Library(),
                 backStackSize = 1,
@@ -153,7 +185,11 @@ class TvBackNavigationTest {
                         selectedLibraryId = null,
                     )
                 assertEquals(
-                    if (railExpanded) TvBackAction.CLOSE_RAIL else TvBackAction.SYSTEM_EXIT,
+                    when {
+                        railExpanded -> TvBackAction.CLOSE_RAIL
+                        route == TvRoute.Home -> TvBackAction.SYSTEM_EXIT
+                        else -> TvBackAction.RETURN_HOME
+                    },
                     action,
                 )
             }

@@ -10,7 +10,9 @@ import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class HouseholdProfileRepositoryTest {
     @Test
@@ -53,6 +55,47 @@ class HouseholdProfileRepositoryTest {
 
             assertNull(repository.ensureLegacyDefaultProfile())
             assertEquals(emptyList(), store.listProfiles())
+        }
+
+    @Test
+    fun legacyRepairBindsSoleSeerrConnectionOnlyForOneUnboundProfile() =
+        runTest {
+            val store = InMemoryProfileStore()
+            val repository = HouseholdProfileRepository(store, ActiveServerPreferenceRepository(InMemorySettings()))
+            val profile = repository.createProfile("Default", "jellyfin")
+
+            assertTrue(repository.repairLegacySingleProfileSeerrBinding(listOf("seerr")))
+            assertEquals(
+                ProfileConnectionBinding(profile.id, "jellyfin", "seerr"),
+                store.getBinding(profile.id),
+            )
+            assertFalse(repository.repairLegacySingleProfileSeerrBinding(listOf("seerr")))
+
+            val ambiguousStore = InMemoryProfileStore()
+            val ambiguous = HouseholdProfileRepository(ambiguousStore, ActiveServerPreferenceRepository(InMemorySettings()))
+            ambiguous.createProfile("Default", "jellyfin")
+            assertFalse(ambiguous.repairLegacySingleProfileSeerrBinding(listOf("seerr-a", "seerr-b")))
+        }
+
+    @Test
+    fun legacyRepairReplacesOnlyUntouchedDefaultIdentity() =
+        runTest {
+            val store = InMemoryProfileStore()
+            val active = ActiveServerPreferenceRepository(InMemorySettings())
+            active.setActiveServerId(ServerType.JELLYFIN, "jellyfin")
+            val repository =
+                HouseholdProfileRepository(
+                    store = store,
+                    activeServerPreferences = active,
+                    clock = FixedProfileClock,
+                    idGenerator = { "profile" },
+                )
+            repository.ensureLegacyDefaultProfile()
+
+            assertTrue(repository.repairLegacySingleProfileIdentity("jellyfin", "Alice", "user-id"))
+            assertEquals("Alice", store.getProfile("profile")?.displayName)
+            assertEquals("user-id", store.getProfile("profile")?.avatarSeed)
+            assertFalse(repository.repairLegacySingleProfileIdentity("jellyfin", "Other", "other-id"))
         }
 }
 

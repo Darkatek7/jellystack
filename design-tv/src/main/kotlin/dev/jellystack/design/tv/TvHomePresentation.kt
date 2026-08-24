@@ -72,14 +72,21 @@ internal fun TvTrailerPreviewState.showsTvHomeHeroPreview(
         request.owner == TvTrailerPreviewOwner.HERO &&
         request.target.itemId == itemId
 
-internal fun TvTrailerPreviewState.showsTvMediaCardPreview(
+internal fun TvTrailerPreviewState.showsTvStagePreview(
     itemId: String,
     presentationId: String?,
 ): Boolean =
     this is TvTrailerPreviewState.Playing &&
-        request.owner == TvTrailerPreviewOwner.CARD &&
         request.target.itemId == itemId &&
-        request.presentationId == presentationId
+        when (request.owner) {
+            TvTrailerPreviewOwner.HERO -> true
+            TvTrailerPreviewOwner.CARD -> request.presentationId == presentationId
+        }
+
+internal fun TvTrailerPreviewState.showsTvHomeStagePreview(
+    itemId: String,
+    presentationId: String?,
+): Boolean = showsTvStagePreview(itemId, presentationId)
 
 internal sealed interface TvHomeJellyfinDestination {
     data class Detail(

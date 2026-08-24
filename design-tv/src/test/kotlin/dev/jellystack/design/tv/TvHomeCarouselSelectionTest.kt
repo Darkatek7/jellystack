@@ -12,6 +12,15 @@ import kotlin.test.assertTrue
 
 class TvHomeCarouselSelectionTest {
     @Test
+    fun trailerPreviewIsLimitedToJellyfinCinematicBrowseRoutes() {
+        assertTrue(TvRoute.Home.allowsTrailerPreview())
+        assertTrue(TvRoute.Library("movies", "Movies").allowsTrailerPreview())
+        assertTrue(TvRoute.Search.allowsTrailerPreview())
+        assertFalse(TvRoute.Discover.allowsTrailerPreview())
+        assertFalse(TvRoute.JellyfinDetail("movie").allowsTrailerPreview())
+    }
+
+    @Test
     fun reconcileReturnsNullForAnEmptyCandidateList() {
         assertNull(reconcileTvHomeCarouselSelection(emptyList(), currentId = "current"))
     }
@@ -93,18 +102,6 @@ class TvHomeCarouselSelectionTest {
         assertFalse(TvTrailerPreviewState.Armed(activeHero).showsTvHomeHeroPreview("episode", heroFocused = true))
         assertFalse(TvTrailerPreviewState.Unavailable(activeHero).showsTvHomeHeroPreview("episode", heroFocused = true))
         assertFalse(TvTrailerPreviewState.Idle.showsTvHomeHeroPreview("episode", heroFocused = true))
-    }
-
-    @Test
-    fun cardPreviewOnlyRendersForExactCardInstance() {
-        val target = TvTrailerPreviewTarget("server", "same", isEpisode = false, seriesId = null)
-        val card = TvTrailerPreviewRequest(TvTrailerPreviewOwner.CARD, target, presentationId = "continue:same")
-        val hero = TvTrailerPreviewRequest(TvTrailerPreviewOwner.HERO, target)
-
-        assertTrue(TvTrailerPreviewState.Playing(card).showsTvMediaCardPreview("same", "continue:same"))
-        assertFalse(TvTrailerPreviewState.Playing(card).showsTvMediaCardPreview("same", "latest:same"))
-        assertFalse(TvTrailerPreviewState.Playing(hero).showsTvMediaCardPreview("same", "continue:same"))
-        assertFalse(TvTrailerPreviewState.Armed(card).showsTvMediaCardPreview("same", "continue:same"))
     }
 
     private fun item(

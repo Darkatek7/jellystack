@@ -8,6 +8,14 @@ import kotlin.test.assertEquals
 
 class TvJellyfinArtworkTest {
     @Test
+    fun userAvatarUsesTheAuthenticatedJellyfinUserImage() {
+        assertEquals(
+            "https://media.example/Users/user-id/Images/Primary?maxWidth=160&quality=90&api_key=token",
+            jellyfinUserImageUrl("https://media.example/", "token", "user-id"),
+        )
+    }
+
+    @Test
     fun seasonUsesSeriesArtworkWhenAvailable() {
         val artwork =
             resolveTvJellyfinArtwork(

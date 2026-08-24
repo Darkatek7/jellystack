@@ -26,6 +26,7 @@ internal object TvLayoutTokens {
     val SafeInsets = TvSafeInsets()
     val ExpandedRailWidth = 228.dp
     val CollapsedRailWidth = 72.dp
+    val ContentStart = 92.dp
     val MinimumActionSize = 48.dp
     val LandscapeArtworkWidth = 232.dp
     val LandscapeArtworkHeight = 131.dp

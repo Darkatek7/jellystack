@@ -1,6 +1,8 @@
 package dev.jellystack.design.tv
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertCountEquals
@@ -86,8 +88,82 @@ class TvCinematicSearchDiscoverTest {
         }
 
         composeRule.onNodeWithTag("cinematic-card-discover-trends-movie:1").assertExists()
+        composeRule.onNodeWithTag("cinematic-action-strip").assertExists()
+        composeRule.onNodeWithTag("cinematic-action-play").assertExists()
+        composeRule.onNodeWithTag("cinematic-action-details").assertExists()
         composeRule.onNodeWithContentDescription(strings.discoverLoadFailed).assertExists()
         composeRule.onNodeWithContentDescription(strings.retry).assertDoesNotExist()
+    }
+
+    @Test
+    fun discoverVerticalMoveFromSecondCardTargetsFirstCardInNextRow() {
+        val firstRow = listOf(seerrItem("First", 1), seerrItem("Second", 2))
+        val secondRow = listOf(seerrItem("Third", 3), seerrItem("Fourth", 4))
+        composeRule.setContent {
+            JellystackTvTheme {
+                val focusCoordinator = remember { TvFocusCoordinator<FocusRequester>() }
+                val focusMemory = remember { TvFocusMemory() }
+                TvRouteFocusScope(focusCoordinator, "discover", focusMemory) {
+                    TvDiscoverScreen(
+                        recommendations =
+                            JellyseerrRecommendationsState.Ready(
+                                mapOf(
+                                    JellyseerrRecommendationRail.TRENDS to
+                                        rail(JellyseerrRecommendationRail.TRENDS, firstRow),
+                                    JellyseerrRecommendationRail.POPULAR_MOVIES to
+                                        rail(JellyseerrRecommendationRail.POPULAR_MOVIES, secondRow),
+                                ),
+                            ),
+                        requests = JellyseerrRequestsState.MissingServer,
+                        strings = TvStrings.current(AppLanguage.ENGLISH),
+                        focusMemory = focusMemory,
+                        onItem = {},
+                        onConnectSeerr = {},
+                        onRetry = {},
+                    )
+                }
+            }
+        }
+
+        val second = composeRule.onNodeWithTag("cinematic-card-discover-trends-movie:2")
+        second.performSemanticsAction(SemanticsActions.RequestFocus).assertIsFocused()
+        second.performKeyInput { pressKey(Key.DirectionDown) }
+
+        composeRule
+            .onNodeWithTag("cinematic-card-discover-popular_movies-movie:3")
+            .assertIsFocused()
+    }
+
+    @Test
+    fun leftFromFirstDiscoverCardRequestsNavigationRail() {
+        var railOpenRequests = 0
+        composeRule.setContent {
+            CompositionLocalProvider(LocalTvNavigationRailOpener provides { railOpenRequests += 1 }) {
+                JellystackTvTheme {
+                    TvDiscoverScreen(
+                        recommendations =
+                            JellyseerrRecommendationsState.Ready(
+                                mapOf(
+                                    JellyseerrRecommendationRail.TRENDS to
+                                        rail(items = listOf(seerrItem("First", 1), seerrItem("Second", 2))),
+                                ),
+                            ),
+                        requests = JellyseerrRequestsState.MissingServer,
+                        strings = TvStrings.current(AppLanguage.ENGLISH),
+                        focusMemory = remember { TvFocusMemory() },
+                        onItem = {},
+                        onConnectSeerr = {},
+                        onRetry = {},
+                    )
+                }
+            }
+        }
+
+        composeRule
+            .onNodeWithTag("cinematic-card-discover-trends-movie:1")
+            .performSemanticsAction(SemanticsActions.RequestFocus)
+            .performKeyInput { pressKey(Key.DirectionLeft) }
+        composeRule.runOnIdle { assertEquals(1, railOpenRequests) }
     }
 
     @Test
@@ -123,10 +199,11 @@ class TvCinematicSearchDiscoverTest {
     }
 
     private fun rail(
+        rail: JellyseerrRecommendationRail = JellyseerrRecommendationRail.TRENDS,
         items: List<JellyseerrSearchItem> = emptyList(),
         error: String? = null,
     ) = JellyseerrRecommendationRailState(
-        rail = JellyseerrRecommendationRail.TRENDS,
+        rail = rail,
         items = items,
         isLoading = false,
         errorMessage = error,
@@ -136,20 +213,22 @@ class TvCinematicSearchDiscoverTest {
         isStale = false,
     )
 
-    private fun seerrItem(title: String) =
-        JellyseerrSearchItem(
-            tmdbId = 1,
-            mediaType = JellyseerrMediaType.MOVIE,
-            title = title,
-            overview = null,
-            releaseYear = "2021",
-            posterPath = null,
-            backdropPath = null,
-            mediaInfoId = null,
-            tvdbId = null,
-            availability = JellyseerrMediaAvailability(standard = null, `4k` = null),
-            requests = emptyList(),
-        )
+    private fun seerrItem(
+        title: String,
+        tmdbId: Int = 1,
+    ) = JellyseerrSearchItem(
+        tmdbId = tmdbId,
+        mediaType = JellyseerrMediaType.MOVIE,
+        title = title,
+        overview = null,
+        releaseYear = "2021",
+        posterPath = null,
+        backdropPath = null,
+        mediaInfoId = null,
+        tvdbId = null,
+        availability = JellyseerrMediaAvailability(standard = null, `4k` = null),
+        requests = emptyList(),
+    )
 
     private fun jellyfinItem(
         id: String,

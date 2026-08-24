@@ -61,7 +61,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalUriHandler
@@ -237,7 +236,6 @@ internal fun TvDetailFocusLayout(
     val focusContext = LocalTvFocusContext.current
     val persistedRouteKey = focusContext?.routeKey ?: routeKey
     val focusMemory = focusContext?.focusMemory
-    val heroFocusRequester = remember(routeKey) { FocusRequester() }
     val primaryActionFocusRequester = remember(routeKey) { FocusRequester() }
     val bodyFocusRequester = remember(routeKey) { FocusRequester() }
     val itemFocusRequesters = remember(routeKey) { mutableMapOf<String, FocusRequester>() }
@@ -250,7 +248,12 @@ internal fun TvDetailFocusLayout(
     val bodyLazyItemIndex = bodySectionIndex + 1
     var lastConfirmedItemAnchor by remember(routeKey) { mutableStateOf<TvFocusAnchor?>(null) }
     var focusOwnership by remember(routeKey) { mutableStateOf<TvFocusDestination?>(null) }
-    var destinationIntent by remember(routeKey) { mutableStateOf<TvFocusDestination?>(TvFocusDestination.HERO) }
+    var destinationIntent by
+        remember(routeKey) {
+            mutableStateOf<TvFocusDestination?>(
+                if (hasPrimaryAction) TvFocusDestination.PRIMARY_ACTION else TvFocusDestination.BODY,
+            )
+        }
     var pendingFocusRecovery by remember(routeKey) { mutableStateOf<TvPendingFocusRecovery?>(null) }
     var focusTransactionId by remember(routeKey) { mutableStateOf(0L) }
     var activeSectionIndex by remember(routeKey) { mutableStateOf(0) }
@@ -262,7 +265,6 @@ internal fun TvDetailFocusLayout(
     var restoringPersistedAnchor by remember(routeKey) { mutableStateOf<TvFocusAnchor?>(null) }
     val restorationTargets =
         buildList {
-            add(tvFocusTarget("detail:hero", actionable = true).copy(anchor = TvFocusAnchor("hero", null, TvFocusDestination.HERO)))
             if (hasPrimaryAction) {
                 add(
                     tvFocusTarget("detail:primary", actionable = true)
@@ -325,20 +327,6 @@ internal fun TvDetailFocusLayout(
         focusOwnership = null
     }
 
-    fun focusHero(cancelPersistedRestoration: Boolean = true) {
-        ownDestination(TvFocusDestination.HERO, cancelPersistedRestoration)
-        val transactionId = focusTransactionId
-        scope.launch {
-            awaitFocusStart(TvFocusDestination.HERO)
-            if (focusTransactionId != transactionId) return@launch
-            listState.scrollToItem(0)
-            if (focusTransactionId != transactionId) return@launch
-            awaitFocusReady(TvFocusDestination.HERO)
-            if (focusTransactionId != transactionId) return@launch
-            heroFocusRequester.requestFocus()
-        }
-    }
-
     fun focusPrimaryAction(cancelPersistedRestoration: Boolean = true) {
         ownDestination(TvFocusDestination.PRIMARY_ACTION, cancelPersistedRestoration)
         val transactionId = focusTransactionId
@@ -349,21 +337,11 @@ internal fun TvDetailFocusLayout(
             if (focusTransactionId != transactionId) return@launch
             awaitFocusReady(TvFocusDestination.PRIMARY_ACTION)
             if (focusTransactionId != transactionId) return@launch
-            primaryActionFocusRequester.requestFocus()
-        }
-    }
-
-    fun focusBodyFromHero(cancelPersistedRestoration: Boolean = true) {
-        ownDestination(TvFocusDestination.BODY, cancelPersistedRestoration)
-        val transactionId = focusTransactionId
-        scope.launch {
-            awaitFocusStart(TvFocusDestination.BODY)
-            if (focusTransactionId != transactionId) return@launch
-            listState.scrollToItem(bodyLazyItemIndex)
-            if (focusTransactionId != transactionId) return@launch
-            awaitFocusReady(TvFocusDestination.BODY)
-            if (focusTransactionId != transactionId) return@launch
-            bodyFocusRequester.requestFocus()
+            val focused = runCatching { primaryActionFocusRequester.requestFocus() }.getOrDefault(false)
+            if (focused && focusTransactionId == transactionId) {
+                withFrameNanos { }
+                if (focusTransactionId == transactionId) listState.scrollToItem(0)
+            }
         }
     }
 
@@ -437,12 +415,20 @@ internal fun TvDetailFocusLayout(
 
     LaunchedEffect(routeKey) {
         if (pendingPersistedAnchor == null) {
-            focusHero(cancelPersistedRestoration = false)
+            if (hasPrimaryAction) {
+                focusPrimaryAction(cancelPersistedRestoration = false)
+            } else {
+                focusBody(cancelPersistedRestoration = false)
+            }
         } else if (
             pendingPersistedAnchor?.destination == TvFocusDestination.SECTION_ITEM &&
             uiState.section(pendingPersistedAnchor?.sectionId.orEmpty()) == null
         ) {
-            focusHero(cancelPersistedRestoration = false)
+            if (hasPrimaryAction) {
+                focusPrimaryAction(cancelPersistedRestoration = false)
+            } else {
+                focusBody(cancelPersistedRestoration = false)
+            }
         }
     }
     LaunchedEffect(uiState.sections, pendingPersistedAnchor) {
@@ -456,7 +442,12 @@ internal fun TvDetailFocusLayout(
         val target = focusMemory?.resolve(persistedRouteKey, restorationTargets) ?: return@LaunchedEffect
         restoringPersistedAnchor = target.anchor
         when (target.anchor.destination) {
-            TvFocusDestination.HERO -> focusHero(cancelPersistedRestoration = false)
+            TvFocusDestination.HERO ->
+                if (hasPrimaryAction) {
+                    focusPrimaryAction(cancelPersistedRestoration = false)
+                } else {
+                    focusBody(cancelPersistedRestoration = false)
+                }
             TvFocusDestination.PRIMARY_ACTION -> focusPrimaryAction(cancelPersistedRestoration = false)
             TvFocusDestination.BODY -> focusBody(cancelPersistedRestoration = false)
             TvFocusDestination.SECTION_ITEM ->
@@ -558,7 +549,6 @@ internal fun TvDetailFocusLayout(
                     event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
                     event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_UP
                 ) {
-                    focusHero()
                     true
                 } else {
                     false
@@ -588,10 +578,8 @@ internal fun TvDetailFocusLayout(
                 if (isInitialDownPress && event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_UP) {
                     if (hasPrimaryAction) {
                         focusPrimaryAction()
-                    } else {
-                        focusHero()
                     }
-                    true
+                    hasPrimaryAction
                 } else if (focusSections.isNotEmpty() &&
                     isInitialDownPress &&
                     event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_DOWN
@@ -695,43 +683,8 @@ internal fun TvDetailFocusLayout(
                 Modifier
                     .fillMaxWidth()
                     .height(520.dp)
-                    .focusRequester(heroFocusRequester)
                     .testTag("tv-detail-hero")
-                    .semantics { contentDescription = heroContentDescription }
-                    .onFocusChanged { focusState ->
-                        if (focusState.isFocused && destinationIntent == TvFocusDestination.HERO) {
-                            focusOwnership = TvFocusDestination.HERO
-                            destinationIntent = null
-                        }
-                        if (focusState.isFocused) {
-                            rememberFocus(TvFocusAnchor("hero", null, TvFocusDestination.HERO))
-                        }
-                    }.onKeyEvent { event ->
-                        if (
-                            event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
-                            event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_DOWN
-                        ) {
-                            if (hasPrimaryAction) {
-                                focusPrimaryAction()
-                            } else {
-                                focusBodyFromHero()
-                            }
-                            true
-                        } else {
-                            false
-                        }
-                    }.tvFocusable(
-                        onClick = {
-                            if (hasPrimaryAction) {
-                                focusPrimaryAction()
-                            } else {
-                                focusBodyFromHero()
-                            }
-                        },
-                        shape = RoundedCornerShape(0.dp),
-                        scale = 1f,
-                        showFocusBorder = false,
-                    ),
+                    .semantics { contentDescription = heroContentDescription },
             ) {
                 heroContent(primaryActionModifier, actionRowModifier)
             }

@@ -27,6 +27,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -35,6 +36,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -46,6 +49,7 @@ import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.LibraryBrowseQuery
 import dev.jellystack.core.jellyfin.LibraryMediaType
 import dev.jellystack.core.jellyfin.isBrowseContainer
+import dev.jellystack.players.AndroidPlayerEngine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
@@ -74,7 +78,7 @@ internal fun buildTvLibraryBrowseRows(
     val selectedLibraryId = state.selectedLibraryId
 
     fun List<JellyfinItem>.forSelectedLibrary(): List<JellyfinItem> =
-        filter { item -> item.libraryId == null || selectedLibraryId == null || item.libraryId == selectedLibraryId }
+        filter { item -> selectedLibraryId == null || item.libraryId == selectedLibraryId }
             .distinctBy(JellyfinItem::id)
 
     fun row(
@@ -136,6 +140,7 @@ private fun JellyfinItem.toCinematicCard(
         id = id,
         title = name,
         subtitle = subtitleText(),
+        overview = overview,
         artworkUrl = jellyfinImageUrl(state.imageBaseUrl, state.imageAccessToken, cardArtwork),
         backdropUrl =
             jellyfinImageUrl(
@@ -192,6 +197,11 @@ internal fun TvSelectedLibraryScreen(
     onLoadMore: () -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
+    trailerPreviewState: TvTrailerPreviewState = TvTrailerPreviewState.Idle,
+    trailerPreviewEngine: AndroidPlayerEngine? = null,
+    previewSoundEnabled: Boolean = true,
+    previewProgress: State<Float>? = null,
+    onPreviewFocus: (JellyfinItem, String) -> Unit = { _, _ -> },
 ) {
     val routeKey = route.focusRouteKey(state.browsePath.map { it.id })
     val allKnownItems = remember(state, homeSections, myListItems) { tvLibraryKnownItems(state, homeSections, myListItems) }
@@ -214,10 +224,13 @@ internal fun TvSelectedLibraryScreen(
             }
         var focusedAnchor by remember(routeKey) { mutableStateOf(focusMemory.restore(routeKey)?.anchor) }
         val focusedItem = focusedAnchor?.itemId?.let(allKnownItems::get)
+        val focusedPresentationId =
+            focusedAnchor?.let { anchor ->
+                tvCinematicFocusTargetId(requireNotNull(anchor.sectionId), requireNotNull(anchor.itemId))
+            }
         TvCinematicBrowse(
             state =
                 TvCinematicBrowseState(
-                    hero = TvCinematicHero(route.title ?: strings.library),
                     rows = rows,
                     focusedAnchor = focusedAnchor,
                     inlineStatus = state.tvLibraryInlineStatus(strings),
@@ -226,16 +239,35 @@ internal fun TvSelectedLibraryScreen(
             onCardFocused = { anchor, _ ->
                 focusedAnchor = anchor
                 focusMemory.remember(routeKey, anchor, horizontalCenter = 0f)
+                allKnownItems[anchor.itemId]?.let { item ->
+                    onPreviewFocus(
+                        item,
+                        tvCinematicFocusTargetId(requireNotNull(anchor.sectionId), requireNotNull(anchor.itemId)),
+                    )
+                }
             },
             onCardClick = { card -> allKnownItems[card.id]?.let { item -> item.open(onOpenItem, onOpenContainer) } },
             selectedItemActions =
                 focusedItem?.let { item ->
                     item.actions(onPlayItem, onOpenItem, onOpenContainer, onToggleFavorite, onTogglePlayed)
                 },
-            headerContent = {
-                TvLibraryModeControls(route.mode, strings, onModeChanged)
+            showFocusedMetadata = true,
+            topHeaderContent = {
+                TvLibraryBrowseHeader(
+                    title = route.title ?: strings.library,
+                    mode = route.mode,
+                    strings = strings,
+                    onModeChanged = onModeChanged,
+                )
             },
             modifier = modifier,
+            previewing =
+                focusedItem?.let { item ->
+                    trailerPreviewState.showsTvStagePreview(item.id, focusedPresentationId)
+                } == true,
+            previewEngine = trailerPreviewEngine,
+            previewSoundEnabled = previewSoundEnabled,
+            previewProgress = previewProgress,
         )
     } else {
         LaunchedEffect(route.libraryId, rememberedQuery) {
@@ -251,9 +283,6 @@ internal fun TvSelectedLibraryScreen(
             onQueryChanged = onQueryChanged,
             onOpenItem = onOpenItem,
             onOpenContainer = onOpenContainer,
-            onPlayItem = onPlayItem,
-            onToggleFavorite = onToggleFavorite,
-            onTogglePlayed = onTogglePlayed,
             onLoadMore = onLoadMore,
             onRetry = onRetry,
             modifier = modifier,
@@ -272,19 +301,12 @@ private fun TvLibraryAllTitles(
     onQueryChanged: (LibraryBrowseQuery) -> Unit,
     onOpenItem: (JellyfinItem) -> Unit,
     onOpenContainer: (JellyfinItem) -> Unit,
-    onPlayItem: (JellyfinItem) -> Unit,
-    onToggleFavorite: (JellyfinItem) -> Unit,
-    onTogglePlayed: (JellyfinItem, Boolean) -> Unit,
     onLoadMore: () -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier,
 ) {
     val routeKey = route.focusRouteKey(state.browsePath.map { it.id })
     val gridState = rememberLazyGridState()
-    var focusedItem by
-        remember(routeKey, state.libraryItems) {
-            mutableStateOf(state.libraryItems.firstOrNull { it.id == focusMemory.restore(routeKey)?.itemId })
-        }
     val itemTargetIds = state.libraryItems.map { tvLibraryTargetId(it.id) }
     val terminalTarget =
         tvLibraryTerminalFocusTarget(
@@ -350,14 +372,12 @@ private fun TvLibraryAllTitles(
         ) {
             item(key = "all-titles-header", span = { GridItemSpan(maxLineSpan) }) {
                 Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Text(
-                        route.title ?: strings.library,
-                        color = TvText,
-                        fontSize = 38.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.tvHeading(),
+                    TvLibraryBrowseHeader(
+                        title = route.title ?: strings.library,
+                        mode = route.mode,
+                        strings = strings,
+                        onModeChanged = onModeChanged,
                     )
-                    TvLibraryModeControls(route.mode, strings, onModeChanged)
                     TvLibraryQueryControls(
                         query = state.libraryBrowseQuery,
                         labels = strings.tvLibraryQueryLabels(),
@@ -369,13 +389,6 @@ private fun TvLibraryAllTitles(
                         availableMediaTypes = tvLibraryMediaTypes(collectionType),
                         onQueryChanged = onQueryChanged,
                     )
-                    focusedItem?.let { item ->
-                        TvSelectedItemActionStrip(
-                            card = item.toCinematicCard(state, state.favorites),
-                            labels = strings.tvSelectedActionLabels(),
-                            actions = item.actions(onPlayItem, onOpenItem, onOpenContainer, onToggleFavorite, onTogglePlayed),
-                        )
-                    }
                 }
             }
             itemsIndexed(state.libraryItems, key = { _, item -> item.id }) { index, item ->
@@ -404,7 +417,6 @@ private fun TvLibraryAllTitles(
                     fillWidth = true,
                     onClick = { item.open(onOpenItem, onOpenContainer) },
                     onFocused = {
-                        focusedItem = item
                         focusMemory.remember(routeKey, "items", item.id, index + 1, index)
                     },
                     focusTargetId = targetId,
@@ -440,6 +452,30 @@ private fun TvLibraryAllTitles(
 }
 
 @Composable
+private fun TvLibraryBrowseHeader(
+    title: String,
+    mode: TvLibraryMode,
+    strings: TvStrings,
+    onModeChanged: (TvLibraryMode) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(24.dp),
+    ) {
+        Text(
+            text = title,
+            color = TvText,
+            fontSize = 30.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            modifier = Modifier.weight(1f).semantics { heading() }.testTag("tv-library-browse-title"),
+        )
+        TvLibraryModeControls(mode, strings, onModeChanged)
+    }
+}
+
+@Composable
 internal fun TvLibraryModeControls(
     mode: TvLibraryMode,
     strings: TvStrings,
@@ -450,7 +486,6 @@ internal fun TvLibraryModeControls(
             label = strings.browse,
             onClick = { onModeChanged(TvLibraryMode.BROWSE) },
             selected = mode == TvLibraryMode.BROWSE,
-            primary = mode == TvLibraryMode.BROWSE,
             focusTargetId = "library:mode:browse",
             focusToNavigationRailOnLeft = true,
             modifier = Modifier.tvScreenEntryFocus(mode == TvLibraryMode.BROWSE, "library:mode:browse").width(180.dp),
@@ -459,7 +494,6 @@ internal fun TvLibraryModeControls(
             label = strings.allTitles,
             onClick = { onModeChanged(TvLibraryMode.ALL_TITLES) },
             selected = mode == TvLibraryMode.ALL_TITLES,
-            primary = mode == TvLibraryMode.ALL_TITLES,
             focusTargetId = "library:mode:all-titles",
             modifier = Modifier.tvScreenEntryFocus(mode == TvLibraryMode.ALL_TITLES, "library:mode:all-titles").width(180.dp),
         )

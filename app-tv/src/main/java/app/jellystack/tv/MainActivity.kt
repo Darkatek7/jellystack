@@ -132,6 +132,7 @@ class MainActivity : AppCompatActivity() {
                 stopPlayback = playbackBridge::stopPlayback,
                 coldLaunch = savedInstanceState == null,
                 voiceSearch = voiceSearch,
+                onExitConfirmed = ::finish,
             )
         }
     }

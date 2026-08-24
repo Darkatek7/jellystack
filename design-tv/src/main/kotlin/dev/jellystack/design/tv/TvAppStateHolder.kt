@@ -89,7 +89,13 @@ internal class TvAppStateHolder(
 
     fun push(route: TvRoute) {
         if (state.currentRoute == route) return
-        state = state.withBackStack(state.backStack + route)
+        val nextBackStack =
+            if (state.currentRoute.isDetailRoute() && route.isDetailRoute()) {
+                state.backStack.dropLast(1) + route
+            } else {
+                state.backStack + route
+            }
+        state = state.withBackStack(nextBackStack)
     }
 
     fun selectTopLevel(route: TvRoute) {
@@ -222,3 +228,5 @@ internal class TvAppStateHolder(
         }
     }
 }
+
+private fun TvRoute.isDetailRoute(): Boolean = this is TvRoute.JellyfinDetail || this is TvRoute.SeerrDetail

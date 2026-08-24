@@ -67,7 +67,7 @@ class TvDetailFocusTest {
             )
         setRestorationContent(restored, routeKey) { cast }
 
-        composeRule.onNodeWithTag("tv-detail-hero").assertIsFocused()
+        composeRule.onNodeWithTag("tv-detail-primary-action").assertIsFocused()
         composeRule.runOnIdle {
             cast =
                 listOf(
@@ -85,10 +85,10 @@ class TvDetailFocusTest {
 
         setRestorationContent(holder, routeKey) { emptyList() }
 
-        composeRule.onNodeWithTag("tv-detail-hero").assertIsFocused()
+        composeRule.onNodeWithTag("tv-detail-primary-action").assertIsFocused()
         composeRule.runOnIdle {
             assertEquals(
-                TvFocusDestination.HERO,
+                TvFocusDestination.PRIMARY_ACTION,
                 holder.focusMemory
                     .restore(routeKey)
                     ?.anchor
@@ -104,8 +104,9 @@ class TvDetailFocusTest {
         val holder = holderRememberingCast(routeKey)
         setRestorationContent(holder, routeKey) { cast }
 
-        val hero = composeRule.onNodeWithTag("tv-detail-hero").assertIsFocused()
-        hero.performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.onNodeWithTag("tv-detail-primary-action").assertIsFocused().performKeyInput {
+            pressKey(Key.DirectionDown)
+        }
         val body = composeRule.onNodeWithTag("tv-detail-body-focus").assertIsFocused()
 
         composeRule.runOnIdle {
@@ -146,7 +147,7 @@ class TvDetailFocusTest {
                 }
             },
         )
-        composeRule.onNodeWithTag("tv-detail-hero").assertIsFocused()
+        composeRule.onNodeWithTag("tv-detail-primary-action").assertIsFocused()
         composeRule.runOnIdle {
             cast =
                 listOf(
@@ -156,7 +157,7 @@ class TvDetailFocusTest {
         }
         composeRule.waitUntil { restorationStarted.isCompleted }
 
-        composeRule.onNodeWithTag("tv-detail-hero").performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.onNodeWithTag("tv-detail-primary-action").performKeyInput { pressKey(Key.DirectionDown) }
         composeRule.onNodeWithTag("tv-detail-body-focus").assertIsFocused()
         releaseRestoration.complete(Unit)
         composeRule.waitForIdle()
@@ -174,7 +175,7 @@ class TvDetailFocusTest {
     }
 
     @Test
-    fun detailOpensAtHeroAndUpFromPrimaryActionRestoresTop() {
+    fun detailOpensOnPrimaryActionAndHeroArtworkNeverTakesFocus() {
         composeRule.setContent {
             JellystackTvTheme {
                 TvDetailFocusLayout(
@@ -205,17 +206,14 @@ class TvDetailFocusTest {
             }
         }
 
-        val hero = composeRule.onNodeWithTag("tv-detail-hero").assertIsFocused()
-        composeRule.onNodeWithContentDescription("Movie details").assertIsFocused()
+        val hero = composeRule.onNodeWithTag("tv-detail-hero")
+        val primary = composeRule.onNodeWithTag("tv-detail-primary-action").assertIsFocused()
         assertEquals(0f, hero.getUnclippedBoundsInRoot().top.value, 0.01f)
 
-        hero.performKeyInput { pressKey(Key.DirectionDown) }
-        composeRule.onNodeWithTag("tv-detail-primary-action").assertIsFocused()
-
-        composeRule.onNodeWithTag("tv-detail-primary-action").performKeyInput { pressKey(Key.DirectionUp) }
+        primary.performKeyInput { pressKey(Key.DirectionUp) }
         composeRule.waitForIdle()
 
-        hero.assertIsFocused()
+        primary.assertIsFocused()
         assertEquals(0f, hero.getUnclippedBoundsInRoot().top.value, 0.01f)
     }
 
@@ -310,8 +308,7 @@ class TvDetailFocusTest {
             }
         }
 
-        val hero = composeRule.onNodeWithTag("tv-detail-hero").assertIsFocused()
-        hero.performKeyInput { pressKey(Key.DirectionDown) }
+        val hero = composeRule.onNodeWithTag("tv-detail-hero")
         val primary = composeRule.onNodeWithTag("tv-detail-primary-action").assertIsFocused()
 
         primary.performKeyInput { pressKey(Key.DirectionDown) }
@@ -417,7 +414,6 @@ class TvDetailFocusTest {
             }
         }
 
-        composeRule.onNodeWithTag("tv-detail-hero").performKeyInput { pressKey(Key.DirectionDown) }
         composeRule.onNodeWithTag("tv-detail-primary-action").performKeyInput { pressKey(Key.DirectionDown) }
         val overview = composeRule.onNodeWithTag("tv-detail-body-focus").assertIsFocused()
         overview.performKeyInput { pressKey(Key.DirectionDown) }
@@ -524,7 +520,6 @@ class TvDetailFocusTest {
             }
         }
 
-        composeRule.onNodeWithTag("tv-detail-hero").performKeyInput { pressKey(Key.DirectionDown) }
         composeRule.onNodeWithTag("tv-detail-primary-action").performKeyInput { pressKey(Key.DirectionDown) }
         composeRule.onNodeWithTag("tv-detail-body-focus").performKeyInput { pressKey(Key.DirectionDown) }
         val cast = composeRule.onNodeWithContentDescription("Persistent actor").assertIsFocused()
@@ -536,7 +531,7 @@ class TvDetailFocusTest {
     }
 
     @Test
-    fun detailWithoutHeroActionMovesDirectlyBetweenHeroAndOverview() {
+    fun detailWithoutPrimaryActionKeepsArtworkNonFocusableAndStartsOnOverview() {
         composeRule.setContent {
             JellystackTvTheme {
                 TvDetailFocusLayout(
@@ -557,15 +552,11 @@ class TvDetailFocusTest {
             }
         }
 
-        val hero = composeRule.onNodeWithTag("tv-detail-hero").assertIsFocused()
-        hero.performKeyInput { pressKey(Key.DirectionDown) }
-        composeRule.waitForIdle()
-
         val overview = composeRule.onNodeWithTag("tv-detail-body-focus").assertIsFocused()
         overview.performKeyInput { pressKey(Key.DirectionUp) }
         composeRule.waitForIdle()
 
-        hero.assertIsFocused()
+        overview.assertIsFocused()
     }
 
     @Test
@@ -618,7 +609,6 @@ class TvDetailFocusTest {
             }
         }
 
-        composeRule.onNodeWithTag("tv-detail-hero").performKeyInput { pressKey(Key.DirectionDown) }
         composeRule.onNodeWithTag("tv-detail-primary-action").performKeyInput { pressKey(Key.DirectionDown) }
         composeRule.onNodeWithTag("tv-detail-body-focus").performKeyInput { pressKey(Key.DirectionDown) }
         val episodeTag = "tv-detail-section-episodes-item-episode-1"
@@ -679,7 +669,6 @@ class TvDetailFocusTest {
             }
         }
 
-        composeRule.onNodeWithTag("tv-detail-hero").performKeyInput { pressKey(Key.DirectionDown) }
         composeRule.onNodeWithTag("tv-detail-body-focus").performKeyInput { pressKey(Key.DirectionDown) }
         waitUntilFocused("Person 1")
         composeRule.onNodeWithContentDescription("Person 1").performKeyInput { pressKey(Key.DirectionDown) }
@@ -738,7 +727,6 @@ class TvDetailFocusTest {
             }
         }
 
-        composeRule.onNodeWithTag("tv-detail-hero").performKeyInput { pressKey(Key.DirectionDown) }
         composeRule.onNodeWithTag("tv-detail-body-focus").performKeyInput { pressKey(Key.DirectionDown) }
         moveFocusRightThroughPeople(1..16)
         composeRule.runOnIdle { castScrollScope.launch { castListState.scrollToItem(0) } }
@@ -781,7 +769,6 @@ class TvDetailFocusTest {
             }
         }
 
-        composeRule.onNodeWithTag("tv-detail-hero").performKeyInput { pressKey(Key.DirectionDown) }
         composeRule.onNodeWithTag("tv-detail-body-focus").performKeyInput { pressKey(Key.DirectionDown) }
         moveFocusRightThroughPeople(1..16)
 
@@ -818,7 +805,6 @@ class TvDetailFocusTest {
             }
         }
 
-        composeRule.onNodeWithTag("tv-detail-hero").performKeyInput { pressKey(Key.DirectionDown) }
         composeRule.onNodeWithTag("tv-detail-body-focus").performKeyInput { pressKey(Key.DirectionDown) }
         composeRule.onNodeWithTag("tv-detail-section-cast-item-person-1").performKeyInput { pressKey(Key.DirectionRight) }
         waitUntilTagFocused("tv-detail-section-cast-item-person-2")
@@ -832,7 +818,7 @@ class TvDetailFocusTest {
     }
 
     @Test
-    fun deliberateHeroNavigationCancelsStaleRecoveryAcrossAnotherMutation() {
+    fun deliberatePrimaryActionNavigationCancelsStaleRecoveryAcrossAnotherMutation() {
         var cast by mutableStateOf((1..16).map(::seerrPerson))
         var similar by mutableStateOf((1..16).map(::seerrItem))
         val strings = TvStrings.current(AppLanguage.ENGLISH)
@@ -850,16 +836,22 @@ class TvDetailFocusTest {
                 TvDetailFocusLayout(
                     uiState = uiState,
                     heroContentDescription = "Cancel recovery details",
-                    hasPrimaryAction = false,
                     modifier = Modifier.fillMaxSize(),
-                    heroContent = { _, _ -> Box(Modifier.fillMaxSize()) },
+                    heroContent = { primaryActionModifier, actionRowModifier ->
+                        TvActionButton(
+                            label = "Play",
+                            onClick = {},
+                            primary = true,
+                            modifier = primaryActionModifier.then(actionRowModifier),
+                        )
+                    },
                 ) { bodyFocusModifier, sectionFocusModifiers ->
                     tvSeerrDetailSections(uiState, strings, bodyFocusModifier, sectionFocusModifiers, {})
                 }
             }
         }
 
-        composeRule.onNodeWithTag("tv-detail-hero").performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.onNodeWithTag("tv-detail-primary-action").performKeyInput { pressKey(Key.DirectionDown) }
         composeRule.onNodeWithTag("tv-detail-body-focus").performKeyInput { pressKey(Key.DirectionDown) }
         moveFocusRightThroughPeople(1..16)
 
@@ -872,7 +864,7 @@ class TvDetailFocusTest {
         composeRule.mainClock.autoAdvance = true
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithTag("tv-detail-hero").assertIsFocused()
+        composeRule.onNodeWithTag("tv-detail-primary-action").assertIsFocused()
     }
 
     private fun holderRememberingCast(routeKey: String) =
@@ -911,11 +903,17 @@ class TvDetailFocusTest {
                     TvDetailFocusLayout(
                         uiState = uiState,
                         heroContentDescription = "Restored details",
-                        hasPrimaryAction = false,
                         modifier = Modifier.fillMaxSize(),
                         awaitFocusStart = awaitFocusStart,
                         awaitFocusReady = awaitFocusReady,
-                        heroContent = { _, _ -> Box(Modifier.fillMaxSize()) },
+                        heroContent = { primaryActionModifier, actionRowModifier ->
+                            TvActionButton(
+                                label = "Play",
+                                onClick = {},
+                                primary = true,
+                                modifier = primaryActionModifier.then(actionRowModifier),
+                            )
+                        },
                     ) { bodyFocusModifier, sectionFocusModifiers ->
                         item("overview") { Box(bodyFocusModifier.fillMaxWidth().height(600.dp)) }
                         sectionFocusModifiers["cast"]?.let { castFocus ->

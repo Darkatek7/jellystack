@@ -5,6 +5,7 @@
     "LongMethod",
     "LongParameterList",
     "MaxLineLength",
+    "TooManyFunctions",
 )
 
 package dev.jellystack.design.tv
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Explore
@@ -44,11 +46,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -129,8 +133,13 @@ internal fun TvRouteFocusScope(
 }
 
 @Composable
-internal fun TvAppBackHandler(dispatcher: TvAppBackDispatcher) {
-    BackHandler(enabled = dispatcher.rootHandlerEnabled) { dispatcher.dispatch() }
+internal fun TvAppBackHandler(
+    dispatcher: TvAppBackDispatcher,
+    onExitRequested: () -> Unit = {},
+) {
+    BackHandler(enabled = dispatcher.rootHandlerEnabled) {
+        if (!dispatcher.dispatch()) onExitRequested()
+    }
 }
 
 @Composable
@@ -145,6 +154,7 @@ fun TvJellystackRoot(
     modifier: Modifier = Modifier,
     coldLaunch: Boolean = true,
     voiceSearch: TvVoiceSearchPort = UnsupportedTvVoiceSearch,
+    onExitConfirmed: () -> Unit = {},
 ) {
     val koin = remember { JellystackDI.koin }
     val serverRepository = remember(koin) { koin.get<ServerRepository>() }
@@ -167,6 +177,7 @@ fun TvJellystackRoot(
             stopPlayback = stopPlayback,
             coldLaunch = coldLaunch,
             voiceSearch = voiceSearch,
+            onExitConfirmed = onExitConfirmed,
             modifier = modifier,
         )
     }
@@ -186,6 +197,7 @@ private fun TvProfileHost(
     stopPlayback: () -> Unit,
     coldLaunch: Boolean,
     voiceSearch: TvVoiceSearchPort,
+    onExitConfirmed: () -> Unit,
     modifier: Modifier,
 ) {
     val koin = remember { JellystackDI.koin }
@@ -197,9 +209,14 @@ private fun TvProfileHost(
     val activeServerPreferences = remember(koin) { koin.get<ActiveServerPreferenceRepository>() }
     val profiles by profileRepository.observeProfiles().collectAsStateWithLifecycle(initialValue = emptyList())
     val servers by serverRepository.observeServers().collectAsStateWithLifecycle()
+    var profileAvatarUrls by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var profilePinRequired by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
+    var profilePinRevision by rememberSaveable { mutableStateOf(0L) }
     var legacyChecked by remember { mutableStateOf(false) }
     var initialized by rememberSaveable { mutableStateOf(false) }
     var pickerVisible by rememberSaveable { mutableStateOf(false) }
+    var profileManagementVisible by rememberSaveable { mutableStateOf(false) }
+    var managedProfileId by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedProfileId by rememberSaveable { mutableStateOf<String?>(null) }
     var generation by rememberSaveable { mutableStateOf(0L) }
     var activatedProfileId by remember { mutableStateOf<String?>(null) }
@@ -222,9 +239,44 @@ private fun TvProfileHost(
     var removeProfile by remember { mutableStateOf<HouseholdProfile?>(null) }
     var connectionsBeforeAdd by remember { mutableStateOf<Set<String>>(emptySet()) }
 
-    LaunchedEffect(servers.map { it.id }) {
-        if (servers.any { it.type == ServerType.JELLYFIN }) profileRepository.ensureLegacyDefaultProfile()
+    LaunchedEffect(servers.map { it.id to it.updatedAt }) {
+        if (servers.any { it.type == ServerType.JELLYFIN }) {
+            profileRepository.ensureLegacyDefaultProfile()
+            profileRepository.repairLegacySingleProfileSeerrBinding(
+                servers.filter { it.type == ServerType.JELLYSEERR }.map { it.id },
+            )
+            val profile = profileRepository.listProfiles().singleOrNull()
+            val binding = profile?.let { profileRepository.binding(it.id) }
+            val jellyfin = binding?.let { exact -> servers.firstOrNull { it.id == exact.jellyfinConnectionId } }
+            val credential = jellyfin?.credentials as? StoredCredential.Jellyfin
+            if (jellyfin != null && credential != null) {
+                profileRepository.repairLegacySingleProfileIdentity(
+                    jellyfinConnectionId = jellyfin.id,
+                    displayName = credential.username,
+                    avatarSeed = credential.userId,
+                )
+            }
+        }
         legacyChecked = true
+    }
+    LaunchedEffect(profiles.map { it.id to it.updatedAt }, servers.map { it.id to it.updatedAt }) {
+        profileAvatarUrls =
+            buildMap {
+                profiles.forEach { profile ->
+                    val binding = profileRepository.binding(profile.id) ?: return@forEach
+                    val server = servers.firstOrNull { it.id == binding.jellyfinConnectionId } ?: return@forEach
+                    val credential = server.credentials as? StoredCredential.Jellyfin ?: return@forEach
+                    jellyfinUserImageUrl(server.baseUrl, credential.accessToken, credential.userId)?.let { url ->
+                        put(profile.id, url)
+                    }
+                }
+            }
+    }
+    LaunchedEffect(profiles.map { it.id }, profilePinRevision) {
+        profilePinRequired =
+            profiles.associate { profile ->
+                profile.id to (pinRepository.state(profile.id) !is ProfilePinState.NotConfigured)
+            }
     }
     LaunchedEffect(legacyChecked, profiles, initialized) {
         if (!legacyChecked || initialized) return@LaunchedEffect
@@ -285,6 +337,8 @@ private fun TvProfileHost(
             selectedProfileId = profile.id
             activatedProfileId = profile.id
             pickerVisible = false
+            profileManagementVisible = false
+            managedProfileId = null
             reconnectProfile = null
             reconnectConnectionId = null
             switchingProfile = null
@@ -355,7 +409,12 @@ private fun TvProfileHost(
     }
 
     BackHandler(
-        enabled = addProfile || reconnectProfile != null || pinProfile != null || configuringPinProfile != null,
+        enabled =
+            addProfile ||
+                reconnectProfile != null ||
+                pinProfile != null ||
+                configuringPinProfile != null ||
+                profileManagementVisible,
     ) {
         when {
             addProfile -> addProfile = false
@@ -375,6 +434,8 @@ private fun TvProfileHost(
                 pinValue = ""
                 pinForManagement = false
             }
+            managedProfileId != null -> managedProfileId = null
+            profileManagementVisible -> profileManagementVisible = false
         }
     }
 
@@ -522,6 +583,7 @@ private fun TvProfileHost(
                         } else if (first == configurationPin) {
                             scope.launch {
                                 pinRepository.configure(profile.id, configurationPin)
+                                profilePinRevision += 1L
                                 configuringPinProfile = null
                                 firstConfiguredPin = null
                                 configurationPin = ""
@@ -545,6 +607,7 @@ private fun TvProfileHost(
                             {
                                 scope.launch {
                                     pinRepository.remove(profile.id)
+                                    profilePinRevision += 1L
                                     configuringPinProfile = null
                                     configurationCanRemove = false
                                 }
@@ -568,17 +631,52 @@ private fun TvProfileHost(
                         }
                     },
                 )
+            (pickerVisible || selectedProfile == null) && profileManagementVisible ->
+                TvProfileManagementScreen(
+                    profiles =
+                        profiles.map { profile ->
+                            TvProfilePresentation(
+                                id = profile.id,
+                                displayName = profile.displayName,
+                                avatarUrl = profileAvatarUrls[profile.id],
+                                pinRequired = profilePinRequired[profile.id] == true,
+                                lastActiveAt = profile.lastActiveAt,
+                            )
+                        },
+                    selectedProfileId = managedProfileId,
+                    strings = strings,
+                    onSelectProfile = { managedProfileId = it },
+                    onManagePin = { profileId ->
+                        profiles.firstOrNull { it.id == profileId }?.let(::manageProfilePin)
+                    },
+                    onRemove = { profileId -> removeProfile = profiles.firstOrNull { it.id == profileId } },
+                    onBack = {
+                        if (managedProfileId != null) managedProfileId = null else profileManagementVisible = false
+                    },
+                )
             pickerVisible || selectedProfile == null ->
                 TvProfilePickerScreen(
-                    profiles = profiles,
+                    profiles =
+                        profiles.map { profile ->
+                            TvProfilePresentation(
+                                id = profile.id,
+                                displayName = profile.displayName,
+                                avatarUrl = profileAvatarUrls[profile.id],
+                                pinRequired = profilePinRequired[profile.id] == true,
+                                lastActiveAt = profile.lastActiveAt,
+                            )
+                        },
+                    rememberedProfileId = profiles.maxByOrNull { it.lastActiveAt ?: it.createdAt }?.id,
                     strings = strings,
-                    onSelect = ::selectProfile,
+                    onSelect = { profileId -> profiles.firstOrNull { it.id == profileId }?.let(::selectProfile) },
                     onAdd = {
                         connectionsBeforeAdd = servers.map { it.id }.toSet()
                         addProfile = true
                     },
-                    onRemove = { removeProfile = it },
-                    onManagePin = ::manageProfilePin,
+                    onManage = {
+                        managedProfileId = null
+                        profileManagementVisible = true
+                    },
                 )
             else ->
                 TvAuthenticatedApp(
@@ -612,6 +710,7 @@ private fun TvProfileHost(
                         }
                     },
                     voiceSearch = voiceSearch,
+                    onExitConfirmed = onExitConfirmed,
                 )
         }
         removeProfile?.let { profile ->
@@ -626,12 +725,14 @@ private fun TvProfileHost(
                             trailerPreviewController.stop(saveProgress = false)
                         }
                         removalCoordinator.remove(profile.id)
+                        profilePinRevision += 1L
                         if (wasActive) {
                             activeProfiles.clear()
                             selectedProfileId = null
                             activatedProfileId = null
                         }
                         removeProfile = null
+                        if (managedProfileId == profile.id) managedProfileId = null
                         pickerVisible = true
                     }
                 },
@@ -659,9 +760,11 @@ private fun TvAuthenticatedApp(
     onOpenProfiles: () -> Unit = {},
     onAuthenticationExpired: () -> Unit = {},
     voiceSearch: TvVoiceSearchPort = UnsupportedTvVoiceSearch,
+    onExitConfirmed: () -> Unit = {},
 ) {
     val koin = remember { JellystackDI.koin }
     val rootScope = rememberCoroutineScope()
+    val profileRepository = remember(koin) { koin.get<HouseholdProfileRepository>() }
     val activeJellyfinServer by
         serverRepository
             .observeActiveServer(ServerType.JELLYFIN)
@@ -993,6 +1096,7 @@ private fun TvAuthenticatedApp(
             ?: JellyfinSyncPlayAccess.NONE
 
     fun push(route: TvRoute) {
+        trailerPreviewCoordinator.clearFocus()
         appStateHolder.push(route)
     }
 
@@ -1002,6 +1106,7 @@ private fun TvAuthenticatedApp(
     }
 
     fun selectTopLevel(route: TvRoute) {
+        trailerPreviewCoordinator.clearFocus()
         appStateHolder.selectTopLevel(route)
     }
 
@@ -1072,6 +1177,26 @@ private fun TvAuthenticatedApp(
 
     val currentRoute = appUiState.currentRoute
     val jellyfinServerKey = serverRepository.activeServer(ServerType.JELLYFIN)?.id
+
+    fun focusCinematicTrailer(
+        item: JellyfinItem,
+        presentationId: String,
+    ) {
+        if (!currentRoute.allowsTrailerPreview() || jellyfinServerKey == null) return
+        trailerPreviewCoordinator.focus(
+            TvTrailerPreviewRequest(
+                owner = TvTrailerPreviewOwner.CARD,
+                presentationId = presentationId,
+                target =
+                    TvTrailerPreviewTarget(
+                        serverKey = jellyfinServerKey,
+                        itemId = item.id,
+                        isEpisode = item.type.equals("Episode", true),
+                        seriesId = item.seriesId,
+                    ),
+            ),
+        )
+    }
     val showRail =
         currentRoute is TvRoute.Home ||
             currentRoute is TvRoute.Library ||
@@ -1112,6 +1237,13 @@ private fun TvAuthenticatedApp(
                 interactionRevision = focusCoordinator.currentInteractionRevision,
             )
         }
+    val railRestorationSession =
+        remember(focusCoordinator, appUiState.railExpanded, currentRoute) {
+            TvSemanticFocusRestorationSession(
+                snapshot = null,
+                interactionRevision = focusCoordinator.currentInteractionRevision,
+            )
+        }
     val backDispatcher =
         TvAppBackDispatcher(
             holder = appStateHolder,
@@ -1120,7 +1252,8 @@ private fun TvAuthenticatedApp(
             popLibraryPath = browseCoordinator::navigateUp,
             cancelFocusRestoration = focusCoordinator::onUserMovement,
         )
-    TvAppBackHandler(backDispatcher)
+    var showExitConfirmation by rememberSaveable(activeProfileGeneration) { mutableStateOf(false) }
+    TvAppBackHandler(backDispatcher) { showExitConfirmation = true }
     val focusRegistrationRevision = focusCoordinator.registrationRevision
     LaunchedEffect(
         showRail,
@@ -1134,7 +1267,8 @@ private fun TvAuthenticatedApp(
         if (!showRail || !appUiState.isForeground) return@LaunchedEffect
         if (appUiState.railExpanded) {
             val railRestoration =
-                focusCoordinator.restoreFocus(
+                railRestorationSession.restoreOnce(
+                    coordinator = focusCoordinator,
                     routeKey = TV_FOCUS_RAIL_ROUTE,
                     preferredTargetId = tvRailTargetId(currentRoute),
                     requestFocus = { requester -> runCatching { requester.requestFocus() }.getOrDefault(false) },
@@ -1173,7 +1307,7 @@ private fun TvAuthenticatedApp(
         }
     }
     LaunchedEffect(appUiState.railExpanded, currentRoute) {
-        if (appUiState.railExpanded || currentRoute !is TvRoute.Home) trailerPreviewCoordinator.clearFocus()
+        if (appUiState.railExpanded || !currentRoute.allowsTrailerPreview()) trailerPreviewCoordinator.clearFocus()
     }
     Box(
         Modifier
@@ -1230,7 +1364,7 @@ private fun TvAuthenticatedApp(
                                             browseCoordinator.bootstrap(true)
                                         },
                                         onPreviewFocus = { owner, item, presentationId ->
-                                            if (jellyfinServerKey != null) {
+                                            if (currentRoute.allowsTrailerPreview() && jellyfinServerKey != null) {
                                                 trailerPreviewCoordinator.focus(
                                                     TvTrailerPreviewRequest(
                                                         owner = owner,
@@ -1339,6 +1473,7 @@ private fun TvAuthenticatedApp(
                                             browseCoordinator.setLibraryBrowseQuery(query)
                                         },
                                         onPlayItem = { item ->
+                                            trailerPreviewCoordinator.clearFocus()
                                             scope.launch {
                                                 val detail = browseRepository.getItemDetail(item.id) ?: return@launch
                                                 val environment = environmentProvider.current() ?: return@launch
@@ -1356,6 +1491,11 @@ private fun TvAuthenticatedApp(
                                             }
                                         },
                                         cinematicModesEnabled = true,
+                                        trailerPreviewState = trailerPreviewState,
+                                        trailerPreviewEngine = trailerPreviewEngine,
+                                        previewSoundEnabled = settings.trailerPreviewSoundEnabled,
+                                        previewProgress = trailerPreviewProgress,
+                                        onPreviewFocus = ::focusCinematicTrailer,
                                     )
                                 }
                                 TvRoute.Search ->
@@ -1410,6 +1550,11 @@ private fun TvAuthenticatedApp(
                                         isSeerrSaved = { item ->
                                             savedMedia.any { it.identity == item.mediaIdentity() }
                                         },
+                                        trailerPreviewState = trailerPreviewState,
+                                        trailerPreviewEngine = trailerPreviewEngine,
+                                        previewSoundEnabled = settings.trailerPreviewSoundEnabled,
+                                        previewProgress = trailerPreviewProgress,
+                                        onPreviewFocus = ::focusCinematicTrailer,
                                     )
                                 TvRoute.Discover ->
                                     TvDiscoverScreen(
@@ -1447,6 +1592,15 @@ private fun TvAuthenticatedApp(
                                         onServersChanged = {
                                             browseCoordinator.bootstrap(true)
                                             recommendationsCoordinator.refreshAll()
+                                        },
+                                        onSeerrConnected = { server ->
+                                            activeProfileId?.let { profileId ->
+                                                profileRepository.binding(profileId)?.let { binding ->
+                                                    profileRepository.bindConnections(
+                                                        binding.copy(seerrConnectionId = server.id),
+                                                    )
+                                                }
+                                            }
                                         },
                                         profileId = activeProfileId,
                                         profilePreferencesRepository = profilePreferencesRepository,
@@ -1554,6 +1708,52 @@ private fun TvAuthenticatedApp(
             onPlayNow = continuationCoordinator::playNext,
             onCancel = continuationCoordinator::cancelAutoplay,
         )
+        if (showExitConfirmation) {
+            TvExitConfirmationDialog(
+                strings = strings,
+                onConfirm = {
+                    showExitConfirmation = false
+                    onExitConfirmed()
+                },
+                onDismiss = { showExitConfirmation = false },
+            )
+        }
+    }
+}
+
+@Composable
+internal fun TvExitConfirmationDialog(
+    strings: TvStrings,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val cancelFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        runCatching { cancelFocusRequester.requestFocus() }
+    }
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            Modifier.width(560.dp).background(TvSurfaceRaised, RoundedCornerShape(26.dp)).padding(28.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(strings.exitAppTitle, color = TvText, fontSize = 28.sp)
+            Text(strings.exitAppMessage, color = TvTextMuted, fontSize = 18.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                TvActionButton(
+                    label = strings.exitApp,
+                    onClick = onConfirm,
+                    destructive = true,
+                    modifier = Modifier.width(180.dp).testTag("tv-exit-confirm"),
+                )
+                TvActionButton(
+                    label = strings.cancel,
+                    onClick = onDismiss,
+                    focusRequester = cancelFocusRequester,
+                    modifier = Modifier.testTag("tv-exit-cancel"),
+                )
+            }
+        }
     }
 }
 
@@ -1652,6 +1852,8 @@ private fun TvNavigationRail(
 }
 
 internal fun tvNavigationRailItemsFocusable(expanded: Boolean): Boolean = expanded
+
+internal fun TvRoute.allowsTrailerPreview(): Boolean = this is TvRoute.Home || this is TvRoute.Library || this is TvRoute.Search
 
 private fun TvRoute.sameTopLevel(other: TvRoute): Boolean =
     (this is TvRoute.Home && other is TvRoute.Home) ||

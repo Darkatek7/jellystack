@@ -102,6 +102,39 @@ class HouseholdProfileRepository(
         store.upsertBinding(binding)
     }
 
+    /** Repairs only the unambiguous one-profile/one-Seerr upgrade case. */
+    suspend fun repairLegacySingleProfileSeerrBinding(seerrConnectionIds: List<String>): Boolean =
+        mutex.withLock {
+            val profile = store.listProfiles().singleOrNull() ?: return@withLock false
+            val binding = store.getBinding(profile.id) ?: return@withLock false
+            if (binding.seerrConnectionId != null) return@withLock false
+            val seerrConnectionId = seerrConnectionIds.filter(String::isNotBlank).distinct().singleOrNull() ?: return@withLock false
+            store.upsertBinding(binding.copy(seerrConnectionId = seerrConnectionId))
+            true
+        }
+
+    /** Replaces only the untouched synthetic identity created by the legacy migration. */
+    suspend fun repairLegacySingleProfileIdentity(
+        jellyfinConnectionId: String,
+        displayName: String,
+        avatarSeed: String,
+    ): Boolean =
+        mutex.withLock {
+            val profile = store.listProfiles().singleOrNull() ?: return@withLock false
+            val binding = store.getBinding(profile.id) ?: return@withLock false
+            if (binding.jellyfinConnectionId != jellyfinConnectionId) return@withLock false
+            if (profile.displayName != "Default" || profile.avatarSeed != profile.id) return@withLock false
+            if (displayName.isBlank() || avatarSeed.isBlank()) return@withLock false
+            store.upsertProfile(
+                profile.copy(
+                    displayName = displayName.trim(),
+                    avatarSeed = avatarSeed.trim(),
+                    updatedAt = clock.now(),
+                ),
+            )
+            true
+        }
+
     suspend fun removeProfile(profileId: String) {
         store.deleteProfile(profileId)
     }

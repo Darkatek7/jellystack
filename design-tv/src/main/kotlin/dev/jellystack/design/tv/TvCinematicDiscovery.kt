@@ -1,8 +1,10 @@
-@file:Suppress("FunctionNaming", "LongParameterList", "MaxLineLength")
+@file:Suppress("FunctionNaming", "LongMethod", "LongParameterList", "MaxLineLength")
 
 package dev.jellystack.design.tv
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -13,6 +15,7 @@ import dev.jellystack.core.jellyseerr.JellyseerrRecommendationRail
 import dev.jellystack.core.jellyseerr.JellyseerrRecommendationsState
 import dev.jellystack.core.jellyseerr.JellyseerrRequestSummary
 import dev.jellystack.core.jellyseerr.JellyseerrSearchItem
+import dev.jellystack.players.AndroidPlayerEngine
 
 private const val SEARCH_RESULTS_ROW = "search-results"
 internal const val DISCOVER_REQUESTS_ROW = "discover-requests"
@@ -34,12 +37,29 @@ internal fun TvCinematicSearchContent(
     isSeerrSaved: (JellyseerrSearchItem) -> Boolean,
     onRetryFailures: (() -> Unit)?,
     headerContent: @Composable () -> Unit,
+    trailerPreviewState: TvTrailerPreviewState = TvTrailerPreviewState.Idle,
+    trailerPreviewEngine: AndroidPlayerEngine? = null,
+    previewSoundEnabled: Boolean = true,
+    previewProgress: State<Float>? = null,
+    onPreviewFocus: (JellyfinItem, String) -> Unit = { _, _ -> },
 ) {
     val results = presentation.results
-    var focusedKey by remember(searchState.session.query, searchState.session.source, results) {
-        mutableStateOf(results.first().key)
+    val resultKeys = results.map(TvSearchResult::key)
+    var focusedKey by remember(searchState.session.query, searchState.session.source) {
+        mutableStateOf(
+            focusMemory
+                .restore("search")
+                ?.anchor
+                ?.itemId
+                ?.takeIf(resultKeys::contains)
+                ?: results.first().key,
+        )
     }
-    val focused = results.firstOrNull { it.key == focusedKey } ?: results.first()
+    val effectiveFocusedKey = focusedKey.takeIf(resultKeys::contains) ?: results.first().key
+    LaunchedEffect(effectiveFocusedKey) {
+        if (focusedKey != effectiveFocusedKey) focusedKey = effectiveFocusedKey
+    }
+    val focused = results.first { it.key == effectiveFocusedKey }
     val cards =
         results.map { result ->
             result.toCinematicCard(homeState, isJellyfinSaved, isSeerrSaved)
@@ -59,6 +79,12 @@ internal fun TvCinematicSearchContent(
             focusedKey = card.id
             val index = cards.indexOfFirst { it.id == card.id }.coerceAtLeast(0)
             focusMemory.remember("search", anchor.sectionId, anchor.itemId, horizontalIndex = index)
+            results.firstOrNull { it.key == card.id }?.jellyfinItem?.let { item ->
+                onPreviewFocus(
+                    item,
+                    tvCinematicFocusTargetId(requireNotNull(anchor.sectionId), requireNotNull(anchor.itemId)),
+                )
+            }
         },
         onCardClick = { card ->
             results.firstOrNull { it.key == card.id }?.open(onJellyfinItem, onSeerrItem)
@@ -74,6 +100,16 @@ internal fun TvCinematicSearchContent(
                 onToggleSeerrSaved = onToggleSeerrSaved,
             ),
         headerContent = headerContent,
+        previewing =
+            focused.jellyfinItem?.let { item ->
+                trailerPreviewState.showsTvStagePreview(
+                    item.id,
+                    tvCinematicFocusTargetId(SEARCH_RESULTS_ROW, focused.key),
+                )
+            } == true,
+        previewEngine = trailerPreviewEngine,
+        previewSoundEnabled = previewSoundEnabled,
+        previewProgress = previewProgress,
         inlineStatusAction =
             onRetryFailures?.let { retry ->
                 {
@@ -130,23 +166,38 @@ internal fun TvCinematicDiscoverContent(
                 add(TvCinematicRow(DISCOVER_REQUESTS_ROW, strings.requests, cards))
             }
         }
-    var focusedKey by remember(rows) {
+    val availableKeys = itemsByKey.keys
+    var focusedKey by remember {
         mutableStateOf(
-            rows
-                .first()
-                .cards
-                .first()
-                .id,
+            focusMemory
+                .restore("discover")
+                ?.anchor
+                ?.itemId
+                ?.takeIf(availableKeys::contains)
+                ?: rows
+                    .first()
+                    .cards
+                    .first()
+                    .id,
         )
     }
-    val focusedItem = itemsByKey[focusedKey] ?: itemsByKey.values.first()
-    val focusedRow = rows.firstOrNull { row -> row.cards.any { it.id == focusedKey } } ?: rows.first()
+    val effectiveFocusedKey =
+        focusedKey.takeIf(availableKeys::contains) ?: rows
+            .first()
+            .cards
+            .first()
+            .id
+    LaunchedEffect(effectiveFocusedKey) {
+        if (focusedKey != effectiveFocusedKey) focusedKey = effectiveFocusedKey
+    }
+    val focusedItem = requireNotNull(itemsByKey[effectiveFocusedKey])
+    val focusedRow = rows.first { row -> row.cards.any { it.id == effectiveFocusedKey } }
     TvCinematicBrowse(
         state =
             TvCinematicBrowseState(
                 hero = TvCinematicHero(title = strings.discover),
                 rows = rows,
-                focusedAnchor = TvFocusAnchor(focusedRow.id, focusedKey, TvFocusDestination.SECTION_ITEM),
+                focusedAnchor = TvFocusAnchor(focusedRow.id, effectiveFocusedKey, TvFocusDestination.SECTION_ITEM),
                 inlineStatus =
                     if (hasPartialFailure) {
                         TvCinematicInlineStatus(strings.discoverLoadFailed, TvCinematicStatusKind.ERROR)
@@ -166,6 +217,8 @@ internal fun TvCinematicDiscoverContent(
             )
         },
         onCardClick = { card -> itemsByKey[card.id]?.let(onItem) },
+        showFocusedMetadata = true,
+        resetVerticalFocusToFirstCard = true,
         selectedItemActions =
             TvSelectedItemActions(
                 onPlayOrResume = { onItem(focusedItem) },
@@ -196,6 +249,7 @@ private fun TvSearchResult.toCinematicCard(
         id = key,
         title = jellyfin?.name ?: requireNotNull(seerr).title,
         subtitle = jellyfin?.subtitleText() ?: seerr?.releaseYear,
+        overview = jellyfin?.overview ?: seerr?.overview,
         artworkUrl =
             if (jellyfin != null) {
                 jellyfinImageUrl(homeState.imageBaseUrl, homeState.imageAccessToken, artwork)
@@ -227,6 +281,7 @@ private fun JellyseerrSearchItem.toCinematicCard(
         id = key,
         title = title,
         subtitle = releaseYear,
+        overview = overview,
         artworkUrl = tmdbImageUrl(backdropPath ?: posterPath, backdrop = backdropPath != null),
         backdropUrl = tmdbImageUrl(backdropPath ?: posterPath, backdrop = backdropPath != null),
         selected = selected,

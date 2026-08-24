@@ -64,6 +64,7 @@ import dev.jellystack.core.preferences.StreamingQualityPreference
 import dev.jellystack.core.preferences.SubtitleBackground
 import dev.jellystack.core.preferences.SubtitleMode
 import dev.jellystack.core.preferences.SubtitleTextSize
+import dev.jellystack.core.server.ManagedServer
 import dev.jellystack.core.server.SeerrConnectionResult
 import dev.jellystack.core.server.SeerrLoginCredentials
 import dev.jellystack.core.server.SeerrServerInput
@@ -226,7 +227,7 @@ internal fun TvSeerrConnectDialog(
     existingServerId: String?,
     initialUrl: String,
     onDismiss: () -> Unit,
-    onConnected: () -> Unit,
+    onConnected: suspend (ManagedServer) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     var url by remember(existingServerId, initialUrl) { mutableStateOf(initialUrl) }
@@ -340,7 +341,7 @@ internal fun TvSeerrConnectDialog(
                                 )
                             if (!needsCredentials) {
                                 when (val result = coordinator.connectSeerrAutomatically(input)) {
-                                    is SeerrConnectionResult.Connected -> onConnected()
+                                    is SeerrConnectionResult.Connected -> onConnected(result.server)
                                     is SeerrConnectionResult.CredentialsRequired -> {
                                         needsCredentials = true
                                         username = result.suggestedUsername.orEmpty()
@@ -349,16 +350,19 @@ internal fun TvSeerrConnectDialog(
                                     is SeerrConnectionResult.ConnectionFailed -> error = result.reason
                                 }
                             } else {
-                                runCatching {
-                                    coordinator.connectSeerrManually(
-                                        input,
-                                        if (useJellyfin) {
-                                            SeerrLoginCredentials.Jellyfin(username, password)
-                                        } else {
-                                            SeerrLoginCredentials.Local(username, password)
-                                        },
-                                    )
-                                }.onSuccess { onConnected() }.onFailure { error = it.message }
+                                val connection =
+                                    runCatching {
+                                        coordinator.connectSeerrManually(
+                                            input,
+                                            if (useJellyfin) {
+                                                SeerrLoginCredentials.Jellyfin(username, password)
+                                            } else {
+                                                SeerrLoginCredentials.Local(username, password)
+                                            },
+                                        )
+                                    }
+                                connection.getOrNull()?.let { onConnected(it) }
+                                connection.exceptionOrNull()?.let { error = it.message }
                                 password = ""
                             }
                         }

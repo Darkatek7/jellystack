@@ -17,6 +17,7 @@ internal data class TvCinematicCard(
     val id: String,
     val title: String,
     val subtitle: String? = null,
+    val overview: String? = null,
     val artworkUrl: String? = null,
     val backdropUrl: String? = null,
     val selected: Boolean = false,

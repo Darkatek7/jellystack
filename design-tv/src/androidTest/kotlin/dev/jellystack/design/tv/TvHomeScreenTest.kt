@@ -93,13 +93,6 @@ class TvHomeScreenTest {
             )
         }
 
-        composeRule
-            .onNodeWithTag("tv-home-hero-carousel")
-            .assertIsFocused()
-            .performKeyInput { pressKey(Key.DirectionDown) }
-        composeRule.onNodeWithContentDescription("Play").assertIsFocused().performKeyInput {
-            pressKey(Key.DirectionDown)
-        }
         composeRule.onNodeWithContentDescription("Available, Play").assertIsFocused().performClick()
         composeRule.onNodeWithContentDescription("Available, Play").performKeyInput { pressKey(Key.DirectionRight) }
         composeRule.onNodeWithContentDescription("Unavailable, Request").assertIsFocused().performClick()
@@ -305,6 +298,20 @@ class TvHomeScreenTest {
     }
 
     @Test
+    fun lateRailRegistrationDoesNotOverrideUserMovementFromHomeToLibrary() {
+        val showLateTarget = androidx.compose.runtime.mutableStateOf(false)
+        composeRule.setContent { RailTraversalHarness(showLateTarget.value) }
+
+        val home = composeRule.onNodeWithContentDescription("Rail home")
+        val library = composeRule.onNodeWithContentDescription("Rail library")
+        home.assertIsFocused().performKeyInput { pressKey(Key.DirectionDown) }
+        library.assertIsFocused()
+
+        composeRule.runOnIdle { showLateTarget.value = true }
+        library.assertIsFocused()
+    }
+
+    @Test
     fun loadingHomeStillRendersBrandedHeroAsFirstSlot() {
         lateinit var engine: AndroidPlayerEngine
         composeRule.setContent {
@@ -358,12 +365,13 @@ class TvHomeScreenTest {
                 state = JellyfinHomeState(recentMovies = listOf(recent)),
                 sections = HomeSectionsState.Ready(listOf(section), "", ""),
                 engine = engine,
+                provideEntryFocus = false,
             )
         }
 
-        val heroBounds = composeRule.onNodeWithTag("tv-home-hero-carousel").getUnclippedBoundsInRoot()
+        val heroBounds = composeRule.onNodeWithTag("tv-home-preview-stage").getUnclippedBoundsInRoot()
         val firstCardBounds = composeRule.onAllNodes(cardWithDescription("First media card"))[0].getUnclippedBoundsInRoot()
-        assertEquals(360f, (heroBounds.bottom - heroBounds.top).value, 0.01f)
+        assertEquals(tvHomeHeroHeightDp().toFloat(), (heroBounds.bottom - heroBounds.top).value, 0.01f)
         assertEquals(tvHomeFirstCardTopDp().toFloat(), firstCardBounds.top.value, 0.51f)
         composeRule.runOnIdle(engine::release)
     }
@@ -389,30 +397,28 @@ class TvHomeScreenTest {
     }
 
     @Test
-    fun heroReceivesEntryFocusAndRightChangesSlideWithoutLosingFocus() {
+    fun previewStageIsNotFocusableAndFallsBackToARealActionWhenNoRowsExist() {
         lateinit var engine: AndroidPlayerEngine
         val first = item("first", "First hero", dateCreated = (Clock.System.now() - 1.days).toString())
-        val second = item("second", "Second hero", dateCreated = (Clock.System.now() - 2.days).toString())
         composeRule.setContent {
             val context = LocalContext.current
             engine = remember(context) { AndroidPlayerEngine(context) }
             TestHomeScreen(
-                state = JellyfinHomeState(recentMovies = listOf(first, second)),
+                state = JellyfinHomeState(recentMovies = listOf(first)),
                 sections = HomeSectionsState.Unavailable,
                 engine = engine,
             )
         }
 
-        val hero = composeRule.onNodeWithTag("tv-home-hero-carousel")
-        hero.assertIsFocused().performKeyInput { pressKey(Key.DirectionRight) }
-        composeRule.waitForIdle()
-        composeRule.onAllNodesWithText("Second hero", useUnmergedTree = true).assertCountEquals(1)
-        hero.assertIsFocused()
+        val stage = composeRule.onNodeWithTag("tv-home-preview-stage").fetchSemanticsNode()
+        assertTrue(!stage.config.contains(SemanticsActions.RequestFocus))
+        assertTrue(!stage.config.contains(SemanticsActions.OnClick))
+        composeRule.onNodeWithContentDescription("Play").assertIsFocused()
         composeRule.runOnIdle(engine::release)
     }
 
     @Test
-    fun heroActionsAndFirstServerRowFollowTheCompleteVerticalFocusPath() {
+    fun previewActionsAndFirstServerRowFollowTheCompleteVerticalFocusPath() {
         lateinit var engine: AndroidPlayerEngine
         val recent = item("recent", "Recent", dateCreated = (Clock.System.now() - 1.days).toString())
         val rowItem = item("row-item", "First row item")
@@ -437,22 +443,20 @@ class TvHomeScreenTest {
 
         val play = composeRule.onNodeWithContentDescription("Play")
         val details = composeRule.onNodeWithContentDescription("Details")
-        val hero = composeRule.onNodeWithTag("tv-home-hero-carousel").assertIsFocused()
         val card = composeRule.onAllNodes(cardWithDescription("First row item"))[0]
-        hero.performKeyInput { pressKey(Key.DirectionDown) }
+        card.assertIsFocused().performKeyInput { pressKey(Key.DirectionUp) }
         play.assertIsFocused().performKeyInput { pressKey(Key.DirectionRight) }
         details.assertIsFocused()
         assertTrue(play.getUnclippedBoundsInRoot().top < card.getUnclippedBoundsInRoot().top)
 
         details.performKeyInput { pressKey(Key.DirectionDown) }
         card.assertIsFocused().performKeyInput { pressKey(Key.DirectionUp) }
-        play.assertIsFocused().performKeyInput { pressKey(Key.DirectionUp) }
-        hero.assertIsFocused()
+        play.assertIsFocused()
         composeRule.runOnIdle(engine::release)
     }
 
     @Test
-    fun unavailableHomeSectionsRoutesHeroActionsToTheFirstDefaultRow() {
+    fun unavailableHomeSectionsRoutesPreviewActionsToTheFirstDefaultRow() {
         lateinit var engine: AndroidPlayerEngine
         val recent = item("recent", "Recent", dateCreated = (Clock.System.now() - 1.days).toString())
         val continueItem = item("continue", "Continue row item")
@@ -466,9 +470,10 @@ class TvHomeScreenTest {
             )
         }
 
-        composeRule.onNodeWithTag("tv-home-hero-carousel").performKeyInput { pressKey(Key.DirectionDown) }
+        val card = composeRule.onAllNodes(cardWithDescription("Continue row item"))[0].assertIsFocused()
+        card.performKeyInput { pressKey(Key.DirectionUp) }
         composeRule.onNodeWithContentDescription("Play").assertIsFocused().performKeyInput { pressKey(Key.DirectionDown) }
-        composeRule.onAllNodes(cardWithDescription("Continue row item"))[0].assertIsFocused()
+        card.assertIsFocused()
         composeRule.runOnIdle(engine::release)
     }
 
@@ -493,20 +498,18 @@ class TvHomeScreenTest {
             )
         }
 
-        val hero = composeRule.onNodeWithTag("tv-home-hero-carousel").assertIsFocused()
-        hero.performKeyInput { pressKey(Key.DirectionLeft) }
+        val play = composeRule.onNodeWithContentDescription("Play").assertIsFocused()
+        play.performKeyInput { pressKey(Key.DirectionLeft) }
         composeRule.waitForIdle()
         composeRule.onAllNodesWithText("First hero", useUnmergedTree = true).assertCountEquals(1)
-        hero.assertIsFocused().performKeyInput { pressKey(Key.DirectionCenter) }
-        hero.performKeyInput { pressKey(Key.DirectionDown) }
-        composeRule.onNodeWithContentDescription("Play").assertIsFocused().performKeyInput { pressKey(Key.DirectionCenter) }
-        composeRule.onNodeWithContentDescription("Play").performKeyInput { pressKey(Key.DirectionRight) }
+        play.assertIsFocused().performKeyInput { pressKey(Key.DirectionCenter) }
+        play.performKeyInput { pressKey(Key.DirectionRight) }
         composeRule.onNodeWithContentDescription("Details").assertIsFocused().performKeyInput { pressKey(Key.DirectionCenter) }
 
         composeRule.runOnIdle {
             assertEquals(1, railOpenRequests)
             assertEquals(listOf("first"), playedIds)
-            assertEquals(listOf("first", "first"), detailIds)
+            assertEquals(listOf("first"), detailIds)
             engine.release()
         }
     }
@@ -576,8 +579,6 @@ class TvHomeScreenTest {
             )
         }
 
-        val hero = composeRule.onNodeWithTag("tv-home-hero-carousel")
-        hero.performSemanticsAction(SemanticsActions.RequestFocus)
         composeRule.mainClock.advanceTimeBy(30_000)
         composeRule.onAllNodesWithText("First hero", useUnmergedTree = true).assertCountEquals(1)
         composeRule.runOnIdle(engine::release)
@@ -610,9 +611,8 @@ class TvHomeScreenTest {
     }
 
     @Test
-    fun heroRetargetsPreviewToActionItemAndRendersPlayerSurfaceWhilePlaying() {
+    fun playingPreviewRendersInTheNonFocusableHomeStage() {
         lateinit var engine: AndroidPlayerEngine
-        val previewTargets = mutableListOf<String>()
         val episode =
             item("episode", "Episode", dateCreated = (Clock.System.now() - 1.days).toString()).copy(
                 type = "Episode",
@@ -636,22 +636,17 @@ class TvHomeScreenTest {
                 sections = HomeSectionsState.Unavailable,
                 engine = engine,
                 trailerPreviewState = previewState,
-                onPreviewFocus = { owner, item, _ ->
-                    assertEquals(TvTrailerPreviewOwner.HERO, owner)
-                    previewTargets += item.id
-                },
             )
         }
 
         composeRule.onNodeWithTag("tv-home-hero-preview-surface", useUnmergedTree = true).assertExists()
         composeRule.runOnIdle {
-            assertEquals(listOf("episode"), previewTargets)
             engine.release()
         }
     }
 
     @Test
-    fun leavingHeroClearsItsPreviewBeforeTheFocusedRowCardArmsItsPreview() {
+    fun entryFocusOnRowArmsItsStagePreview() {
         lateinit var engine: AndroidPlayerEngine
         val previewEvents = mutableListOf<String>()
         val hero = item("hero", "Hero", dateCreated = (Clock.System.now() - 1.days).toString())
@@ -668,8 +663,6 @@ class TvHomeScreenTest {
             )
         }
 
-        composeRule.onNodeWithTag("tv-home-hero-carousel").performKeyInput { pressKey(Key.DirectionDown) }
-        composeRule.onNodeWithContentDescription("Play").performKeyInput { pressKey(Key.DirectionDown) }
         composeRule.onAllNodes(cardWithDescription("Row item"))[0].assertIsFocused()
 
         composeRule.runOnIdle {
@@ -713,13 +706,11 @@ class TvHomeScreenTest {
             )
         }
 
-        composeRule.onNodeWithTag("tv-home-hero-carousel").performKeyInput { pressKey(Key.DirectionDown) }
-        composeRule.onNodeWithContentDescription("Play").performKeyInput { pressKey(Key.DirectionDown) }
         composeRule.onAllNodes(cardWithDescription("Row item"))[0].assertIsFocused()
         composeRule.runOnIdle { clearedOwners.clear() }
 
         composeRule.mainClock.advanceTimeBy(6_240)
-        composeRule.onAllNodesWithText("First hero", useUnmergedTree = true).assertCountEquals(1)
+        composeRule.onNodeWithTag("tv-home-hero-preview-surface", useUnmergedTree = true).assertExists()
         composeRule.runOnIdle {
             val playing = previewState.value as TvTrailerPreviewState.Playing
             assertEquals(TvTrailerPreviewOwner.CARD, playing.request.owner)
@@ -730,7 +721,7 @@ class TvHomeScreenTest {
     }
 
     @Test
-    fun sameItemInHeroAndRowRendersOnlyTheOwnedSurface() {
+    fun sameItemInSpotlightAndRowAlwaysRendersPreviewOnlyInTheLargeStage() {
         lateinit var engine: AndroidPlayerEngine
         val same = item("same", "Same item", dateCreated = (Clock.System.now() - 1.days).toString())
         val target = TvTrailerPreviewTarget("server", same.id, isEpisode = false, seriesId = null)
@@ -756,58 +747,44 @@ class TvHomeScreenTest {
             )
         }
 
-        composeRule.onNodeWithTag("tv-home-hero-preview-surface", useUnmergedTree = true).assertDoesNotExist()
-        composeRule.onNodeWithTag("tv-media-card-preview-surface-same", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithTag("tv-home-hero-preview-surface", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithTag("tv-media-card-preview-surface-same", useUnmergedTree = true).assertDoesNotExist()
 
         composeRule.runOnIdle {
             previewState.value =
                 TvTrailerPreviewState.Playing(TvTrailerPreviewRequest(TvTrailerPreviewOwner.HERO, target))
         }
-        composeRule.onNodeWithTag("tv-home-hero-carousel").performSemanticsAction(SemanticsActions.RequestFocus)
         composeRule.onNodeWithTag("tv-home-hero-preview-surface", useUnmergedTree = true).assertExists()
         composeRule.onNodeWithTag("tv-media-card-preview-surface-same", useUnmergedTree = true).assertDoesNotExist()
         composeRule.runOnIdle(engine::release)
     }
 
     @Test
-    fun duplicateCardsRenderPreviewOnlyInOwnedCardInstance() {
+    fun duplicateCardsNeverRenderTrailerInsideTheCard() {
         lateinit var engine: AndroidPlayerEngine
         val same = item("same", "Same item", dateCreated = (Clock.System.now() - 1.days).toString())
-        val target = TvTrailerPreviewTarget("server", same.id, isEpisode = false, seriesId = null)
-        val previewState =
-            TvTrailerPreviewState.Playing(
-                TvTrailerPreviewRequest(
-                    owner = TvTrailerPreviewOwner.CARD,
-                    target = target,
-                    presentationId = tvHomeCardTargetId("next", same.id),
-                ),
-            )
         composeRule.setContent {
             val context = LocalContext.current
             engine = remember(context) { AndroidPlayerEngine(context) }
             JellystackTvTheme {
                 androidx.compose.foundation.layout.Row {
                     listOf("continue", "next").forEach { rowId ->
-                        val presentationId = tvHomeCardTargetId(rowId, same.id)
                         TvMediaCard(
                             title = "$rowId ${same.name}",
                             imageUrl = null,
                             onClick = {},
-                            previewing = previewState.showsTvMediaCardPreview(same.id, presentationId),
-                            previewEngine = engine,
-                            previewSurfaceTestTag = "tv-media-card-preview-surface-same",
                         )
                     }
                 }
             }
         }
 
-        composeRule.onAllNodes(hasTestTag("tv-media-card-preview-surface-same"), useUnmergedTree = true).assertCountEquals(1)
+        composeRule.onAllNodes(hasTestTag("tv-media-card-preview-surface-same"), useUnmergedTree = true).assertCountEquals(0)
         composeRule.runOnIdle(engine::release)
     }
 
     @Test
-    fun manualHeroSlideChangeClearsAndRearmsHeroOwner() {
+    fun previewStageDoesNotEmitLegacyHeroFocusEvents() {
         lateinit var engine: AndroidPlayerEngine
         val events = mutableListOf<String>()
         val first = item("first", "First hero", dateCreated = (Clock.System.now() - 1.days).toString())
@@ -825,10 +802,12 @@ class TvHomeScreenTest {
         }
         composeRule.runOnIdle { events.clear() }
 
-        composeRule.onNodeWithTag("tv-home-hero-carousel").performKeyInput { pressKey(Key.DirectionRight) }
+        val stage = composeRule.onNodeWithTag("tv-home-preview-stage").fetchSemanticsNode()
 
         composeRule.runOnIdle {
-            assertEquals(listOf("clear:HERO", "focus:HERO:second"), events)
+            assertTrue(!stage.config.contains(SemanticsActions.RequestFocus))
+            assertTrue(!stage.config.contains(SemanticsActions.OnClick))
+            assertEquals(emptyList<String>(), events)
             engine.release()
         }
     }
@@ -1203,6 +1182,42 @@ class TvHomeScreenTest {
             coordinator.restoreFocus(
                 routeKey = if (expanded) TV_FOCUS_RAIL_ROUTE else contentRoute,
                 preferredTargetId = if (expanded) selectedTarget else null,
+                requestFocus = { requester -> runCatching { requester.requestFocus() }.getOrDefault(false) },
+            )
+        }
+    }
+
+    @androidx.compose.runtime.Composable
+    private fun RailTraversalHarness(showLateTarget: Boolean) {
+        val coordinator = remember { TvFocusCoordinator<FocusRequester>() }
+        val homeTarget = tvRailTargetId(TvRoute.Home)
+        val libraryTarget = tvRailTargetId(TvRoute.Library())
+        val lateTarget = tvRailTargetId(TvRoute.Search)
+        val registrationRevision = coordinator.registrationRevision
+        val restorationSession =
+            remember(coordinator) {
+                TvSemanticFocusRestorationSession(
+                    snapshot = null,
+                    interactionRevision = coordinator.currentInteractionRevision,
+                )
+            }
+        CompositionLocalProvider(LocalTvFocusContext provides TvFocusContext(coordinator, TV_FOCUS_RAIL_ROUTE)) {
+            TvRouteFocusMaterializer(
+                ownerId = "test-traversal-rail",
+                targetIds = setOf(homeTarget, libraryTarget, lateTarget),
+                fallbackTargetIds = setOf(homeTarget),
+            ) { true }
+            Column {
+                TvActionButton("Rail home", {}, focusTargetId = homeTarget)
+                TvActionButton("Rail library", {}, focusTargetId = libraryTarget)
+                if (showLateTarget) TvActionButton("Rail late", {}, focusTargetId = lateTarget)
+            }
+        }
+        androidx.compose.runtime.LaunchedEffect(registrationRevision) {
+            restorationSession.restoreOnce(
+                coordinator = coordinator,
+                routeKey = TV_FOCUS_RAIL_ROUTE,
+                preferredTargetId = homeTarget,
                 requestFocus = { requester -> runCatching { requester.requestFocus() }.getOrDefault(false) },
             )
         }

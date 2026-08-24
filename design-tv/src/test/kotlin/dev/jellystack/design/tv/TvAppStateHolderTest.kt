@@ -73,6 +73,34 @@ class TvAppStateHolderTest {
     }
 
     @Test
+    fun openingRelatedMediaReplacesCurrentDetailSoOneBackReturnsToBrowse() {
+        val holder = TvAppStateHolder()
+
+        holder.push(TvRoute.JellyfinDetail("movie-1"))
+        holder.push(
+            TvRoute.SeerrDetail(
+                tmdbId = 2,
+                mediaType = dev.jellystack.core.jellyseerr.JellyseerrMediaType.MOVIE,
+                title = "Movie 2",
+            ),
+        )
+
+        assertEquals(
+            listOf(
+                TvRoute.Home,
+                TvRoute.SeerrDetail(
+                    tmdbId = 2,
+                    mediaType = dev.jellystack.core.jellyseerr.JellyseerrMediaType.MOVIE,
+                    title = "Movie 2",
+                ),
+            ),
+            holder.state.backStack,
+        )
+        assertTrue(holder.popRoute())
+        assertEquals(TvRoute.Home, holder.state.currentRoute)
+    }
+
+    @Test
     fun connectionsOpenedFromDiscoverReturnsToDiscover() {
         val holder = TvAppStateHolder()
 
