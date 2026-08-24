@@ -4,6 +4,8 @@ package dev.jellystack.design.tv
 
 import android.view.KeyEvent
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -186,7 +188,14 @@ private fun Modifier.tvFocusDecoration(
     showFocusBorder: Boolean = true,
 ): Modifier {
     var focused by remember { mutableStateOf(false) }
-    val animatedScale by animateFloatAsState(if (focused) scale else 1f, label = "tv-focus-scale")
+    val focusAppearance = LocalTvFocusAppearance.current
+    val effectiveScale = if (focusAppearance.reducedMotion) 1f else minOf(scale, focusAppearance.scale)
+    val animatedScale by
+        animateFloatAsState(
+            targetValue = if (focused) effectiveScale else 1f,
+            animationSpec = if (focusAppearance.reducedMotion) snap() else tween(durationMillis = 120),
+            label = "tv-focus-scale",
+        )
     return this
         .onFocusChanged {
             val becameFocused = it.isFocused && !focused
@@ -218,7 +227,7 @@ private fun Modifier.tvFocusDecoration(
                     cornerRadius =
                         androidx.compose.ui.geometry
                             .CornerRadius(18.dp.toPx()),
-                    style = Stroke(width = 5.dp.toPx()),
+                    style = Stroke(width = focusAppearance.ringWidthDp.dp.toPx()),
                 )
                 drawRoundRect(
                     color = TvLayoutTokens.FocusLightRing,
@@ -386,6 +395,7 @@ internal fun TvMediaCard(
     onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
     subtitle: String? = null,
+    selected: Boolean = false,
     format: TvMediaCardFormat = TvMediaCardFormat.LANDSCAPE,
     artworkFit: TvMediaCardArtworkFit = TvMediaCardArtworkFit.CROP,
     fillWidth: Boolean = false,
@@ -442,7 +452,24 @@ internal fun TvMediaCard(
                 .bringIntoViewRequester(bringIntoViewRequester)
                 .semantics(mergeDescendants = true) {
                     contentDescription = listOfNotNull(title, subtitle).joinToString(", ")
-                }.background(TvSurface, shape),
+                    this.selected = selected
+                }.background(TvSurface, shape)
+                .drawBehind {
+                    if (selected) {
+                        drawRoundRect(
+                            color = TvPurple,
+                            topLeft =
+                                androidx.compose.ui.geometry
+                                    .Offset(3.dp.toPx(), size.height * 0.18f),
+                            size =
+                                androidx.compose.ui.geometry
+                                    .Size(5.dp.toPx(), size.height * 0.64f),
+                            cornerRadius =
+                                androidx.compose.ui.geometry
+                                    .CornerRadius(2.5.dp.toPx()),
+                        )
+                    }
+                },
     ) {
         Box(
             modifier =

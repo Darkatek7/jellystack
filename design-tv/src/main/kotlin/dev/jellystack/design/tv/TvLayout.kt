@@ -31,6 +31,7 @@ internal object TvLayoutTokens {
     val LandscapeArtworkHeight = 131.dp
     val LandscapeMetadataBandHeight = 56.dp
     val CardSpacing = 16.dp
+    val FocusHaloPadding = 8.dp
     const val FOCUS_SCALE = 1.055f
     val FocusLightRing = Color.White
     val FocusDarkRing = Color.Black

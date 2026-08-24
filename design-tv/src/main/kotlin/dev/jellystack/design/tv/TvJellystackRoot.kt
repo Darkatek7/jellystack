@@ -145,11 +145,14 @@ fun TvJellystackRoot(
     modifier: Modifier = Modifier,
     coldLaunch: Boolean = true,
 ) {
-    JellystackTvTheme {
-        val koin = remember { JellystackDI.koin }
-        val serverRepository = remember(koin) { koin.get<ServerRepository>() }
-        val settingsRepository = remember(koin) { koin.get<AppSettingsRepository>() }
-        val settings by settingsRepository.settings.collectAsStateWithLifecycle()
+    val koin = remember { JellystackDI.koin }
+    val serverRepository = remember(koin) { koin.get<ServerRepository>() }
+    val settingsRepository = remember(koin) { koin.get<AppSettingsRepository>() }
+    val settings by settingsRepository.settings.collectAsStateWithLifecycle()
+    JellystackTvTheme(
+        motionPreference = settings.motionPreference,
+        highContrastFocus = settings.highContrastFocus,
+    ) {
         val strings = remember(settings.appLanguage) { TvStrings.current(settings.appLanguage) }
         TvProfileHost(
             playbackController = playbackController,
