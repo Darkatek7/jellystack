@@ -1,5 +1,6 @@
 package dev.jellystack.core.jellyfin
 
+import dev.jellystack.core.profile.MediaProviderIds
 import kotlinx.datetime.Instant
 
 data class JellyfinLibraryRecord(
@@ -54,6 +55,7 @@ data class JellyfinItemRecord(
     val seriesLogoImageTag: String? = null,
     val seriesArtImageTag: String? = null,
     val seriesBannerImageTag: String? = null,
+    val providerIds: MediaProviderIds = MediaProviderIds(sourceLocalId = id),
 )
 
 data class JellyfinItemDetailRecord(

@@ -1,0 +1,104 @@
+CREATE TABLE household_profiles (
+    id TEXT NOT NULL PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    avatar_seed TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    last_active_at INTEGER
+);
+
+CREATE TABLE profile_connection_bindings (
+    profile_id TEXT NOT NULL PRIMARY KEY,
+    jellyfin_connection_id TEXT NOT NULL,
+    seerr_connection_id TEXT,
+    FOREIGN KEY (profile_id) REFERENCES household_profiles(id) ON DELETE CASCADE
+);
+
+CREATE INDEX profile_bindings_jellyfin_connection
+ON profile_connection_bindings(jellyfin_connection_id);
+
+CREATE INDEX profile_bindings_seerr_connection
+ON profile_connection_bindings(seerr_connection_id);
+
+CREATE TABLE profile_saved_media (
+    profile_id TEXT NOT NULL,
+    media_type TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    provider_id TEXT NOT NULL,
+    tmdb_id TEXT,
+    tvdb_id TEXT,
+    source_local_id TEXT,
+    title TEXT NOT NULL,
+    poster_path TEXT,
+    backdrop_path TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (profile_id, media_type, provider, provider_id),
+    FOREIGN KEY (profile_id) REFERENCES household_profiles(id) ON DELETE CASCADE
+);
+
+selectProfiles:
+SELECT *
+FROM household_profiles
+ORDER BY COALESCE(last_active_at, created_at) DESC, display_name;
+
+selectProfileById:
+SELECT *
+FROM household_profiles
+WHERE id = ?;
+
+upsertProfile:
+INSERT OR REPLACE INTO household_profiles (
+    id, display_name, avatar_seed, created_at, updated_at, last_active_at
+)
+VALUES (?, ?, ?, ?, ?, ?);
+
+deleteProfile:
+DELETE FROM household_profiles
+WHERE id = ?;
+
+selectBindingByProfile:
+SELECT *
+FROM profile_connection_bindings
+WHERE profile_id = ?;
+
+upsertBinding:
+INSERT OR REPLACE INTO profile_connection_bindings (
+    profile_id, jellyfin_connection_id, seerr_connection_id
+)
+VALUES (?, ?, ?);
+
+deleteBindingByProfile:
+DELETE FROM profile_connection_bindings
+WHERE profile_id = ?;
+
+selectSavedMediaByProfile:
+SELECT *
+FROM profile_saved_media
+WHERE profile_id = ?
+ORDER BY created_at, media_type, provider, provider_id;
+
+upsertSavedMedia:
+INSERT OR REPLACE INTO profile_saved_media (
+    profile_id,
+    media_type,
+    provider,
+    provider_id,
+    tmdb_id,
+    tvdb_id,
+    source_local_id,
+    title,
+    poster_path,
+    backdrop_path,
+    created_at,
+    updated_at
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteSavedMedia:
+DELETE FROM profile_saved_media
+WHERE profile_id = ? AND media_type = ? AND provider = ? AND provider_id = ?;
+
+deleteSavedMediaByProfile:
+DELETE FROM profile_saved_media
+WHERE profile_id = ?;

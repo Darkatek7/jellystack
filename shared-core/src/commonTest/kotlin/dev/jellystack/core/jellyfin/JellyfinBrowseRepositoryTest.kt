@@ -384,8 +384,21 @@ class JellyfinBrowseRepositoryTest {
             val items = repository.loadLibraryPage(libraryId = "lib-1", page = 0, pageSize = 2, refresh = true)
 
             assertEquals(2, items.items.size)
+            assertEquals(
+                "603",
+                items.items
+                    .first()
+                    .providerIds.tmdbId,
+            )
+            assertEquals(
+                "item-1",
+                items.items
+                    .first()
+                    .providerIds.sourceLocalId,
+            )
             val stored = itemStore.listByLibrary(environment.serverKey, "lib-1", limit = 10, offset = 0)
             assertEquals(2, stored.size)
+            assertEquals("603", stored.single { it.id == "item-1" }.providerIds.tmdbId)
         }
 
     @Test
@@ -818,6 +831,7 @@ class JellyfinBrowseRepositoryTest {
                   "Type": "Movie",
                   "MediaType": "Video",
                   "Overview": "A sample overview",
+                  "ProviderIds": {"Tmdb": "603", "Tvdb": ""},
                   "RunTimeTicks": 36000000000,
                   "ImageTags": {"Primary": "tag-primary"},
                   "UserData": {

@@ -8,6 +8,7 @@ import dev.jellystack.core.logging.JellystackLog
 import dev.jellystack.core.playback.OfflinePlaybackProgressReporter
 import dev.jellystack.core.playback.StreamingPlayStrategy
 import dev.jellystack.core.playback.StreamingProgressContext
+import dev.jellystack.core.profile.MediaProviderIds
 import dev.jellystack.network.NetworkJson
 import dev.jellystack.network.jellyfin.JellyfinBrowseApi
 import dev.jellystack.network.jellyfin.JellyfinItemDetailDto
@@ -858,6 +859,12 @@ private fun JellyfinItemDto.toRecord(
         seriesBannerImageTag =
             parentBannerImageTag
                 ?: imageTags?.get("Banner")?.takeIf { type.equals("Series", ignoreCase = true) },
+        providerIds =
+            MediaProviderIds(
+                tmdbId = providerIds.providerValue("tmdb"),
+                tvdbId = providerIds.providerValue("tvdb"),
+                sourceLocalId = id,
+            ).normalized(),
     )
 
 private fun JellyfinItemRecord.toDomain(): JellyfinItem =
@@ -900,7 +907,11 @@ private fun JellyfinItemRecord.toDomain(): JellyfinItem =
         seriesLogoImageTag = seriesLogoImageTag,
         seriesArtImageTag = seriesArtImageTag,
         seriesBannerImageTag = seriesBannerImageTag,
+        providerIds = providerIds,
     )
+
+private fun Map<String, String>?.providerValue(name: String): String? =
+    this?.entries?.firstOrNull { it.key.equals(name, ignoreCase = true) }?.value
 
 private fun JellyfinItemDetailRecord.toDomain(): JellyfinItemDetail =
     NetworkJson.default.decodeFromString<JellyfinItemDetailDto>(json).toDomain()

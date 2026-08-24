@@ -413,6 +413,8 @@ data class JellyfinItemDto(
     val mediaType: String? = null,
     @SerialName("LocationType")
     val locationType: String? = null,
+    @SerialName("ProviderIds")
+    val providerIds: Map<String, String>? = null,
     @SerialName("SortName")
     val sortName: String? = null,
     @SerialName("Overview")
