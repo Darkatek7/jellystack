@@ -5,6 +5,7 @@
     "LongMethod",
     "LongParameterList",
     "MaxLineLength",
+    "ReturnCount",
     "TooManyFunctions",
 )
 
@@ -1410,7 +1411,6 @@ internal fun TvSeerrDetailScreen(
         if (activeRequest != null) showRequestDialog = false
     }
     val similar = detail?.enrichment?.similar.orEmpty()
-    val hasCast = !detail?.cast.isNullOrEmpty()
     val hasRequestAction = activeRequest == null && (canRequestStandard || canRequest4k)
     val trailerUrl = detail?.trailer?.url ?: detail?.videos?.firstOrNull { it.url != null }?.url
     val uiState =

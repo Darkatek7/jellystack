@@ -1,3 +1,5 @@
+@file:Suppress("MaxLineLength")
+
 package dev.jellystack.design.tv
 
 import kotlin.test.Test

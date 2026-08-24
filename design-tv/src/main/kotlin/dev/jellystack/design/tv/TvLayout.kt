@@ -49,7 +49,7 @@ internal fun tvSafeBounds(
         bottom = heightDp - insets.vertical.value,
     )
 
-@Suppress("UNUSED_PARAMETER")
+@Suppress("FunctionOnlyReturningConstant", "UNUSED_PARAMETER")
 internal fun tvContentOffsetForRail(expanded: Boolean): Float = 0f
 
 internal fun tvSettingsColumnCount(
@@ -58,7 +58,11 @@ internal fun tvSettingsColumnCount(
 ): Int {
     val safeFontScale = fontScale.coerceAtLeast(1f)
     val minimumTileWidth = 260f * (1f + ((safeFontScale - 1f) * 0.7f))
-    val columns = floor((availableWidthDp + TvLayoutTokens.CardSpacing.value) / (minimumTileWidth + TvLayoutTokens.CardSpacing.value))
+    val columns =
+        floor(
+            (availableWidthDp + TvLayoutTokens.CardSpacing.value) /
+                (minimumTileWidth + TvLayoutTokens.CardSpacing.value),
+        )
     return columns.toInt().coerceIn(1, 3)
 }
 

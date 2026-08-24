@@ -1,3 +1,5 @@
+@file:Suppress("LongParameterList", "MaxLineLength", "ReturnCount")
+
 package dev.jellystack.design.tv
 
 import androidx.compose.runtime.Immutable

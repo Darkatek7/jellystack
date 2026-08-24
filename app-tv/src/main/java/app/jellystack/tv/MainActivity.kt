@@ -38,6 +38,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var playbackBridge: AndroidPlaybackSessionBridge
     private lateinit var trailerPreviewEngine: AndroidPlayerEngine
     private lateinit var trailerPreviewController: PlaybackController
+    private lateinit var platformActions: TvPlatformActionCoordinator<KeyEvent>
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -77,17 +78,36 @@ class MainActivity : AppCompatActivity() {
                 seekBackMs = { settingsRepository.settings.value.seekBackSeconds * 1_000L },
                 seekForwardMs = { settingsRepository.settings.value.seekForwardSeconds * 1_000L },
             )
+        platformActions =
+            TvPlatformActionCoordinator(
+                object : TvPlatformActions<KeyEvent> {
+                    override fun setKeepScreenOn(enabled: Boolean) {
+                        if (enabled) {
+                            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                        } else {
+                            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                        }
+                    }
+
+                    override fun markPlaybackStarted() = playbackBridge.markPlaybackStarted()
+
+                    override fun handleMediaKey(event: KeyEvent): Boolean = playbackBridge.handleMediaKeyEvent(event)
+
+                    override fun stopTrailer() = trailerPreviewController.stop(saveProgress = false)
+
+                    override fun stopPlayback() = playbackBridge.stopPlayback()
+
+                    override fun releaseTrailer() = trailerPreviewController.release()
+
+                    override fun releaseBridge() = playbackBridge.release()
+
+                    override fun releasePlayback() = playbackController.release()
+                },
+            )
         lifecycleScope.launch {
-            var playbackWasActive = false
             playbackController.state.collect { state ->
                 val playbackIsActive = state is PlaybackState.Active || state is PlaybackState.Preparing
-                if (playbackIsActive) {
-                    window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                } else {
-                    window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                }
-                if (playbackIsActive && !playbackWasActive) playbackBridge.markPlaybackStarted()
-                playbackWasActive = playbackIsActive
+                platformActions.onPlaybackActivityChanged(playbackIsActive)
             }
         }
         setContent {
@@ -128,20 +148,17 @@ class MainActivity : AppCompatActivity() {
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val isPlaybackVisible = playbackController.state.value is PlaybackState.Active
-        if (isPlaybackVisible && playbackBridge.handleMediaKeyEvent(event)) return true
+        if (platformActions.dispatchMediaKey(event, isPlaybackVisible)) return true
         return super.dispatchKeyEvent(event)
     }
 
     override fun onStop() {
-        trailerPreviewController.stop(saveProgress = false)
-        if (!isChangingConfigurations) playbackBridge.stopPlayback()
+        platformActions.onStop(isChangingConfigurations)
         super.onStop()
     }
 
     override fun onDestroy() {
-        trailerPreviewController.release()
-        playbackBridge.release()
-        playbackController.release()
+        platformActions.onDestroy()
         super.onDestroy()
     }
 }

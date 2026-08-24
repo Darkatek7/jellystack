@@ -57,13 +57,17 @@ internal object TvAppStatePersistence {
             .getOrNull()
             ?.valid()
             ?: runCatching { json.decodeFromString(TvAppStateSnapshot.serializer(), raw) }.getOrNull()?.valid()
-            ?: TvRouteBackStack.decode(raw)?.takeIf(List<TvRoute>::isNotEmpty)?.let { TvAppStateSnapshot(backStack = it) }
+            ?: TvRouteBackStack
+                .decode(raw)
+                ?.takeIf(List<TvRoute>::isNotEmpty)
+                ?.let { TvAppStateSnapshot(backStack = it) }
 
     private fun TvAppStateSnapshot.valid(): TvAppStateSnapshot? = takeIf { it.backStack.isNotEmpty() }
 }
 
 /** Lifecycle-agnostic owner for navigation, rail, profile generation, and semantic focus state. */
 @Stable
+@Suppress("TooManyFunctions") // This is the single state-machine action surface for the TV root.
 internal class TvAppStateHolder(
     initialSnapshot: TvAppStateSnapshot = TvAppStateSnapshot(),
 ) {

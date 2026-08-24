@@ -1,4 +1,4 @@
-@file:Suppress("FunctionName", "FunctionNaming", "LongParameterList", "MaxLineLength", "TooManyFunctions")
+@file:Suppress("FunctionName", "FunctionNaming", "LongMethod", "LongParameterList", "MaxLineLength", "TooManyFunctions")
 
 package dev.jellystack.design.tv
 

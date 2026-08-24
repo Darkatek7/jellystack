@@ -47,7 +47,13 @@ jobs:
           :shared-database:testDebugUnitTest
           :players:testDebugUnitTest
           :design:testDebugUnitTest
+          :design-tv:testDebugUnitTest
           :app-android:testDebugUnitTest
+          :app-tv:testDebugUnitTest
+          :app-tv:lintDebug
+          :app-tv:assembleDebug
+          verifyUniqueAndroidVersionCodes
+          :app-tv:verifyTvReleaseManifestPermissions
           :design-screenshots:validateDebugScreenshotTest
           :app-android:assembleDebug
           --stacktrace
@@ -142,12 +148,59 @@ jobs:
           emulator-options: "-no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics"
           script: ${{ matrix.command }}
 
+  tv_instrumentation:
+    name: android-tv-instrumentation
+    runs-on: ubuntu-latest
+    needs: build
+    env:
+      CI: true
+      GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2048m -Dkotlin.daemon.jvm.options=-Xmx768m"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Gradle wrapper permissions
+        run: chmod +x gradlew
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+
+      - name: Install emulator runtime libraries
+        run: sudo apt-get update && sudo apt-get install --yes libpulse0
+
+      - name: Enable KVM access
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run TV instrumentation without retries
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: tv_1080p
+          ram-size: 3072M
+          emulator-options: "-no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics"
+          script: >-
+            ./gradlew :design-tv:connectedDebugAndroidTest :app-tv:connectedDebugAndroidTest
+            --max-workers=1 --stacktrace
+
   android-instrumentation:
     runs-on: ubuntu-latest
-    needs: instrumentation_shards
+    needs: [instrumentation_shards, tv_instrumentation]
     if: ${{ always() }}
     steps:
       - name: Require every instrumentation shard to pass
         env:
           SHARD_RESULT: ${{ needs.instrumentation_shards.result }}
-        run: test "$SHARD_RESULT" = success
+          TV_RESULT: ${{ needs.tv_instrumentation.result }}
+        run: test "$SHARD_RESULT" = success && test "$TV_RESULT" = success

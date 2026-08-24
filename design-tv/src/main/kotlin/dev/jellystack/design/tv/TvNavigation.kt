@@ -1,3 +1,5 @@
+@file:Suppress("CyclomaticComplexMethod", "MaxLineLength", "ReturnCount", "TooManyFunctions")
+
 package dev.jellystack.design.tv
 
 import androidx.navigation3.runtime.NavKey

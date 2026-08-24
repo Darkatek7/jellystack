@@ -1,3 +1,5 @@
+@file:Suppress("CyclomaticComplexMethod", "MaxLineLength", "ReturnCount")
+
 package dev.jellystack.design.tv
 
 import androidx.compose.runtime.getValue

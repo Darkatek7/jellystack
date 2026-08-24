@@ -1,3 +1,5 @@
+@file:Suppress("FunctionName", "FunctionNaming")
+
 package dev.jellystack.design.tv
 
 import androidx.compose.foundation.layout.Box
