@@ -250,8 +250,8 @@ private fun HomeSectionItemDto.toDomain(baseUrl: String): HomeSectionItem? {
     val providerIdentity =
         providerIds
             .orEmpty()
-            .toSortedMap()
             .entries
+            .sortedBy { it.key }
             .joinToString("|") { (key, value) -> "$key=$value" }
             .takeIf(String::isNotBlank)
     val stableId =
