@@ -15,7 +15,7 @@ import dev.jellystack.core.jellyseerr.JellyseerrRequestSummary
 import dev.jellystack.core.jellyseerr.JellyseerrSearchItem
 
 private const val SEARCH_RESULTS_ROW = "search-results"
-private const val DISCOVER_REQUESTS_ROW = "discover-requests"
+internal const val DISCOVER_REQUESTS_ROW = "discover-requests"
 
 @Composable
 internal fun TvCinematicSearchContent(
