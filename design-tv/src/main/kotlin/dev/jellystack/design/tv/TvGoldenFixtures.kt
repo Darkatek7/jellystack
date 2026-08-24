@@ -31,6 +31,8 @@ import dev.jellystack.core.preferences.AppLanguage
 /** Deterministic, credential-free TV states used by screenshot and contrast regression tests. */
 enum class TvGoldenFixture {
     BROWSE,
+    ALL_TITLES,
+    SEARCH,
     LOADING,
     MISSING_ART,
     SEARCH_PARTIAL_ERROR,
@@ -63,9 +65,11 @@ fun JellystackTvGoldenFixture(
             ) {
                 when (fixture) {
                     TvGoldenFixture.BROWSE -> GoldenBrowse(strings)
+                    TvGoldenFixture.ALL_TITLES -> GoldenAllTitles(strings)
+                    TvGoldenFixture.SEARCH -> GoldenSearch(strings, partialError = false)
                     TvGoldenFixture.LOADING -> GoldenLoading(strings)
                     TvGoldenFixture.MISSING_ART -> GoldenMissingArt(strings)
-                    TvGoldenFixture.SEARCH_PARTIAL_ERROR -> GoldenSearch(strings)
+                    TvGoldenFixture.SEARCH_PARTIAL_ERROR -> GoldenSearch(strings, partialError = true)
                     TvGoldenFixture.DETAIL -> GoldenDetail(strings)
                     TvGoldenFixture.DISCOVER -> GoldenDiscover(strings)
                     TvGoldenFixture.FOCUS_CONTRAST -> GoldenFocusContrast(darkArtwork)
@@ -81,6 +85,7 @@ private fun GoldenBackdrop(fixture: TvGoldenFixture) {
         when (fixture) {
             TvGoldenFixture.DETAIL -> Color(0xFF49316E)
             TvGoldenFixture.DISCOVER -> Color(0xFF173D45)
+            TvGoldenFixture.ALL_TITLES, TvGoldenFixture.SEARCH -> Color(0xFF243047)
             else -> Color(0xFF251A43)
         }
     Box(
@@ -132,6 +137,25 @@ private fun GoldenBrowse(strings: TvStrings) {
 }
 
 @Composable
+private fun GoldenAllTitles(strings: TvStrings) {
+    Column(verticalArrangement = Arrangement.spacedBy(15.dp)) {
+        Text("${strings.library} · ${strings.allTitles}", color = TvText, fontSize = 36.sp, fontWeight = FontWeight.Bold)
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            TvActionButton(strings.sort, {}, enabled = false)
+            TvActionButton(strings.filters, {}, enabled = false)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            repeat(5) { index ->
+                Column(Modifier.width(136.dp).background(TvSurface, RoundedCornerShape(14.dp))) {
+                    Box(Modifier.fillMaxWidth().height(190.dp).background(Color(0xFF252638)))
+                    Text("Title ${index + 1}", color = TvText, modifier = Modifier.padding(10.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun GoldenLoading(strings: TvStrings) {
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(24.dp)) {
         Text(strings.library, color = TvText, fontSize = 38.sp, fontWeight = FontWeight.Bold)
@@ -163,7 +187,10 @@ private fun GoldenMissingArt(strings: TvStrings) {
 }
 
 @Composable
-private fun GoldenSearch(strings: TvStrings) {
+private fun GoldenSearch(
+    strings: TvStrings,
+    partialError: Boolean,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text(strings.search, color = TvText, fontSize = 38.sp, fontWeight = FontWeight.Bold)
         Box(
@@ -176,7 +203,7 @@ private fun GoldenSearch(strings: TvStrings) {
         ) {
             Text("Dune", color = TvText, fontSize = 20.sp)
         }
-        TvStatusAnchor(strings.seerrSearchFailed, Modifier.fillMaxWidth())
+        if (partialError) TvStatusAnchor(strings.seerrSearchFailed, Modifier.fillMaxWidth())
         GoldenCardRow(strings)
     }
 }

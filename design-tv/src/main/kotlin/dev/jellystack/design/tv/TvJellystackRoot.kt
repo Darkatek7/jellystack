@@ -1373,6 +1373,43 @@ private fun TvAuthenticatedApp(
                                         onVoiceSearch = searchCoordinator::launchVoiceSearch,
                                         onJellyfinItem = ::openJellyfinDetail,
                                         onSeerrItem = ::openSeerr,
+                                        onPlayJellyfin = { item ->
+                                            scope.launch {
+                                                val detail = browseRepository.getItemDetail(item.id) ?: return@launch
+                                                val environment = environmentProvider.current() ?: return@launch
+                                                playbackController.play(PlaybackRequest.from(item, detail), environment)
+                                                playbackController.setPlaybackSpeed(settings.defaultPlaybackSpeed)
+                                                playbackController.setStatsForNerdsEnabled(settings.statsForNerdsEnabled)
+                                                push(TvRoute.Player)
+                                            }
+                                        },
+                                        onToggleJellyfinSaved = { item ->
+                                            scope.launch {
+                                                browseCoordinator.toggleFavorite(item)
+                                                searchCoordinator.search(searchState.session.query)
+                                            }
+                                        },
+                                        onToggleJellyfinPlayed = { item, played ->
+                                            scope.launch {
+                                                browseRepository.setPlayedStatus(item.id, played)
+                                                searchCoordinator.search(searchState.session.query)
+                                            }
+                                        },
+                                        onToggleSeerrSaved = { item ->
+                                            scope.launch {
+                                                if (savedMedia.any { it.identity == item.mediaIdentity() }) {
+                                                    myListRepository.removeSeerr(myListProfileId, item)
+                                                } else {
+                                                    myListRepository.saveSeerr(myListProfileId, item)
+                                                }
+                                            }
+                                        },
+                                        isJellyfinSaved = { item ->
+                                            myList.any { it.identity == item.mediaIdentity() }
+                                        },
+                                        isSeerrSaved = { item ->
+                                            savedMedia.any { it.identity == item.mediaIdentity() }
+                                        },
                                     )
                                 TvRoute.Discover ->
                                     TvDiscoverScreen(
@@ -1383,6 +1420,18 @@ private fun TvAuthenticatedApp(
                                         ::openSeerr,
                                         onConnectSeerr = ::openSettingsConnections,
                                         onRetry = recommendationsCoordinator::refreshAll,
+                                        onToggleSaved = { item ->
+                                            scope.launch {
+                                                if (savedMedia.any { it.identity == item.mediaIdentity() }) {
+                                                    myListRepository.removeSeerr(myListProfileId, item)
+                                                } else {
+                                                    myListRepository.saveSeerr(myListProfileId, item)
+                                                }
+                                            }
+                                        },
+                                        isSaved = { item ->
+                                            savedMedia.any { it.identity == item.mediaIdentity() }
+                                        },
                                     )
                                 is TvRoute.Settings ->
                                     TvSettingsScreen(

@@ -44,6 +44,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -263,7 +264,7 @@ internal fun TvSelectedItemActionStrip(
 ) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.testTag("cinematic-action-strip")) {
         TvActionButton(
-            label = if (card.resumeFraction != null) labels.resume else labels.play,
+            label = actions.primaryLabel ?: if (card.resumeFraction != null) labels.resume else labels.play,
             onClick = actions.onPlayOrResume,
             primary = true,
             leading = { Icon(Icons.Default.PlayArrow, null) },
@@ -275,20 +276,24 @@ internal fun TvSelectedItemActionStrip(
             leading = { Icon(Icons.Default.Info, null) },
             modifier = Modifier.testTag("cinematic-action-details"),
         )
-        TvActionButton(
-            label = if (card.selected) labels.removeFromList else labels.addToList,
-            onClick = actions.onToggleSaved,
-            selected = card.selected,
-            leading = { Icon(if (card.selected) Icons.Default.Favorite else Icons.Default.FavoriteBorder, null) },
-            modifier = Modifier.testTag("cinematic-action-saved"),
-        )
-        TvActionButton(
-            label = if (card.played) labels.markUnplayed else labels.markPlayed,
-            onClick = actions.onTogglePlayed,
-            selected = card.played,
-            leading = { Icon(Icons.Default.CheckCircle, null) },
-            modifier = Modifier.testTag("cinematic-action-played"),
-        )
+        actions.onToggleSaved?.let { onToggleSaved ->
+            TvActionButton(
+                label = if (card.selected) labels.removeFromList else labels.addToList,
+                onClick = onToggleSaved,
+                selected = card.selected,
+                leading = { Icon(if (card.selected) Icons.Default.Favorite else Icons.Default.FavoriteBorder, null) },
+                modifier = Modifier.testTag("cinematic-action-saved"),
+            )
+        }
+        actions.onTogglePlayed?.let { onTogglePlayed ->
+            TvActionButton(
+                label = if (card.played) labels.markUnplayed else labels.markPlayed,
+                onClick = onTogglePlayed,
+                selected = card.played,
+                leading = { Icon(Icons.Default.CheckCircle, null) },
+                modifier = Modifier.testTag("cinematic-action-played"),
+            )
+        }
     }
 }
 
@@ -343,7 +348,9 @@ private fun TvCinematicStatusAnchor(status: TvCinematicInlineStatus) {
         modifier =
             Modifier
                 .testTag("cinematic-status")
-                .semantics { liveRegion = LiveRegionMode.Polite }
-                .padding(vertical = 8.dp),
+                .semantics {
+                    liveRegion = LiveRegionMode.Polite
+                    contentDescription = status.message
+                }.padding(vertical = 8.dp),
     )
 }

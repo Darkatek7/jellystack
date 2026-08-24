@@ -21,6 +21,7 @@ pluginManagement {
         id("org.jetbrains.kotlin.plugin.serialization") version kotlinVersion
         id("com.android.application") version agpVersion
         id("com.android.library") version agpVersion
+        id("com.android.test") version agpVersion
         id("org.jetbrains.compose") version composeVersion
         id("app.cash.sqldelight") version sqldelightVersion
         id("io.gitlab.arturbosch.detekt") version detektVersion
@@ -60,6 +61,7 @@ iInclude(
     ":design",
     ":design-tv",
     ":design-screenshots",
+    ":tv-benchmark",
     ":testing",
     ":tools",
 )

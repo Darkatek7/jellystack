@@ -192,6 +192,7 @@ jobs:
           emulator-options: "-no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics"
           script: >-
             ./gradlew :design-tv:connectedDebugAndroidTest :app-tv:connectedDebugAndroidTest
+            :tv-benchmark:connectedCheck
             --max-workers=1 --stacktrace
 
   android-instrumentation:

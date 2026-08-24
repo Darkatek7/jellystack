@@ -37,6 +37,7 @@
         android:label="@string/app_name"
         android:theme="@style/Theme.Jellystack.TV"
         android:usesCleartextTraffic="true">
+        <profileable android:shell="true" />
         <activity
             android:name=".MainActivity"
             android:banner="@drawable/tv_banner"

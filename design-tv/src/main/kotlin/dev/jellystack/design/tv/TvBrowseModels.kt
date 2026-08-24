@@ -82,8 +82,9 @@ internal data class TvCinematicBrowseState(
 internal data class TvSelectedItemActions(
     val onPlayOrResume: () -> Unit,
     val onDetails: () -> Unit,
-    val onToggleSaved: () -> Unit,
-    val onTogglePlayed: () -> Unit,
+    val onToggleSaved: (() -> Unit)?,
+    val onTogglePlayed: (() -> Unit)?,
+    val primaryLabel: String? = null,
 )
 
 @Immutable

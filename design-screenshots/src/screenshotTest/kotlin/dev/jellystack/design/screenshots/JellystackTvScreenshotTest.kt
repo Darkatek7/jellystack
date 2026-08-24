@@ -111,6 +111,8 @@ private fun TvFixtureContent(
     val title =
         when (fixture) {
             TvGoldenFixture.BROWSE -> labels[0]
+            TvGoldenFixture.ALL_TITLES -> "${labels[1]} · All Titles"
+            TvGoldenFixture.SEARCH -> labels[2]
             TvGoldenFixture.LOADING, TvGoldenFixture.MISSING_ART -> labels[1]
             TvGoldenFixture.SEARCH_PARTIAL_ERROR -> labels[2]
             TvGoldenFixture.DETAIL -> "The Last Horizon"
@@ -178,6 +180,52 @@ private fun TvFixtureContent(
             TvFixtureCards(empty = false)
             Text(if (labels[0] == "Start") "Kürzlich hinzugefügt" else "Recently added", color = Color.White, fontSize = 21.sp)
             TvFixtureCards(empty = false)
+        }
+        TvGoldenFixture.ALL_TITLES -> {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                TvFixtureAction("Sort", primary = false)
+                TvFixtureAction("Filters", primary = false)
+            }
+            TvFixturePosterGrid()
+        }
+        TvGoldenFixture.SEARCH -> {
+            TvFixtureSearchField()
+            Text("Results", color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+            TvFixtureCards(empty = false)
+        }
+    }
+}
+
+@Composable
+private fun TvFixtureSearchField() {
+    Box(
+        Modifier
+            .fillMaxWidth(0.76f)
+            .height(58.dp)
+            .background(Color(0xFF222334), RoundedCornerShape(16.dp))
+            .padding(horizontal = 20.dp),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Text("Dune", color = Color.White, fontSize = 20.sp)
+    }
+}
+
+@Composable
+private fun TvFixturePosterGrid() {
+    Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        repeat(5) { index ->
+            Column(Modifier.width(136.dp).background(Color(0xFF11121B), RoundedCornerShape(14.dp))) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(190.dp)
+                        .background(
+                            listOf(Color(0xFF394B79), Color(0xFF6A3D55), Color(0xFF31594D))[index % 3],
+                            RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp),
+                        ),
+                )
+                Text("Title ${index + 1}", color = Color.White, modifier = Modifier.padding(10.dp))
+            }
         }
     }
 }
@@ -279,6 +327,15 @@ private fun TvFixtureAction(
 @PreviewTest @TvResolutionMatrix @Composable
 fun TvBrowseMatrix() = fixture(TvGoldenFixture.BROWSE)
 
+@PreviewTest @TvResolutionMatrix @Composable
+fun TvAllTitlesMatrix() = fixture(TvGoldenFixture.ALL_TITLES)
+
+@PreviewTest @TvResolutionMatrix @Composable
+fun TvSearchMatrix() = fixture(TvGoldenFixture.SEARCH)
+
+@PreviewTest @TvResolutionMatrix @Composable
+fun TvDiscoverMatrix() = fixture(TvGoldenFixture.DISCOVER)
+
 @PreviewTest
 @Preview(name = "Loading 1080p", device = TV_1080P)
 @Composable
@@ -308,6 +365,11 @@ fun TvDiscover() = fixture(TvGoldenFixture.DISCOVER)
 @Preview(name = "German 150% 1080p", device = TV_1080P, locale = "de", fontScale = 1.5f)
 @Composable
 fun TvGermanLarge() = fixture(TvGoldenFixture.BROWSE, AppLanguage.GERMAN)
+
+@PreviewTest
+@Preview(name = "German Search 150% 1080p", device = TV_1080P, locale = "de", fontScale = 1.5f)
+@Composable
+fun TvGermanLargeSearch() = fixture(TvGoldenFixture.SEARCH, AppLanguage.GERMAN)
 
 @PreviewTest
 @Preview(name = "White art focus 1080p", device = TV_1080P)

@@ -1538,6 +1538,12 @@ internal fun TvSearchScreen(
     onVoiceSearch: () -> Unit = {},
     onJellyfinItem: (JellyfinItem) -> Unit,
     onSeerrItem: (JellyseerrSearchItem) -> Unit,
+    onPlayJellyfin: (JellyfinItem) -> Unit = onJellyfinItem,
+    onToggleJellyfinSaved: ((JellyfinItem) -> Unit)? = null,
+    onToggleJellyfinPlayed: ((JellyfinItem, Boolean) -> Unit)? = null,
+    onToggleSeerrSaved: ((JellyseerrSearchItem) -> Unit)? = null,
+    isJellyfinSaved: (JellyfinItem) -> Boolean = { false },
+    isSeerrSaved: (JellyseerrSearchItem) -> Boolean = { false },
     modifier: Modifier = Modifier,
 ) {
     val sessionState = searchState.session
@@ -1608,6 +1614,37 @@ internal fun TvSearchScreen(
                 sourceFocusRequester.requestFocus()
             }
         }
+    }
+    if (presentation.results.isNotEmpty()) {
+        TvCinematicSearchContent(
+            searchState = searchState,
+            presentation = presentation,
+            homeState = homeState,
+            strings = strings,
+            focusMemory = focusMemory,
+            onJellyfinItem = onJellyfinItem,
+            onSeerrItem = onSeerrItem,
+            onPlayJellyfin = onPlayJellyfin,
+            onToggleJellyfinSaved = onToggleJellyfinSaved,
+            onToggleJellyfinPlayed = onToggleJellyfinPlayed,
+            onToggleSeerrSaved = onToggleSeerrSaved,
+            isJellyfinSaved = isJellyfinSaved,
+            isSeerrSaved = isSeerrSaved,
+            headerContent = {
+                TvCinematicSearchHeader(
+                    sessionState = sessionState,
+                    searchState = searchState,
+                    strings = strings,
+                    queryFocusRequester = queryFocusRequester,
+                    sourceFocusRequester = sourceFocusRequester,
+                    onQueryChanged = onQueryChanged,
+                    onSourceChanged = onSourceChanged,
+                    onEnterEditMode = onEnterEditMode,
+                    onVoiceSearch = onVoiceSearch,
+                )
+            },
+        )
+        return
     }
     LazyColumn(
         state = outerState,
@@ -1787,6 +1824,84 @@ private fun TvSearchSourceFailure(
 }
 
 @Composable
+private fun TvCinematicSearchHeader(
+    sessionState: TvSearchSessionState,
+    searchState: TvSearchUiState,
+    strings: TvStrings,
+    queryFocusRequester: FocusRequester,
+    sourceFocusRequester: FocusRequester,
+    onQueryChanged: (String) -> Unit,
+    onSourceChanged: (TvSearchSource) -> Unit,
+    onEnterEditMode: () -> Unit,
+    onVoiceSearch: () -> Unit,
+) {
+    OutlinedTextField(
+        value = sessionState.query,
+        onValueChange = onQueryChanged,
+        placeholder = { Text(strings.searchHint) },
+        singleLine = true,
+        readOnly = sessionState.mode == TvSearchMode.BROWSE,
+        colors = tvOutlinedTextFieldColors(),
+        modifier =
+            Modifier
+                .tvFocusTarget(queryFocusRequester, focusTargetId = TV_SEARCH_QUERY_TARGET)
+                .focusRequester(queryFocusRequester)
+                .fillMaxWidth(0.66f)
+                .height(64.dp)
+                .testTag("tv-search-query")
+                .onPreviewKeyEvent { event ->
+                    if (
+                        sessionState.mode == TvSearchMode.BROWSE &&
+                        event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
+                        event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_CENTER
+                    ) {
+                        onEnterEditMode()
+                        true
+                    } else {
+                        false
+                    }
+                }.tvReturnToNavigationRailOnLeft()
+                .focusProperties {
+                    down = sourceFocusRequester
+                    right = sourceFocusRequester
+                },
+    )
+    Spacer(Modifier.height(14.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        TvSearchSource.entries.forEachIndexed { index, source ->
+            val label =
+                when (source) {
+                    TvSearchSource.ALL -> strings.all
+                    TvSearchSource.JELLYFIN -> "Jellyfin"
+                    TvSearchSource.SEERR -> "Seerr"
+                }
+            TvActionButton(
+                label = label,
+                onClick = { onSourceChanged(source) },
+                modifier =
+                    Modifier
+                        .then(if (index == 0) Modifier.focusRequester(sourceFocusRequester) else Modifier)
+                        .testTag("tv-search-source-${source.name.lowercase()}"),
+                primary = sessionState.source == source,
+                selected = sessionState.source == source,
+                focusToNavigationRailOnLeft = index == 0,
+                focusTargetId = tvSearchSourceTargetId(source.name.lowercase()),
+            )
+        }
+        if (searchState.showVoiceAction) {
+            TvActionButton(
+                label = if (searchState.isVoiceListening) strings.searching else strings.search,
+                onClick = onVoiceSearch,
+                enabled = !searchState.isVoiceListening,
+                leading = { Icon(Icons.Default.Mic, contentDescription = null, tint = TvText) },
+                modifier = Modifier.testTag("tv-search-voice"),
+                focusTargetId = TV_SEARCH_VOICE_TARGET,
+            )
+        }
+    }
+}
+
+@Composable
 @Suppress("NestedBlockDepth") // Lazy-list branches mirror the mutually exclusive Discover presentation states.
 internal fun TvDiscoverScreen(
     recommendations: JellyseerrRecommendationsState,
@@ -1796,6 +1911,8 @@ internal fun TvDiscoverScreen(
     onItem: (JellyseerrSearchItem) -> Unit,
     onConnectSeerr: () -> Unit,
     onRetry: () -> Unit,
+    onToggleSaved: ((JellyseerrSearchItem) -> Unit)? = null,
+    isSaved: (JellyseerrSearchItem) -> Boolean = { false },
     modifier: Modifier = Modifier,
 ) {
     val availability = tvDiscoverAvailability(recommendations)
@@ -1812,6 +1929,19 @@ internal fun TvDiscoverScreen(
                 JellyseerrRecommendationRail.entries.filter { rail -> state.rails[rail]?.items?.isNotEmpty() == true }
             }.orEmpty()
     val requestItems = (requests as? JellyseerrRequestsState.Ready)?.requests.orEmpty()
+    if (hasCinematicDiscoverContent(ready, requestItems)) {
+        TvCinematicDiscoverContent(
+            state = requireNotNull(ready),
+            requestItems = requestItems,
+            hasPartialFailure = content?.hasRailFailures == true,
+            strings = strings,
+            focusMemory = focusMemory,
+            onItem = onItem,
+            onToggleSaved = onToggleSaved,
+            isSaved = isSaved,
+        )
+        return
+    }
     val outerState = rememberLazyListState()
     val rowStates = rememberTvLazyRowStates(populatedRails.map { it.name } + listOf("requests"))
     val discoverLocations =
@@ -2104,7 +2234,7 @@ internal fun JellyfinItem.subtitleText(): String? =
         tvRatingLabel(communityRating),
     ).joinToString("  •  ").ifBlank { null }
 
-private fun JellyseerrRequestSummary.toSearchItem(): JellyseerrSearchItem? {
+internal fun JellyseerrRequestSummary.toSearchItem(): JellyseerrSearchItem? {
     val id = tmdbId ?: return null
     return JellyseerrSearchItem(
         tmdbId = id,
