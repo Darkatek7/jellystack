@@ -20,11 +20,13 @@ class HouseholdProfileRepositoryTest {
             val active = ActiveServerPreferenceRepository(InMemorySettings())
             active.setActiveServerId(ServerType.JELLYFIN, "jellyfin-active")
             active.setActiveServerId(ServerType.JELLYSEERR, "seerr-active")
+            val migratedProfiles = mutableListOf<String>()
             val repository =
                 HouseholdProfileRepository(
                     store = store,
                     activeServerPreferences = active,
                     clock = FixedProfileClock,
+                    legacyProfileMigration = migratedProfiles::add,
                     idGenerator = { "legacy-default" },
                 )
 
@@ -38,6 +40,7 @@ class HouseholdProfileRepositoryTest {
                 store.getBinding("legacy-default"),
             )
             assertEquals(1, store.atomicCreations)
+            assertEquals(listOf("legacy-default", "legacy-default"), migratedProfiles)
         }
 
     @Test

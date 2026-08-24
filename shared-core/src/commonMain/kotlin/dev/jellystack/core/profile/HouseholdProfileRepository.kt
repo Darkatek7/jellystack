@@ -12,6 +12,7 @@ class HouseholdProfileRepository(
     private val store: ProfileStore,
     private val activeServerPreferences: ActiveServerPreferenceRepository,
     private val clock: Clock = Clock.System,
+    private val legacyProfileMigration: (profileId: String) -> Unit = {},
     private val idGenerator: () -> String = { randomId(16) },
 ) {
     private val mutex = Mutex()
@@ -26,7 +27,10 @@ class HouseholdProfileRepository(
 
     suspend fun ensureLegacyDefaultProfile(): HouseholdProfile? =
         mutex.withLock {
-            store.listProfiles().firstOrNull()?.let { return@withLock it }
+            store.listProfiles().firstOrNull()?.let {
+                legacyProfileMigration(it.id)
+                return@withLock it
+            }
             val jellyfinConnectionId =
                 activeServerPreferences
                     .activeServerId(ServerType.JELLYFIN)
@@ -53,6 +57,7 @@ class HouseholdProfileRepository(
                             ?.takeIf(String::isNotBlank),
                 )
             store.createProfileWithBinding(profile, binding)
+            legacyProfileMigration(profileId)
             profile
         }
 
