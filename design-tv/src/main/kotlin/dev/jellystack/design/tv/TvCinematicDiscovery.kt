@@ -168,6 +168,20 @@ internal fun hasCinematicDiscoverContent(
     state != null &&
         (state.rails.values.any { it.items.isNotEmpty() } || requestItems.any { it.tmdbId != null })
 
+internal fun tvCinematicDiscoverInitialTargetId(
+    state: JellyseerrRecommendationsState.Ready,
+    requestItems: List<JellyseerrRequestSummary>,
+): String? {
+    JellyseerrRecommendationRail.entries.forEach { rail ->
+        state.rails[rail]?.items?.firstOrNull()?.let { item ->
+            return tvCinematicFocusTargetId("discover-${rail.name.lowercase()}", item.cinematicKey())
+        }
+    }
+    val requestItem = requestItems.firstNotNullOfOrNull { it.toSearchItem() } ?: return null
+    val key = "request:${requestItem.cinematicKey()}"
+    return tvCinematicFocusTargetId(DISCOVER_REQUESTS_ROW, key)
+}
+
 private fun TvSearchResult.toCinematicCard(
     homeState: JellyfinHomeState,
     isJellyfinSaved: (JellyfinItem) -> Boolean,

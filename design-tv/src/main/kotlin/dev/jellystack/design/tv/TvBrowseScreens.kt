@@ -1930,8 +1930,9 @@ internal fun TvDiscoverScreen(
             }.orEmpty()
     val requestItems = (requests as? JellyseerrRequestsState.Ready)?.requests.orEmpty()
     if (hasCinematicDiscoverContent(ready, requestItems)) {
+        val cinematicTargetId = tvCinematicDiscoverInitialTargetId(requireNotNull(ready), requestItems)
         TvCinematicDiscoverContent(
-            state = requireNotNull(ready),
+            state = ready,
             requestItems = requestItems,
             hasPartialFailure = content?.hasRailFailures == true,
             strings = strings,
@@ -1940,6 +1941,16 @@ internal fun TvDiscoverScreen(
             onToggleSaved = onToggleSaved,
             isSaved = isSaved,
         )
+        if (cinematicTargetId != null) {
+            TvDiscoverRetryFocusRecovery(
+                request = retryFocusRequest,
+                currentTargetId = cinematicTargetId,
+                isRefreshing = false,
+                onCompleted = { revision ->
+                    if (retryFocusRequest?.revision == revision) retryFocusRequest = null
+                },
+            )
+        }
         return
     }
     val outerState = rememberLazyListState()
