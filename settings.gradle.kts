@@ -11,7 +11,7 @@ pluginManagement {
     }
     val kotlinVersion = "2.2.10"
     val agpVersion = "9.2.1"
-    val composeVersion = "1.7.0"
+    val composeVersion = "1.11.1"
     val sqldelightVersion = "2.0.2"
     val detektVersion = "1.23.7"
     val spotlessVersion = "6.25.0"
