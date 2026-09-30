@@ -18,13 +18,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-data class JellyfinClientIdentity(
-    val appName: String,
-    val appVersion: String,
-    val deviceName: String,
-    val deviceId: String,
-)
-
 @Serializable
 data class JellyfinQuickConnectSessionDto(
     @SerialName("Authenticated")
@@ -98,20 +91,7 @@ class JellyfinQuickConnectApi(
             takeFrom(baseUrl)
             path(pathSuffix.trimStart('/'))
         }
-        headers.append(
-            "X-Emby-Authorization",
-            buildString {
-                append("MediaBrowser Client=\"")
-                append(identity.appName.escapeHeaderValue())
-                append("\", Device=\"")
-                append(identity.deviceName.escapeHeaderValue())
-                append("\", DeviceId=\"")
-                append(identity.deviceId.escapeHeaderValue())
-                append("\", Version=\"")
-                append(identity.appVersion.escapeHeaderValue())
-                append("\"")
-            },
-        )
+        headers.appendJellyfinAuthorization(identity, token = null)
     }
 
     private suspend inline fun <reified T> HttpResponse.consumeAsJson(): T {
@@ -147,23 +127,7 @@ class JellyfinQuickConnectAuthorizationApi(
                 }
                 parameter("Code", code)
                 parameter("UserId", userId)
-                headers.append("X-Emby-Token", accessToken)
-                headers.append(
-                    "X-Emby-Authorization",
-                    buildString {
-                        append("MediaBrowser Client=\"")
-                        append(identity.appName.escapeHeaderValue())
-                        append("\", Device=\"")
-                        append(identity.deviceName.escapeHeaderValue())
-                        append("\", DeviceId=\"")
-                        append(identity.deviceId.escapeHeaderValue())
-                        append("\", Version=\"")
-                        append(identity.appVersion.escapeHeaderValue())
-                        append("\", Token=\"")
-                        append(accessToken.escapeHeaderValue())
-                        append("\"")
-                    },
-                )
+                headers.appendJellyfinAuthorization(identity, accessToken)
             }.consumeAuthorizationResponse()
 
     private suspend fun HttpResponse.consumeAuthorizationResponse(): Boolean {
@@ -185,5 +149,3 @@ class JellyfinQuickConnectHttpException(
 ) : RuntimeException("Jellyfin Quick Connect failed with status $code")
 
 class JellyfinQuickConnectInvalidResponseException : RuntimeException("Jellyfin Quick Connect returned an invalid response")
-
-private fun String.escapeHeaderValue(): String = replace("\\", "\\\\").replace("\"", "\\\"")

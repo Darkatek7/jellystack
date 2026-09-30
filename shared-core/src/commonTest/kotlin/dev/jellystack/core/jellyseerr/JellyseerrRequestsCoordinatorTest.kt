@@ -474,6 +474,57 @@ class JellyseerrRequestsCoordinatorTest {
         }
 
     @Test
+    fun successfulSearchRetryClearsThePreviousSearchFailure() =
+        runTest {
+            var attempts = 0
+            val client =
+                HttpClient(
+                    MockEngine { request ->
+                        if (request.method == HttpMethod.Get && request.url.encodedPath == "/api/v1/search") {
+                            attempts += 1
+                            if (attempts == 1) {
+                                respondJson("{")
+                            } else {
+                                respondJson(searchResponse(title = "Dune", id = 1))
+                            }
+                        } else {
+                            defaultResponses(request)
+                        }
+                    },
+                ) {
+                    install(ContentNegotiation) { json(NetworkJson.default) }
+                }
+            val coordinator =
+                JellyseerrRequestsCoordinator(
+                    repository = JellyseerrRepository(httpClient = client),
+                    environmentProvider = FakeEnvironmentProvider(environment),
+                    scope = this,
+                    enablePolling = false,
+                    searchDebounceMillis = 0,
+                    clock = FixedClock,
+                )
+
+            coordinator.state.filterIsInstance<JellyseerrRequestsState.Ready>().first()
+            coordinator.search("Dune")
+            coordinator.state.filterIsInstance<JellyseerrRequestsState.Ready>().first {
+                !it.isSearching && it.message?.code == JellyseerrMessageCode.SearchFailed
+            }
+
+            coordinator.search("Dune")
+            val retrying =
+                coordinator.state.filterIsInstance<JellyseerrRequestsState.Ready>().first {
+                    it.query == "Dune" && it.isSearching
+                }
+            assertEquals(null, retrying.message)
+            val succeeded =
+                coordinator.state.filterIsInstance<JellyseerrRequestsState.Ready>().first {
+                    !it.isSearching && it.searchResults.singleOrNull()?.title == "Dune"
+                }
+            assertEquals(null, succeeded.message)
+            coordinator.shutdown()
+        }
+
+    @Test
     fun newerSearchCannotBeOverwrittenByAnOlderBlockedResponse() =
         runTest {
             val oldStarted = CompletableDeferred<Unit>()
@@ -518,6 +569,113 @@ class JellyseerrRequestsCoordinatorTest {
             val final = coordinator.state.value as JellyseerrRequestsState.Ready
             assertEquals("Dune 2", final.query)
             assertEquals("Dune 2", final.searchResults.single().title)
+            coordinator.shutdown()
+        }
+
+    @Test
+    fun retrySearchDoesNotOverwriteNewerSearchIssuedDuringRecovery() =
+        runTest {
+            var profileAttempts = 0
+            val reinitStarted = CompletableDeferred<Unit>()
+            val releaseReinit = CompletableDeferred<Unit>()
+            val client =
+                HttpClient(
+                    MockEngine { request ->
+                        when {
+                            request.method == HttpMethod.Get && request.url.encodedPath == "/api/v1/auth/me" -> {
+                                profileAttempts += 1
+                                if (profileAttempts == 1) {
+                                    respondJson("{}", HttpStatusCode.ServiceUnavailable)
+                                } else {
+                                    reinitStarted.complete(Unit)
+                                    releaseReinit.await()
+                                    respondJson("""{"id":1,"displayName":"Admin","permissions":18}""")
+                                }
+                            }
+                            request.method == HttpMethod.Get && request.url.encodedPath == "/api/v1/search" -> {
+                                val query = request.url.parameters["query"].orEmpty()
+                                respondJson(searchResponse(title = query, id = query.length))
+                            }
+                            else -> defaultResponses(request)
+                        }
+                    },
+                ) {
+                    install(ContentNegotiation) { json(NetworkJson.default) }
+                }
+            val coordinator =
+                JellyseerrRequestsCoordinator(
+                    repository = JellyseerrRepository(httpClient = client),
+                    environmentProvider = FakeEnvironmentProvider(environment),
+                    scope = this,
+                    enablePolling = false,
+                    searchDebounceMillis = 0L,
+                    clock = FixedClock,
+                )
+
+            coordinator.state.filterIsInstance<JellyseerrRequestsState.Error>().first()
+            coordinator.retrySearch("Dune")
+            reinitStarted.await()
+            // A newer search was issued while the slow reinitialization is still in flight.
+            coordinator.search("Inception")
+            releaseReinit.complete(Unit)
+            coordinator.state
+                .filterIsInstance<JellyseerrRequestsState.Ready>()
+                .first {
+                    !it.isSearching &&
+                        it.query == "Inception" &&
+                        it.searchResults.singleOrNull()?.title == "Inception"
+                }
+            advanceUntilIdle()
+
+            val final = coordinator.state.value as JellyseerrRequestsState.Ready
+            assertEquals("Inception", final.query)
+            assertEquals("Inception", final.searchResults.single().title)
+            coordinator.shutdown()
+        }
+
+    @Test
+    fun retrySearchRecoversCoordinatorBeforeRunningQuery() =
+        runTest {
+            var profileCalls = 0
+            val client =
+                HttpClient(
+                    MockEngine { request ->
+                        when {
+                            request.method == HttpMethod.Get && request.url.encodedPath == "/api/v1/auth/me" -> {
+                                profileCalls += 1
+                                if (profileCalls == 1) {
+                                    respondJson("{}", HttpStatusCode.ServiceUnavailable)
+                                } else {
+                                    respondJson("""{"id":1,"displayName":"Admin","permissions":18}""")
+                                }
+                            }
+                            request.method == HttpMethod.Get && request.url.encodedPath == "/api/v1/search" ->
+                                respondJson(searchResponse(title = "Recovered", id = 7))
+                            else -> defaultResponses(request)
+                        }
+                    },
+                ) {
+                    install(ContentNegotiation) { json(NetworkJson.default) }
+                }
+            val coordinator =
+                JellyseerrRequestsCoordinator(
+                    repository = JellyseerrRepository(httpClient = client),
+                    environmentProvider = FakeEnvironmentProvider(environment),
+                    scope = this,
+                    enablePolling = false,
+                    clock = FixedClock,
+                    searchDebounceMillis = 0L,
+                )
+
+            coordinator.state.filterIsInstance<JellyseerrRequestsState.Error>().first()
+            coordinator.retrySearch("Dune")
+            val recovered =
+                coordinator.state.filterIsInstance<JellyseerrRequestsState.Ready>().first {
+                    !it.isSearching && it.query == "Dune" && it.searchResults.singleOrNull()?.title == "Recovered"
+                }
+
+            assertEquals(2, profileCalls)
+            assertEquals("Recovered", recovered.searchResults.single().title)
             coordinator.shutdown()
         }
 

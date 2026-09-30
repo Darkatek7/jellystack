@@ -15,6 +15,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class JellyfinQuickConnectApiTest {
@@ -46,8 +47,13 @@ class JellyfinQuickConnectApiTest {
             assertEquals("/QuickConnect/Authorize", request.url.encodedPath)
             assertEquals("123456", request.url.parameters["Code"])
             assertEquals("user-id", request.url.parameters["UserId"])
-            assertEquals("dummy-access-token", request.headers["X-Emby-Token"])
-            assertTrue(request.headers["X-Emby-Authorization"].orEmpty().contains("DeviceId=\"device-123\""))
+            assertEquals(
+                "MediaBrowser Client=\"Jellystack\", Device=\"Test%20device\", DeviceId=\"device-123\", " +
+                    "Version=\"0.15.0\", Token=\"dummy-access-token\"",
+                request.headers[HttpHeaders.Authorization],
+            )
+            assertNull(request.headers["X-Emby-Token"])
+            assertNull(request.headers["X-Emby-Authorization"])
             client.close()
         }
 
@@ -120,7 +126,9 @@ class JellyfinQuickConnectApiTest {
                 requests.map { it.url.encodedPath },
             )
             requests.forEach { request ->
-                assertEquals(EXPECTED_AUTH_HEADER, request.headers["X-Emby-Authorization"])
+                assertEquals(EXPECTED_AUTH_HEADER, request.headers[HttpHeaders.Authorization])
+                assertNull(request.headers["X-Emby-Token"])
+                assertNull(request.headers["X-Emby-Authorization"])
             }
             assertEquals("dummy-quick-connect-secret", requests[2].url.parameters["secret"])
             assertEquals("""{"Secret":"dummy-quick-connect-secret"}""", requests[3].bodyText())

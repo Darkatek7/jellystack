@@ -28,6 +28,11 @@ SELECT *
 FROM servers
 WHERE type = ? AND base_url = ?;
 
+selectByIdentity:
+SELECT *
+FROM servers
+WHERE type = ? AND base_url = ? AND user_id IS ?;
+
 insertOrReplace:
 INSERT OR REPLACE INTO servers (
     id,

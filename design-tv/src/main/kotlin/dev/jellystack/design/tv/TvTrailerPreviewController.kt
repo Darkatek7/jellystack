@@ -75,6 +75,7 @@ internal class TvTrailerPreviewController(
     private var activePlayerRequest: TvTrailerPreviewRequest? = null
     private var enabled = true
     private var soundEnabled = true
+    private var interactionArmed = true
     private val eventJob =
         scope.launch {
             player.events.collect { event ->
@@ -88,7 +89,7 @@ internal class TvTrailerPreviewController(
         }
 
     fun focus(request: TvTrailerPreviewRequest) {
-        if (!enabled) return
+        if (!enabled || !interactionArmed) return
         if (focusedRequest == request && mutableState.value !is TvTrailerPreviewState.Idle) return
         cancelPendingAndStopPlaying()
         focusedRequest = request
@@ -130,6 +131,16 @@ internal class TvTrailerPreviewController(
 
     fun clearFocus(owner: TvTrailerPreviewOwner) {
         if (focusedRequest?.owner == owner) clearFocus()
+    }
+
+    fun onBackgrounded() {
+        interactionArmed = false
+        clearFocus()
+    }
+
+    /** Arms future focus requests only; wake never replays the request that was active before sleep. */
+    fun onUserInteraction() {
+        interactionArmed = true
     }
 
     fun setEnabled(value: Boolean) {
@@ -179,6 +190,6 @@ internal class TvTrailerPreviewController(
     }
 
     private companion object {
-        const val DEFAULT_FOCUS_DELAY_MILLIS = 3_000L
+        const val DEFAULT_FOCUS_DELAY_MILLIS = 1_500L
     }
 }

@@ -220,14 +220,14 @@ class TvTrailerPreviewControllerTest {
     }
 
     @Test
-    fun stableFocusStartsExactlyAtThreeSeconds() =
+    fun stableFocusStartsExactlyAtOnePointFiveSeconds() =
         runTest {
             val player = FakePreviewPlayer()
             val controller = TvTrailerPreviewController(this, { source("trailer") }, player)
 
             controller.focus(request(TvTrailerPreviewOwner.CARD, "movie"))
             runCurrent()
-            advanceTimeBy(2_999L)
+            advanceTimeBy(1_499L)
             runCurrent()
             assertEquals(0, player.played.size)
 
@@ -236,6 +236,42 @@ class TvTrailerPreviewControllerTest {
 
             assertEquals(listOf("trailer"), player.played.map { it.item.id })
             assertIs<TvTrailerPreviewState.Playing>(controller.state.value)
+            controller.release()
+        }
+
+    @Test
+    fun backgroundRequiresFreshInteractionAndFreshDwellBeforePreviewCanRestart() =
+        runTest {
+            val player = FakePreviewPlayer()
+            val controller =
+                TvTrailerPreviewController(
+                    scope = this,
+                    resolve = { source("trailer") },
+                    player = player,
+                    focusDelayMillis = 1_500L,
+                )
+            val request = request(TvTrailerPreviewOwner.CARD, "movie")
+
+            controller.focus(request)
+            advanceTimeBy(1_500L)
+            runCurrent()
+            assertEquals(1, player.played.size)
+
+            controller.onBackgrounded()
+            controller.focus(request)
+            advanceTimeBy(10_000L)
+            runCurrent()
+            assertEquals(1, player.played.size)
+
+            controller.onUserInteraction()
+            controller.focus(request)
+            advanceTimeBy(1_499L)
+            runCurrent()
+            assertEquals(1, player.played.size)
+            advanceTimeBy(1L)
+            runCurrent()
+
+            assertEquals(2, player.played.size)
             controller.release()
         }
 

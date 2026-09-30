@@ -1,3 +1,5 @@
+@file:Suppress("CyclomaticComplexMethod", "MaxLineLength", "ReturnCount")
+
 package dev.jellystack.design.tv
 
 import androidx.compose.runtime.getValue
@@ -15,12 +17,13 @@ internal sealed interface TvFocusRestoration<out T> {
     ) : TvFocusRestoration<T>
 
     data object Failed : TvFocusRestoration<Nothing>
+
+    data object Cancelled : TvFocusRestoration<Nothing>
 }
 
-/** Owns route-local content focus and the expanded navigation rail as one deterministic state machine. */
+/** Coordinates stable route-local focus registration and restoration. */
 @Suppress("TooManyFunctions") // one coordinator per route; splitting it would hide the state machine
 internal class TvFocusCoordinator<T : Any>(
-    initiallyRailVisible: Boolean = false,
     private val attachmentTimeoutMillis: Long = 1_000,
     private val focusRequestAttempts: Int = 3,
     private val awaitFocusFrame: suspend () -> Unit = {},
@@ -28,6 +31,7 @@ internal class TvFocusCoordinator<T : Any>(
     private data class TargetRegistration(
         var count: Int,
         var fallback: Boolean,
+        var focusTarget: TvFocusTarget?,
     )
 
     private data class Registration<T>(
@@ -49,11 +53,13 @@ internal class TvFocusCoordinator<T : Any>(
     private val materializers = mutableMapOf<Any, LinkedHashMap<String, Materializer>>()
     private val restorationLocks = mutableMapOf<Any, Mutex>()
 
-    var isRailVisible by mutableStateOf(initiallyRailVisible)
-        private set
-
     var registrationRevision by mutableStateOf(0L)
         private set
+
+    private var interactionRevision = 0L
+
+    internal val currentInteractionRevision: Long
+        get() = interactionRevision
 
     init {
         require(attachmentTimeoutMillis > 0)
@@ -71,16 +77,18 @@ internal class TvFocusCoordinator<T : Any>(
         targetId: Any,
         target: T,
         fallback: Boolean = false,
+        focusTarget: TvFocusTarget? = null,
     ) {
         val route = routes.getOrPut(routeKey) { RouteTargets() }
         val registration = route.attached.getOrPut(targetId) { Registration() }
         val targetRegistration = registration.targets[target]
         if (targetRegistration == null) {
-            registration.targets[target] = TargetRegistration(count = 1, fallback = fallback)
+            registration.targets[target] = TargetRegistration(count = 1, fallback = fallback, focusTarget = focusTarget)
             registrationRevision += 1
         } else {
             targetRegistration.count += 1
             targetRegistration.fallback = targetRegistration.fallback || fallback
+            targetRegistration.focusTarget = focusTarget ?: targetRegistration.focusTarget
         }
     }
 
@@ -113,9 +121,48 @@ internal class TvFocusCoordinator<T : Any>(
         routeKey: Any,
         targetId: Any,
         target: T,
-    ) {
-        val route = routes[routeKey] ?: return
-        if (target in route.attached[targetId]?.targets.orEmpty()) route.rememberedId = targetId
+    ): TvFocusTarget? {
+        val route = routes[routeKey] ?: return null
+        val registration = route.attached[targetId]?.targets?.get(target) ?: return null
+        if (target in route.attached[targetId]?.targets.orEmpty()) {
+            route.rememberedId = targetId
+            onUserMovement()
+        }
+        return focusTargets(routeKey).firstOrNull { it.targetId == targetId } ?: registration.focusTarget
+    }
+
+    fun focusTargets(routeKey: Any): List<TvFocusTarget> {
+        val attachedTargets =
+            routes[routeKey]
+                ?.attached
+                ?.mapNotNull { (targetId, registration) ->
+                    registration.targets.values
+                        .firstNotNullOfOrNull { it.focusTarget }
+                        ?.takeIf { it.targetId == targetId }
+                }.orEmpty()
+        val attachedById = attachedTargets.associateBy(TvFocusTarget::targetId)
+        val materializerTargets =
+            materializers[routeKey]
+                ?.values
+                ?.flatMap { materializer -> materializer.targetIds.map(::tvFocusTarget) }
+                .orEmpty()
+        val materializerIds = materializerTargets.mapTo(mutableSetOf(), TvFocusTarget::targetId)
+        return (
+            materializerTargets.map { target -> attachedById[target.targetId] ?: target } +
+                attachedTargets.filterNot { it.targetId in materializerIds }
+        ).distinctBy(TvFocusTarget::targetId)
+            .groupBy { it.anchor.sectionId }
+            .values
+            .flatMap { sectionTargets ->
+                val hasMaterializerDescriptors = sectionTargets.any { it.targetId in materializerIds }
+                sectionTargets
+                    .mapIndexed { index, target ->
+                        target.copy(
+                            horizontalCenter = if (hasMaterializerDescriptors) index.toFloat() else target.horizontalCenter,
+                            horizontalIndex = index,
+                        )
+                    }
+            }
     }
 
     fun registerMaterializer(
@@ -145,32 +192,32 @@ internal class TvFocusCoordinator<T : Any>(
         return route.rememberedId?.let { route.attached[it]?.targets?.isNotEmpty() } != true
     }
 
-    fun openRail(repeatCount: Int = 0): Boolean {
-        if (repeatCount != 0 || isRailVisible) return false
-        isRailVisible = true
-        return true
-    }
-
-    fun closeRail(): Boolean {
-        if (!isRailVisible) return false
-        isRailVisible = false
-        return true
+    /** Invalidates delayed restoration after an explicit D-pad or rail focus movement. */
+    fun onUserMovement() {
+        interactionRevision += 1L
     }
 
     suspend fun restoreFocus(
         routeKey: Any,
         preferredTargetId: String? = null,
         includeFallback: Boolean = true,
+        requiredInteractionRevision: Long? = null,
         requestFocus: (T) -> Boolean,
-    ): TvFocusRestoration<T> =
-        restorationLocks.getOrPut(routeKey) { Mutex() }.withLock {
+    ): TvFocusRestoration<T> {
+        val restorationRevision = requiredInteractionRevision ?: interactionRevision
+        if (interactionRevision != restorationRevision) return TvFocusRestoration.Cancelled
+        return restorationLocks.getOrPut(routeKey) { Mutex() }.withLock {
+            if (interactionRevision != restorationRevision) return TvFocusRestoration.Cancelled
             awaitRouteCapability(routeKey)
+            if (interactionRevision != restorationRevision) return TvFocusRestoration.Cancelled
             val rememberedTargetId = preferredTargetId ?: routes[routeKey]?.rememberedId as? String
             if (rememberedTargetId != null) {
-                materializeIfNeeded(routeKey, rememberedTargetId)
-                focusTarget(routeKey, rememberedTargetId, requestFocus)?.let {
+                materializeIfNeeded(routeKey, rememberedTargetId, restorationRevision)
+                if (interactionRevision != restorationRevision) return TvFocusRestoration.Cancelled
+                focusTarget(routeKey, rememberedTargetId, restorationRevision, requestFocus)?.let {
                     return TvFocusRestoration.Focused(it)
                 }
+                if (interactionRevision != restorationRevision) return TvFocusRestoration.Cancelled
             }
             if (!includeFallback) return TvFocusRestoration.Failed
             val fallbackIds =
@@ -186,30 +233,39 @@ internal class TvFocusCoordinator<T : Any>(
                         ?.let(::addAll)
                 }.distinct()
             fallbackIds.forEach { targetId ->
-                materializeIfNeeded(routeKey, targetId)
-                focusTarget(routeKey, targetId, requestFocus)?.let {
+                materializeIfNeeded(routeKey, targetId, restorationRevision)
+                if (interactionRevision != restorationRevision) return TvFocusRestoration.Cancelled
+                focusTarget(routeKey, targetId, restorationRevision, requestFocus)?.let {
                     return TvFocusRestoration.Focused(it)
                 }
+                if (interactionRevision != restorationRevision) return TvFocusRestoration.Cancelled
             }
             return TvFocusRestoration.Failed
         }
+    }
 
     private suspend fun materializeIfNeeded(
         routeKey: Any,
         targetId: String,
-    ): Boolean =
-        when {
+        restorationRevision: Long,
+    ): Boolean {
+        if (
             routes[routeKey]
                 ?.attached
                 ?.get(targetId)
                 ?.targets
-                ?.isNotEmpty() == true -> true
-            else ->
-                materializerAwaitingTvTarget(routeKey, targetId)
-                    ?.let { materializer -> materializer.materialize(targetId) }
-                    ?.let { materialized -> materialized && awaitTargetAttachment(routeKey, targetId) }
-                    ?: false
+                ?.isNotEmpty() == true
+        ) {
+            return true
         }
+        val materializer = materializerAwaitingTvTarget(routeKey, targetId)
+        if (interactionRevision != restorationRevision) return false
+        val materialized = materializer?.materialize(targetId) == true
+        if (interactionRevision != restorationRevision || !materialized) return false
+        val attached = awaitTargetAttachment(routeKey, targetId)
+        if (interactionRevision != restorationRevision) return false
+        return attached
+    }
 
     /** First materializer covering [targetId], waiting up to the attachment timeout for registration. */
     private suspend fun materializerAwaitingTvTarget(
@@ -258,10 +314,12 @@ internal class TvFocusCoordinator<T : Any>(
     private suspend fun focusTarget(
         routeKey: Any,
         targetId: String,
+        restorationRevision: Long,
         requestFocus: (T) -> Boolean,
     ): T? {
         repeat(focusRequestAttempts) {
             awaitFocusFrame()
+            if (interactionRevision != restorationRevision) return null
             val targets =
                 routes[routeKey]
                     ?.attached
@@ -271,7 +329,7 @@ internal class TvFocusCoordinator<T : Any>(
                     .orEmpty()
             targets.forEach { target ->
                 if (requestFocus(target)) {
-                    rememberFocused(routeKey, targetId, target)
+                    routes[routeKey]?.rememberedId = targetId
                     return target
                 }
             }

@@ -5,6 +5,7 @@ import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
 import dev.jellystack.core.jellyfin.JellyfinSyncPlayAccess
 import dev.jellystack.network.ClientConfig
 import dev.jellystack.network.NetworkClientFactory
+import dev.jellystack.network.jellyfin.JellyfinClientIdentity
 import dev.jellystack.network.jellyfin.JellyfinSyncPlayApi
 import dev.jellystack.network.jellyfin.JellyfinSyncPlayException
 import dev.jellystack.network.jellyfin.JellyfinSyncPlayFailure
@@ -252,6 +253,12 @@ class SyncPlayCoordinator(
             baseUrl = environment.baseUrl,
             accessToken = environment.accessToken,
             deviceId = environment.deviceId ?: "jellystack-android",
+            identity =
+                JellyfinClientIdentity(
+                    appVersion = environment.clientVersion,
+                    deviceName = environment.deviceName,
+                    deviceId = environment.deviceId ?: "unknown",
+                ),
         ).also {
             api = it
             apiEnvironmentKey = environment.serverKey

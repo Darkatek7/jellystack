@@ -8,6 +8,8 @@ import kotlinx.coroutines.flow.Flow
  * the core module — and unit tests can substitute an in-memory fake without a real database.
  */
 interface JellyfinFavoritesStoreApi {
+    fun scoped(scopeId: String): JellyfinFavoritesStoreApi = this
+
     fun snapshot(): Set<String>
 
     fun observe(): Flow<Set<String>>

@@ -5,7 +5,6 @@ import io.ktor.client.call.body
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.parameter
 import io.ktor.client.request.request
-import io.ktor.http.HeadersBuilder
 import io.ktor.http.HttpMethod
 import io.ktor.http.path
 import io.ktor.http.takeFrom
@@ -18,6 +17,7 @@ class HomeSectionsApi(
     private val baseUrl: String,
     private val accessToken: String,
     private val deviceId: String? = null,
+    private val deviceName: String = JELLYSTACK_CLIENT_NAME,
     private val clientVersion: String = DEFAULT_JELLYSTACK_CLIENT_VERSION,
 ) {
     private fun HttpRequestBuilder.configure(pathSuffix: String) {
@@ -25,21 +25,14 @@ class HomeSectionsApi(
             takeFrom(baseUrl)
             path(pathSuffix.trimStart('/'))
         }
-        headers.apply {
-            appendIfAbsent("X-Emby-Token", accessToken)
-            appendIfAbsent(
-                "X-Emby-Authorization",
-                "MediaBrowser Client=\"Jellystack\", Device=\"Android\", " +
-                    "DeviceId=\"${deviceId ?: "unknown"}\", Version=\"$clientVersion\"",
-            )
-        }
-    }
-
-    private fun HeadersBuilder.appendIfAbsent(
-        name: String,
-        value: String,
-    ) {
-        if (!contains(name)) append(name, value)
+        headers.appendJellyfinAuthorization(
+            JellyfinClientIdentity(
+                appVersion = clientVersion,
+                deviceName = deviceName,
+                deviceId = deviceId ?: "unknown",
+            ),
+            accessToken,
+        )
     }
 
     suspend fun meta(): HomeSectionsMetaDto =

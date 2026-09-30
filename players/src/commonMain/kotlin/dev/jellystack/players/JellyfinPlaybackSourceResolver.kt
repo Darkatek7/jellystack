@@ -247,7 +247,7 @@ class JellyfinPlaybackSourceResolver(
 
         return ResolvedPlaybackSource(
             url = resolvedUrl,
-            headers = playbackHeaders(environment),
+            headers = playbackHeaders(),
             mode = resolvedMode,
             mimeType = resolvedMimeType,
             subtitles =
@@ -296,7 +296,7 @@ class JellyfinPlaybackSourceResolver(
             append("/Videos/")
             append(request.mediaId)
             append("/master.m3u8")
-            append("?api_key=")
+            append("?ApiKey=")
             append(environment.accessToken)
             append("&MediaSourceId=")
             append(mediaSourceId)
@@ -386,7 +386,7 @@ class JellyfinPlaybackSourceResolver(
                         append("/Audio/")
                         append(request.mediaId)
                         append("/universal")
-                        append("?api_key=")
+                        append("?ApiKey=")
                         append(environment.accessToken)
                         append("&MediaSourceId=")
                         append(selection.sourceId)
@@ -408,7 +408,7 @@ class JellyfinPlaybackSourceResolver(
 
         return ResolvedPlaybackSource(
             url = url,
-            headers = playbackHeaders(environment),
+            headers = playbackHeaders(),
             mode = selection.mode,
             mimeType = mimeType,
             subtitles = emptyList(),
@@ -433,7 +433,7 @@ class JellyfinPlaybackSourceResolver(
             append("/stream.")
             append(container ?: "mp4")
             append("?Static=true")
-            append("&api_key=")
+            append("&ApiKey=")
             append(environment.accessToken)
             append("&MediaSourceId=")
             append(mediaSourceId)
@@ -460,7 +460,7 @@ class JellyfinPlaybackSourceResolver(
             val format = subtitleFormat(track.format)
             val path = "$baseUrl/Videos/${request.mediaId}/$mediaSourceId/Subtitles/$streamIndex/stream.${format.extension}"
             val url =
-                "$path?api_key=${environment.accessToken}" +
+                "$path?ApiKey=${environment.accessToken}" +
                     "&MediaSourceId=$mediaSourceId" +
                     "&SubtitleStreamIndex=$streamIndex" +
                     "&format=${format.format}"
@@ -504,10 +504,9 @@ class JellyfinPlaybackSourceResolver(
             SubtitleFormat.UNKNOWN -> SubtitleFormatDescriptor("vtt", "vtt", "text/vtt")
         }
 
-    private fun playbackHeaders(environment: JellyfinEnvironment): Map<String, String> =
+    private fun playbackHeaders(): Map<String, String> =
         mapOf(
-            "X-Emby-Authorization" to authorizationHeader(environment),
-            "User-Agent" to "$clientName/${environment.deviceName}",
+            "User-Agent" to "$clientName/$clientVersion",
         )
 
     private fun generatePlaySessionId(): String {
@@ -541,19 +540,6 @@ class JellyfinPlaybackSourceResolver(
                 else -> "audio/*"
             }
         }
-
-    private fun authorizationHeader(environment: JellyfinEnvironment): String {
-        val builder = StringBuilder()
-        builder.append("MediaBrowser ")
-        builder.append("""Client="$clientName"""")
-        builder.append(""", Device="${environment.deviceName}"""")
-        builder.append(""", DeviceId="${environment.deviceId}"""")
-        builder.append(""", Version="$clientVersion"""")
-        if (environment.accessToken.isNotEmpty()) {
-            builder.append(""", Token="${environment.accessToken}"""")
-        }
-        return builder.toString()
-    }
 
     private data class SubtitleFormatDescriptor(
         val extension: String,

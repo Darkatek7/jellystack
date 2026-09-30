@@ -31,6 +31,7 @@ class JellyfinSyncPlayApi(
     private val baseUrl: String,
     private val accessToken: String,
     private val deviceId: String,
+    private val identity: JellyfinClientIdentity? = null,
     private val json: Json = Json { ignoreUnknownKeys = true },
 ) {
     private fun HttpRequestBuilder.configure(pathSuffix: String) {
@@ -38,7 +39,7 @@ class JellyfinSyncPlayApi(
             takeFrom(baseUrl)
             path(pathSuffix.trimStart('/'))
         }
-        headers.append("X-Emby-Token", accessToken)
+        headers.appendJellyfinAuthorization(identity, accessToken)
     }
 
     suspend fun groups(): List<JellyfinSyncPlayGroupDto> {
@@ -165,7 +166,7 @@ class JellyfinSyncPlayApi(
                 takeFrom(baseUrl)
                 protocol = if (protocol == URLProtocol.HTTPS) URLProtocol.WSS else URLProtocol.WS
                 path("socket")
-                parameters.append("api_key", accessToken)
+                parameters.append(JELLYFIN_API_KEY_QUERY_PARAMETER, accessToken)
                 parameters.append("deviceId", deviceId)
             }.buildString()
 

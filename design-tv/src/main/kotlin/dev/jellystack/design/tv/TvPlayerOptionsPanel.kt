@@ -52,6 +52,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -101,6 +103,7 @@ internal fun TvPlayerOptionRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     trailing: (@Composable () -> Unit)? = null,
+    checked: Boolean? = null,
 ) {
     val shape = RoundedCornerShape(16.dp)
     var focused by remember { mutableStateOf(false) }
@@ -121,6 +124,7 @@ internal fun TvPlayerOptionRow(
                     role = Role.Button
                     contentDescription = description
                     this.selected = selected
+                    checked?.let { toggleableState = if (it) ToggleableState.On else ToggleableState.Off }
                 }.clickable(onClick = onClick)
                 .focusable()
                 .padding(horizontal = 20.dp),
@@ -266,6 +270,7 @@ internal fun TvPlayerOptionsPanel(
                             { onStatsToggled(!state.statsForNerdsEnabled) },
                             Modifier.focusRequester(statsFocus),
                             trailing = { TvPlayerToggle(state.statsForNerdsEnabled) },
+                            checked = state.statsForNerdsEnabled,
                         )
                     }
                     item {

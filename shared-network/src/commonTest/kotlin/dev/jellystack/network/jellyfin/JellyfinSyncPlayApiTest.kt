@@ -5,19 +5,58 @@ import dev.jellystack.network.NetworkClientFactory
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.engine.mock.respondOk
+import io.ktor.client.plugins.websocket.WebSocketException
+import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.URLProtocol
 import io.ktor.http.headersOf
 import io.ktor.utils.io.ByteReadChannel
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class JellyfinSyncPlayApiTest {
+    @Test
+    fun websocketHandshakeUsesModernQueryAuthWithoutDuplicatingTheTokenInHeaders() =
+        runTest {
+            val engine =
+                MockEngine {
+                    respond(content = "Unauthorized", status = HttpStatusCode.Unauthorized)
+                }
+            val client =
+                NetworkClientFactory.create(
+                    ClientConfig(
+                        engine = engine,
+                        maxRetries = 0,
+                        configure = { install(WebSockets) },
+                    ),
+                )
+            try {
+                val api = JellyfinSyncPlayApi(client, "https://media.example", "token +&?", "device")
+
+                assertFailsWith<WebSocketException> { api.events().toList() }
+
+                val request = engine.requestHistory.single()
+                assertEquals(URLProtocol.WSS, request.url.protocol)
+                assertEquals("/socket", request.url.encodedPath)
+                assertEquals("token +&?", request.url.parameters["ApiKey"])
+                assertEquals("device", request.url.parameters["deviceId"])
+                assertNull(request.url.parameters["api_key"])
+                assertNull(request.headers[HttpHeaders.Authorization])
+                assertNull(request.headers["X-Emby-Authorization"])
+                assertNull(request.headers["X-Emby-Token"])
+            } finally {
+                client.close()
+            }
+        }
+
     @Test
     fun mapsGroupsAndUsesAuthenticatedSyncPlayEndpoints() =
         runTest {
@@ -25,7 +64,7 @@ class JellyfinSyncPlayApiTest {
             val engine =
                 MockEngine { request ->
                     requests += request.url.encodedPath to request.method.value
-                    assertEquals("token", request.headers["X-Emby-Token"])
+                    assertEquals("MediaBrowser Token=\"token\"", request.headers[HttpHeaders.Authorization])
                     when (request.url.encodedPath) {
                         "/SyncPlay/List" ->
                             respond(

@@ -7,7 +7,7 @@ import kotlin.test.assertTrue
 class TvNavigationRailStateTest {
     @Test
     fun startsCollapsedForContentFirstNavigation() {
-        assertFalse(TvFocusCoordinator<String>().isRailVisible)
+        assertFalse(TvAppStateHolder().state.railExpanded)
     }
 
     @Test
@@ -34,12 +34,13 @@ class TvNavigationRailStateTest {
 
     @Test
     fun selectingContentHidesRailAndLeftEdgeRestoresIt() {
-        val state = TvFocusCoordinator<String>(initiallyRailVisible = true)
-
-        assertTrue(state.isRailVisible)
-        state.closeRail()
-        assertFalse(state.isRailVisible)
+        val state = TvAppStateHolder()
         state.openRail()
-        assertTrue(state.isRailVisible)
+
+        assertTrue(state.state.railExpanded)
+        state.closeRail()
+        assertFalse(state.state.railExpanded)
+        state.openRail()
+        assertTrue(state.state.railExpanded)
     }
 }

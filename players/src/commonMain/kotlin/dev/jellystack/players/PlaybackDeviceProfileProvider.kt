@@ -38,6 +38,9 @@ data class PlaybackDecoderCapabilities(
     val maxAacChannelCount: Int? = null,
     val maxAudioChannelCounts: Map<PlaybackAudioCodec, Int> = emptyMap(),
     val maxStreamingBitrate: Int? = null,
+    val transcodingVideoCodecs: Set<PlaybackVideoCodec> = videoCodecs,
+    val transcodingAudioCodecs: Set<PlaybackAudioCodec> = audioCodecs,
+    val maxTranscodingAudioChannelCount: Int? = null,
 )
 
 fun interface PlaybackDeviceProfileProvider {
@@ -69,14 +72,14 @@ object PlaybackDeviceProfileFactory {
             listOf(
                 PlaybackVideoCodec.HEVC,
                 PlaybackVideoCodec.H264,
-            ).filter(capabilities.videoCodecs::contains)
+            ).filter(capabilities.transcodingVideoCodecs::contains)
         val hlsMpegTsAudioCodecs =
             listOf(
                 PlaybackAudioCodec.AAC,
                 PlaybackAudioCodec.AC3,
                 PlaybackAudioCodec.EAC3,
                 PlaybackAudioCodec.MP3,
-            ).filter(capabilities.audioCodecs::contains)
+            ).filter(capabilities.transcodingAudioCodecs::contains)
         val hlsFmp4AudioCodecs =
             listOf(
                 PlaybackAudioCodec.AAC,
@@ -85,9 +88,10 @@ object PlaybackDeviceProfileFactory {
                 PlaybackAudioCodec.MP3,
                 PlaybackAudioCodec.FLAC,
                 PlaybackAudioCodec.OPUS,
-            ).filter(capabilities.audioCodecs::contains)
+            ).filter(capabilities.transcodingAudioCodecs::contains)
         val maxTranscodeAudioChannels =
-            hlsFmp4AudioCodecs.mapNotNull(capabilities.maxAudioChannelCounts::get).maxOrNull()
+            capabilities.maxTranscodingAudioChannelCount
+                ?: hlsFmp4AudioCodecs.mapNotNull(capabilities.maxAudioChannelCounts::get).maxOrNull()
                 ?: capabilities.maxAacChannelCount
 
         fun directProfile(

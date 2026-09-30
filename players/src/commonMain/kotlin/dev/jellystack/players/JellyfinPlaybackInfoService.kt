@@ -3,6 +3,7 @@ package dev.jellystack.players
 import dev.jellystack.core.jellyfin.JellyfinEnvironment
 import dev.jellystack.network.ClientConfig
 import dev.jellystack.network.NetworkClientFactory
+import dev.jellystack.network.jellyfin.JellyfinClientIdentity
 import dev.jellystack.network.jellyfin.JellyfinPlaybackApi
 import dev.jellystack.network.jellyfin.JellyfinPlaybackInfoRequestDto
 import dev.jellystack.network.jellyfin.JellyfinPlaybackInfoResponseDto
@@ -30,7 +31,7 @@ class NetworkJellyfinPlaybackInfoService(
         playSessionId: String,
     ) {
         val deviceId = environment.deviceId ?: return
-        JellyfinPlaybackApi(client, environment.baseUrl, environment.accessToken)
+        JellyfinPlaybackApi(client, environment.baseUrl, environment.accessToken, environment.clientIdentity())
             .stopEncodingProcess(deviceId, playSessionId)
     }
 
@@ -40,6 +41,13 @@ class NetworkJellyfinPlaybackInfoService(
         userId: String,
         request: JellyfinPlaybackInfoRequestDto,
     ): JellyfinPlaybackInfoResponseDto =
-        JellyfinPlaybackApi(client, environment.baseUrl, environment.accessToken)
+        JellyfinPlaybackApi(client, environment.baseUrl, environment.accessToken, environment.clientIdentity())
             .fetchPlaybackInfo(itemId, userId, request)
 }
+
+private fun JellyfinEnvironment.clientIdentity(): JellyfinClientIdentity =
+    JellyfinClientIdentity(
+        appVersion = clientVersion,
+        deviceName = deviceName,
+        deviceId = deviceId ?: "unknown",
+    )

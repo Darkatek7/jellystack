@@ -9,6 +9,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -30,7 +31,7 @@ class JellyfinPlaybackSourceResolverTest {
                                         supportsDirectStream = false,
                                         supportsTranscoding = true,
                                         transcodingUrl =
-                                            "/Videos/item-1/master.m3u8?VideoCodec=hevc&AllowVideoStreamCopy=true",
+                                            "/Videos/item-1/master.m3u8?VideoCodec=hevc&AllowVideoStreamCopy=true&ApiKey=dummy-token",
                                         transcodingContainer = "ts",
                                         transcodingSubProtocol = "hls",
                                     ),
@@ -54,6 +55,11 @@ class JellyfinPlaybackSourceResolverTest {
             val source = resolver.resolve(request, selection, environment(), 12_000, PlaybackSourceOptions())
 
             assertEquals(PlaybackMode.HLS, source.mode)
+            assertModernQueryAuthentication(source)
+            assertEquals(
+                "https://demo.jellyfin.org/Videos/item-1/master.m3u8?VideoCodec=hevc&AllowVideoStreamCopy=true&ApiKey=dummy-token",
+                source.url,
+            )
             assertEquals("hevc", source.url.queryParameter("VideoCodec"))
             assertEquals(null, source.url.queryParameter("VideoBitRate"))
             assertEquals(null, source.url.queryParameter("MaxHeight"))
@@ -96,6 +102,7 @@ class JellyfinPlaybackSourceResolverTest {
             val source = resolver.resolve(request, selection, environment(), 0, PlaybackSourceOptions())
 
             assertEquals(PlaybackMode.DIRECT, source.mode)
+            assertModernQueryAuthentication(source)
             assertEquals("source-1", source.mediaSourceId)
             assertEquals("play-auto", source.playSessionId)
             assertTrue(source.url.contains("/Videos/item-1/stream.mkv"))
@@ -172,6 +179,7 @@ class JellyfinPlaybackSourceResolverTest {
             assertEquals(PlaybackMode.HLS, source.mode)
             assertEquals("source-1", source.mediaSourceId)
             assertEquals("play-fallback", source.playSessionId)
+            assertModernQueryAuthentication(source)
             assertTrue(source.url.contains("/Videos/item-1/master.m3u8"))
             assertEquals("hevc", source.url.queryParameter("VideoCodec"))
             assertEquals("aac", source.url.queryParameter("AudioCodec"))
@@ -1060,10 +1068,74 @@ class JellyfinPlaybackSourceResolverTest {
             val source = resolver.resolve(request, selection, environment(), 0, PlaybackSourceOptions())
 
             assertTrue(source.url.contains("/Audio/song-1/universal"))
+            assertModernQueryAuthentication(source)
             assertEquals("320000", source.url.queryParameter("MaxStreamingBitrate"))
             assertEquals("audio/aac", source.mimeType)
             assertNull(service.lastRequest)
+
+            val directSource =
+                resolver.resolve(request, selection.copy(mode = PlaybackMode.DIRECT), environment(), 0, PlaybackSourceOptions())
+
+            assertTrue(directSource.url.contains("/Audio/song-1/stream.flac"))
+            assertModernQueryAuthentication(directSource)
+            assertNull(service.lastRequest)
         }
+
+    @Test
+    fun subtitleUrlsAuthenticateWithModernQueryParameterForEveryTextFormat() =
+        runTest {
+            val service =
+                RecordingPlaybackInfoService(
+                    JellyfinPlaybackInfoResponseDto(
+                        mediaSources =
+                            listOf(
+                                JellyfinPlaybackMediaSourceDto(
+                                    id = "source-1",
+                                    container = "mkv",
+                                    supportsDirectPlay = true,
+                                ),
+                            ),
+                    ),
+                )
+            val resolver = JellyfinPlaybackSourceResolver(service, FixedPlaybackDeviceProfileProvider)
+            val request = videoRequest()
+            val tracks =
+                listOf(SubtitleFormat.SRT, SubtitleFormat.VTT, SubtitleFormat.ASS).mapIndexed { index, format ->
+                    SubtitleTrack(
+                        id = "subtitle-$index",
+                        language = "en",
+                        title = "English",
+                        format = format,
+                        isDefault = false,
+                        isForced = false,
+                        streamIndex = index + 1,
+                    )
+                }
+            val selection = PlaybackStreamSelector().select(request.mediaSources).copy(subtitleTracks = tracks)
+
+            val source = resolver.resolve(request, selection, environment(), 0, PlaybackSourceOptions())
+
+            assertModernQueryAuthentication(source)
+            assertEquals(tracks.size, source.subtitles.size)
+            source.subtitles.forEachIndexed { index, subtitle ->
+                assertEquals("dummy-token", subtitle.url.queryParameter("ApiKey"))
+                assertNull(subtitle.url.queryParameter("api_key"))
+                assertEquals(tracks[index].id, subtitle.trackId)
+                assertTrue(subtitle.url.contains("/Videos/item-1/source-1/Subtitles/${index + 1}/stream."))
+            }
+        }
+
+    private fun assertModernQueryAuthentication(source: ResolvedPlaybackSource) {
+        assertEquals("dummy-token", source.url.queryParameter("ApiKey"))
+        assertNull(source.url.queryParameter("api_key"))
+        assertFalse(
+            source.headers.keys.any { name ->
+                name.equals("Authorization", ignoreCase = true) ||
+                    name.startsWith("X-Emby-", ignoreCase = true) ||
+                    name.startsWith("X-MediaBrowser-", ignoreCase = true)
+            },
+        )
+    }
 
     private fun videoRequest(): PlaybackRequest =
         PlaybackRequest(

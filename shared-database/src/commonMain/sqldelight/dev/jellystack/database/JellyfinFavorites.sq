@@ -1,16 +1,18 @@
 CREATE TABLE IF NOT EXISTS jellyfin_favorites (
-    item_id TEXT NOT NULL PRIMARY KEY,
-    updated_at INTEGER NOT NULL
+    scope_id TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (scope_id, item_id)
 );
 
 selectAll:
-SELECT item_id FROM jellyfin_favorites;
+SELECT item_id FROM jellyfin_favorites WHERE scope_id = ?;
 
 upsert:
-INSERT OR REPLACE INTO jellyfin_favorites(item_id, updated_at) VALUES (?, ?);
+INSERT OR REPLACE INTO jellyfin_favorites(scope_id, item_id, updated_at) VALUES (?, ?, ?);
 
 delete:
-DELETE FROM jellyfin_favorites WHERE item_id = ?;
+DELETE FROM jellyfin_favorites WHERE scope_id = ? AND item_id = ?;
 
 clear:
-DELETE FROM jellyfin_favorites;
+DELETE FROM jellyfin_favorites WHERE scope_id = ?;
