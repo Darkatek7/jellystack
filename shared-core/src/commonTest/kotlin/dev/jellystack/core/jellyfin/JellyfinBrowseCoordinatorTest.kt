@@ -60,12 +60,12 @@ class JellyfinBrowseCoordinatorTest {
             val path = request.url.encodedPath
             val body =
                 when {
-                    path.endsWith("/Views") -> {
+                    path.endsWith("/UserViews") -> {
                         viewsCallCount.update { it + 1 }
                         LIBRARIES_JSON
                     }
-                    path.endsWith("/Items/Resume") -> RESUME_JSON
-                    path.endsWith("/Items/NextUp") -> NEXT_UP_JSON
+                    path.endsWith("/UserItems/Resume") -> RESUME_JSON
+                    path.endsWith("/Shows/NextUp") -> NEXT_UP_JSON
                     path.endsWith("/Items/Latest") -> {
                         latestCallCount.update { count -> count + 1 }
                         when (request.url.parameters["includeItemTypes"]) {
@@ -562,9 +562,9 @@ class JellyfinBrowseCoordinatorTest {
                     val path = request.url.encodedPath
                     val body =
                         when {
-                            path.endsWith("/Views") -> LIBRARIES_JSON
-                            path.endsWith("/Items/Resume") -> RESUME_JSON
-                            path.endsWith("/Items/NextUp") -> NEXT_UP_JSON
+                            path.endsWith("/UserViews") -> LIBRARIES_JSON
+                            path.endsWith("/UserItems/Resume") -> RESUME_JSON
+                            path.endsWith("/Shows/NextUp") -> NEXT_UP_JSON
                             path.endsWith("/Items/Latest") -> "[]"
                             path.endsWith("/Items") && request.url.parameters["ParentId"] == "folder-1" -> {
                                 childRequestStarted.complete(Unit)
@@ -640,9 +640,9 @@ class JellyfinBrowseCoordinatorTest {
                     val path = request.url.encodedPath
                     val body =
                         when {
-                            path.endsWith("/Views") -> LIBRARIES_JSON
-                            path.endsWith("/Items/Resume") -> RESUME_JSON
-                            path.endsWith("/Items/NextUp") -> NEXT_UP_JSON
+                            path.endsWith("/UserViews") -> LIBRARIES_JSON
+                            path.endsWith("/UserItems/Resume") -> RESUME_JSON
+                            path.endsWith("/Shows/NextUp") -> NEXT_UP_JSON
                             path.endsWith("/Items/Latest") -> "[]"
                             path.endsWith("/Items") && request.url.parameters["StartIndex"] == "0" ->
                                 ITEMS_PAGE_1_JSON
@@ -1442,7 +1442,7 @@ class JellyfinBrowseCoordinatorTest {
                 MockEngine { request ->
                     val path = request.url.encodedPath
                     when {
-                        path.endsWith("/Views") -> {
+                        path.endsWith("/UserViews") -> {
                             libraryRequests.update { it + 1 }
                             respond(
                                 content = REFRESHED_LIBRARIES_JSON,
@@ -1549,9 +1549,9 @@ class JellyfinBrowseCoordinatorTest {
                     val path = request.url.encodedPath
                     val body =
                         when {
-                            path.endsWith("/Views") -> orderedLibrariesJson
-                            path.endsWith("/Items/Resume") -> RESUME_JSON
-                            path.endsWith("/Items/NextUp") -> NEXT_UP_JSON
+                            path.endsWith("/UserViews") -> orderedLibrariesJson
+                            path.endsWith("/UserItems/Resume") -> RESUME_JSON
+                            path.endsWith("/Shows/NextUp") -> NEXT_UP_JSON
                             path.endsWith("/Items/Latest") ->
                                 when (request.url.parameters["includeItemTypes"]) {
                                     "Series,Episode" -> LATEST_SHOWS_JSON
@@ -1871,25 +1871,25 @@ class JellyfinBrowseCoordinatorTest {
             when {
                 addFavoriteBehavior == FavoriteApiBehavior.FailWithBoom &&
                     request.method == HttpMethod.Post &&
-                    path.endsWith("/Users/user-123/FavoriteItems/movie-1") -> {
+                    path.endsWith("/UserFavoriteItems/movie-1") -> {
                     respond("boom", HttpStatusCode.InternalServerError, headers)
                 }
                 request.method == HttpMethod.Post &&
-                    path.endsWith("/Users/user-123/FavoriteItems/movie-1") -> {
+                    path.endsWith("/UserFavoriteItems/movie-1") -> {
                     respond("", HttpStatusCode.NoContent, headers)
                 }
                 request.method == HttpMethod.Delete &&
-                    path.endsWith("/Users/user-123/FavoriteItems/movie-1") -> {
+                    path.endsWith("/UserFavoriteItems/movie-1") -> {
                     respond("", HttpStatusCode.NoContent, headers)
                 }
                 request.method == HttpMethod.Get &&
-                    path.endsWith("/Users/user-123/Items") &&
+                    path.endsWith("/Items") &&
                     request.url.parameters["Filters"] == "IsFavorite" -> {
                     respond(fetchFavoriteIdsJson, HttpStatusCode.OK, headers)
                 }
-                path.endsWith("/Views") -> respond(LIBRARIES_JSON, HttpStatusCode.OK, headers)
-                path.endsWith("/Items/Resume") -> respond(RESUME_JSON, HttpStatusCode.OK, headers)
-                path.endsWith("/Items/NextUp") -> respond(NEXT_UP_JSON, HttpStatusCode.OK, headers)
+                path.endsWith("/UserViews") -> respond(LIBRARIES_JSON, HttpStatusCode.OK, headers)
+                path.endsWith("/UserItems/Resume") -> respond(RESUME_JSON, HttpStatusCode.OK, headers)
+                path.endsWith("/Shows/NextUp") -> respond(NEXT_UP_JSON, HttpStatusCode.OK, headers)
                 path.endsWith("/Items/Latest") ->
                     when (request.url.parameters["includeItemTypes"]) {
                         "Series,Episode" -> respond(LATEST_SHOWS_JSON, HttpStatusCode.OK, headers)
@@ -1937,9 +1937,9 @@ class JellyfinBrowseCoordinatorTest {
             val path = request.url.encodedPath
             val headers = jsonHeaders()
             when {
-                path.endsWith("/Views") -> respond(LIBRARIES_JSON, HttpStatusCode.OK, headers)
-                path.endsWith("/Items/Resume") -> respond(RESUME_JSON, HttpStatusCode.OK, headers)
-                path.endsWith("/Items/NextUp") -> respond(NEXT_UP_JSON, HttpStatusCode.OK, headers)
+                path.endsWith("/UserViews") -> respond(LIBRARIES_JSON, HttpStatusCode.OK, headers)
+                path.endsWith("/UserItems/Resume") -> respond(RESUME_JSON, HttpStatusCode.OK, headers)
+                path.endsWith("/Shows/NextUp") -> respond(NEXT_UP_JSON, HttpStatusCode.OK, headers)
                 path.endsWith("/Items/Latest") -> respond("[]", HttpStatusCode.OK, headers)
                 path.endsWith("/Items") &&
                     request.url.parameters["Filters"] == "IsFavorite" &&

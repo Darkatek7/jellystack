@@ -10,6 +10,7 @@ import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
 import dev.jellystack.core.jellyfin.JellyfinSessionApiFactory
 import dev.jellystack.core.jellyfin.JellyfinSessionRepository
 import dev.jellystack.core.jellyfin.JellystackClientVersionProvider
+import dev.jellystack.core.jellyfin.JellystackLocaleProvider
 import dev.jellystack.core.jellyfin.ServerRepositoryEnvironmentProvider
 import dev.jellystack.core.jellyfin.defaultHomeSectionsApiFactory
 import dev.jellystack.core.jellyfin.defaultJellyfinBrowseApiFactory
@@ -67,7 +68,11 @@ fun coreModule(): Module =
         single { BiometricLockPreferenceRepository(get()) }
         single { BiometricAuthGate(preferences = get(), dispatcher = get()) }
         single { ServerConfigRepository(secureStore = get()) }
-        single<ServerConnectivity> { ServerConnectivityChecker() }
+        single<ServerConnectivity> {
+            ServerConnectivityChecker(
+                clientVersionProvider = { get<JellystackClientVersionProvider>().versionName() },
+            )
+        }
         single { ServerCredentialVault(get()) }
         single { ActiveServerPreferenceRepository(get()) }
         single {
@@ -84,8 +89,13 @@ fun coreModule(): Module =
                 clientVersionProvider = { get<JellystackClientVersionProvider>().versionName() },
             )
         }
+        single<JellystackLocaleProvider> { JellystackLocaleProvider { null } }
         single<JellyseerrEnvironmentProvider> { ServerRepositoryJellyseerrEnvironmentProvider(get()) }
-        single<JellyfinBrowseApiFactory>(jellyfinBrowseApiFactoryQualifier) { defaultJellyfinBrowseApiFactory() }
+        single<JellyfinBrowseApiFactory>(jellyfinBrowseApiFactoryQualifier) {
+            defaultJellyfinBrowseApiFactory(
+                acceptLanguageProvider = { get<JellystackLocaleProvider>().languageTag() },
+            )
+        }
         single {
             JellyfinBrowseRepository(
                 environmentProvider = get(),
@@ -95,14 +105,22 @@ fun coreModule(): Module =
                 apiFactory = get(jellyfinBrowseApiFactoryQualifier),
             )
         }
-        single<HomeSectionsApiFactory>(homeSectionsApiFactoryQualifier) { defaultHomeSectionsApiFactory() }
+        single<HomeSectionsApiFactory>(homeSectionsApiFactoryQualifier) {
+            defaultHomeSectionsApiFactory(
+                acceptLanguageProvider = { get<JellystackLocaleProvider>().languageTag() },
+            )
+        }
         single {
             HomeSectionsRepository(
                 environmentProvider = get(),
                 apiFactory = get(homeSectionsApiFactoryQualifier),
             )
         }
-        single<JellyfinSessionApiFactory>(jellyfinSessionApiFactoryQualifier) { defaultJellyfinSessionApiFactory() }
+        single<JellyfinSessionApiFactory>(jellyfinSessionApiFactoryQualifier) {
+            defaultJellyfinSessionApiFactory(
+                acceptLanguageProvider = { get<JellystackLocaleProvider>().languageTag() },
+            )
+        }
         single {
             JellyfinSessionRepository(
                 environmentProvider = get(),

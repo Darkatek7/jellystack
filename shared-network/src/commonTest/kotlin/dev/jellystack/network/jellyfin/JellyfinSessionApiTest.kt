@@ -14,16 +14,21 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class JellyfinSessionApiTest {
     @Test
-    fun defaultAuthorizationHeaderUsesCurrentAndroidVersion() =
+    fun defaultAuthorizationHeaderUsesCurrentClientVersion() =
         runTest {
             var authorization = ""
+            var legacyTokenHeader: String? = null
+            var legacyAuthorizationHeader: String? = null
             val engine =
                 MockEngine { request ->
-                    authorization = request.headers["X-Emby-Authorization"].orEmpty()
+                    authorization = request.headers[HttpHeaders.Authorization].orEmpty()
+                    legacyTokenHeader = request.headers["X-Emby-Token"]
+                    legacyAuthorizationHeader = request.headers["X-Emby-Authorization"]
                     respond(
                         content = ByteReadChannel("""{"Id":"user-1","Name":"Viewer"}"""),
                         headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
@@ -35,9 +40,12 @@ class JellyfinSessionApiTest {
             api.currentUser()
 
             assertEquals(
-                "MediaBrowser Client=\"Jellystack\", Device=\"Android\", DeviceId=\"unknown\", Version=\"0.15.1\"",
+                "MediaBrowser Client=\"Jellystack\", Device=\"Jellystack\", DeviceId=\"unknown\", " +
+                    "Version=\"$DEFAULT_JELLYSTACK_CLIENT_VERSION\", Token=\"dummy-token\"",
                 authorization,
             )
+            assertNull(legacyTokenHeader)
+            assertNull(legacyAuthorizationHeader)
             client.close()
         }
 

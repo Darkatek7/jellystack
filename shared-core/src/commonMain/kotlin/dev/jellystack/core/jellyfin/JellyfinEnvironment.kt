@@ -17,3 +17,13 @@ fun interface JellyfinEnvironmentProvider {
 fun interface JellystackClientVersionProvider {
     fun versionName(): String
 }
+
+/**
+ * Supplies the active app language as a BCP 47 tag (for example `de` or `en-US`).
+ *
+ * Jellyfin 12.0 servers can localize their responses per client language; the value is sent
+ * as `Accept-Language` on Jellyfin requests and re-evaluated per request.
+ */
+fun interface JellystackLocaleProvider {
+    fun languageTag(): String?
+}

@@ -860,6 +860,7 @@ private fun rememberAndroidPlaybackEnvironment(
             JellyfinPlaybackSourceResolver(
                 playbackInfoService = NetworkJellyfinPlaybackInfoService(),
                 deviceProfileProvider = AndroidPlaybackDeviceProfileProvider(),
+                clientVersion = BuildConfig.VERSION_NAME,
             )
         }
     val controller =

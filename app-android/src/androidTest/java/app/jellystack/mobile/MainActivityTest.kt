@@ -281,23 +281,23 @@ class MainActivityTest {
     }
 
     @Test
-    fun whatsNewShowsCanonical0151Highlights() {
+    fun whatsNewShowsCurrentReleaseHighlights() {
         dismissOnboardingIfPresent()
         openWhatsNew()
-        composeRule.onAllNodesWithText("Version 0.15.1").onLast().assertExists()
+        composeRule.onAllNodesWithText("Version ${BuildConfig.VERSION_NAME}").onLast().assertExists()
         composeRule
             .onNodeWithText(
-                "Skip server-provided intros, recaps, previews, commercials, and credits from the player.",
+                "Connect to Jellyfin 12.0+ with password login or Quick Connect.",
                 substring = true,
             ).assertExists()
         composeRule
             .onNodeWithText(
-                "Choose Off, Button, or Auto independently for each segment type.",
+                "Watch videos with working artwork, subtitles, and SyncPlay on Jellyfin 12.0+.",
                 substring = true,
             ).assertExists()
         composeRule
             .onNodeWithText(
-                "Play the next episode while credits are on screen.",
+                "Continue queued downloads after upgrading your Jellyfin server.",
                 substring = true,
             ).assertExists()
     }

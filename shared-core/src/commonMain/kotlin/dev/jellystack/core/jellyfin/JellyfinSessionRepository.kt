@@ -178,17 +178,20 @@ internal fun JellyfinActivityEntryDto.toDomain(): JellyfinActivityEntry =
     )
 
 fun defaultJellyfinSessionApiFactory(
-    clientProvider: () -> HttpClient = {
-        NetworkClientFactory.create(ClientConfig(installLogging = false))
-    },
+    acceptLanguageProvider: () -> String? = { null },
+    clientProvider: (() -> HttpClient)? = null,
 ): JellyfinSessionApiFactory {
-    val client by lazy(clientProvider)
+    val client by lazy {
+        clientProvider?.invoke()
+            ?: NetworkClientFactory.create(ClientConfig(installLogging = false, acceptLanguageProvider = acceptLanguageProvider))
+    }
     return { environment ->
         JellyfinSessionApi(
             client = client,
             baseUrl = environment.baseUrl,
             accessToken = environment.accessToken,
             deviceId = environment.deviceId,
+            deviceName = environment.deviceName,
             clientVersion = environment.clientVersion,
         )
     }

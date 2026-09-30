@@ -7,7 +7,6 @@ import io.ktor.client.request.parameter
 import io.ktor.client.request.request
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
-import io.ktor.http.HeadersBuilder
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
@@ -20,7 +19,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 
-internal const val DEFAULT_JELLYSTACK_CLIENT_VERSION = "0.15.1"
+internal const val DEFAULT_JELLYSTACK_CLIENT_VERSION = "0.16.0"
 
 /** Authenticated Jellyfin session and administrator endpoints used by capability-gated features. */
 class JellyfinSessionApi(
@@ -28,6 +27,7 @@ class JellyfinSessionApi(
     private val baseUrl: String,
     private val accessToken: String,
     private val deviceId: String? = null,
+    private val deviceName: String = JELLYSTACK_CLIENT_NAME,
     private val clientVersion: String = DEFAULT_JELLYSTACK_CLIENT_VERSION,
 ) {
     private fun HttpRequestBuilder.configure(pathSuffix: String) {
@@ -35,21 +35,14 @@ class JellyfinSessionApi(
             takeFrom(baseUrl)
             path(pathSuffix.trimStart('/'))
         }
-        headers.apply {
-            appendIfAbsent("X-Emby-Token", accessToken)
-            appendIfAbsent(
-                "X-Emby-Authorization",
-                "MediaBrowser Client=\"Jellystack\", Device=\"Android\", " +
-                    "DeviceId=\"${deviceId ?: "unknown"}\", Version=\"$clientVersion\"",
-            )
-        }
-    }
-
-    private fun HeadersBuilder.appendIfAbsent(
-        name: String,
-        value: String,
-    ) {
-        if (!contains(name)) append(name, value)
+        headers.appendJellyfinAuthorization(
+            JellyfinClientIdentity(
+                appVersion = clientVersion,
+                deviceName = deviceName,
+                deviceId = deviceId ?: "unknown",
+            ),
+            accessToken,
+        )
     }
 
     suspend fun currentUser(): JellyfinUserDto {

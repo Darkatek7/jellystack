@@ -8,11 +8,10 @@ import io.ktor.client.request.request
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.http.ContentType
-import io.ktor.http.HeadersBuilder
 import io.ktor.http.HttpMethod
+import io.ktor.http.appendPathSegments
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
-import io.ktor.http.path
 import io.ktor.http.takeFrom
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -34,43 +33,25 @@ class JellyfinBrowseApi(
     private fun HttpRequestBuilder.configure(pathSuffix: String) {
         url {
             takeFrom(baseUrl)
-            path(pathSuffix.trimStart('/'))
+            appendPathSegments(pathSuffix.trimStart('/'))
         }
-        headers.apply {
-            appendIfAbsent("X-Emby-Token", accessToken)
-            appendIfAbsent("X-Emby-Authorization", authHeaderValue())
-        }
+        headers.appendJellyfinAuthorization(clientIdentity(), accessToken)
     }
 
-    private fun HeadersBuilder.appendIfAbsent(
-        name: String,
-        value: String,
-    ) {
-        if (!contains(name)) {
-            append(name, value)
-        }
-    }
-
-    private fun authHeaderValue(): String {
-        val sanitizedDevice = deviceId ?: "unknown"
-        return buildString {
-            append("MediaBrowser Client=\"")
-            append(clientName)
-            append("\", Device=\"")
-            append(deviceName)
-            append("\", DeviceId=\"")
-            append(sanitizedDevice)
-            append("\", Version=\"")
-            append(clientVersion)
-            append("\"")
-        }
-    }
+    private fun clientIdentity(): JellyfinClientIdentity =
+        JellyfinClientIdentity(
+            appName = clientName,
+            appVersion = clientVersion,
+            deviceName = deviceName,
+            deviceId = deviceId ?: "unknown",
+        )
 
     suspend fun fetchLibraries(userId: String): JellyfinViewsResponse =
         client
             .request {
                 method = HttpMethod.Get
-                configure("/Users/$userId/Views")
+                configure("/UserViews")
+                parameter("UserId", userId)
             }.body()
 
     suspend fun fetchLibraryItems(
@@ -91,7 +72,8 @@ class JellyfinBrowseApi(
         client
             .request {
                 method = HttpMethod.Get
-                configure("/Users/$userId/Items")
+                configure("/Items")
+                parameter("UserId", userId)
                 libraryId.takeIf { it.isNotBlank() }?.let { parameter("ParentId", it) }
                 includeItemTypes?.takeIf { it.isNotBlank() }?.let { parameter("IncludeItemTypes", it) }
                 parameter("Recursive", recursive)
@@ -105,7 +87,7 @@ class JellyfinBrowseApi(
                 filters?.let { parameter("Filters", it) }
                 searchTerm?.takeIf { it.isNotBlank() }?.let { parameter("SearchTerm", it) }
                 isPlayed?.let { parameter("IsPlayed", it) }
-                genres.takeIf(List<String>::isNotEmpty)?.let { parameter("Genres", it.joinToString(",")) }
+                genres.takeIf(List<String>::isNotEmpty)?.let { parameter("Genres", it.joinToString("|")) }
                 years.takeIf(List<Int>::isNotEmpty)?.let { parameter("Years", it.joinToString(",")) }
             }.body()
 
@@ -118,7 +100,8 @@ class JellyfinBrowseApi(
         client
             .request {
                 method = HttpMethod.Get
-                configure("/Users/$userId/Items/Latest")
+                configure("/Items/Latest")
+                parameter("UserId", userId)
                 parameter("ParentId", libraryId)
                 parameter("Limit", limit)
                 parameter("IncludeItemTypes", includeItemTypes)
@@ -134,7 +117,8 @@ class JellyfinBrowseApi(
         client
             .request {
                 method = HttpMethod.Get
-                configure("/Users/$userId/Items/Resume")
+                configure("/UserItems/Resume")
+                parameter("UserId", userId)
                 parameter("Limit", limit)
                 parameter("Fields", REQUIRED_FIELDS)
                 parameter("ImageTypeLimit", 1)
@@ -145,20 +129,7 @@ class JellyfinBrowseApi(
         userId: String,
         limit: Int,
         parentId: String? = null,
-    ): JellyfinItemsResponse =
-        client
-            .request {
-                method = HttpMethod.Get
-                configure("/Users/$userId/Items/NextUp")
-                parameter("Limit", limit)
-                parameter("StartIndex", 0)
-                parentId?.let { parameter("ParentId", it) }
-                parameter("IncludeItemTypes", "Episode,Series")
-                parameter("Fields", REQUIRED_FIELDS)
-                parameter("ImageTypeLimit", 1)
-                parameter("EnableImageTypes", "Primary,Backdrop,Thumb,Logo")
-                parameter("EnableUserData", true)
-            }.body()
+    ): JellyfinItemsResponse = fetchShowsNextUp(userId, limit, parentId)
 
     suspend fun fetchShowsNextUp(
         userId: String,
@@ -187,7 +158,8 @@ class JellyfinBrowseApi(
         client
             .request {
                 method = HttpMethod.Get
-                configure("/Users/$userId/Items/$itemId")
+                configure("/Items/$itemId")
+                parameter("UserId", userId)
                 parameter("Fields", DETAIL_FIELDS)
                 parameter("EnableImageTypes", "Primary,Backdrop,Thumb,Logo")
                 parameter("ImageTypeLimit", 1)
@@ -230,7 +202,8 @@ class JellyfinBrowseApi(
         client
             .request {
                 method = HttpMethod.Get
-                configure("/Users/$userId/Items")
+                configure("/Items")
+                parameter("UserId", userId)
                 parameter("ParentId", seriesId)
                 parameter("IncludeItemTypes", "Episode")
                 parameter("Recursive", true)
@@ -246,28 +219,32 @@ class JellyfinBrowseApi(
         itemId: String,
         positionTicks: Long,
     ) {
-        client.request {
-            method = HttpMethod.Post
-            configure("/Users/$userId/Items/$itemId/PlaybackProgress")
-            contentType(ContentType.Application.Json)
-            setBody(
-                buildJsonObject {
-                    put("ItemId", itemId)
-                    put("UserId", userId)
-                    put("PositionTicks", positionTicks)
-                },
-            )
-        }
+        val response =
+            client.request {
+                method = HttpMethod.Post
+                configure("/UserItems/$itemId/UserData")
+                parameter("UserId", userId)
+                contentType(ContentType.Application.Json)
+                setBody(
+                    buildJsonObject {
+                        put("PlaybackPositionTicks", positionTicks)
+                    },
+                )
+            }
+        check(response.status.isSuccess()) { "reportPlaybackProgress failed: ${response.status.description}" }
     }
 
     suspend fun markPlaybackCompleted(
         userId: String,
         itemId: String,
     ) {
-        client.request {
-            method = HttpMethod.Post
-            configure("/Users/$userId/Items/$itemId/Played")
-        }
+        val response =
+            client.request {
+                method = HttpMethod.Post
+                configure("/UserPlayedItems/$itemId")
+                parameter("UserId", userId)
+            }
+        check(response.status.isSuccess()) { "markPlaybackCompleted failed: ${response.status.description}" }
     }
 
     suspend fun setPlayedStatus(
@@ -278,7 +255,8 @@ class JellyfinBrowseApi(
         val response: HttpResponse =
             client.request {
                 method = if (played) HttpMethod.Post else HttpMethod.Delete
-                configure("/Users/$userId/PlayedItems/$itemId")
+                configure("/UserPlayedItems/$itemId")
+                parameter("UserId", userId)
             }
         if (!response.status.isSuccess()) {
             throw RuntimeException("setPlayedStatus failed: ${response.status.description}")
@@ -293,7 +271,8 @@ class JellyfinBrowseApi(
         val response: HttpResponse =
             client.request {
                 method = HttpMethod.Post
-                configure("/Users/$userId/FavoriteItems/$itemId")
+                configure("/UserFavoriteItems/$itemId")
+                parameter("UserId", userId)
             }
         if (!response.status.isSuccess()) {
             throw RuntimeException("addFavorite failed: ${response.status.description}")
@@ -307,7 +286,8 @@ class JellyfinBrowseApi(
         val response: HttpResponse =
             client.request {
                 method = HttpMethod.Delete
-                configure("/Users/$userId/FavoriteItems/$itemId")
+                configure("/UserFavoriteItems/$itemId")
+                parameter("UserId", userId)
             }
         if (!response.status.isSuccess()) {
             throw RuntimeException("removeFavorite failed: ${response.status.description}")
@@ -319,7 +299,8 @@ class JellyfinBrowseApi(
             client
                 .request {
                     method = HttpMethod.Get
-                    configure("/Users/$userId/Items")
+                    configure("/Items")
+                    parameter("UserId", userId)
                     parameter("Recursive", true)
                     parameter("Filters", "IsFavorite")
                     parameter("Fields", "ItemId")

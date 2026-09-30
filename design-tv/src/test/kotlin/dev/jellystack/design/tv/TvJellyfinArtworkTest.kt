@@ -10,7 +10,7 @@ class TvJellyfinArtworkTest {
     @Test
     fun userAvatarUsesTheAuthenticatedJellyfinUserImage() {
         assertEquals(
-            "https://media.example/Users/user-id/Images/Primary?maxWidth=160&quality=90&api_key=token",
+            "https://media.example/Users/user-id/Images/Primary?maxWidth=160&quality=90&ApiKey=token",
             jellyfinUserImageUrl("https://media.example/", "token", "user-id"),
         )
     }
@@ -75,7 +75,7 @@ class TvJellyfinArtworkTest {
 
         val expectedUrl =
             "https://media.example/Items/item-1/Images/Primary" +
-                "?tag=primary-tag&maxWidth=500&quality=90&api_key=dummy-token"
+                "?tag=primary-tag&maxWidth=500&quality=90&ApiKey=dummy-token"
         assertEquals(expectedUrl, resolveTvHomeSectionImageUrl(sectionItem, "https://media.example/", "dummy-token"))
     }
 
@@ -95,7 +95,7 @@ class TvJellyfinArtworkTest {
             )
 
         assertEquals(
-            "https://media.example/Items/item-1/Images/Primary?maxWidth=500&quality=90&api_key=dummy-token",
+            "https://media.example/Items/item-1/Images/Primary?maxWidth=500&quality=90&ApiKey=dummy-token",
             resolveTvHomeSectionImageUrl(sectionItem, "https://media.example", "dummy-token"),
         )
     }
@@ -125,7 +125,7 @@ class TvJellyfinArtworkTest {
 
         assertEquals(
             "https://media.example/Items/item-1/Images/Primary" +
-                "?tag=primary-tag&maxWidth=300&quality=90&api_key=dummy-token",
+                "?tag=primary-tag&maxWidth=300&quality=90&ApiKey=dummy-token",
             resolveTvHomeSectionImageUrl(
                 sectionItem,
                 "https://media.example/",

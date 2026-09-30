@@ -821,7 +821,7 @@ internal fun jellyfinImageUrl(
     if (baseUrl.isNullOrBlank() || itemId.isBlank()) return null
     val tagQuery = tag?.takeIf(String::isNotBlank)?.let { "tag=$it&" }.orEmpty()
     return "${baseUrl.trimEnd('/')}/Items/$itemId/Images/$type?${tagQuery}maxWidth=$maxWidth&quality=90" +
-        token?.takeIf { it.isNotBlank() }?.let { "&api_key=$it" }.orEmpty()
+        token?.takeIf { it.isNotBlank() }?.let { "&ApiKey=$it" }.orEmpty()
 }
 
 internal fun jellyfinUserImageUrl(
@@ -831,7 +831,7 @@ internal fun jellyfinUserImageUrl(
 ): String? {
     if (baseUrl.isNullOrBlank() || userId.isBlank()) return null
     return "${baseUrl.trimEnd('/')}/Users/$userId/Images/Primary?maxWidth=160&quality=90" +
-        token?.takeIf(String::isNotBlank)?.let { "&api_key=$it" }.orEmpty()
+        token?.takeIf(String::isNotBlank)?.let { "&ApiKey=$it" }.orEmpty()
 }
 
 internal fun tmdbImageUrl(

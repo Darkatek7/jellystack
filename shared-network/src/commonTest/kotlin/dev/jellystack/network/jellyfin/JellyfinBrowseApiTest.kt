@@ -4,17 +4,128 @@ import dev.jellystack.network.ClientConfig
 import dev.jellystack.network.NetworkClientFactory
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
+import io.ktor.client.request.HttpRequestData
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.content.OutgoingContent
 import io.ktor.http.headersOf
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class JellyfinBrowseApiTest {
+    @Test
+    fun supportedBrowseRoutesPreserveServerBasePathAndUserQuery() =
+        runTest {
+            listOf("", "/", "/jellyfin", "/jellyfin/").forEach { basePath ->
+                val requests = mutableListOf<HttpRequestData>()
+                val engine =
+                    MockEngine { request ->
+                        requests += request
+                        val body =
+                            when {
+                                request.url.encodedPath.endsWith("/Items/Latest") -> "[]"
+                                request.url.encodedPath.endsWith("/Items/movie-42") -> """{"Id":"movie-42","Name":"Movie"}"""
+                                else -> """{"Items":[],"TotalRecordCount":0}"""
+                            }
+                        respond(
+                            body,
+                            HttpStatusCode.OK,
+                            headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                        )
+                    }
+                val client = NetworkClientFactory.create(ClientConfig(engine = engine, installLogging = false))
+                try {
+                    val api = JellyfinBrowseApi(client, "https://example.test$basePath", "dummy-access-token")
+
+                    api.fetchLibraries("user-id")
+                    api.fetchLibraryItems("user-id", "library-id", 20, 10, recursive = false, searchTerm = "München & Wien")
+                    api.fetchLatestItems("user-id", "library-id", 8, "Movie")
+                    api.fetchContinueWatching("user-id", 6)
+                    api.fetchNextUp("user-id", 12, parentId = "library-id")
+                    api.fetchEpisodesForSeries("user-id", "series-id")
+                    api.fetchItemDetail("user-id", "movie-42")
+
+                    val prefix = basePath.trimEnd('/')
+                    assertEquals(
+                        listOf("/UserViews", "/Items", "/Items/Latest", "/UserItems/Resume", "/Shows/NextUp", "/Items", "/Items/movie-42")
+                            .map { "$prefix$it" },
+                        requests.map { it.url.encodedPath },
+                    )
+                    requests.forEach { request ->
+                        assertEquals(HttpMethod.Get, request.method)
+                        assertEquals("user-id", request.url.parameters["UserId"])
+                        assertTrue(requireNotNull(request.headers[HttpHeaders.Authorization]).contains("Token=\"dummy-access-token\""))
+                        assertNull(request.headers["X-Emby-Token"])
+                        assertNull(request.headers["X-Emby-Authorization"])
+                    }
+                    assertEquals("München & Wien", requests[1].url.parameters["SearchTerm"])
+                    assertEquals("false", requests[1].url.parameters["Recursive"])
+                    assertEquals("20", requests[1].url.parameters["StartIndex"])
+                    assertEquals("10", requests[1].url.parameters["Limit"])
+                    assertEquals("library-id", requests[4].url.parameters["ParentId"])
+                    assertEquals("series-id", requests[5].url.parameters["ParentId"])
+                } finally {
+                    client.close()
+                }
+            }
+        }
+
+    @Test
+    fun offlineProgressUpdatesPositionWithoutOverwritingOtherUserData() =
+        runTest {
+            val requests = mutableListOf<HttpRequestData>()
+            val engine =
+                MockEngine { request ->
+                    requests += request
+                    respond(
+                        """{"PlaybackPositionTicks":123450000,"Played":true}""",
+                        HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                    )
+                }
+            val client = NetworkClientFactory.create(ClientConfig(engine = engine, installLogging = false))
+            try {
+                val api = JellyfinBrowseApi(client, "https://example.test/jellyfin", "dummy-access-token")
+
+                api.reportPlaybackProgress("user-id", "movie-42", 123_450_000)
+                api.markPlaybackCompleted("user-id", "movie-42")
+
+                assertEquals(
+                    listOf("/jellyfin/UserItems/movie-42/UserData", "/jellyfin/UserPlayedItems/movie-42"),
+                    requests.map { it.url.encodedPath },
+                )
+                requests.forEach { request ->
+                    assertEquals(HttpMethod.Post, request.method)
+                    assertEquals("user-id", request.url.parameters["UserId"])
+                }
+                assertEquals("""{"PlaybackPositionTicks":123450000}""", requests[0].bodyText())
+                assertEquals("", requests[1].bodyText())
+            } finally {
+                client.close()
+            }
+        }
+
+    @Test
+    fun rejectedOfflineUpdatesFailSoTheyCanBeRetried() =
+        runTest {
+            val engine = MockEngine { respond("expired", HttpStatusCode.Unauthorized) }
+            val client = NetworkClientFactory.create(ClientConfig(engine = engine, installLogging = false))
+            try {
+                val api = JellyfinBrowseApi(client, "https://example.test", "dummy-access-token")
+
+                assertFailsWith<IllegalStateException> { api.reportPlaybackProgress("user-id", "movie-42", 123_450_000) }
+                assertFailsWith<IllegalStateException> { api.markPlaybackCompleted("user-id", "movie-42") }
+            } finally {
+                client.close()
+            }
+        }
+
     @Test
     fun fetchLatestItemsRequestsDateCreatedMetadata() =
         runTest {
@@ -110,7 +221,7 @@ class JellyfinBrowseApiTest {
             assertEquals(listOf("Descending"), parameters["SortOrder"])
             assertEquals(listOf("false"), parameters["IsPlayed"])
             assertEquals(listOf("IsFavorite"), parameters["Filters"])
-            assertEquals(listOf("Action,Science Fiction"), parameters["Genres"])
+            assertEquals(listOf("Action|Science Fiction"), parameters["Genres"])
             assertEquals(listOf("1999,2025"), parameters["Years"])
             assertEquals(listOf("Movie,Series"), parameters["IncludeItemTypes"])
             client.close()
@@ -189,7 +300,8 @@ class JellyfinBrowseApiTest {
                 MockEngine { request ->
                     when {
                         request.method == HttpMethod.Post &&
-                            request.url.encodedPath.endsWith("/Users/u-1/PlayedItems/movie-42") -> {
+                            request.url.encodedPath.endsWith("/UserPlayedItems/movie-42") &&
+                            request.url.parameters["UserId"] == "u-1" -> {
                             respond(
                                 """{"Played":true,"PlaybackPositionTicks":0}""",
                                 HttpStatusCode.OK,
@@ -215,7 +327,8 @@ class JellyfinBrowseApiTest {
                 MockEngine { request ->
                     when {
                         request.method == HttpMethod.Delete &&
-                            request.url.encodedPath.endsWith("/Users/u-1/PlayedItems/movie-42") -> {
+                            request.url.encodedPath.endsWith("/UserPlayedItems/movie-42") &&
+                            request.url.parameters["UserId"] == "u-1" -> {
                             respond(
                                 """{"Played":false,"PlaybackPositionTicks":0}""",
                                 HttpStatusCode.OK,
@@ -241,7 +354,8 @@ class JellyfinBrowseApiTest {
                 MockEngine { request ->
                     when {
                         request.method == HttpMethod.Post &&
-                            request.url.encodedPath.endsWith("/Users/u-1/FavoriteItems/movie-42") -> {
+                            request.url.encodedPath.endsWith("/UserFavoriteItems/movie-42") &&
+                            request.url.parameters["UserId"] == "u-1" -> {
                             respond("", HttpStatusCode.NoContent)
                         }
                         else -> respond("not found", HttpStatusCode.NotFound)
@@ -262,7 +376,8 @@ class JellyfinBrowseApiTest {
                 MockEngine { request ->
                     when {
                         request.method == HttpMethod.Delete &&
-                            request.url.encodedPath.endsWith("/Users/u-1/FavoriteItems/movie-42") -> {
+                            request.url.encodedPath.endsWith("/UserFavoriteItems/movie-42") &&
+                            request.url.parameters["UserId"] == "u-1" -> {
                             respond("", HttpStatusCode.NoContent)
                         }
                         else -> respond("not found", HttpStatusCode.NotFound)
@@ -281,7 +396,7 @@ class JellyfinBrowseApiTest {
         runTest {
             val engine =
                 MockEngine { request ->
-                    if (request.url.encodedPath.endsWith("/Users/u-1/Items")) {
+                    if (request.url.encodedPath.endsWith("/Items") && request.url.parameters["UserId"] == "u-1") {
                         respond(
                             """{"Items":[{"Id":"a","Name":"A","Type":"Movie"},{"Id":"b","Name":"B","Type":"Movie"},{"Id":"c","Name":"C","Type":"Movie"}],"TotalRecordCount":3}""",
                             HttpStatusCode.OK,
@@ -299,5 +414,11 @@ class JellyfinBrowseApiTest {
             assertEquals(setOf("a", "b", "c"), ids)
 
             client.close()
+        }
+
+    private fun HttpRequestData.bodyText(): String =
+        when (val content = body) {
+            is OutgoingContent.ByteArrayContent -> content.bytes().decodeToString()
+            else -> ""
         }
 }
