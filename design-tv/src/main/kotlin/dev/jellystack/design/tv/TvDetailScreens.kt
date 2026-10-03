@@ -281,7 +281,8 @@ internal fun TvDetailFocusLayout(
                 if (isInitialDownPress && event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_UP) {
                     focusPrimaryAction()
                     true
-                } else if (nextBodyItemIndex != null && isInitialDownPress &&
+                } else if (nextBodyItemIndex != null &&
+                    isInitialDownPress &&
                     event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_DOWN
                 ) {
                     focusLowerContent()
