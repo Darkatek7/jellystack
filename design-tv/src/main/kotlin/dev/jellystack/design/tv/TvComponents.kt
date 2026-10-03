@@ -57,6 +57,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -147,7 +148,14 @@ internal fun Modifier.tvFocusable(
                 .semantics {
                     role = Role.Button
                     if (!enabled) disabled()
-                }.clickable(enabled = enabled, onClick = onClick)
+                }.clickable(
+                    interactionSource = null,
+                    // Focus and press visuals come from tvFocusDecoration; the platform highlight is
+                    // drawn as an unclipped rectangle on top of pill-shaped actions.
+                    indication = null,
+                    enabled = enabled,
+                    onClick = onClick,
+                )
         } else {
             Modifier
         }
@@ -212,41 +220,24 @@ private fun Modifier.tvFocusDecoration(
             scaleX = animatedScale
             scaleY = animatedScale
             shadowElevation = if (focused) 12.dp.toPx() else 0f
+            this.shape = shape
             ambientShadowColor = Color.Black
             spotShadowColor = TvPurpleStrong
         }.drawBehind {
             if (focused) {
-                drawRoundRect(
-                    color = Color.Black.copy(alpha = 0.24f),
-                    cornerRadius =
-                        androidx.compose.ui.geometry
-                            .CornerRadius(22.dp.toPx()),
-                )
+                drawOutline(shape.createOutline(size, layoutDirection, this), Color.Black.copy(alpha = 0.24f))
             }
         }.drawWithContent {
             drawContent()
             if (focused && showFocusBorder) {
-                drawRoundRect(
-                    color = TvLayoutTokens.FocusDarkRing,
-                    cornerRadius =
-                        androidx.compose.ui.geometry
-                            .CornerRadius(18.dp.toPx()),
+                val outline = shape.createOutline(size, layoutDirection, this)
+                drawOutline(
+                    outline,
+                    TvLayoutTokens.FocusDarkRing,
                     style = Stroke(width = focusAppearance.ringWidthDp.dp.toPx()),
                 )
-                drawRoundRect(
-                    color = TvLayoutTokens.FocusLightRing,
-                    cornerRadius =
-                        androidx.compose.ui.geometry
-                            .CornerRadius(17.dp.toPx()),
-                    style = Stroke(width = 2.dp.toPx()),
-                )
-                drawRoundRect(
-                    color = TvLayoutTokens.FocusAccentRing,
-                    cornerRadius =
-                        androidx.compose.ui.geometry
-                            .CornerRadius(16.dp.toPx()),
-                    style = Stroke(width = 1.dp.toPx()),
-                )
+                drawOutline(outline, TvLayoutTokens.FocusLightRing, style = Stroke(width = 2.dp.toPx()))
+                drawOutline(outline, TvLayoutTokens.FocusAccentRing, style = Stroke(width = 1.dp.toPx()))
             }
         }.clip(shape)
 }
@@ -272,7 +263,20 @@ internal fun TvActionButton(
             modifier
                 .height(58.dp)
                 .graphicsLayer { alpha = if (enabled) 1f else 0.5f }
-                .background(
+                .semantics(mergeDescendants = true) {
+                    contentDescription = label
+                    this.selected = selected
+                    if (destructive) tvDestructiveAction = true
+                }.tvFocusable(
+                    onClick = onClick,
+                    enabled = enabled,
+                    shape = shape,
+                    focusToNavigationRailOnLeft = focusToNavigationRailOnLeft,
+                    focusTargetId = focusTargetId,
+                    providedFocusRequester = focusRequester,
+                    onFocusChanged = onFocusChanged,
+                ).background(
+                    // Inside the focus layer so the fill scales together with the focus ring.
                     when {
                         destructive -> Color(0xFFB3261E)
                         primary -> TvPurple
@@ -294,19 +298,7 @@ internal fun TvActionButton(
                                     .CornerRadius(2.dp.toPx()),
                         )
                     }
-                }.semantics(mergeDescendants = true) {
-                    contentDescription = label
-                    this.selected = selected
-                    if (destructive) tvDestructiveAction = true
-                }.tvFocusable(
-                    onClick = onClick,
-                    enabled = enabled,
-                    shape = shape,
-                    focusToNavigationRailOnLeft = focusToNavigationRailOnLeft,
-                    focusTargetId = focusTargetId,
-                    providedFocusRequester = focusRequester,
-                    onFocusChanged = onFocusChanged,
-                ).padding(horizontal = 24.dp),
+                }.padding(horizontal = 24.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
     ) {
