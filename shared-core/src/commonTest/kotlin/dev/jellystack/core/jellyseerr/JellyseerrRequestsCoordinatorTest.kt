@@ -18,6 +18,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -510,17 +512,19 @@ class JellyseerrRequestsCoordinatorTest {
                 !it.isSearching && it.message?.code == JellyseerrMessageCode.SearchFailed
             }
 
+            // Record every state during the retry: the transient searching state can be conflated away
+            // when the mock response returns quickly, so the test must not wait for it.
+            val retryStates = mutableListOf<JellyseerrRequestsState.Ready>()
+            backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+                coordinator.state.filterIsInstance<JellyseerrRequestsState.Ready>().collect { retryStates += it }
+            }
             coordinator.search("Dune")
-            val retrying =
-                coordinator.state.filterIsInstance<JellyseerrRequestsState.Ready>().first {
-                    it.query == "Dune" && it.isSearching
-                }
-            assertEquals(null, retrying.message)
             val succeeded =
                 coordinator.state.filterIsInstance<JellyseerrRequestsState.Ready>().first {
                     !it.isSearching && it.searchResults.singleOrNull()?.title == "Dune"
                 }
             assertEquals(null, succeeded.message)
+            assertTrue(retryStates.filter { it.isSearching }.all { it.message == null })
             coordinator.shutdown()
         }
 
