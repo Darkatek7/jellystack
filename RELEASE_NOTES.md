@@ -1,5 +1,23 @@
 # Release Notes
 
+## 0.16.0
+
+- Connect to Jellyfin 12.0+ with password login or Quick Connect; Jellyfin 10.x servers keep working.
+- Watch with working artwork, subtitles, and SyncPlay on Jellyfin 12.0+.
+- Continue downloads that were queued before a Jellyfin server upgrade.
+- Let administrators set a new password for a user instead of clearing it.
+
+## 0.16.0-tv-beta.6
+
+- Use household profiles with real Jellyfin names and avatars, optional PINs, isolated preferences, and My List.
+- Browse Home, Library, Search, and Discover with a cinematic backdrop and trailer stage above compact card rows; stage buttons fade out while a trailer plays.
+- Switch Library between cinematic Browse rows and a paged, filterable All Titles grid.
+- Search Jellyfin and Seerr together, restore queries, and use voice search where the device supports it.
+- Connect to Jellyfin 12.0+ for sign-in, Quick Connect, browsing, artwork, playback, subtitles, and SyncPlay.
+- Open details on Play or Resume and leave them with one Back press.
+- Reach the sidebar from every top-level screen, start vertical row moves at the first card, and confirm before exiting.
+- Fix overlapping screens, focus highlight shape, Seerr Discover data, missing artwork, safe insets, wake behavior, and subtitle placement.
+
 ## 0.16.0-tv-beta.4
 
 - Keep Spotlight on the selected item so trailer previews can play without interruption.
