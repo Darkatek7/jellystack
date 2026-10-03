@@ -3,7 +3,9 @@
 package dev.jellystack.design.tv
 
 import android.view.KeyEvent
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,6 +26,7 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
@@ -59,6 +62,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun TvCinematicBrowse(
     state: TvCinematicBrowseState,
@@ -159,71 +163,78 @@ internal fun TvCinematicBrowse(
             previewSoundEnabled = previewSoundEnabled,
             previewProgress = previewProgress,
         )
-        LazyColumn(
-            state = columnState,
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .padding(
-                        start = TvLayoutTokens.ContentStart,
-                        end = TvLayoutTokens.SafeInsets.horizontal,
-                        top = TV_CINEMATIC_ROWS_TOP,
-                        bottom = TvLayoutTokens.SafeInsets.vertical,
-                    ),
-            contentPadding = PaddingValues(bottom = TvLayoutTokens.FocusHaloPadding),
-            verticalArrangement = Arrangement.spacedBy(22.dp),
+        val rowScrollSpec = LocalBringIntoViewSpec.current
+        CompositionLocalProvider(
+            LocalBringIntoViewSpec provides rememberTvRowAlignedBringIntoViewSpec(TV_CINEMATIC_ROW_CARD_OFFSET),
         ) {
-            headerContent?.let { content -> item(key = "cinematic-header") { content() } }
-            state.inlineStatus?.let { status ->
-                item(key = "cinematic-status") { TvCinematicStatusAnchor(status, inlineStatusAction) }
-            }
-            items(items = state.rows, key = TvCinematicRow::id) { row ->
-                val rowState = rememberLazyListState()
-                DisposableEffect(row.id, rowState) {
-                    rowStates[row.id] = rowState
-                    onDispose { rowStates.remove(row.id, rowState) }
+            LazyColumn(
+                state = columnState,
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .padding(
+                            start = TvLayoutTokens.ContentStart,
+                            end = TvLayoutTokens.SafeInsets.horizontal,
+                            top = TV_CINEMATIC_ROWS_TOP,
+                            bottom = TvLayoutTokens.SafeInsets.vertical,
+                        ),
+                contentPadding = PaddingValues(bottom = TvLayoutTokens.FocusHaloPadding),
+                verticalArrangement = Arrangement.spacedBy(20.dp),
+            ) {
+                headerContent?.let { content -> item(key = "cinematic-header") { content() } }
+                state.inlineStatus?.let { status ->
+                    item(key = "cinematic-status") { TvCinematicStatusAnchor(status, inlineStatusAction) }
                 }
-                TvCinematicBrowseRow(
-                    row = row,
-                    rowState = rowState,
-                    onVerticalMove = { direction ->
-                        if (!resetVerticalFocusToFirstCard || focusContext == null) {
-                            false
-                        } else {
-                            val rowIndex = state.rows.indexOfFirst { it.id == row.id }
-                            val targetRowIndex =
-                                rowIndex +
-                                    when (direction) {
-                                        TvHomeVerticalDirection.UP -> -1
-                                        TvHomeVerticalDirection.DOWN -> 1
+                items(items = state.rows, key = TvCinematicRow::id) { row ->
+                    val rowState = rememberLazyListState()
+                    DisposableEffect(row.id, rowState) {
+                        rowStates[row.id] = rowState
+                        onDispose { rowStates.remove(row.id, rowState) }
+                    }
+                    TvRowScroll(rowScrollSpec) {
+                        TvCinematicBrowseRow(
+                            row = row,
+                            rowState = rowState,
+                            onVerticalMove = { direction ->
+                                if (!resetVerticalFocusToFirstCard || focusContext == null) {
+                                    false
+                                } else {
+                                    val rowIndex = state.rows.indexOfFirst { it.id == row.id }
+                                    val targetRowIndex =
+                                        rowIndex +
+                                            when (direction) {
+                                                TvHomeVerticalDirection.UP -> -1
+                                                TvHomeVerticalDirection.DOWN -> 1
+                                            }
+                                    val targetRow = state.rows.getOrNull(targetRowIndex)
+                                    val targetCard = targetRow?.cards?.firstOrNull()
+                                    if (targetRow == null || targetCard == null) {
+                                        false
+                                    } else {
+                                        scope.launch {
+                                            focusContext.coordinator.restoreFocus(
+                                                routeKey = focusContext.routeKey,
+                                                preferredTargetId = tvCinematicFocusTargetId(targetRow.id, targetCard.id),
+                                                includeFallback = false,
+                                                requestFocus = { requester ->
+                                                    runCatching { requester.requestFocus() }.getOrDefault(false)
+                                                },
+                                            )
+                                        }
+                                        true
                                     }
-                            val targetRow = state.rows.getOrNull(targetRowIndex)
-                            val targetCard = targetRow?.cards?.firstOrNull()
-                            if (targetRow == null || targetCard == null) {
-                                false
-                            } else {
-                                scope.launch {
-                                    focusContext.coordinator.restoreFocus(
-                                        routeKey = focusContext.routeKey,
-                                        preferredTargetId = tvCinematicFocusTargetId(targetRow.id, targetCard.id),
-                                        includeFallback = false,
-                                        requestFocus = { requester ->
-                                            runCatching { requester.requestFocus() }.getOrDefault(false)
-                                        },
-                                    )
                                 }
-                                true
-                            }
-                        }
-                    },
-                    onCardFocused = { card, requester ->
-                        val anchor = TvFocusAnchor(row.id, card.id, TvFocusDestination.SECTION_ITEM)
-                        actionOriginRequester = requester
-                        backdropController.focus(card)
-                        onCardFocused(anchor, card)
-                    },
-                    onCardClick = onCardClick,
-                )
+                            },
+                            onCardFocused = { card, requester ->
+                                val anchor = TvFocusAnchor(row.id, card.id, TvFocusDestination.SECTION_ITEM)
+                                actionOriginRequester = requester
+                                backdropController.focus(card)
+                                onCardFocused(anchor, card)
+                            },
+                            onCardClick = onCardClick,
+                        )
+                    }
+                }
             }
         }
         topHeaderContent?.let { content ->
@@ -243,6 +254,9 @@ internal fun TvCinematicBrowse(
 }
 
 private val TV_CINEMATIC_FIXED_HEADER_HEIGHT = 70.dp
+
+/** Row title (24 dp) and title spacing (8 dp) above each cinematic card. */
+private val TV_CINEMATIC_ROW_CARD_OFFSET = 32.dp
 
 internal fun tvCinematicMaterializationColumnIndex(
     rowIndex: Int,
@@ -309,11 +323,11 @@ private fun TvCinematicBrowseRow(
     onCardFocused: (TvCinematicCard, androidx.compose.ui.focus.FocusRequester) -> Unit,
     onCardClick: (TvCinematicCard) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
             row.title,
             color = TvText,
-            fontSize = 21.sp,
+            fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.semantics { heading() }.testTag("cinematic-row-title-${row.id}"),
         )

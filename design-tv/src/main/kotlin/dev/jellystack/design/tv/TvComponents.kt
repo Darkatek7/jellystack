@@ -6,10 +6,13 @@ import android.view.KeyEvent
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -35,6 +38,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -60,6 +64,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.SemanticsPropertyReceiver
@@ -70,6 +75,7 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -501,7 +507,7 @@ private fun TvMediaCardMetadataBand(
                 .fillMaxWidth()
                 .height(TvLayoutTokens.LandscapeMetadataBandHeight)
                 .background(Color(0xFF11121B))
-                .padding(horizontal = 14.dp, vertical = 7.dp),
+                .padding(horizontal = 12.dp, vertical = 4.dp),
         verticalArrangement = Arrangement.Center,
     ) {
         Text(
@@ -510,9 +516,9 @@ private fun TvMediaCardMetadataBand(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             fontWeight = FontWeight.SemiBold,
-            fontSize = 17.sp,
+            fontSize = 15.sp,
         )
-        subtitle?.let { Text(it, color = TvTextMuted, fontSize = 13.sp, maxLines = 1) }
+        subtitle?.let { Text(it, color = TvTextMuted, fontSize = 12.sp, maxLines = 1) }
     }
 }
 
@@ -615,12 +621,13 @@ internal fun TvTrailerPreviewChrome(
     previewSoundEnabled: Boolean,
     previewProgress: Float,
     modifier: Modifier = Modifier,
+    badgeEndPadding: Dp = 16.dp,
 ) {
     Box(modifier) {
         Row(
             Modifier
-                .align(Alignment.TopStart)
-                .padding(12.dp)
+                .align(Alignment.BottomEnd)
+                .padding(end = badgeEndPadding, bottom = 14.dp)
                 .background(TvPurpleStrong.copy(alpha = 0.86f), RoundedCornerShape(8.dp))
                 .padding(horizontal = 9.dp, vertical = 5.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -673,6 +680,46 @@ internal fun TvSectionTitle(
         fontSize = 20.sp,
         fontWeight = FontWeight.Bold,
     )
+}
+
+/** Home rows start at [TV_CINEMATIC_ROWS_TOP]; no top padding so scrolled rows never peek into the hero. */
+internal val TvHomeRowsPadding =
+    PaddingValues(
+        start = TvLayoutTokens.ContentStart,
+        end = TvLayoutTokens.SafeInsets.horizontal,
+        bottom = 16.dp,
+    )
+
+/**
+ * Scrolls a vertical browse list so the focused row starts at the top of the list viewport.
+ *
+ * Compose keeps focused items at a 30 % pivot on TV devices, which pushes rows below the preview stage
+ * past the bottom edge. [rowCardOffset] is the distance from a row's top to its cards, so the row title
+ * stays visible above the focused card.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+internal fun rememberTvRowAlignedBringIntoViewSpec(rowCardOffset: Dp): BringIntoViewSpec {
+    val rowCardOffsetPx = with(LocalDensity.current) { rowCardOffset.toPx() }
+    return remember(rowCardOffsetPx) {
+        object : BringIntoViewSpec {
+            override fun calculateScrollDistance(
+                offset: Float,
+                size: Float,
+                containerSize: Float,
+            ): Float = offset - rowCardOffsetPx
+        }
+    }
+}
+
+/** Restores [rowSpec] (the platform behaviour) for a horizontal row nested in a row-aligned column. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+internal fun TvRowScroll(
+    rowSpec: BringIntoViewSpec,
+    content: @Composable () -> Unit,
+) {
+    CompositionLocalProvider(LocalBringIntoViewSpec provides rowSpec, content = content)
 }
 
 internal val TvScreenPadding =

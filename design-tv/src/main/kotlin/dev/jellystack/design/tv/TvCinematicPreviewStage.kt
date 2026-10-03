@@ -34,8 +34,9 @@ import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import dev.jellystack.players.AndroidPlayerEngine
 
-internal val TV_CINEMATIC_STAGE_HEIGHT: Dp = 310.dp
-internal val TV_CINEMATIC_ROWS_TOP: Dp = 270.dp
+/** Browse rows start below the preview stage so cards never cover the backdrop, trailer, or stage actions. */
+internal val TV_CINEMATIC_ROWS_TOP: Dp = TvLayoutTokens.SafeInsets.vertical + TV_HOME_HERO_HEIGHT_DP.dp + 12.dp
+internal val TV_CINEMATIC_STAGE_HEIGHT: Dp = TV_CINEMATIC_ROWS_TOP
 
 @Composable
 internal fun TvCinematicPreviewStage(
@@ -71,7 +72,12 @@ internal fun TvCinematicPreviewStage(
             TvTrailerPreviewChrome(
                 previewSoundEnabled = previewSoundEnabled,
                 previewProgress = previewProgress?.value ?: 0f,
-                modifier = Modifier.fillMaxSize(),
+                modifier =
+                    Modifier.fillMaxSize().padding(
+                        start = TvLayoutTokens.ContentStart,
+                        end = TvLayoutTokens.SafeInsets.horizontal,
+                    ),
+                badgeEndPadding = 0.dp,
             )
         }
         TvCinematicStageMetadata(

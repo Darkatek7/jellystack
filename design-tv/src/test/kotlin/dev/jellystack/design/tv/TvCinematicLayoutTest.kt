@@ -17,9 +17,9 @@ class TvCinematicLayoutTest {
     fun landscapeGeometryAndActionsMeetTenFootContract() {
         val geometry = tvCinematicGeometry()
 
-        assertEquals(232f, geometry.artworkWidthDp)
-        assertEquals(131f, geometry.artworkHeightDp)
-        assertEquals(56f, geometry.metadataBandHeightDp)
+        assertEquals(176f, geometry.artworkWidthDp)
+        assertEquals(99f, geometry.artworkHeightDp)
+        assertEquals(40f, geometry.metadataBandHeightDp)
         assertEquals(16f, geometry.cardSpacingDp)
         assertTrue(geometry.focusHaloPaddingDp >= 6f)
         assertTrue(geometry.metadataBandOpaque)

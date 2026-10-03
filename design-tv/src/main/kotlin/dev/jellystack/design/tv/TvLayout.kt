@@ -28,9 +28,9 @@ internal object TvLayoutTokens {
     val CollapsedRailWidth = 72.dp
     val ContentStart = 92.dp
     val MinimumActionSize = 48.dp
-    val LandscapeArtworkWidth = 232.dp
-    val LandscapeArtworkHeight = 131.dp
-    val LandscapeMetadataBandHeight = 56.dp
+    val LandscapeArtworkWidth = 176.dp
+    val LandscapeArtworkHeight = 99.dp
+    val LandscapeMetadataBandHeight = 40.dp
     val CardSpacing = 16.dp
     val FocusHaloPadding = 8.dp
     const val FOCUS_SCALE = 1.055f
