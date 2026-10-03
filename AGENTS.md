@@ -99,7 +99,7 @@ Style: camelCase test names, `runTest` for coroutines, no real dispatchers or `d
 - The plain `detekt` task currently analyses only `src/main|test` folders, not KMP source sets (`commonMain`, …). A clean `detekt` run does not mean KMP code is clean.
 - `gradle.properties` sets `org.gradle.workers.max=1` for Windows file-locking; builds are slower than necessary on Linux/macOS.
 - `rootProject.name` determines the generated Compose resources package (`jellystack_mobile.design.generated.resources`); renaming it breaks every resource import.
-- `design-tv` instrumented tests are not run in CI; run them on a TV emulator when changing TV focus behaviour.
+- `design-tv` instrumented tests run in CI in three shards on a TV emulator; still run them on a TV emulator locally when changing TV focus behaviour.
 
 ## More
 

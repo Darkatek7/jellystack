@@ -152,9 +152,38 @@ jobs:
           script: ${{ matrix.command }}
 
   tv_instrumentation:
-    name: android-tv-instrumentation
+    name: android-tv-instrumentation (${{ matrix.name }})
     runs-on: ubuntu-latest
     needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        # Like the phone suites, the image-heavy TV suites are sharded: a single long run on one
+        # emulator can terminate the emulator itself before UTP reports a result.
+        include:
+          - name: design-tv-0
+            command: >-
+              ./gradlew :design-tv:connectedDebugAndroidTest
+              -Pandroid.testInstrumentationRunnerArguments.numShards=3
+              -Pandroid.testInstrumentationRunnerArguments.shardIndex=0
+              --max-workers=1 --stacktrace
+          - name: design-tv-1
+            command: >-
+              ./gradlew :design-tv:connectedDebugAndroidTest
+              -Pandroid.testInstrumentationRunnerArguments.numShards=3
+              -Pandroid.testInstrumentationRunnerArguments.shardIndex=1
+              --max-workers=1 --stacktrace
+          - name: design-tv-2
+            command: >-
+              ./gradlew :design-tv:connectedDebugAndroidTest
+              -Pandroid.testInstrumentationRunnerArguments.numShards=3
+              -Pandroid.testInstrumentationRunnerArguments.shardIndex=2
+              --max-workers=1 --stacktrace
+          - name: app-tv
+            command: >-
+              ./gradlew :app-tv:connectedDebugAndroidTest
+              :tv-benchmark:connectedCheck
+              --max-workers=1 --stacktrace
     env:
       CI: true
       GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2048m -Dkotlin.daemon.jvm.options=-Xmx768m"
@@ -193,10 +222,7 @@ jobs:
           profile: tv_1080p
           ram-size: 3072M
           emulator-options: "-no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics"
-          script: >-
-            ./gradlew :design-tv:connectedDebugAndroidTest :app-tv:connectedDebugAndroidTest
-            :tv-benchmark:connectedCheck
-            --max-workers=1 --stacktrace
+          script: ${{ matrix.command }}
 
   android-instrumentation:
     runs-on: ubuntu-latest
