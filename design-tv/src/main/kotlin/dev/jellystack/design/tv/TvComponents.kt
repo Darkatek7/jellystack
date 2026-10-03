@@ -830,7 +830,7 @@ internal fun jellyfinUserImageUrl(
     userId: String,
 ): String? {
     if (baseUrl.isNullOrBlank() || userId.isBlank()) return null
-    return "${baseUrl.trimEnd('/')}/Users/$userId/Images/Primary?maxWidth=160&quality=90" +
+    return "${baseUrl.trimEnd('/')}/UserImage?userId=$userId&maxWidth=160&quality=90" +
         token?.takeIf(String::isNotBlank)?.let { "&ApiKey=$it" }.orEmpty()
 }
 

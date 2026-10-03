@@ -10,7 +10,7 @@ class TvJellyfinArtworkTest {
     @Test
     fun userAvatarUsesTheAuthenticatedJellyfinUserImage() {
         assertEquals(
-            "https://media.example/Users/user-id/Images/Primary?maxWidth=160&quality=90&ApiKey=token",
+            "https://media.example/UserImage?userId=user-id&maxWidth=160&quality=90&ApiKey=token",
             jellyfinUserImageUrl("https://media.example/", "token", "user-id"),
         )
     }

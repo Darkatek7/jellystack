@@ -152,15 +152,21 @@ class JellyfinSessionApi(
         }
     }
 
+    /**
+     * Sets [newPassword] for another user, or clears the password when it is blank.
+     *
+     * Jellyfin ignores `NewPw` when `ResetPassword` is true, so the reset flag is only sent to clear.
+     */
     suspend fun resetUserPassword(
         userId: String,
         newPassword: String,
     ) {
         client.request {
             method = HttpMethod.Post
-            configure("/Users/$userId/Password")
+            configure("/Users/Password")
+            parameter("userId", userId)
             contentType(ContentType.Application.Json)
-            setBody(JellyfinPasswordRequestDto(newPassword = newPassword, resetPassword = true))
+            setBody(JellyfinPasswordRequestDto(newPassword = newPassword, resetPassword = newPassword.isEmpty()))
         }
     }
 }
