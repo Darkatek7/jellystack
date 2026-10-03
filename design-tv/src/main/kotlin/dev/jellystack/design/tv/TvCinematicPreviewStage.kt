@@ -38,6 +38,12 @@ import dev.jellystack.players.AndroidPlayerEngine
 internal val TV_CINEMATIC_ROWS_TOP: Dp = TvLayoutTokens.SafeInsets.vertical + TV_HOME_HERO_HEIGHT_DP.dp + 12.dp
 internal val TV_CINEMATIC_STAGE_HEIGHT: Dp = TV_CINEMATIC_ROWS_TOP
 
+/**
+ * Stage height for screens whose list starts with its own header (search field and source chips),
+ * so the header and the first result row still fit below the stage.
+ */
+internal val TV_CINEMATIC_COMPACT_STAGE_HEIGHT: Dp = 270.dp
+
 @Composable
 internal fun TvCinematicPreviewStage(
     backdrop: TvCinematicBackdrop,
@@ -47,6 +53,7 @@ internal fun TvCinematicPreviewStage(
     labels: TvSelectedItemActionLabels,
     reducedMotion: Boolean,
     modifier: Modifier = Modifier,
+    height: Dp = TV_CINEMATIC_STAGE_HEIGHT,
     contentTopInset: Dp = 0.dp,
     onActionDown: (() -> Boolean)? = null,
     previewing: Boolean = false,
@@ -58,7 +65,7 @@ internal fun TvCinematicPreviewStage(
         modifier =
             modifier
                 .fillMaxWidth()
-                .height(TV_CINEMATIC_STAGE_HEIGHT)
+                .height(height)
                 .background(TvBackground)
                 .testTag("cinematic-preview-stage"),
     ) {

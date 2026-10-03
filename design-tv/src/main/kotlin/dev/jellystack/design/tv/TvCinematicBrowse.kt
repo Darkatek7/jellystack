@@ -145,6 +145,8 @@ internal fun TvCinematicBrowse(
         rowState != null
     }
 
+    // Rows always start where the stage ends, so cards never cover the stage or its trailer.
+    val stageHeight = if (headerContent != null) TV_CINEMATIC_COMPACT_STAGE_HEIGHT else TV_CINEMATIC_STAGE_HEIGHT
     Box(modifier.fillMaxSize().background(TvBackground)) {
         TvCinematicPreviewStage(
             backdrop = backdrop,
@@ -153,6 +155,7 @@ internal fun TvCinematicBrowse(
             actions = selectedItemActions,
             labels = actionLabels,
             reducedMotion = focusAppearance.reducedMotion,
+            height = stageHeight,
             contentTopInset = if (topHeaderContent != null) TV_CINEMATIC_FIXED_HEADER_HEIGHT else 0.dp,
             onActionDown = {
                 actionOriginRequester?.let { requester -> runCatching { requester.requestFocus() }.getOrDefault(false) }
@@ -175,7 +178,7 @@ internal fun TvCinematicBrowse(
                         .padding(
                             start = TvLayoutTokens.ContentStart,
                             end = TvLayoutTokens.SafeInsets.horizontal,
-                            top = TV_CINEMATIC_ROWS_TOP,
+                            top = stageHeight,
                             bottom = TvLayoutTokens.SafeInsets.vertical,
                         ),
                 contentPadding = PaddingValues(bottom = TvLayoutTokens.FocusHaloPadding),
