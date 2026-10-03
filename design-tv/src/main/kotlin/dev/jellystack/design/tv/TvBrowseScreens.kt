@@ -679,33 +679,37 @@ private fun TvHeroCarousel(
                 previewProgress = previewProgress,
             )
         }
-        Row(
+        TvTrailerAwareActions(
+            previewing = trailerPreviewState.showsTvHomeStagePreview(stageItem.id, stagePresentationId),
             modifier = Modifier.align(Alignment.BottomStart).padding(start = 28.dp, bottom = 22.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            TvActionButton(
-                label = if ((stageItem.positionTicks ?: 0L) > 0L) strings.continueLabel else strings.play,
-                primary = true,
-                onClick = onPlay,
-                leading = { Icon(Icons.Default.PlayArrow, null, tint = Color(0xFF251450)) },
-                modifier =
-                    Modifier
-                        .width(180.dp)
-                        .focusRequester(primaryFocusRequester)
-                        .tvHomeVerticalFocus(onActionVerticalMove),
-                focusToNavigationRailOnLeft = true,
-                focusTargetId = TV_HOME_PRIMARY_TARGET,
-            )
-            TvActionButton(
-                label = strings.details,
-                onClick = onDetails,
-                leading = { Icon(Icons.Default.Info, null, tint = TvText) },
-                modifier =
-                    Modifier
-                        .width(156.dp)
-                        .tvHomeVerticalFocus(onActionVerticalMove),
-                focusTargetId = TV_HOME_DETAILS_TARGET,
-            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                TvActionButton(
+                    label = if ((stageItem.positionTicks ?: 0L) > 0L) strings.continueLabel else strings.play,
+                    primary = true,
+                    onClick = onPlay,
+                    leading = { Icon(Icons.Default.PlayArrow, null, tint = Color(0xFF251450)) },
+                    modifier =
+                        Modifier
+                            .width(180.dp)
+                            .focusRequester(primaryFocusRequester)
+                            .tvHomeVerticalFocus(onActionVerticalMove),
+                    focusToNavigationRailOnLeft = true,
+                    focusTargetId = TV_HOME_PRIMARY_TARGET,
+                )
+                TvActionButton(
+                    label = strings.details,
+                    onClick = onDetails,
+                    leading = { Icon(Icons.Default.Info, null, tint = TvText) },
+                    modifier =
+                        Modifier
+                            .width(156.dp)
+                            .tvHomeVerticalFocus(onActionVerticalMove),
+                    focusTargetId = TV_HOME_DETAILS_TARGET,
+                )
+            }
         }
     }
 }

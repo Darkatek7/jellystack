@@ -652,6 +652,36 @@ internal fun TvTrailerPreviewChrome(
     }
 }
 
+/**
+ * Fades stage actions out while a trailer plays so the preview stays unobstructed.
+ *
+ * The actions stay composed and focusable; they reappear as soon as focus moves into them, so
+ * D-pad navigation and focus restoration keep working.
+ */
+@Composable
+internal fun TvTrailerAwareActions(
+    previewing: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    var focused by remember { mutableStateOf(false) }
+    val reducedMotion = LocalTvFocusAppearance.current.reducedMotion
+    val alpha by animateFloatAsState(
+        targetValue = if (previewing && !focused) 0f else 1f,
+        animationSpec = if (reducedMotion) snap() else tween(TV_TRAILER_ACTIONS_FADE_MILLIS),
+        label = "trailer-aware-actions",
+    )
+    Box(
+        modifier
+            .onFocusChanged { focused = it.hasFocus }
+            .graphicsLayer { this.alpha = alpha },
+    ) {
+        content()
+    }
+}
+
+private const val TV_TRAILER_ACTIONS_FADE_MILLIS = 220
+
 @Composable
 internal fun TvLoading(
     label: String,

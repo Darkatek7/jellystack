@@ -86,6 +86,7 @@ internal fun TvCinematicPreviewStage(
             actions = actions,
             labels = labels,
             onActionDown = onActionDown,
+            previewing = previewing && previewEngine != null,
             modifier =
                 Modifier
                     .align(Alignment.TopStart)
@@ -167,6 +168,7 @@ private fun TvCinematicStageMetadata(
     actions: TvSelectedItemActions?,
     labels: TvSelectedItemActionLabels,
     onActionDown: (() -> Boolean)?,
+    previewing: Boolean,
     modifier: Modifier,
 ) {
     val title = focusedCard?.title ?: hero?.title
@@ -210,7 +212,9 @@ private fun TvCinematicStageMetadata(
             )
         }
         if (focusedCard != null && actions != null) {
-            TvSelectedItemActionStrip(focusedCard, labels, actions, onDown = onActionDown)
+            TvTrailerAwareActions(previewing = previewing) {
+                TvSelectedItemActionStrip(focusedCard, labels, actions, onDown = onActionDown)
+            }
         }
     }
 }
