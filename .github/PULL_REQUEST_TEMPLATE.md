@@ -4,11 +4,11 @@
 
 ## Verification
 
-- [ ] Added or updated tests
-- [ ] `./gradlew :app-android:assembleDebug`
-- [ ] Relevant unit/Compose checks
-- [ ] English and German resources remain in sync
-- [ ] Release manifest permission allowlist still passes
+- [ ] Added or updated tests for changed behavior
+- [ ] `./gradlew spotlessCheck detekt` and the unit tests of every touched module (full gate: `docs/building.md`)
+- [ ] `./gradlew :app-android:assembleDebug` (and `:app-tv:assembleDebug` for shared or TV changes)
+- [ ] English and German strings remain in sync (Compose resources, app `res/values`, `TvStrings.kt`)
+- [ ] Mobile and TV release manifest permission allowlists still pass
 
 ## Privacy and security
 

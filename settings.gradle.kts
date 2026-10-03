@@ -3,28 +3,6 @@ pluginManagement {
         google()
         mavenCentral()
         gradlePluginPortal()
-        maven("https://maven.pkg.jetbrains.space/public/p/compose/dev") {
-            content {
-                includeGroup("org.jetbrains.compose")
-            }
-        }
-    }
-    val kotlinVersion = "2.2.10"
-    val agpVersion = "9.2.1"
-    val composeVersion = "1.7.0"
-    val sqldelightVersion = "2.0.2"
-    val detektVersion = "1.23.7"
-    val spotlessVersion = "6.25.0"
-    plugins {
-        id("org.jetbrains.kotlin.multiplatform") version kotlinVersion
-        id("org.jetbrains.kotlin.android") version kotlinVersion
-        id("org.jetbrains.kotlin.plugin.serialization") version kotlinVersion
-        id("com.android.application") version agpVersion
-        id("com.android.library") version agpVersion
-        id("org.jetbrains.compose") version composeVersion
-        id("app.cash.sqldelight") version sqldelightVersion
-        id("io.gitlab.arturbosch.detekt") version detektVersion
-        id("com.diffplug.spotless") version spotlessVersion
     }
 }
 plugins {
@@ -36,19 +14,15 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven("https://maven.pkg.jetbrains.space/public/p/compose/dev") {
-            content {
-                includeGroup("org.jetbrains.compose")
-            }
-        }
     }
 }
 
+// Also determines the generated Compose resources package (jellystack_mobile.*); renaming it is a breaking change.
 rootProject.name = "jellystack-mobile"
 
 enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
 
-iInclude(
+include(
     ":app-android",
     ":app-tv",
     ":app-ios",
@@ -63,7 +37,3 @@ iInclude(
     ":testing",
     ":tools",
 )
-
-fun iInclude(vararg paths: String) {
-    paths.forEach { include(it) }
-}

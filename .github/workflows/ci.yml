@@ -36,20 +36,24 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
 
-      - name: Run static, unit, manifest, screenshot, and Android assembly gates
+      - name: Run static, unit, manifest, screenshot, and Android/TV assembly gates
         run: >-
           ./gradlew spotlessCheck detekt
+          verifyUniqueAndroidVersionCodes
           :design:verifyComposeResourceParity
           :app-android:verifyAndroidResourceParity
           :app-android:verifyReleaseManifestPermissions
+          :app-tv:verifyTvReleaseManifestPermissions
           :shared-network:jvmTest
           :shared-core:testDebugUnitTest
           :shared-database:testDebugUnitTest
           :players:testDebugUnitTest
           :design:testDebugUnitTest
+          :design-tv:testDebugUnitTest
           :app-android:testDebugUnitTest
           :design-screenshots:validateDebugScreenshotTest
           :app-android:assembleDebug
+          :app-tv:assembleDebug
           --stacktrace
 
       - name: Print failing unit-test reports
