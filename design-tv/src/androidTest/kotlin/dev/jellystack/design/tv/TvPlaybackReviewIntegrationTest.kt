@@ -14,7 +14,6 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsFocused
-import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -70,7 +69,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class TvPlaybackReviewIntegrationTest {
     @get:Rule
-    val composeRule = createComposeRule()
+    val composeRule = createTvComposeRule()
 
     @Test
     fun realScreenStartsStandaloneWindowWhenControlsHideAndKeepsControlActionPersistent() {

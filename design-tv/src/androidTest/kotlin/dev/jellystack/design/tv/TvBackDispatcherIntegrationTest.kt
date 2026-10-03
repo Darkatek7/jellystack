@@ -8,7 +8,6 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsFocused
-import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.navigation3.runtime.NavEntry
@@ -25,7 +24,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class TvBackDispatcherIntegrationTest {
     @get:Rule
-    val composeRule = createComposeRule()
+    val composeRule = createTvComposeRule()
 
     @Test
     fun navigation3BackUsesFolderBeforePreviousEntryThenClosesTopLevelRail() {

@@ -52,6 +52,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -232,6 +233,7 @@ internal fun TvDetailFocusLayout(
 ) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+    val currentUiState by rememberUpdatedState(uiState)
     val routeKey = uiState.routeKey
     val focusContext = LocalTvFocusContext.current
     val persistedRouteKey = focusContext?.routeKey ?: routeKey
@@ -394,11 +396,12 @@ internal fun TvDetailFocusLayout(
     }
 
     fun recoveryTarget(source: TvFocusAnchor): TvFocusAnchor {
-        val resolvedSource = uiState.resolve(source)
-        if (resolvedSource != null) return source
-        val sameSection = uiState.section(source.sectionId.orEmpty())?.takeIf { it.participatesInSectionFocus() }
+        val currentState = currentUiState
+        if (currentState.resolve(source) != null) return source
+        val currentFocusSections = currentState.sections.filter { it.participatesInSectionFocus() && it.itemIds.isNotEmpty() }
+        val sameSection = currentState.section(source.sectionId.orEmpty())?.takeIf { it.participatesInSectionFocus() }
         val fallbackSection =
-            sameSection ?: focusSections.getOrNull(activeSectionIndex.coerceIn(0, focusSections.lastIndex.coerceAtLeast(0)))
+            sameSection ?: currentFocusSections.getOrNull(activeSectionIndex.coerceIn(0, currentFocusSections.lastIndex.coerceAtLeast(0)))
         val fallbackItem =
             fallbackSection?.itemIds?.getOrNull(activeItemIndex.coerceIn(0, fallbackSection.itemIds.lastIndex.coerceAtLeast(0)))
         return if (fallbackSection != null && fallbackItem != null) {
@@ -484,6 +487,8 @@ internal fun TvDetailFocusLayout(
             if (isCurrent()) pendingFocusRecovery = pending.copy(target = currentTarget)
             return@LaunchedEffect
         }
+        awaitFocusStart(currentTarget.destination)
+        if (!isCurrent()) return@LaunchedEffect
         if (currentTarget.destination == TvFocusDestination.SECTION_ITEM) {
             val sectionId = currentTarget.sectionId ?: return@LaunchedEffect
             val itemId = currentTarget.itemId ?: return@LaunchedEffect
@@ -603,6 +608,28 @@ internal fun TvDetailFocusLayout(
                     }
                 }
             }.focusable()
+
+    fun missingConfirmedSectionAnchor(): TvFocusAnchor? =
+        lastConfirmedItemAnchor?.takeIf { anchor ->
+            focusOwnership == TvFocusDestination.SECTION_ITEM &&
+                destinationIntent == null &&
+                currentUiState.resolve(anchor) == null
+        }
+
+    fun confirmSectionItemFocus(itemAnchor: TvFocusAnchor) {
+        val currentState = currentUiState
+        val resolved = currentState.resolve(itemAnchor) ?: return
+        val currentFocusSections = currentState.sections.filter { it.participatesInSectionFocus() && it.itemIds.isNotEmpty() }
+        focusTransactionId += 1
+        pendingFocusRecovery = null
+        activeSectionIndex = currentFocusSections.indexOfFirst { it.id == itemAnchor.sectionId }.coerceAtLeast(0)
+        activeItemIndex = resolved.itemIndex
+        lastConfirmedItemAnchor = itemAnchor
+        rememberFocus(itemAnchor, activeItemIndex)
+        focusOwnership = TvFocusDestination.SECTION_ITEM
+        destinationIntent = null
+    }
+
     val sectionFocusModifiers =
         focusSections
             .mapIndexed { sectionIndex, section ->
@@ -613,16 +640,38 @@ internal fun TvDetailFocusLayout(
                             .testTag("tv-detail-section-${section.id}-item-$itemId")
                             .onFocusChanged { focusState ->
                                 val itemAnchor = TvFocusAnchor(section.id, itemId, TvFocusDestination.SECTION_ITEM)
-                                if (focusState.isFocused) {
-                                    focusTransactionId += 1
-                                    pendingFocusRecovery = null
-                                    activeSectionIndex = sectionIndex
-                                    activeItemIndex = section.itemIds.indexOf(itemId).coerceAtLeast(0)
-                                    lastConfirmedItemAnchor = itemAnchor
-                                    rememberFocus(itemAnchor, activeItemIndex)
-                                    focusOwnership = TvFocusDestination.SECTION_ITEM
-                                    destinationIntent = null
+                                val missingAnchor = missingConfirmedSectionAnchor()
+                                if (focusState.isFocused &&
+                                    (missingAnchor == null || itemAnchor == recoveryTarget(missingAnchor))
+                                ) {
+                                    // Default focus after removal must not replace the recovery anchor.
+                                    confirmSectionItemFocus(itemAnchor)
                                 }
+                            }.onPreviewKeyEvent { event ->
+                                val isNavigationOrActivation =
+                                    when (event.nativeKeyEvent.keyCode) {
+                                        KeyEvent.KEYCODE_DPAD_UP,
+                                        KeyEvent.KEYCODE_DPAD_DOWN,
+                                        KeyEvent.KEYCODE_DPAD_LEFT,
+                                        KeyEvent.KEYCODE_DPAD_RIGHT,
+                                        KeyEvent.KEYCODE_DPAD_CENTER,
+                                        KeyEvent.KEYCODE_ENTER,
+                                        KeyEvent.KEYCODE_NUMPAD_ENTER,
+                                        KeyEvent.KEYCODE_SPACE,
+                                        KeyEvent.KEYCODE_BUTTON_A,
+                                        KeyEvent.KEYCODE_BACK,
+                                        -> true
+                                        else -> false
+                                    }
+                                if (event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
+                                    isNavigationOrActivation &&
+                                    missingConfirmedSectionAnchor() != null
+                                ) {
+                                    // Real input owns even a temporary default target before clickable handles it.
+                                    ownDestination(TvFocusDestination.SECTION_ITEM)
+                                    confirmSectionItemFocus(TvFocusAnchor(section.id, itemId, TvFocusDestination.SECTION_ITEM))
+                                }
+                                false
                             }
                     }
                 val navigationModifier =

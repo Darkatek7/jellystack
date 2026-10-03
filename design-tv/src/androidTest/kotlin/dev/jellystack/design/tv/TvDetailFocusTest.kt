@@ -18,12 +18,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
-import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -48,7 +50,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class TvDetailFocusTest {
     @get:Rule
-    val composeRule = createComposeRule()
+    val composeRule = createTvComposeRule()
 
     @Test
     fun detailRestoresHolderOwnedSemanticAnchorAfterRecreation() {
@@ -314,12 +316,13 @@ class TvDetailFocusTest {
         primary.performKeyInput { pressKey(Key.DirectionDown) }
         composeRule.waitUntil(2_000) {
             runCatching {
-                composeRule.onNodeWithTag("tv-detail-body-focus").fetchSemanticsNode()
+                composeRule.onNodeWithTag("tv-detail-body-focus").assertIsFocused()
                 true
             }.getOrDefault(false)
         }
         val body = composeRule.onNodeWithTag("tv-detail-body-focus").assertIsFocused()
-        assertTrue(hero.getUnclippedBoundsInRoot().top.value < 0f)
+        // LazyColumn can dispose the hero once navigation scrolls it out of view.
+        hero.assertIsNotDisplayed()
 
         body.performKeyInput { pressKey(Key.DirectionDown) }
         composeRule.waitForIdle()
@@ -858,13 +861,93 @@ class TvDetailFocusTest {
         composeRule.mainClock.autoAdvance = false
         composeRule.runOnIdle { cast = emptyList() }
         composeRule.mainClock.advanceTimeByFrame()
-        composeRule.onNodeWithTag("tv-detail-body-focus").assertIsFocused()
-        composeRule.onNodeWithTag("tv-detail-body-focus").performKeyInput { pressKey(Key.DirectionUp) }
+        // Recovery targets another row; explicitly start user navigation from overview.
+        composeRule
+            .onNodeWithTag("tv-detail-body-focus")
+            .performSemanticsAction(SemanticsActions.RequestFocus)
+            .assertIsFocused()
+            .performKeyInput { pressKey(Key.DirectionUp) }
         composeRule.runOnIdle { similar = (16 downTo 1).map(::seerrItem) }
         composeRule.mainClock.autoAdvance = true
         composeRule.waitForIdle()
 
         composeRule.onNodeWithTag("tv-detail-primary-action").assertIsFocused()
+    }
+
+    @Test
+    fun rightOnTemporaryDefaultItemCancelsMissingSectionRecovery() {
+        assertInputCancelsMissingSectionRecovery(Key.DirectionRight, expectedItemId = 2, activatesItem = false)
+    }
+
+    @Test
+    fun enterOnTemporaryDefaultItemCancelsMissingSectionRecovery() {
+        assertInputCancelsMissingSectionRecovery(Key.Enter, expectedItemId = 1, activatesItem = true)
+    }
+
+    private fun assertInputCancelsMissingSectionRecovery(
+        key: Key,
+        expectedItemId: Int,
+        activatesItem: Boolean,
+    ) {
+        var cast by mutableStateOf((1..16).map(::seerrPerson))
+        val similar = (1..16).map(::seerrItem)
+        val openedItems = mutableListOf<Int>()
+        var pauseRecovery = false
+        val recoveryStarted = CompletableDeferred<Unit>()
+        val releaseRecovery = CompletableDeferred<Unit>()
+        val strings = TvStrings.current(AppLanguage.ENGLISH)
+        composeRule.setContent {
+            val uiState =
+                buildTvSeerrDetailUiState(
+                    routeKey = "tv:user-input-during-recovery",
+                    overview = "Overview",
+                    tagline = null,
+                    ratings = null,
+                    cast = cast,
+                    similar = similar,
+                )
+            JellystackTvTheme {
+                TvDetailFocusLayout(
+                    uiState = uiState,
+                    heroContentDescription = "User navigation during recovery",
+                    hasPrimaryAction = false,
+                    modifier = Modifier.fillMaxSize(),
+                    awaitFocusStart = { destination ->
+                        if (pauseRecovery && destination == TvFocusDestination.SECTION_ITEM) {
+                            recoveryStarted.complete(Unit)
+                            releaseRecovery.await()
+                        }
+                    },
+                    heroContent = { _, _ -> Box(Modifier.fillMaxSize()) },
+                ) { bodyFocusModifier, sectionFocusModifiers ->
+                    tvSeerrDetailSections(uiState, strings, bodyFocusModifier, sectionFocusModifiers) { item ->
+                        openedItems += item.tmdbId
+                    }
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag("tv-detail-body-focus").performKeyInput { pressKey(Key.DirectionDown) }
+        moveFocusRightThroughPeople(1..16)
+        composeRule.runOnIdle {
+            pauseRecovery = true
+            cast = emptyList()
+        }
+        composeRule.waitUntil(5_000) { recoveryStarted.isCompleted }
+        waitUntilTagFocused("tv-detail-section-similar-item-tv:1")
+
+        composeRule.onNodeWithTag("tv-detail-section-similar-item-tv:1").performKeyInput { pressKey(key) }
+        val expectedTag = "tv-detail-section-similar-item-tv:$expectedItemId"
+        waitUntilTagFocused(expectedTag)
+        composeRule.runOnIdle {
+            assertEquals(if (activatesItem) listOf(expectedItemId) else emptyList<Int>(), openedItems)
+            pauseRecovery = false
+            releaseRecovery.complete(Unit)
+        }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag(expectedTag).assertIsFocused()
+        composeRule.onNodeWithTag("tv-detail-section-cast-item-person-16").assertDoesNotExist()
     }
 
     private fun holderRememberingCast(routeKey: String) =

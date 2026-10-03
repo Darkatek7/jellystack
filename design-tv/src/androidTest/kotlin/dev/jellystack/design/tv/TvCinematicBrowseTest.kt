@@ -16,10 +16,10 @@ import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.isFocused
-import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.pressKey
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -34,7 +34,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class TvCinematicBrowseTest {
     @get:Rule
-    val composeRule = createComposeRule()
+    val composeRule = createTvComposeRule()
 
     @Test
     fun sharedPreviewStageStaysAboveRowsAndNeverParticipatesInFocus() {
@@ -125,7 +125,7 @@ class TvCinematicBrowseTest {
                 .assertHasClickAction()
                 .performClick()
         }
-        composeRule.onNodeWithTag("cinematic-status").assertIsDisplayed()
+        composeRule.onNodeWithTag("cinematic-status").performScrollTo().assertIsDisplayed()
         composeRule.onAllNodes(hasClickAction()).assertCountEquals(6)
         composeRule.runOnIdle { assertEquals(listOf("play", "details", "saved", "played"), invoked) }
     }

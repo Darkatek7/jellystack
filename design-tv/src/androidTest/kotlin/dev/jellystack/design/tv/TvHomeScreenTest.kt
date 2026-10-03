@@ -18,7 +18,6 @@ import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -55,7 +54,7 @@ import kotlin.time.Duration.Companion.days
 @RunWith(AndroidJUnit4::class)
 class TvHomeScreenTest {
     @get:Rule
-    val composeRule = createComposeRule()
+    val composeRule = createTvComposeRule()
 
     @Test
     fun myListOffersPlayForAvailableAndRequestForUnavailableTitles() {
@@ -1140,7 +1139,13 @@ class TvHomeScreenTest {
         selectedAvailable: Boolean,
         delayedSelected: Boolean,
     ) {
-        val coordinator = remember { TvFocusCoordinator<FocusRequester>(attachmentTimeoutMillis = 500) }
+        val coordinator =
+            remember {
+                TvFocusCoordinator<FocusRequester>(
+                    attachmentTimeoutMillis = 500,
+                    awaitFocusFrame = { withFrameNanos { } },
+                )
+            }
         val contentRoute = "test-content"
         val contentTarget = "content:exact"
         val selectedTarget = tvRailTargetId(TvRoute.Settings())
@@ -1189,7 +1194,10 @@ class TvHomeScreenTest {
 
     @androidx.compose.runtime.Composable
     private fun RailTraversalHarness(showLateTarget: Boolean) {
-        val coordinator = remember { TvFocusCoordinator<FocusRequester>() }
+        val coordinator =
+            remember {
+                TvFocusCoordinator<FocusRequester>(awaitFocusFrame = { withFrameNanos { } })
+            }
         val homeTarget = tvRailTargetId(TvRoute.Home)
         val libraryTarget = tvRailTargetId(TvRoute.Library())
         val lateTarget = tvRailTargetId(TvRoute.Search)

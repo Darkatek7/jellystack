@@ -1,10 +1,12 @@
 package dev.jellystack.design.tv
 
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -14,7 +16,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class TvSemanticFocusIntegrationTest {
     @get:Rule
-    val composeRule = createComposeRule()
+    val composeRule = createTvComposeRule()
 
     @Test
     fun stableDescriptorWinsOverLocalizedLegacyFocusCallback() {
@@ -40,11 +42,13 @@ class TvSemanticFocusIntegrationTest {
                         providedFocusRequester = requester,
                     )
                 }
-                LaunchedEffect(Unit) { requester.requestFocus() }
             }
         }
 
-        composeRule.waitForIdle()
+        composeRule
+            .onNodeWithContentDescription("Movie")
+            .performSemanticsAction(SemanticsActions.RequestFocus)
+            .assertIsFocused()
         composeRule.runOnIdle {
             assertEquals(
                 "continue-watching",
