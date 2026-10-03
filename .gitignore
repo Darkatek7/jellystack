@@ -1,42 +1,47 @@
+# Gradle and build output
 /.gradle/
-/build/
+/.kotlin/
 **/build/
 **/out/
+
+# Local machine configuration
 /local.properties
+# Test-only credentials for manual integration checks
 /local.integration.properties
-/captures/
+
+# IDE
 /.idea/
-/.idea/**/workspace.xml
-/.idea/**/tasks.xml
-/.idea/**/usage.statistics.xml
-/.idea/**/dictionaries
-/.idea/**/libraries
-/.idea/**/shelf/
-/.idea/**/caches/
+/captures/
 *.iml
 *.iws
 *.ipr
-*.keystore
-*.jks
+
+# OS
 .DS_Store
 Thumbs.db
-/.kotlin/
-/kotlin-js-store/
-/.qa-artifacts/
-/.qa-tv-*
-/.superpowers/
-/.worktrees/
-/Handle/
-/Handle.zip
-/adb.exe
-/castlog*.txt
-/project_diagnostics.json
-/support_bundle*
+
+# Signing material and release artifacts (never commit)
+keystore.properties
+*.keystore
+*.jks
+*.aab
+*.apk
+
+# Logs and crash dumps
 *.log
 *.dmp
 *.hprof
 *.zip
-app-android/release/app-android-release.aab
-keystore.properties
-*.jks
-*.keystore
+
+# Local QA captures, tooling and diagnostics
+# (personal entries are better kept in .git/info/exclude)
+/.qa-*
+/.superpowers/
+/.sdd/
+/.zcode/
+/.worktrees/
+/Handle/
+/adb.exe
+/castlog*.txt
+/project_diagnostics.json
+/support_bundle*

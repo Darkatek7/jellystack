@@ -13,9 +13,6 @@ plugins {
     alias(libs.plugins.screenshot) apply false
 }
 
-group = "dev.jellystack"
-version = "0.0.1-SNAPSHOT"
-
 subprojects {
     apply(plugin = "io.gitlab.arturbosch.detekt")
 
@@ -39,15 +36,6 @@ spotless {
     kotlinGradle {
         target("**/*.gradle.kts")
         ktlint(libs.versions.ktlint.get())
-    }
-}
-
-tasks.register("printProjectStructure") {
-    group = "help"
-    description = "Prints included Gradle projects."
-    doLast {
-        println("Projects: ")
-        rootProject.subprojects.sortedBy { it.path }.forEach { println(" - ${it.path}") }
     }
 }
 
@@ -76,7 +64,6 @@ tasks.register("generateThirdPartyReport") {
                 Triple("Coil", version("coil3"), "Apache-2.0"),
                 Triple("Napier", version("napier"), "Apache-2.0"),
                 Triple("Multiplatform Settings", version("multiplatform-settings"), "Apache-2.0"),
-                Triple("Voyager", version("voyager"), "MIT"),
                 Triple("AndroidX Media3", version("media3"), "Apache-2.0"),
                 Triple("Compose for TV Material", version("tv-material"), "Apache-2.0"),
                 Triple("AndroidX Navigation 3", version("navigation3"), "Apache-2.0"),

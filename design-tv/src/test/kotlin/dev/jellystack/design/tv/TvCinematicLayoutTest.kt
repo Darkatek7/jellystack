@@ -27,6 +27,18 @@ class TvCinematicLayoutTest {
     }
 
     @Test
+    fun browseRowsStartBelowThePreviewStageAndFitTheViewport() {
+        val heroBottom = TvLayoutTokens.SafeInsets.vertical.value + tvHomeHeroHeightDp()
+        val cardHeight = TvLayoutTokens.LandscapeArtworkHeight.value + TvLayoutTokens.LandscapeMetadataBandHeight.value
+        val focusedCardBottom =
+            tvHomeFirstCardTopDp() + cardHeight * TvLayoutTokens.FOCUS_SCALE + TvLayoutTokens.FocusHaloPadding.value
+
+        assertTrue(TV_CINEMATIC_ROWS_TOP.value >= heroBottom)
+        assertEquals(TV_CINEMATIC_ROWS_TOP, TV_CINEMATIC_STAGE_HEIGHT)
+        assertTrue(focusedCardBottom <= 540f, "first card bottom $focusedCardBottom exceeds a 540 dp viewport")
+    }
+
+    @Test
     fun stableKeysAndSelectionRemainIndependentFromFocus() {
         val selected = TvCinematicCard(id = "movie:1", title = "One", selected = true)
         val unselected = TvCinematicCard(id = "movie:2", title = "Two")

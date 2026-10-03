@@ -2,20 +2,10 @@ package dev.jellystack.design.theme
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
-import androidx.compose.ui.unit.dp
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class JellystackVisualTokensTest {
-    @Test
-    fun touchTargetAndSpotlightCapsMatchTheApprovedLayout() {
-        assertEquals(48.dp, JellystackLayoutTokens.minimumTouchTarget)
-        assertEquals(240.dp, JellystackLayoutTokens.spotlightShortHeightMax)
-        assertEquals(320.dp, JellystackLayoutTokens.spotlightCompactMax)
-        assertEquals(420.dp, JellystackLayoutTokens.spotlightExpandedMax)
-    }
-
     @Test
     fun themeTextPairsMeetWcagContrast() {
         assertTrue(

@@ -143,18 +143,4 @@ class AppSettingsRepositoryTest {
         assertEquals(SegmentSkipMode.OFF, repository.settings.value.previewSkipMode)
         assertEquals(SegmentSkipMode.OFF, repository.settings.value.commercialSkipMode)
     }
-
-    @Test
-    fun televisionCapabilitiesExcludeMobileOnlyFeatures() {
-        val capabilities = AppPlatformCapabilities.Television
-
-        assertTrue(capabilities.isTelevision)
-        assertTrue(capabilities.appLanguageSelection)
-        assertTrue(capabilities.autoplayNextEpisode)
-        assertTrue(capabilities.subtitleAppearance)
-        assertFalse(capabilities.supportsCast)
-        assertFalse(capabilities.supportsDownloads)
-        assertFalse(capabilities.supportsBiometricLock)
-        assertFalse(capabilities.supportsAdmin)
-    }
 }

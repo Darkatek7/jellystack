@@ -198,7 +198,6 @@ dependencies {
     implementation(libs.androidx.mediarouter)
     implementation(libs.serialization.json)
     implementation(libs.ktor.client.core)
-    implementation(libs.compose.navigation)
     implementation(libs.sqldelight.android)
     implementation(libs.coroutines.android)
     implementation(libs.koin.compose)

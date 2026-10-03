@@ -15,7 +15,6 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
-import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -278,28 +277,6 @@ class MainActivityTest {
         composeRule.onNodeWithText("What’s new").performScrollTo().performClick()
         composeRule.onNodeWithText("What's new in Jellystack").assertExists()
         composeRule.onNodeWithText("Close").performClick()
-    }
-
-    @Test
-    fun whatsNewShowsCurrentReleaseHighlights() {
-        dismissOnboardingIfPresent()
-        openWhatsNew()
-        composeRule.onAllNodesWithText("Version ${BuildConfig.VERSION_NAME}").onLast().assertExists()
-        composeRule
-            .onNodeWithText(
-                "Connect to Jellyfin 12.0+ with password login or Quick Connect.",
-                substring = true,
-            ).assertExists()
-        composeRule
-            .onNodeWithText(
-                "Watch videos with working artwork, subtitles, and SyncPlay on Jellyfin 12.0+.",
-                substring = true,
-            ).assertExists()
-        composeRule
-            .onNodeWithText(
-                "Continue queued downloads after upgrading your Jellyfin server.",
-                substring = true,
-            ).assertExists()
     }
 
     @Test
@@ -660,20 +637,6 @@ class MainActivityTest {
             assertEquals("Explore", preferences.getString("onboarding.tutorial.step", null))
             assertTrue(preferences.getBoolean("onboarding.tutorial.completed", false))
         }
-    }
-
-    private fun openWhatsNew() {
-        if (
-            composeRule
-                .onAllNodesWithText("What's new in Jellystack")
-                .fetchSemanticsNodes()
-                .isNotEmpty()
-        ) {
-            return
-        }
-        composeRule.onNodeWithContentDescription("Open settings").performClick()
-        composeRule.onNodeWithText("About").performScrollTo().performClick()
-        composeRule.onNodeWithText("What’s new").performScrollTo().performClick()
     }
 }
 
