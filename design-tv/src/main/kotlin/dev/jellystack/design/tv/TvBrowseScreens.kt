@@ -150,8 +150,6 @@ private suspend fun materializeTvRowItem(
     return rowAttached
 }
 
-internal fun tvHomeHeroHeightDp(): Int = TV_HOME_HERO_HEIGHT_DP
-
 internal fun tvHomeFirstCardTopDp(): Int = 20 + TV_HOME_HERO_HEIGHT_DP + 28 + 24 + 14 + 6
 
 private enum class TvSearchSource { ALL, JELLYFIN, SEERR }

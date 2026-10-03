@@ -78,16 +78,6 @@ internal const val TV_DETAIL_COMPACT_ACTION_WIDTH_DP = 132
 internal const val TV_DETAIL_ACTION_GAP_DP = 14
 internal const val TV_DETAIL_COMPACT_ACTION_HEIGHT_DP = 72
 
-internal fun tvDetailActionRowRequiredWidthDp(): Int =
-    TV_DETAIL_PRIMARY_ACTION_WIDTH_DP + (TV_DETAIL_COMPACT_ACTION_WIDTH_DP * 3) + (TV_DETAIL_ACTION_GAP_DP * 3)
-
-internal fun tvCompactActionRequiredHeightDp(fontScale: Float): Float = 25f + 3f + (13f * fontScale) + 16f
-
-internal fun tvCompactActionRequiredWidthDp(
-    characterCount: Int,
-    fontScale: Float,
-): Float = (characterCount * 6.5f * fontScale) + 16f
-
 @Composable
 internal fun Modifier.tvFocusable(
     onClick: () -> Unit,

@@ -11,26 +11,15 @@ Thanks for helping improve Jellystack.
 
 ## Development setup
 
-Use JDK 17 and Android SDK API 36. Run Gradle only from the repository root:
-
-```bash
-./gradlew :app-android:assembleDebug
-```
+Use JDK 17 and Android SDK API 36. Run Gradle only from the repository root. [Building](docs/building.md) lists every build, test, and verification command; [AGENTS.md](AGENTS.md) summarizes the project conventions for humans and coding agents alike.
 
 macOS and Xcode are required for iOS compilation. iOS is experimental.
 
 ## Workflow
 
 1. Fork the repository and branch from `main`.
-2. Keep changes focused and add tests for changed behavior.
-3. Run:
-
-   ```bash
-   ./gradlew spotlessCheck detekt
-   ./gradlew :app-android:check
-   ./gradlew :app-android:assembleDebug
-   ```
-
+2. Keep changes focused and add tests for changed behavior (see the testing policy in [AGENTS.md](AGENTS.md)).
+3. Run `./gradlew spotlessCheck detekt` plus the unit tests of every module you touched, or the full CI gate from [Building](docs/building.md).
 4. Open a pull request using the template.
 
 `main` is protected. All changes use pull requests, linear history, and squash merges. Force pushes to `main` are disabled.

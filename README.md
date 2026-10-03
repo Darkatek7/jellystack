@@ -28,28 +28,14 @@ See [Privacy](docs/privacy.md), [Permissions](docs/permissions.md), and the [Ger
 
 ## Build
 
-Requirements:
-
-- JDK 17
-- Android SDK API 36
-- Xcode on macOS for iOS targets
-
-All Gradle commands run from the repository root:
+Requirements: JDK 17 and Android SDK API 36 (Xcode on macOS for the experimental iOS targets). Run Gradle from the repository root:
 
 ```bash
 ./gradlew :app-android:assembleDebug
 ./gradlew :app-tv:assembleDebug
 ```
 
-Useful verification:
-
-```bash
-./gradlew spotlessCheck detekt
-./gradlew :app-android:check
-./gradlew :shared-network:jvmTest :shared-core:testDebugUnitTest
-```
-
-See [Building](docs/building.md) for local setup and [Architecture](docs/architecture.md) for module boundaries.
+See [Building](docs/building.md) for the full verification gate, tests, and screenshot workflow, and [Architecture](docs/architecture.md) for module boundaries.
 
 The TV beta uses a separate GMS-free application module while sharing Jellyfin, Seerr, settings, and playback logic with mobile. See [Android TV and Fire TV](docs/android-tv.md) for emulator setup, remote controls, builds, testing, and store submission.
 

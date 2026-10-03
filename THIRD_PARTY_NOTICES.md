@@ -12,7 +12,6 @@ Major components include:
 - Coil — Apache-2.0
 - Napier — Apache-2.0
 - Multiplatform Settings — Apache-2.0
-- Voyager — MIT
 - Google Cast SDK / Google Play services — Google APIs Terms of Service and applicable SDK terms
 
 This summary is not a substitute for the license files distributed with each dependency. Generate the declared dependency report with:
