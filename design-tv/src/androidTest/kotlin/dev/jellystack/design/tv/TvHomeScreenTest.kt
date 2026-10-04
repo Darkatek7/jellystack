@@ -79,7 +79,7 @@ class TvHomeScreenTest {
             )
         composeRule.setContent {
             val context = LocalContext.current
-            engine = remember(context) { AndroidPlayerEngine(context) }
+            engine = rememberTestPlayerEngine(context)
             TestHomeScreen(
                 state =
                     JellyfinHomeState(
@@ -122,7 +122,7 @@ class TvHomeScreenTest {
             )
         composeRule.setContent {
             val context = LocalContext.current
-            engine = remember(context) { AndroidPlayerEngine(context) }
+            engine = rememberTestPlayerEngine(context)
             RestorableHomeHost(shown.value, preferred.value, sections, engine)
         }
 
@@ -158,7 +158,7 @@ class TvHomeScreenTest {
             )
         composeRule.setContent {
             val context = LocalContext.current
-            engine = remember(context) { AndroidPlayerEngine(context) }
+            engine = rememberTestPlayerEngine(context)
             RestorableHomeHost(true, preferred.value, sections, engine)
         }
 
@@ -315,7 +315,7 @@ class TvHomeScreenTest {
         lateinit var engine: AndroidPlayerEngine
         composeRule.setContent {
             val context = LocalContext.current
-            engine = remember(context) { AndroidPlayerEngine(context) }
+            engine = rememberTestPlayerEngine(context)
             TestHomeScreen(JellyfinHomeState(isHomeLoading = true), HomeSectionsState.Loading, engine)
         }
 
@@ -330,7 +330,7 @@ class TvHomeScreenTest {
         val recent = item("recent", "Recent", dateCreated = (Clock.System.now() - 1.days).toString())
         composeRule.setContent {
             val context = LocalContext.current
-            engine = remember(context) { AndroidPlayerEngine(context) }
+            engine = rememberTestPlayerEngine(context)
             TestHomeScreen(
                 state = JellyfinHomeState(recentMovies = listOf(recent)),
                 sections = HomeSectionsState.Unavailable,
@@ -359,7 +359,7 @@ class TvHomeScreenTest {
             )
         composeRule.setContent {
             val context = LocalContext.current
-            engine = remember(context) { AndroidPlayerEngine(context) }
+            engine = rememberTestPlayerEngine(context)
             TestHomeScreen(
                 state = JellyfinHomeState(recentMovies = listOf(recent)),
                 sections = HomeSectionsState.Ready(listOf(section), "", ""),
@@ -382,7 +382,7 @@ class TvHomeScreenTest {
         val second = item("old-second", "Old second", dateCreated = (Clock.System.now() - 50.days).toString())
         composeRule.setContent {
             val context = LocalContext.current
-            engine = remember(context) { AndroidPlayerEngine(context) }
+            engine = rememberTestPlayerEngine(context)
             TestHomeScreen(
                 state = JellyfinHomeState(recentMovies = listOf(first, second)),
                 sections = HomeSectionsState.Unavailable,
@@ -401,7 +401,7 @@ class TvHomeScreenTest {
         val first = item("first", "First hero", dateCreated = (Clock.System.now() - 1.days).toString())
         composeRule.setContent {
             val context = LocalContext.current
-            engine = remember(context) { AndroidPlayerEngine(context) }
+            engine = rememberTestPlayerEngine(context)
             TestHomeScreen(
                 state = JellyfinHomeState(recentMovies = listOf(first)),
                 sections = HomeSectionsState.Unavailable,
@@ -432,7 +432,7 @@ class TvHomeScreenTest {
             )
         composeRule.setContent {
             val context = LocalContext.current
-            engine = remember(context) { AndroidPlayerEngine(context) }
+            engine = rememberTestPlayerEngine(context)
             TestHomeScreen(
                 state = JellyfinHomeState(recentMovies = listOf(recent)),
                 sections = HomeSectionsState.Ready(listOf(section), "", ""),
@@ -461,7 +461,7 @@ class TvHomeScreenTest {
         val continueItem = item("continue", "Continue row item")
         composeRule.setContent {
             val context = LocalContext.current
-            engine = remember(context) { AndroidPlayerEngine(context) }
+            engine = rememberTestPlayerEngine(context)
             TestHomeScreen(
                 state = JellyfinHomeState(recentMovies = listOf(recent), continueWatching = listOf(continueItem)),
                 sections = HomeSectionsState.Unavailable,
@@ -486,7 +486,7 @@ class TvHomeScreenTest {
         val second = item("second", "Second hero", dateCreated = (Clock.System.now() - 2.days).toString())
         composeRule.setContent {
             val context = LocalContext.current
-            engine = remember(context) { AndroidPlayerEngine(context) }
+            engine = rememberTestPlayerEngine(context)
             TestHomeScreen(
                 state = JellyfinHomeState(recentMovies = listOf(first, second)),
                 sections = HomeSectionsState.Unavailable,
@@ -531,7 +531,7 @@ class TvHomeScreenTest {
             )
         composeRule.setContent {
             val context = LocalContext.current
-            engine = remember(context) { AndroidPlayerEngine(context) }
+            engine = rememberTestPlayerEngine(context)
             TestHomeScreen(
                 state = JellyfinHomeState(),
                 sections = HomeSectionsState.Ready(listOf(section), "", ""),
@@ -569,7 +569,7 @@ class TvHomeScreenTest {
         composeRule.mainClock.autoAdvance = false
         composeRule.setContent {
             val context = LocalContext.current
-            engine = remember(context) { AndroidPlayerEngine(context) }
+            engine = rememberTestPlayerEngine(context)
             TestHomeScreen(
                 state = JellyfinHomeState(recentMovies = listOf(first, second)),
                 sections = HomeSectionsState.Ready(listOf(section), "", ""),
@@ -594,7 +594,7 @@ class TvHomeScreenTest {
         composeRule.mainClock.autoAdvance = false
         composeRule.setContent {
             val context = LocalContext.current
-            engine = remember(context) { AndroidPlayerEngine(context) }
+            engine = rememberTestPlayerEngine(context)
             TestHomeScreen(
                 state = JellyfinHomeState(recentMovies = listOf(first, second)),
                 sections = HomeSectionsState.Unavailable,
@@ -629,7 +629,7 @@ class TvHomeScreenTest {
             )
         composeRule.setContent {
             val context = LocalContext.current
-            engine = remember(context) { AndroidPlayerEngine(context) }
+            engine = rememberTestPlayerEngine(context)
             TestHomeScreen(
                 state = JellyfinHomeState(recentShows = listOf(episode)),
                 sections = HomeSectionsState.Unavailable,
@@ -652,7 +652,7 @@ class TvHomeScreenTest {
         val rowItem = item("row", "Row item")
         composeRule.setContent {
             val context = LocalContext.current
-            engine = remember(context) { AndroidPlayerEngine(context) }
+            engine = rememberTestPlayerEngine(context)
             TestHomeScreen(
                 state = JellyfinHomeState(recentMovies = listOf(hero), continueWatching = listOf(rowItem)),
                 sections = HomeSectionsState.Unavailable,
@@ -681,7 +681,7 @@ class TvHomeScreenTest {
         composeRule.mainClock.autoAdvance = false
         composeRule.setContent {
             val context = LocalContext.current
-            engine = remember(context) { AndroidPlayerEngine(context) }
+            engine = rememberTestPlayerEngine(context)
             TestHomeScreen(
                 state = JellyfinHomeState(recentMovies = listOf(first, second), continueWatching = listOf(rowItem)),
                 sections = HomeSectionsState.Unavailable,
@@ -736,7 +736,7 @@ class TvHomeScreenTest {
             )
         composeRule.setContent {
             val context = LocalContext.current
-            engine = remember(context) { AndroidPlayerEngine(context) }
+            engine = rememberTestPlayerEngine(context)
             TestHomeScreen(
                 state = JellyfinHomeState(recentMovies = listOf(same), continueWatching = listOf(same)),
                 sections = HomeSectionsState.Unavailable,
@@ -764,7 +764,7 @@ class TvHomeScreenTest {
         val same = item("same", "Same item", dateCreated = (Clock.System.now() - 1.days).toString())
         composeRule.setContent {
             val context = LocalContext.current
-            engine = remember(context) { AndroidPlayerEngine(context) }
+            engine = rememberTestPlayerEngine(context)
             JellystackTvTheme {
                 androidx.compose.foundation.layout.Row {
                     listOf("continue", "next").forEach { rowId ->
@@ -790,7 +790,7 @@ class TvHomeScreenTest {
         val second = item("second", "Second hero", dateCreated = (Clock.System.now() - 2.days).toString())
         composeRule.setContent {
             val context = LocalContext.current
-            engine = remember(context) { AndroidPlayerEngine(context) }
+            engine = rememberTestPlayerEngine(context)
             TestHomeScreen(
                 state = JellyfinHomeState(recentMovies = listOf(first, second)),
                 sections = HomeSectionsState.Unavailable,
@@ -828,7 +828,7 @@ class TvHomeScreenTest {
             }
         composeRule.setContent {
             val context = LocalContext.current
-            engine = remember(context) { AndroidPlayerEngine(context) }
+            engine = rememberTestPlayerEngine(context)
             TestHomeScreen(
                 state = JellyfinHomeState(),
                 sections = HomeSectionsState.Ready(sections, "", ""),
@@ -882,7 +882,7 @@ class TvHomeScreenTest {
             )
         composeRule.setContent {
             val context = LocalContext.current
-            engine = remember(context) { AndroidPlayerEngine(context) }
+            engine = rememberTestPlayerEngine(context)
             TestHomeScreen(
                 state = JellyfinHomeState(),
                 sections = HomeSectionsState.Ready(listOf(externalRow, localRow), "", ""),

@@ -1,8 +1,13 @@
 package dev.jellystack.design.tv
 
+import android.content.Context
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
+import dev.jellystack.players.AndroidPlayerEngine
 import org.junit.runner.Description
 import org.junit.runners.model.Statement
 
@@ -30,4 +35,15 @@ internal fun createTvComposeRule(): ComposeContentTestRule {
                 description,
             )
     }
+}
+
+/**
+ * Player engines own an ExoPlayer, its threads, and a video surface. Release them together with the test
+ * content so suites with many preview tests do not exhaust the emulator.
+ */
+@Composable
+internal fun rememberTestPlayerEngine(context: Context): AndroidPlayerEngine {
+    val engine = remember(context) { AndroidPlayerEngine(context) }
+    DisposableEffect(engine) { onDispose { engine.release() } }
+    return engine
 }

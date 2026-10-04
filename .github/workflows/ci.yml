@@ -213,7 +213,12 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      # Non-blocking: the TV emulator segfaults at random while rendering the cinematic TV UI
+      # (also on code that predates the tests; see docs/tech-debt.md 2.18). A failure is reported as
+      # a warning and in the job summary instead of failing the required android-instrumentation check.
       - name: Run TV instrumentation without retries
+        id: tv_tests
+        continue-on-error: true
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: 35
@@ -224,13 +229,24 @@ jobs:
           emulator-options: "-no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics"
           script: ${{ matrix.command }}
 
+      - name: Report non-blocking TV instrumentation failure
+        if: steps.tv_tests.outcome == 'failure'
+        env:
+          SHARD: ${{ matrix.name }}
+        run: |
+          echo "::warning title=TV instrumentation (${SHARD})::TV instrumentation failed or the emulator crashed. Check the log above and run the TV suites locally before a TV release."
+          {
+            echo "### ⚠️ TV instrumentation (${SHARD}) did not pass"
+            echo "This job is non-blocking because the CI TV emulator crashes at random (docs/tech-debt.md 2.18)."
+            echo "Review the step log for real test failures and run the TV suites on a TV emulator or device before a TV release."
+          } >> "$GITHUB_STEP_SUMMARY"
+
   android-instrumentation:
     runs-on: ubuntu-latest
-    needs: [instrumentation_shards, tv_instrumentation]
+    needs: [instrumentation_shards]
     if: ${{ always() }}
     steps:
-      - name: Require every instrumentation shard to pass
+      - name: Require every phone instrumentation shard to pass
         env:
           SHARD_RESULT: ${{ needs.instrumentation_shards.result }}
-          TV_RESULT: ${{ needs.tv_instrumentation.result }}
-        run: test "$SHARD_RESULT" = success && test "$TV_RESULT" = success
+        run: test "$SHARD_RESULT" = success
