@@ -3923,7 +3923,7 @@ internal fun buildImageUrl(
         } else {
             baseUrl
         }
-    val tokenQuery = accessToken?.let { "&api_key=$it" }.orEmpty()
+    val tokenQuery = accessToken?.let { "&ApiKey=$it" }.orEmpty()
     return "$normalizedBase/Items/$itemId/Images/$imageType?tag=$tag$tokenQuery"
 }
 

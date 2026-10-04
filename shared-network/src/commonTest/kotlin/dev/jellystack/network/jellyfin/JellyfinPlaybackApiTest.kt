@@ -28,7 +28,8 @@ class JellyfinPlaybackApiTest {
                     assertEquals("/Videos/ActiveEncodings", request.url.encodedPath)
                     assertEquals("device-1", request.url.parameters["DeviceId"])
                     assertEquals("play-1", request.url.parameters["PlaySessionId"])
-                    assertEquals("dummy-token", request.headers["X-Emby-Token"])
+                    assertEquals("MediaBrowser Token=\"dummy-token\"", request.headers[HttpHeaders.Authorization])
+                    assertNull(request.headers["X-Emby-Token"])
                     respond("", HttpStatusCode.NoContent)
                 }
             val client = NetworkClientFactory.create(ClientConfig(engine = engine, installLogging = false))

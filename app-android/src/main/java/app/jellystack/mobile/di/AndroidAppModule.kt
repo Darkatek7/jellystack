@@ -1,11 +1,13 @@
 package app.jellystack.mobile.di
 
+import androidx.appcompat.app.AppCompatDelegate
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.android.AndroidSqliteDriver
 import dev.jellystack.core.jellyfin.JellyfinFavoritesStoreApi
 import dev.jellystack.core.jellyfin.JellyfinItemDetailStore
 import dev.jellystack.core.jellyfin.JellyfinItemStore
 import dev.jellystack.core.jellyfin.JellyfinLibraryStore
+import dev.jellystack.core.jellyfin.JellystackLocaleProvider
 import dev.jellystack.core.jellyseerr.JellyseerrRecommendationStore
 import dev.jellystack.core.server.ServerStore
 import dev.jellystack.database.JellyfinFavoritesStore
@@ -17,6 +19,7 @@ import dev.jellystack.database.jellyseerrRecommendationStore
 import dev.jellystack.database.serverStore
 import org.koin.android.ext.koin.androidContext
 import org.koin.dsl.module
+import java.util.Locale
 
 val androidAppModule =
     module {
@@ -34,4 +37,11 @@ val androidAppModule =
         single<JellyfinItemDetailStore> { get<JellystackDatabase>().jellyfinItemDetailStore() }
         single<JellyseerrRecommendationStore> { get<JellystackDatabase>().jellyseerrRecommendationStore() }
         single<JellyfinFavoritesStoreApi> { JellyfinFavoritesStore(get()) }
+        single<JellystackLocaleProvider> {
+            JellystackLocaleProvider {
+                val appLocales = AppCompatDelegate.getApplicationLocales()
+                val locale = if (appLocales.isEmpty()) Locale.getDefault() else appLocales.get(0)
+                locale?.toLanguageTag()?.takeIf { it.isNotBlank() && it != "und" }
+            }
+        }
     }

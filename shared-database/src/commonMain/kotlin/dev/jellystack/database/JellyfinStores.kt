@@ -6,6 +6,9 @@ import dev.jellystack.core.jellyfin.JellyfinItemRecord
 import dev.jellystack.core.jellyfin.JellyfinItemStore
 import dev.jellystack.core.jellyfin.JellyfinLibraryRecord
 import dev.jellystack.core.jellyfin.JellyfinLibraryStore
+import dev.jellystack.core.profile.MediaIdentity
+import dev.jellystack.core.profile.MediaIdentityProvider
+import dev.jellystack.core.profile.MediaProviderIds
 import kotlinx.datetime.Instant
 
 class SqlDelightJellyfinLibraryStore(
@@ -91,6 +94,8 @@ class SqlDelightJellyfinItemStore(
                     type,
                     media_type,
                     location_type,
+                    tmdb_id,
+                    tvdb_id,
                     taglines,
                     parent_id,
                     primary_image_tag,
@@ -127,6 +132,8 @@ class SqlDelightJellyfinItemStore(
                     type = type,
                     mediaType = media_type,
                     locationType = location_type,
+                    tmdbId = tmdb_id,
+                    tvdbId = tvdb_id,
                     taglines = taglines,
                     parentId = parent_id,
                     primaryImageTag = primary_image_tag,
@@ -171,6 +178,8 @@ class SqlDelightJellyfinItemStore(
                     type,
                     media_type,
                     location_type,
+                    tmdb_id,
+                    tvdb_id,
                     taglines,
                     parent_id,
                     primary_image_tag,
@@ -207,6 +216,8 @@ class SqlDelightJellyfinItemStore(
                     type = type,
                     mediaType = media_type,
                     locationType = location_type,
+                    tmdbId = tmdb_id,
+                    tvdbId = tvdb_id,
                     taglines = taglines,
                     parentId = parent_id,
                     primaryImageTag = primary_image_tag,
@@ -250,6 +261,8 @@ class SqlDelightJellyfinItemStore(
                     type,
                     media_type,
                     location_type,
+                    tmdb_id,
+                    tvdb_id,
                     taglines,
                     parent_id,
                     primary_image_tag,
@@ -286,6 +299,8 @@ class SqlDelightJellyfinItemStore(
                     type = type,
                     mediaType = media_type,
                     locationType = location_type,
+                    tmdbId = tmdb_id,
+                    tvdbId = tvdb_id,
                     taglines = taglines,
                     parentId = parent_id,
                     primaryImageTag = primary_image_tag,
@@ -345,6 +360,8 @@ class SqlDelightJellyfinItemStore(
                     type,
                     media_type,
                     location_type,
+                    tmdb_id,
+                    tvdb_id,
                     taglines,
                     parent_id,
                     primary_image_tag,
@@ -381,6 +398,8 @@ class SqlDelightJellyfinItemStore(
                     type = type,
                     mediaType = media_type,
                     locationType = location_type,
+                    tmdbId = tmdb_id,
+                    tvdbId = tvdb_id,
                     taglines = taglines,
                     parentId = parent_id,
                     primaryImageTag = primary_image_tag,
@@ -435,6 +454,8 @@ class SqlDelightJellyfinItemStore(
                     type,
                     media_type,
                     location_type,
+                    tmdb_id,
+                    tvdb_id,
                     taglines,
                     parent_id,
                     primary_image_tag,
@@ -471,6 +492,8 @@ class SqlDelightJellyfinItemStore(
                     type = type,
                     mediaType = media_type,
                     locationType = location_type,
+                    tmdbId = tmdb_id,
+                    tvdbId = tvdb_id,
                     taglines = taglines,
                     parentId = parent_id,
                     primaryImageTag = primary_image_tag,
@@ -514,6 +537,8 @@ class SqlDelightJellyfinItemStore(
                     type,
                     media_type,
                     location_type,
+                    tmdb_id,
+                    tvdb_id,
                     taglines,
                     parent_id,
                     primary_image_tag,
@@ -550,6 +575,8 @@ class SqlDelightJellyfinItemStore(
                     type = type,
                     mediaType = media_type,
                     locationType = location_type,
+                    tmdbId = tmdb_id,
+                    tvdbId = tvdb_id,
                     taglines = taglines,
                     parentId = parent_id,
                     primaryImageTag = primary_image_tag,
@@ -580,6 +607,24 @@ class SqlDelightJellyfinItemStore(
 
     override suspend fun get(itemId: String): JellyfinItemRecord? = queries.selectById(itemId).executeAsOneOrNull()?.toRecord()
 
+    override suspend fun findByProviderIdentity(
+        serverId: String,
+        identity: MediaIdentity,
+    ): JellyfinItemRecord? {
+        val jellyfinType = if (identity.mediaType == "tv") "series" else identity.mediaType
+        val row =
+            when (identity.provider) {
+                MediaIdentityProvider.TMDB ->
+                    queries.selectByTmdbId(serverId, jellyfinType, identity.providerId).executeAsOneOrNull()
+                MediaIdentityProvider.TVDB ->
+                    queries.selectByTvdbId(serverId, jellyfinType, identity.providerId).executeAsOneOrNull()
+                MediaIdentityProvider.SOURCE_LOCAL -> queries.selectById(identity.providerId).executeAsOneOrNull()
+            }
+        return row
+            ?.takeIf { it.server_id == serverId && it.type.lowercase() == jellyfinType }
+            ?.toRecord()
+    }
+
     private fun insert(record: JellyfinItemRecord) {
         queries.insertOrReplace(
             id = record.id,
@@ -591,6 +636,8 @@ class SqlDelightJellyfinItemStore(
             type = record.type,
             media_type = record.mediaType,
             location_type = record.locationType,
+            tmdb_id = record.providerIds.tmdbId,
+            tvdb_id = record.providerIds.tvdbId,
             taglines = record.taglines.takeIf(List<String>::isNotEmpty)?.joinToString("\n"),
             parent_id = record.parentId,
             primary_image_tag = record.primaryImageTag,
@@ -656,6 +703,8 @@ private fun mapItemRecord(
     type: String,
     mediaType: String?,
     locationType: String?,
+    tmdbId: String?,
+    tvdbId: String?,
     taglines: String?,
     parentId: String?,
     primaryImageTag: String?,
@@ -692,6 +741,12 @@ private fun mapItemRecord(
         type = type,
         mediaType = mediaType,
         locationType = locationType,
+        providerIds =
+            MediaProviderIds(
+                tmdbId = tmdbId,
+                tvdbId = tvdbId,
+                sourceLocalId = id,
+            ).normalized(),
         taglines = taglines?.split('\n')?.filter { it.isNotBlank() } ?: emptyList(),
         parentId = parentId,
         primaryImageTag = primaryImageTag,
@@ -730,6 +785,8 @@ private fun Jellyfin_items.toRecord(): JellyfinItemRecord =
         type = type,
         mediaType = media_type,
         locationType = location_type,
+        tmdbId = tmdb_id,
+        tvdbId = tvdb_id,
         taglines = taglines,
         parentId = parent_id,
         primaryImageTag = primary_image_tag,
@@ -768,6 +825,8 @@ private fun SelectContinueWatching.toRecord(): JellyfinItemRecord =
         type = type,
         mediaType = media_type,
         locationType = location_type,
+        tmdbId = tmdb_id,
+        tvdbId = tvdb_id,
         taglines = taglines,
         parentId = parent_id,
         primaryImageTag = primary_image_tag,

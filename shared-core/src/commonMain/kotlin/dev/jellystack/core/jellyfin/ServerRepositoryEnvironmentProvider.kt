@@ -1,5 +1,6 @@
 package dev.jellystack.core.jellyfin
 
+import dev.jellystack.core.profile.ProfileEnvironmentProvider
 import dev.jellystack.core.server.ServerRepository
 import dev.jellystack.core.server.ServerType
 import dev.jellystack.core.server.StoredCredential
@@ -8,8 +9,10 @@ class ServerRepositoryEnvironmentProvider(
     private val repository: ServerRepository,
     private val deviceNameProvider: () -> String = { "Jellystack" },
     private val clientVersionProvider: () -> String = { "unknown" },
+    private val profileEnvironmentProvider: ProfileEnvironmentProvider? = null,
 ) : JellyfinEnvironmentProvider {
     override suspend fun current(): JellyfinEnvironment? {
+        profileEnvironmentProvider?.let { return it.jellyfin() }
         val server =
             repository
                 .activeServer(ServerType.JELLYFIN) ?: return null

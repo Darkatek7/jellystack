@@ -8,6 +8,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class JellyfinDirectDownloadSourceResolverTest {
@@ -41,7 +42,21 @@ class JellyfinDirectDownloadSourceResolverTest {
                         ),
                 )
             val request = PlaybackRequest(mediaId = "item-av1", mediaSources = listOf(mediaSource))
-            val selection = PlaybackStreamSelector().select(request.mediaSources)
+            val selection =
+                PlaybackStreamSelector().select(request.mediaSources).copy(
+                    subtitleTracks =
+                        listOf(
+                            SubtitleTrack(
+                                id = "english",
+                                language = "en",
+                                title = "English",
+                                format = SubtitleFormat.VTT,
+                                isDefault = true,
+                                isForced = false,
+                                streamIndex = 2,
+                            ),
+                        ),
+                )
 
             val source =
                 JellyfinDirectDownloadSourceResolver().resolve(
@@ -57,7 +72,66 @@ class JellyfinDirectDownloadSourceResolverTest {
             assertTrue(source.url.contains("MediaSourceId=av1-source"))
             assertFalse(source.url.contains("m3u8", ignoreCase = true))
             assertEquals("video/x-matroska", source.mimeType)
+            assertModernQueryAuthentication(source)
+            val subtitle = source.subtitles.single()
+            assertEquals("english", subtitle.trackId)
+            assertTrue(subtitle.url.contains("/Videos/item-av1/av1-source/Subtitles/2/stream.vtt"))
+            assertEquals("dummy-token", subtitle.url.queryParameter("ApiKey"))
+            assertNull(subtitle.url.queryParameter("api_key"))
         }
+
+    @Test
+    fun audioDownloadUsesModernQueryAuthOnOriginalAudioFile() =
+        runTest {
+            val mediaSource =
+                JellyfinMediaSource(
+                    id = "audio-source",
+                    name = "Original audio",
+                    runTimeTicks = 10_000_000,
+                    container = "flac",
+                    videoBitrate = null,
+                    supportsDirectPlay = true,
+                    supportsDirectStream = true,
+                    supportsTranscoding = true,
+                    streams = emptyList(),
+                )
+            val request =
+                PlaybackRequest(
+                    mediaId = "song-1",
+                    mediaSources = listOf(mediaSource),
+                    mediaKind = PlaybackMediaKind.AUDIO,
+                )
+            val selection = PlaybackStreamSelector().select(request.mediaSources).copy(mode = PlaybackMode.DIRECT)
+
+            val source =
+                JellyfinDirectDownloadSourceResolver().resolve(request, selection, environment(), 0L, PlaybackSourceOptions())
+
+            assertTrue(source.url.contains("/Audio/song-1/stream.flac?Static=true"))
+            assertModernQueryAuthentication(source)
+            assertEquals("audio/flac", source.mimeType)
+            assertTrue(source.subtitles.isEmpty())
+        }
+
+    private fun assertModernQueryAuthentication(source: ResolvedPlaybackSource) {
+        assertEquals("dummy-token", source.url.queryParameter("ApiKey"))
+        assertNull(source.url.queryParameter("api_key"))
+        assertFalse(
+            source.headers.keys.any { name ->
+                name.equals("Authorization", ignoreCase = true) ||
+                    name.startsWith("X-Emby-", ignoreCase = true) ||
+                    name.startsWith("X-MediaBrowser-", ignoreCase = true)
+            },
+        )
+    }
+
+    private fun String.queryParameter(name: String): String? =
+        substringAfter('?', missingDelimiterValue = "")
+            .split('&')
+            .firstNotNullOfOrNull { parameter ->
+                parameter
+                    .substringAfter('=', missingDelimiterValue = "")
+                    .takeIf { parameter.substringBefore('=') == name }
+            }
 
     private fun environment() =
         JellyfinEnvironment(

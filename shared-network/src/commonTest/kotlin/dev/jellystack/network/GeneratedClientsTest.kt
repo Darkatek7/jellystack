@@ -17,6 +17,7 @@ import io.ktor.http.headersOf
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class GeneratedClientsTest {
@@ -57,6 +58,11 @@ class GeneratedClientsTest {
             val payload = request.bodyText()
             assertTrue(payload.contains("\"Username\":\"dummy-user\""))
             assertTrue(payload.contains("\"Pw\":\"dummy-credential\""))
+            assertEquals(
+                "MediaBrowser Client=\"Jellystack\", Device=\"Jellystack\", DeviceId=\"device-1\", Version=\"unknown\"",
+                request.headers[HttpHeaders.Authorization],
+            )
+            assertNull(request.headers["X-Emby-Authorization"])
 
             client.close()
         }

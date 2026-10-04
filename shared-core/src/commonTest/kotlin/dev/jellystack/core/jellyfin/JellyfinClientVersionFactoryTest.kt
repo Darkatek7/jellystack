@@ -19,7 +19,7 @@ class JellyfinClientVersionFactoryTest {
             val authorization = mutableListOf<String>()
             val engine =
                 MockEngine { request ->
-                    authorization += request.headers["X-Emby-Authorization"].orEmpty()
+                    authorization += request.headers[HttpHeaders.Authorization].orEmpty()
                     respond(
                         content = ByteReadChannel("""{"Items":[]}"""),
                         headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
@@ -44,7 +44,7 @@ class JellyfinClientVersionFactoryTest {
             val authorization = mutableListOf<String>()
             val engine =
                 MockEngine { request ->
-                    authorization += request.headers["X-Emby-Authorization"].orEmpty()
+                    authorization += request.headers[HttpHeaders.Authorization].orEmpty()
                     respond(
                         content = ByteReadChannel("""{"Id":"user-1","Name":"Viewer"}"""),
                         headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
@@ -69,7 +69,7 @@ class JellyfinClientVersionFactoryTest {
             val authorization = mutableListOf<String>()
             val engine =
                 MockEngine { request ->
-                    authorization += request.headers["X-Emby-Authorization"].orEmpty()
+                    authorization += request.headers[HttpHeaders.Authorization].orEmpty()
                     respond(content = ByteReadChannel.Empty)
                 }
             val client = NetworkClientFactory.create(ClientConfig(engine = engine, maxRetries = 0))

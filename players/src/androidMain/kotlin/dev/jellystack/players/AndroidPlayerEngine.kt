@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Color
 import android.net.Uri
 import android.util.TypedValue
+import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.media3.common.AudioAttributes
@@ -25,6 +26,7 @@ import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.SubtitleView
 import dev.jellystack.core.preferences.SubtitleBackground
 import dev.jellystack.core.preferences.SubtitleTextSize
 import kotlinx.coroutines.CoroutineScope
@@ -64,6 +66,7 @@ class AndroidPlayerEngine(
     private var videoSurface: PlayerView? = null
     private var subtitleTextSize: SubtitleTextSize = SubtitleTextSize.SYSTEM
     private var subtitleBackground: SubtitleBackground = SubtitleBackground.SYSTEM
+    private var subtitleBottomPaddingFraction: Float = SubtitleView.DEFAULT_BOTTOM_PADDING_FRACTION
     private var sessionMetadata: PlaybackMetadata? = null
     private var sessionArtworkUrl: String? = null
     private var firstFrameRendered = false
@@ -184,8 +187,17 @@ class AndroidPlayerEngine(
         exoPlayer.setAudioAttributes(mediaAudioAttributes, enabled)
     }
 
-    fun createVideoSurface(context: Context): View =
-        PlayerView(context).apply {
+    fun createVideoSurface(
+        context: Context,
+        textureBacked: Boolean = false,
+    ): View =
+        (
+            if (textureBacked) {
+                LayoutInflater.from(context).inflate(R.layout.jellystack_texture_player_view, null, false) as PlayerView
+            } else {
+                PlayerView(context)
+            }
+        ).apply {
             layoutParams =
                 ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
@@ -210,6 +222,7 @@ class AndroidPlayerEngine(
         }
         videoSurface = playerView
         applySubtitleAppearance(playerView)
+        applySubtitleBottomPadding(playerView)
     }
 
     fun releaseVideoSurface(view: View) {
@@ -227,6 +240,19 @@ class AndroidPlayerEngine(
         subtitleTextSize = textSize
         subtitleBackground = background
         videoSurface?.let(::applySubtitleAppearance)
+    }
+
+    fun setSubtitleBottomPaddingFraction(fraction: Float) {
+        subtitleBottomPaddingFraction =
+            fraction
+                .takeIf(Float::isFinite)
+                ?.coerceIn(MIN_SUBTITLE_BOTTOM_PADDING_FRACTION, MAX_SUBTITLE_BOTTOM_PADDING_FRACTION)
+                ?: SubtitleView.DEFAULT_BOTTOM_PADDING_FRACTION
+        videoSurface?.let(::applySubtitleBottomPadding)
+    }
+
+    private fun applySubtitleBottomPadding(playerView: PlayerView) {
+        playerView.subtitleView?.setBottomPaddingFraction(subtitleBottomPaddingFraction)
     }
 
     private fun applySubtitleAppearance(playerView: PlayerView) {
@@ -680,6 +706,8 @@ class AndroidPlayerEngine(
     }
 
     private companion object {
+        const val MIN_SUBTITLE_BOTTOM_PADDING_FRACTION = 0f
+        const val MAX_SUBTITLE_BOTTOM_PADDING_FRACTION = 1f
         private const val AUDIO_OUTPUT_TIMEOUT_MS = 1_500L
         private const val FIRST_FRAME_TIMEOUT_MS = 8_000L
         private const val POSITION_POLL_INTERVAL_MS = 500L

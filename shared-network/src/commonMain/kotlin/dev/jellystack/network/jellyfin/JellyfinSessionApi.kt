@@ -7,8 +7,8 @@ import io.ktor.client.request.parameter
 import io.ktor.client.request.request
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
-import io.ktor.http.HeadersBuilder
 import io.ktor.http.HttpMethod
+import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.http.path
 import io.ktor.http.takeFrom
@@ -19,7 +19,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 
-internal const val DEFAULT_JELLYSTACK_CLIENT_VERSION = "0.15.1"
+internal const val DEFAULT_JELLYSTACK_CLIENT_VERSION = "0.16.0"
 
 /** Authenticated Jellyfin session and administrator endpoints used by capability-gated features. */
 class JellyfinSessionApi(
@@ -27,6 +27,7 @@ class JellyfinSessionApi(
     private val baseUrl: String,
     private val accessToken: String,
     private val deviceId: String? = null,
+    private val deviceName: String = JELLYSTACK_CLIENT_NAME,
     private val clientVersion: String = DEFAULT_JELLYSTACK_CLIENT_VERSION,
 ) {
     private fun HttpRequestBuilder.configure(pathSuffix: String) {
@@ -34,29 +35,27 @@ class JellyfinSessionApi(
             takeFrom(baseUrl)
             path(pathSuffix.trimStart('/'))
         }
-        headers.apply {
-            appendIfAbsent("X-Emby-Token", accessToken)
-            appendIfAbsent(
-                "X-Emby-Authorization",
-                "MediaBrowser Client=\"Jellystack\", Device=\"Android\", " +
-                    "DeviceId=\"${deviceId ?: "unknown"}\", Version=\"$clientVersion\"",
-            )
-        }
+        headers.appendJellyfinAuthorization(
+            JellyfinClientIdentity(
+                appVersion = clientVersion,
+                deviceName = deviceName,
+                deviceId = deviceId ?: "unknown",
+            ),
+            accessToken,
+        )
     }
 
-    private fun HeadersBuilder.appendIfAbsent(
-        name: String,
-        value: String,
-    ) {
-        if (!contains(name)) append(name, value)
-    }
-
-    suspend fun currentUser(): JellyfinUserDto =
-        client
-            .request {
+    suspend fun currentUser(): JellyfinUserDto {
+        val response =
+            client.request {
                 method = HttpMethod.Get
                 configure("/Users/Me")
-            }.body()
+            }
+        if (response.status == HttpStatusCode.Unauthorized || response.status == HttpStatusCode.Forbidden) {
+            throw JellyfinAuthenticationException()
+        }
+        return response.body()
+    }
 
     suspend fun users(): List<JellyfinUserDto> =
         client
@@ -153,18 +152,26 @@ class JellyfinSessionApi(
         }
     }
 
+    /**
+     * Sets [newPassword] for another user, or clears the password when it is blank.
+     *
+     * Jellyfin ignores `NewPw` when `ResetPassword` is true, so the reset flag is only sent to clear.
+     */
     suspend fun resetUserPassword(
         userId: String,
         newPassword: String,
     ) {
         client.request {
             method = HttpMethod.Post
-            configure("/Users/$userId/Password")
+            configure("/Users/Password")
+            parameter("userId", userId)
             contentType(ContentType.Application.Json)
-            setBody(JellyfinPasswordRequestDto(newPassword = newPassword, resetPassword = true))
+            setBody(JellyfinPasswordRequestDto(newPassword = newPassword, resetPassword = newPassword.isEmpty()))
         }
     }
 }
+
+class JellyfinAuthenticationException : IllegalStateException("Jellyfin authentication expired")
 
 @Serializable
 data class JellyfinUserDto(

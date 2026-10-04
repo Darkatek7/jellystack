@@ -61,50 +61,187 @@ class AndroidPlaybackDeviceProfileProvider(
     }
 }
 
-/** Device profile tuned for TV playback where software-only modern video codecs are unsafe. */
+/** Device profile tuned for TV playback from runtime codec evidence only. */
 class AndroidTvPlaybackDeviceProfileProvider(
-    private val decoderDescriptors: () -> List<PlaybackDecoderDescriptor> = {
-        MediaCodecList(MediaCodecList.REGULAR_CODECS)
-            .codecInfos
-            .asSequence()
-            .flatMap { codecInfo ->
-                codecInfo.supportedTypes.asSequence().map { mimeType ->
-                    val maxAudioChannelCount =
-                        runCatching {
-                            codecInfo.getCapabilitiesForType(mimeType).audioCapabilities?.maxInputChannelCount
-                        }.getOrNull()
-                    PlaybackDecoderDescriptor(
-                        mimeType = mimeType.lowercase(),
-                        isHardwareAccelerated =
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                                codecInfo.isHardwareAccelerated
-                            } else {
-                                !codecInfo.name.contains("google", ignoreCase = true) &&
-                                    !codecInfo.name.contains("software", ignoreCase = true)
-                            },
-                        isAlias = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && codecInfo.isAlias,
-                        isEncoder = codecInfo.isEncoder,
-                        maxAudioChannelCount = maxAudioChannelCount,
-                    )
-                }
-            }.toList()
-    },
-    private val allowSoftwareAdvancedVideo: () -> Boolean = {
-        Build.FINGERPRINT.startsWith("generic", ignoreCase = true) ||
-            Build.FINGERPRINT.contains("emulator", ignoreCase = true) ||
-            Build.MODEL.contains("google_sdk", ignoreCase = true) ||
-            Build.PRODUCT.contains("sdk", ignoreCase = true)
-    },
+    private val snapshotSource: PlaybackCapabilitySnapshotSource = AndroidRuntimePlaybackCapabilitySnapshotSource(),
 ) : PlaybackDeviceProfileProvider {
     override fun requiresServerSelectedAudioForVideo(): Boolean = true
 
     override fun deviceProfile(): JellyfinDeviceProfileDto =
         PlaybackDeviceProfileFactory.create(
             name = "Jellystack TV",
-            capabilities =
-                selectTvDecoderCapabilities(
-                    decoders = decoderDescriptors(),
-                    allowSoftwareAdvancedVideo = allowSoftwareAdvancedVideo(),
-                ),
+            capabilities = selectTvDecoderCapabilities(snapshotSource.snapshot()),
         )
 }
+
+internal interface AndroidRuntimeCodecEntry {
+    val isEncoder: Boolean
+    val isAlias: Boolean
+    val hardwareSupport: CapabilitySupport
+
+    fun supportedTypes(): List<String>
+
+    fun maxInputChannelCount(mimeType: String): Int?
+}
+
+internal class AndroidRuntimePlaybackCapabilitySnapshotSource(
+    private val codecEntries: () -> List<AndroidRuntimeCodecEntry> = ::platformCodecEntries,
+) : PlaybackCapabilitySnapshotSource {
+    override fun snapshot(): PlaybackCapabilitySnapshot {
+        val entries = runCatching(codecEntries).getOrElse { return PlaybackCapabilitySnapshot.failed() }
+        var inspectionComplete = true
+        val observedVideoSupport = mutableSetOf<PlaybackVideoCodec>()
+        val observedVideoHardwareSupport = mutableMapOf<PlaybackVideoCodec, CapabilitySupport>()
+        val observedAudioSupport = mutableSetOf<PlaybackAudioCodec>()
+        val observedMaxAudioChannels = mutableMapOf<PlaybackAudioCodec, Int>()
+
+        entries.forEach { entry ->
+            val isEncoder =
+                runCatching { entry.isEncoder }.getOrElse {
+                    inspectionComplete = false
+                    return@forEach
+                }
+            val isAlias =
+                runCatching { entry.isAlias }.getOrElse {
+                    inspectionComplete = false
+                    return@forEach
+                }
+            if (isEncoder || isAlias) return@forEach
+
+            val types =
+                runCatching { entry.supportedTypes() }.getOrElse {
+                    inspectionComplete = false
+                    return@forEach
+                }
+            val hardwareSupport =
+                runCatching { entry.hardwareSupport }.getOrElse {
+                    inspectionComplete = false
+                    CapabilitySupport.UNKNOWN
+                }
+
+            types.forEach { rawMimeType ->
+                val mimeType = rawMimeType.lowercase()
+                mimeType.videoCodec?.let { codec ->
+                    observedVideoSupport += codec
+                    observedVideoHardwareSupport[codec] =
+                        mergeHardwareSupport(
+                            observedVideoHardwareSupport[codec],
+                            hardwareSupport,
+                        )
+                }
+                mimeType.audioCodec?.let { codec ->
+                    observedAudioSupport += codec
+                    val maxChannels =
+                        runCatching { entry.maxInputChannelCount(rawMimeType) }.getOrElse {
+                            inspectionComplete = false
+                            null
+                        }
+                    if (maxChannels == null) {
+                        inspectionComplete = false
+                    } else if (maxChannels > 0) {
+                        observedMaxAudioChannels[codec] =
+                            maxOf(observedMaxAudioChannels[codec] ?: 0, maxChannels)
+                    }
+                }
+            }
+        }
+
+        val missingSupport =
+            if (inspectionComplete) {
+                CapabilitySupport.UNSUPPORTED
+            } else {
+                CapabilitySupport.UNKNOWN
+            }
+        return PlaybackCapabilitySnapshot(
+            videoSupport =
+                PlaybackVideoCodec.entries.associateWith {
+                    if (it in
+                        observedVideoSupport
+                    ) {
+                        CapabilitySupport.SUPPORTED
+                    } else {
+                        missingSupport
+                    }
+                },
+            videoHardwareSupport =
+                PlaybackVideoCodec.entries.associateWith { codec ->
+                    observedVideoHardwareSupport[codec]
+                        ?: if (codec in observedVideoSupport) CapabilitySupport.UNKNOWN else missingSupport
+                },
+            audioSupport =
+                PlaybackAudioCodec.entries.associateWith {
+                    if (it in
+                        observedAudioSupport
+                    ) {
+                        CapabilitySupport.SUPPORTED
+                    } else {
+                        missingSupport
+                    }
+                },
+            maxAudioChannelCounts = observedMaxAudioChannels.toMap(),
+            inspectionCompleteness =
+                if (inspectionComplete) {
+                    PlaybackCapabilityInspection.COMPLETE
+                } else {
+                    PlaybackCapabilityInspection.PARTIAL
+                },
+        )
+    }
+}
+
+private fun mergeHardwareSupport(
+    current: CapabilitySupport?,
+    observed: CapabilitySupport,
+): CapabilitySupport =
+    when {
+        current == CapabilitySupport.SUPPORTED || observed == CapabilitySupport.SUPPORTED -> CapabilitySupport.SUPPORTED
+        current == CapabilitySupport.UNKNOWN || observed == CapabilitySupport.UNKNOWN -> CapabilitySupport.UNKNOWN
+        else -> CapabilitySupport.UNSUPPORTED
+    }
+
+private fun platformCodecEntries(): List<AndroidRuntimeCodecEntry> =
+    MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.map { codecInfo ->
+        object : AndroidRuntimeCodecEntry {
+            override val isEncoder: Boolean
+                get() = codecInfo.isEncoder
+
+            override val isAlias: Boolean
+                get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && codecInfo.isAlias
+
+            override val hardwareSupport: CapabilitySupport
+                get() =
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        if (codecInfo.isHardwareAccelerated) CapabilitySupport.SUPPORTED else CapabilitySupport.UNSUPPORTED
+                    } else {
+                        CapabilitySupport.UNKNOWN
+                    }
+
+            override fun supportedTypes(): List<String> = codecInfo.supportedTypes.toList()
+
+            override fun maxInputChannelCount(mimeType: String): Int? =
+                codecInfo.getCapabilitiesForType(mimeType).audioCapabilities?.maxInputChannelCount
+        }
+    }
+
+private val String.videoCodec: PlaybackVideoCodec?
+    get() =
+        when (this) {
+            "video/av01" -> PlaybackVideoCodec.AV1
+            "video/hevc" -> PlaybackVideoCodec.HEVC
+            "video/x-vnd.on2.vp9" -> PlaybackVideoCodec.VP9
+            "video/avc" -> PlaybackVideoCodec.H264
+            else -> null
+        }
+
+private val String.audioCodec: PlaybackAudioCodec?
+    get() =
+        when (this) {
+            "audio/mp4a-latm", "audio/aac" -> PlaybackAudioCodec.AAC
+            "audio/mpeg" -> PlaybackAudioCodec.MP3
+            "audio/ac3" -> PlaybackAudioCodec.AC3
+            "audio/eac3", "audio/eac3-joc" -> PlaybackAudioCodec.EAC3
+            "audio/opus" -> PlaybackAudioCodec.OPUS
+            "audio/vorbis" -> PlaybackAudioCodec.VORBIS
+            "audio/flac" -> PlaybackAudioCodec.FLAC
+            else -> null
+        }

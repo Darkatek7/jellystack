@@ -9,6 +9,15 @@ internal data class TvJellyfinArtwork(
     val imageType: String,
 )
 
+internal enum class TvArtworkSize(
+    val maxWidth: Int,
+) {
+    LANDSCAPE_CARD(500),
+    PORTRAIT_CARD(300),
+    HERO(1800),
+    LOGO(900),
+}
+
 internal fun resolveTvJellyfinArtwork(
     item: JellyfinItem,
     landscape: Boolean = true,
@@ -58,7 +67,7 @@ internal fun jellyfinImageUrl(
     baseUrl: String?,
     token: String?,
     artwork: TvJellyfinArtwork?,
-    maxWidth: Int = 1000,
+    size: TvArtworkSize = TvArtworkSize.LANDSCAPE_CARD,
 ): String? =
     artwork?.let {
         jellyfinImageUrl(
@@ -67,7 +76,7 @@ internal fun jellyfinImageUrl(
             itemId = it.itemId,
             tag = it.imageTag,
             type = it.imageType,
-            maxWidth = maxWidth,
+            maxWidth = size.maxWidth,
         )
     }
 
@@ -75,6 +84,7 @@ internal fun resolveTvHomeSectionImageUrl(
     item: HomeSectionItem,
     baseUrl: String?,
     token: String?,
+    size: TvArtworkSize = TvArtworkSize.LANDSCAPE_CARD,
 ): String? {
     val directImage = item.imageUrl?.takeIf(String::isNotBlank)
     val jellyfinItem = item.jellyfinItem
@@ -84,7 +94,7 @@ internal fun resolveTvHomeSectionImageUrl(
         else -> {
             val artwork = resolveTvJellyfinArtwork(jellyfinItem)
             if (artwork != null) {
-                jellyfinImageUrl(baseUrl, token, artwork)
+                jellyfinImageUrl(baseUrl, token, artwork, size)
             } else {
                 jellyfinImageUrl(
                     baseUrl = baseUrl,
@@ -92,6 +102,7 @@ internal fun resolveTvHomeSectionImageUrl(
                     itemId = jellyfinItem.id,
                     tag = null,
                     type = "Primary",
+                    maxWidth = size.maxWidth,
                 )
             }
         }

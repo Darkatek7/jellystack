@@ -14,7 +14,6 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsFocused
-import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -70,28 +69,37 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class TvPlaybackReviewIntegrationTest {
     @get:Rule
-    val composeRule = createComposeRule()
+    val composeRule = createTvComposeRule()
 
     @Test
     fun realScreenStartsStandaloneWindowWhenControlsHideAndKeepsControlActionPersistent() {
         composeRule.mainClock.autoAdvance = false
         val resources = ScreenResources()
+        var showScreen by mutableStateOf(true)
         composeRule.setContent {
-            JellystackTvTheme {
-                ReviewPlaybackScreen(
-                    resources = resources,
-                    playbackState = activePlayback(),
-                    segmentState = introState(),
-                    continuationState = PlaybackContinuationState(),
-                )
+            if (showScreen) {
+                JellystackTvTheme {
+                    ReviewPlaybackScreen(
+                        resources = resources,
+                        playbackState = activePlayback(),
+                        segmentState = introState(),
+                        continuationState = PlaybackContinuationState(),
+                    )
+                }
             }
         }
 
         composeRule.onNodeWithTag(TV_PLAYBACK_ACTIONS_CONTROLS_TAG).assertExists()
+        composeRule.runOnIdle {
+            assertEquals(0.38f, resources.subtitleBottomPaddingFraction(), 0.0001f)
+        }
         // The 5-second coroutine deadline is applied on the next Compose frame.
         composeRule.mainClock.advanceTimeBy(5_100L)
         composeRule.waitForIdle()
         composeRule.onNodeWithTag(TV_PLAYBACK_ACTIONS_STANDALONE_TAG).assertExists()
+        composeRule.runOnIdle {
+            assertEquals(0.20f, resources.subtitleBottomPaddingFraction(), 0.0001f)
+        }
 
         composeRule.mainClock.advanceTimeBy(7_900L)
         composeRule.waitForIdle()
@@ -99,12 +107,24 @@ class TvPlaybackReviewIntegrationTest {
         composeRule.mainClock.advanceTimeBy(200L)
         composeRule.waitForIdle()
         composeRule.onNodeWithContentDescription("Skip intro").assertDoesNotExist()
+        composeRule.runOnIdle {
+            assertEquals(0.08f, resources.subtitleBottomPaddingFraction(), 0.0001f)
+        }
 
         composeRule.onRoot().performKeyInput { pressKey(Key.DirectionUp) }
         composeRule.waitForIdle()
         composeRule.onNodeWithTag(TV_PLAYBACK_ACTIONS_CONTROLS_TAG).assertExists()
         composeRule.onNodeWithContentDescription("Skip intro").assertExists()
-        composeRule.runOnIdle(resources::release)
+        composeRule.runOnIdle {
+            assertEquals(0.38f, resources.subtitleBottomPaddingFraction(), 0.0001f)
+            showScreen = false
+        }
+        composeRule.mainClock.advanceTimeByFrame()
+        composeRule.waitForIdle()
+        composeRule.runOnIdle {
+            assertEquals(0.08f, resources.subtitleBottomPaddingFraction(), 0.0001f)
+            resources.release()
+        }
     }
 
     @Test
@@ -445,6 +465,13 @@ class TvPlaybackReviewIntegrationTest {
             controller.release()
             engine?.release()
         }
+    }
+
+    private fun ScreenResources.subtitleBottomPaddingFraction(): Float {
+        val engine = requireNotNull(engine)
+        val field = engine.javaClass.getDeclaredField("subtitleBottomPaddingFraction")
+        field.isAccessible = true
+        return field.getFloat(engine)
     }
 
     private class CancellationResistantSegmentService(

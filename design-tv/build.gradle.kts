@@ -14,8 +14,19 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    testOptions {
+        targetSdk = 36
+    }
+
     buildFeatures {
         compose = true
+    }
+
+    buildTypes {
+        create("benchmark") {
+            initWith(getByName("release"))
+            matchingFallbacks += listOf("release")
+        }
     }
 
     compileOptions {

@@ -16,6 +16,7 @@ import io.ktor.client.HttpClient
 class ServerConnectivityChecker(
     private val clientFactory: (ClientConfig) -> HttpClient = { config -> NetworkClientFactory.create(config) },
     private val idGenerator: () -> String = { randomId() },
+    private val clientVersionProvider: () -> String = { "unknown" },
 ) : ServerConnectivity {
     override suspend fun test(registration: ServerRegistration): ConnectivityResult =
         when (registration.type) {
@@ -34,7 +35,7 @@ class ServerConnectivityChecker(
         )
         val client = clientFactory(ClientConfig(installLogging = false))
         return try {
-            val api = JellyfinAuthApi(client, registration.baseUrl)
+            val api = JellyfinAuthApi(client, registration.baseUrl, clientVersion = clientVersionProvider())
             val deviceId = creds.deviceId?.takeIf { it.isNotBlank() } ?: "jellystack-${idGenerator()}"
             val response =
                 api.authenticateByName(

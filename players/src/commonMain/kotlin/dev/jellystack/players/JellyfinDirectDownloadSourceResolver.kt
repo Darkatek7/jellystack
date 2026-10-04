@@ -29,7 +29,7 @@ class JellyfinDirectDownloadSourceResolver(
         val url =
             "$baseUrl/$mediaRoute/${request.mediaId}/stream.$container" +
                 "?Static=true" +
-                "&api_key=${environment.accessToken}" +
+                "&ApiKey=${environment.accessToken}" +
                 "&MediaSourceId=${selection.sourceId}" +
                 "&DeviceId=${environment.deviceId}" +
                 "&UserId=${environment.userId}"
@@ -38,8 +38,7 @@ class JellyfinDirectDownloadSourceResolver(
             url = url,
             headers =
                 mapOf(
-                    "X-Emby-Authorization" to authorizationHeader(environment),
-                    "User-Agent" to "$clientName/${environment.deviceName}",
+                    "User-Agent" to "$clientName/$clientVersion",
                 ),
             mode = PlaybackMode.DIRECT,
             mimeType = directMimeType(request.mediaKind, container),
@@ -53,7 +52,7 @@ class JellyfinDirectDownloadSourceResolver(
                             url =
                                 "$baseUrl/Videos/${request.mediaId}/${selection.sourceId}" +
                                     "/Subtitles/$streamIndex/stream.${descriptor.extension}" +
-                                    "?api_key=${environment.accessToken}" +
+                                    "?ApiKey=${environment.accessToken}" +
                                     "&MediaSourceId=${selection.sourceId}" +
                                     "&SubtitleStreamIndex=$streamIndex" +
                                     "&format=${descriptor.format}",
@@ -73,18 +72,6 @@ class JellyfinDirectDownloadSourceResolver(
             supportsTranscoding = null,
         )
     }
-
-    private fun authorizationHeader(environment: JellyfinEnvironment): String =
-        buildString {
-            append("MediaBrowser ")
-            append("""Client="$clientName""")
-            append(""", Device="${environment.deviceName}""")
-            append(""", DeviceId="${environment.deviceId}""")
-            append(""", Version="$clientVersion""")
-            if (environment.accessToken.isNotEmpty()) {
-                append(""", Token="${environment.accessToken}""")
-            }
-        }
 
     private fun directMimeType(
         kind: PlaybackMediaKind,

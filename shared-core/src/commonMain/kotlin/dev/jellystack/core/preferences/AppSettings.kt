@@ -69,6 +69,12 @@ enum class SubtitleBackground {
     DARK,
 }
 
+enum class MotionPreference {
+    SYSTEM,
+    REDUCED,
+    FULL,
+}
+
 data class AppSettings(
     val appLanguage: AppLanguage = AppLanguage.SYSTEM,
     val wifiStreamingQuality: StreamingQualityPreference = StreamingQualityPreference.AUTO,
@@ -93,6 +99,8 @@ data class AppSettings(
     val useServerHomeSections: Boolean = true,
     val trailerPreviewsEnabled: Boolean = true,
     val trailerPreviewSoundEnabled: Boolean = true,
+    val motionPreference: MotionPreference = MotionPreference.SYSTEM,
+    val highContrastFocus: Boolean = false,
     val downloadsWifiOnly: Boolean = false,
     val defaultPlaybackSpeed: Float = 1f,
     val statsForNerdsEnabled: Boolean = false,

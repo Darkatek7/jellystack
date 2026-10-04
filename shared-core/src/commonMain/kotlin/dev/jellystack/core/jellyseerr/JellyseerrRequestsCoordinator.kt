@@ -44,6 +44,7 @@ class JellyseerrRequestsCoordinator(
     private val pendingSubmitKeys = mutableSetOf<Pair<JellyseerrMediaType, Int>>()
     private var pollJob: Job? = null
     private var searchJob: Job? = null
+    private var queryIntentGeneration: Long = 0L
     private var searchGeneration: Long = 0L
     private var requestsRefreshGeneration: Long = 0L
     private var lastUpdated: Instant? = null
@@ -80,6 +81,7 @@ class JellyseerrRequestsCoordinator(
     fun shutdown() {
         pollJob?.cancel()
         pollJob = null
+        queryIntentGeneration += 1
         searchGeneration += 1
         searchJob?.cancel()
         searchJob = null
@@ -100,73 +102,31 @@ class JellyseerrRequestsCoordinator(
     }
 
     fun search(query: String) {
-        searchGeneration += 1
-        val generation = searchGeneration
-        searchJob?.cancel()
-        searchJob =
-            scope.launch {
-                val environment = mutex.withLock { currentEnvironment }
-                if (environment == null) {
-                    mutex.withLock {
-                        if (generation != searchGeneration) return@withLock
-                        currentQuery = ""
-                        lastSearchResults = emptyList()
-                        updateReadyState { it.copy(query = "", searchResults = emptyList(), isSearching = false) }
-                    }
-                    return@launch
-                }
-                val normalizedQuery = query.trim()
-                mutex.withLock {
-                    if (generation != searchGeneration) return@launch
-                    currentQuery = query
-                    if (normalizedQuery.isEmpty()) {
-                        lastSearchResults = emptyList()
-                        updateReadyState { it.copy(query = query, searchResults = emptyList(), isSearching = false) }
-                        return@launch
-                    }
-                    updateReadyState { it.copy(query = query, isSearching = true, searchResults = it.searchResults) }
-                }
-                delay(searchDebounceMillis)
-                cancellationSafeRunCatching { repository.search(environment, normalizedQuery) }
-                    .onSuccess { results ->
-                        mutex.withLock {
-                            if (generation != searchGeneration || currentQuery != query) return@withLock
-                            lastSearchResults = results
-                            updateReadyState {
-                                it.copy(
-                                    query = query,
-                                    searchResults = results,
-                                    isSearching = false,
-                                )
-                            }
-                        }
-                    }.onFailure { error ->
-                        JellystackLog.e(
-                            "Jellyseerr search failed for ${environment.serverId}: ${error.message}",
-                            error,
-                        )
-                        mutex.withLock {
-                            if (generation != searchGeneration || currentQuery != query) return@withLock
-                            updateReadyState {
-                                it.copy(
-                                    query = query,
-                                    searchResults = lastSearchResults,
-                                    isSearching = false,
-                                    message =
-                                        nextMessage(
-                                            kind = JellyseerrMessageKind.ERROR,
-                                            code = JellyseerrMessageCode.SearchFailed,
-                                            subject = normalizedQuery,
-                                            detail = error.message,
-                                        ),
-                                )
-                            }
-                        }
-                    }
+        queryIntentGeneration += 1
+        enqueueSearch(query, queryIntentGeneration)
+    }
+
+    /** Reinitializes a failed coordinator before retrying the requested search. */
+    fun retrySearch(query: String) {
+        queryIntentGeneration += 1
+        val intentGeneration = queryIntentGeneration
+        scope.launch {
+            val (stateSnapshot, environment) = mutex.withLock { _state.value to currentEnvironment }
+            if (stateSnapshot is JellyseerrRequestsState.Error) {
+                handleEnvironmentChange(environment)
             }
+            val canSearch =
+                mutex.withLock {
+                    intentGeneration == queryIntentGeneration &&
+                        currentEnvironment == environment &&
+                        _state.value is JellyseerrRequestsState.Ready
+                }
+            if (canSearch) enqueueSearch(query, intentGeneration)
+        }
     }
 
     fun clearSearch() {
+        queryIntentGeneration += 1
         searchGeneration += 1
         searchJob?.cancel()
         searchJob = null
@@ -174,10 +134,116 @@ class JellyseerrRequestsCoordinator(
             mutex.withLock {
                 currentQuery = ""
                 lastSearchResults = emptyList()
-                updateReadyState { it.copy(query = "", searchResults = emptyList(), isSearching = false) }
+                updateReadyState {
+                    it.copy(
+                        query = "",
+                        searchResults = emptyList(),
+                        isSearching = false,
+                        message = it.message.withoutSearchFailure(),
+                    )
+                }
             }
         }
     }
+
+    private fun enqueueSearch(
+        query: String,
+        intentGeneration: Long,
+    ) {
+        scope.launch {
+            mutex.withLock {
+                if (intentGeneration != queryIntentGeneration) return@launch
+                searchGeneration += 1
+                val generation = searchGeneration
+                searchJob?.cancel()
+                searchJob = scope.launch { executeSearch(query, generation) }
+            }
+        }
+    }
+
+    private suspend fun executeSearch(
+        query: String,
+        generation: Long,
+    ) {
+        val environment = mutex.withLock { currentEnvironment }
+        if (environment == null) {
+            mutex.withLock {
+                if (generation != searchGeneration) return@withLock
+                currentQuery = ""
+                lastSearchResults = emptyList()
+                updateReadyState { it.copy(query = "", searchResults = emptyList(), isSearching = false) }
+            }
+            return
+        }
+        val normalizedQuery = query.trim()
+        mutex.withLock {
+            if (generation != searchGeneration) return
+            val queryChanged = currentQuery.trim() != normalizedQuery
+            currentQuery = query
+            if (normalizedQuery.isEmpty()) {
+                lastSearchResults = emptyList()
+                updateReadyState {
+                    it.copy(
+                        query = query,
+                        searchResults = emptyList(),
+                        isSearching = false,
+                        message = it.message.withoutSearchFailure(),
+                    )
+                }
+                return
+            }
+            if (queryChanged) lastSearchResults = emptyList()
+            updateReadyState {
+                it.copy(
+                    query = query,
+                    isSearching = true,
+                    searchResults = if (queryChanged) emptyList() else it.searchResults,
+                    message = it.message.withoutSearchFailure(),
+                )
+            }
+        }
+        delay(searchDebounceMillis)
+        cancellationSafeRunCatching { repository.search(environment, normalizedQuery) }
+            .onSuccess { results ->
+                mutex.withLock {
+                    if (generation != searchGeneration || currentQuery != query) return@withLock
+                    lastSearchResults = results
+                    updateReadyState {
+                        it.copy(
+                            query = query,
+                            searchResults = results,
+                            isSearching = false,
+                            message = it.message.withoutSearchFailure(),
+                        )
+                    }
+                }
+            }.onFailure { error ->
+                JellystackLog.e(
+                    "Jellyseerr search failed for ${environment.serverId}: ${error.message}",
+                    error,
+                )
+                mutex.withLock {
+                    if (generation != searchGeneration || currentQuery != query) return@withLock
+                    updateReadyState {
+                        it.copy(
+                            query = query,
+                            searchResults = lastSearchResults,
+                            isSearching = false,
+                            message =
+                                nextMessage(
+                                    kind = JellyseerrMessageKind.ERROR,
+                                    code = JellyseerrMessageCode.SearchFailed,
+                                    subject = normalizedQuery,
+                                    detail = error.message,
+                                ),
+                        )
+                    }
+                }
+            }
+    }
+
+    private fun JellyseerrMessage?.withoutSearchFailure(): JellyseerrMessage? =
+        takeUnless { it?.code == JellyseerrMessageCode.SearchFailed }
 
     fun submitRequest(
         item: JellyseerrSearchItem,

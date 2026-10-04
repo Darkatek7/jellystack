@@ -14,16 +14,21 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class JellyfinSessionApiTest {
     @Test
-    fun defaultAuthorizationHeaderUsesCurrentAndroidVersion() =
+    fun defaultAuthorizationHeaderUsesCurrentClientVersion() =
         runTest {
             var authorization = ""
+            var legacyTokenHeader: String? = null
+            var legacyAuthorizationHeader: String? = null
             val engine =
                 MockEngine { request ->
-                    authorization = request.headers["X-Emby-Authorization"].orEmpty()
+                    authorization = request.headers[HttpHeaders.Authorization].orEmpty()
+                    legacyTokenHeader = request.headers["X-Emby-Token"]
+                    legacyAuthorizationHeader = request.headers["X-Emby-Authorization"]
                     respond(
                         content = ByteReadChannel("""{"Id":"user-1","Name":"Viewer"}"""),
                         headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
@@ -35,9 +40,12 @@ class JellyfinSessionApiTest {
             api.currentUser()
 
             assertEquals(
-                "MediaBrowser Client=\"Jellystack\", Device=\"Android\", DeviceId=\"unknown\", Version=\"0.15.1\"",
+                "MediaBrowser Client=\"Jellystack\", Device=\"Jellystack\", DeviceId=\"unknown\", " +
+                    "Version=\"$DEFAULT_JELLYSTACK_CLIENT_VERSION\", Token=\"dummy-token\"",
                 authorization,
             )
+            assertNull(legacyTokenHeader)
+            assertNull(legacyAuthorizationHeader)
             client.close()
         }
 
@@ -69,6 +77,52 @@ class JellyfinSessionApiTest {
             assertTrue(postedPolicy.contains("\"EnableMediaPlayback\":true"))
             assertTrue(postedPolicy.contains("\"CustomPluginPolicy\":\"preserved\""))
             assertFalse(postedPolicy.contains("AccessToken"))
+            client.close()
+        }
+
+    @Test
+    fun resettingPasswordSetsNewPasswordThroughUserIdQueryRoute() =
+        runTest {
+            val requests = mutableListOf<String>()
+            var postedBody = ""
+            var authorization = ""
+            var legacyTokenHeader: String? = null
+            val engine =
+                MockEngine { request ->
+                    requests += "${request.method.value} ${request.url.encodedPath}?${request.url.encodedQuery}"
+                    postedBody = (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
+                    authorization = request.headers[HttpHeaders.Authorization].orEmpty()
+                    legacyTokenHeader = request.headers["X-Emby-Token"]
+                    respondOk()
+                }
+            val client = NetworkClientFactory.create(ClientConfig(engine = engine, maxRetries = 0))
+            val api = JellyfinSessionApi(client, "https://media.example", "dummy-token")
+
+            api.resetUserPassword("user-2", "new-secret")
+
+            assertEquals(listOf("POST /Users/Password?userId=user-2"), requests)
+            assertTrue(postedBody.contains("\"NewPw\":\"new-secret\""))
+            assertTrue(postedBody.contains("\"ResetPassword\":false"))
+            assertTrue(authorization.contains("Token=\"dummy-token\""))
+            assertNull(legacyTokenHeader)
+            client.close()
+        }
+
+    @Test
+    fun resettingPasswordWithEmptyValueClearsIt() =
+        runTest {
+            var postedBody = ""
+            val engine =
+                MockEngine { request ->
+                    postedBody = (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
+                    respondOk()
+                }
+            val client = NetworkClientFactory.create(ClientConfig(engine = engine, maxRetries = 0))
+            val api = JellyfinSessionApi(client, "https://media.example", "dummy-token")
+
+            api.resetUserPassword("user-2", "")
+
+            assertTrue(postedBody.contains("\"ResetPassword\":true"))
             client.close()
         }
 

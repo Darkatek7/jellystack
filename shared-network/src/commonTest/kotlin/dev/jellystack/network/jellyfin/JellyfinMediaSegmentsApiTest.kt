@@ -25,7 +25,7 @@ class JellyfinMediaSegmentsApiTest {
                 MockEngine { request ->
                     assertEquals(HttpMethod.Get, request.method)
                     assertEquals("/MediaSegments/item-1", request.url.encodedPath)
-                    assertEquals("dummy-token", request.headers["X-Emby-Token"])
+                    assertEquals("MediaBrowser Token=\"dummy-token\"", request.headers[HttpHeaders.Authorization])
                     respondJson(
                         """{"Items":[{"Id":"segment-1","ItemId":"item-1","Type":"Intro","StartTicks":12000000,"EndTicks":45000000}]}""",
                     )

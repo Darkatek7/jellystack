@@ -427,6 +427,9 @@
     <string name="whats_new_0151_segments">Überspringe serverseitige Intros, Rückblicke, Vorschauen, Werbeunterbrechungen und Abspänne direkt im Player.</string>
     <string name="whats_new_0151_settings">Wähle für jeden Segmenttyp separat Aus, Schaltfläche oder Automatisch.</string>
     <string name="whats_new_0151_play_next">Starte die nächste Episode, während der Abspann läuft.</string>
+    <string name="whats_new_0160_jellyfin">Verbinde dich per Passwort oder Quick Connect mit Jellyfin 12.0+.</string>
+    <string name="whats_new_0160_media">Schau Videos mit funktionierenden Bildern, Untertiteln und SyncPlay auf Jellyfin 12.0+.</string>
+    <string name="whats_new_0160_downloads">Setze Downloads in der Warteschlange nach dem Upgrade deines Jellyfin-Servers fort.</string>
     <string name="insecure_http_title">Unverschlüsselte Verbindung</string>
     <string name="insecure_http_warning">Dieser Server verwendet unverschlüsseltes HTTP. Zugangsdaten und Medienverkehr können für andere im Netzwerk sichtbar sein. Verwende wenn möglich HTTPS.</string>
     <string name="insecure_http_confirm">Diesen HTTP-Server trotzdem verwenden</string>

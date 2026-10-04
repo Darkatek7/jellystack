@@ -8,6 +8,8 @@ import dev.jellystack.core.logging.JellystackLog
 import dev.jellystack.core.playback.OfflinePlaybackProgressReporter
 import dev.jellystack.core.playback.StreamingPlayStrategy
 import dev.jellystack.core.playback.StreamingProgressContext
+import dev.jellystack.core.profile.MediaIdentity
+import dev.jellystack.core.profile.MediaProviderIds
 import dev.jellystack.network.NetworkJson
 import dev.jellystack.network.jellyfin.JellyfinBrowseApi
 import dev.jellystack.network.jellyfin.JellyfinItemDetailDto
@@ -28,6 +30,11 @@ import kotlinx.serialization.json.put
 typealias JellyfinBrowseApiFactory = (JellyfinEnvironment) -> JellyfinBrowseApi
 
 private const val FILTER_ERROR_PHRASE = "No media found with the specified filter"
+
+private fun detailCacheKey(
+    serverId: String,
+    itemId: String,
+): String = "$serverId:$itemId"
 
 data class LibraryPage(
     val items: List<JellyfinItem>,
@@ -80,6 +87,21 @@ internal interface JellyfinBrowseRepositoryApi {
         filters: String? = null,
     ): LibraryPage
 
+    suspend fun loadLibraryPage(
+        libraryId: String,
+        page: Int,
+        pageSize: Int,
+        query: LibraryBrowseQuery,
+        cachePolicy: LibraryCachePolicy,
+    ): LibraryPage =
+        loadLibraryPage(
+            libraryId = libraryId,
+            page = page,
+            pageSize = pageSize,
+            refresh = page == 0,
+            filters = query.takeIf { it.favoritesOnly }?.let { "IsFavorite" },
+        )
+
     suspend fun cachedLibraryPage(
         libraryId: String,
         page: Int,
@@ -131,7 +153,35 @@ class JellyfinBrowseRepository(
     JellyfinBrowseRepositoryApi {
     private val cachedApis = mutableMapOf<String, JellyfinBrowseApi>()
 
-    suspend fun cachedItem(itemId: String): JellyfinItem? = itemStore.get(itemId)?.toDomain()
+    suspend fun cachedItem(itemId: String): JellyfinItem? {
+        val environment = environmentProvider.current() ?: return null
+        return itemStore.get(itemId)?.takeIf { it.serverId == environment.serverKey }?.toDomain()
+    }
+
+    suspend fun cachedItem(identity: MediaIdentity): JellyfinItem? {
+        val environment = environmentProvider.current() ?: return null
+        return itemStore.findByProviderIdentity(environment.serverKey, identity)?.toDomain()
+    }
+
+    suspend fun refreshFavoriteItems(limit: Int = 10_000): List<JellyfinItem> {
+        val environment = environmentProvider.current() ?: return emptyList()
+        val response =
+            apiFor(environment).fetchLibraryItems(
+                userId = environment.userId,
+                libraryId = "",
+                startIndex = 0,
+                limit = limit.coerceIn(1, 10_000),
+                includeItemTypes = null,
+                recursive = true,
+                filters = "IsFavorite",
+            )
+        val records =
+            response.items.map { item ->
+                item.toRecord(environment, fallbackLibraryId = item.parentId, updatedAt = clock.now())
+            }
+        itemStore.upsert(records)
+        return records.map { it.toDomain() }
+    }
 
     override suspend fun refreshLibraries(): List<JellyfinLibrary> {
         val environment = environmentProvider.current() ?: return emptyList()
@@ -227,6 +277,44 @@ class JellyfinBrowseRepository(
         }
         return LibraryPage(
             items = records.map { it.toDomain() },
+            totalRecordCount = response.totalRecordCount,
+        )
+    }
+
+    override suspend fun loadLibraryPage(
+        libraryId: String,
+        page: Int,
+        pageSize: Int,
+        query: LibraryBrowseQuery,
+        cachePolicy: LibraryCachePolicy,
+    ): LibraryPage {
+        require(cachePolicy == LibraryCachePolicy.SESSION_ONLY || query.isDefault) {
+            "Only the default browse query may update the canonical cache"
+        }
+        if (cachePolicy == LibraryCachePolicy.CANONICAL_DEFAULT) {
+            return loadLibraryPage(libraryId, page, pageSize, refresh = page == 0, filters = null)
+        }
+        val environment = environmentProvider.current() ?: return LibraryPage(emptyList(), null)
+        val libraryQuery = queryForLibrary(environment.serverKey, libraryId)
+        val includeItemTypes = query.networkMediaTypes() ?: libraryQuery.includeItemTypes
+        val response =
+            apiFor(environment).fetchLibraryItems(
+                userId = environment.userId,
+                libraryId = libraryId,
+                startIndex = page * pageSize,
+                limit = pageSize,
+                includeItemTypes = includeItemTypes,
+                recursive = libraryQuery.recursive,
+                filters = query.takeIf { it.favoritesOnly }?.let { "IsFavorite" },
+                sortBy = query.networkSortBy(),
+                sortOrder = query.networkSortOrder(),
+                isPlayed = query.networkPlayed(),
+                genres = query.networkGenres(),
+                years = query.networkYears(),
+            )
+        val now = clock.now()
+        return LibraryPage(
+            items = response.items.map { it.toRecord(environment, libraryId, now).toDomain() },
             totalRecordCount = response.totalRecordCount,
         )
     }
@@ -649,7 +737,8 @@ class JellyfinBrowseRepository(
     ): JellyfinItemDetail? {
         val environment = environmentProvider.current() ?: return null
         val now = clock.now()
-        val cached = detailStore.get(itemId)
+        val detailCacheKey = detailCacheKey(environment.serverKey, itemId)
+        val cached = detailStore.get(detailCacheKey)
         if (!forceRefresh && cached != null) {
             return cached.toDomain()
         }
@@ -657,13 +746,13 @@ class JellyfinBrowseRepository(
         val dto = api.fetchItemDetail(environment.userId, itemId)
         detailStore.upsert(
             JellyfinItemDetailRecord(
-                itemId = itemId,
+                itemId = detailCacheKey,
                 json = NetworkJson.default.encodeToString(dto),
                 updatedAt = now,
             ),
         )
         // Sync base item metadata with latest detail overview.
-        itemStore.get(itemId)?.let { existing ->
+        itemStore.get(itemId)?.takeIf { it.serverId == environment.serverKey }?.let { existing ->
             itemStore.upsert(
                 listOf(
                     existing.copy(
@@ -681,7 +770,8 @@ class JellyfinBrowseRepository(
     }
 
     suspend fun cachedItemDetail(itemId: String): JellyfinItemDetail? {
-        val record = detailStore.get(itemId) ?: return null
+        val environment = environmentProvider.current() ?: return null
+        val record = detailStore.get(detailCacheKey(environment.serverKey, itemId)) ?: return null
         return record.toDomain()
     }
 
@@ -692,7 +782,7 @@ class JellyfinBrowseRepository(
         val environment = environmentProvider.current() ?: return null
         val returnedUserData = apiFor(environment).setPlayedStatus(environment.userId, itemId, played)
         val now = clock.now()
-        val cachedRecord = detailStore.get(itemId)
+        val cachedRecord = detailStore.get(detailCacheKey(environment.serverKey, itemId))
         if (cachedRecord == null) {
             return getItemDetail(itemId, forceRefresh = true)
         }
@@ -710,7 +800,7 @@ class JellyfinBrowseRepository(
                 updatedAt = now,
             ),
         )
-        itemStore.get(itemId)?.let { item ->
+        itemStore.get(itemId)?.takeIf { it.serverId == environment.serverKey }?.let { item ->
             itemStore.upsert(
                 listOf(
                     item.copy(
@@ -858,6 +948,12 @@ private fun JellyfinItemDto.toRecord(
         seriesBannerImageTag =
             parentBannerImageTag
                 ?: imageTags?.get("Banner")?.takeIf { type.equals("Series", ignoreCase = true) },
+        providerIds =
+            MediaProviderIds(
+                tmdbId = providerIds.providerValue("tmdb"),
+                tvdbId = providerIds.providerValue("tvdb"),
+                sourceLocalId = id,
+            ).normalized(),
     )
 
 private fun JellyfinItemRecord.toDomain(): JellyfinItem =
@@ -900,7 +996,11 @@ private fun JellyfinItemRecord.toDomain(): JellyfinItem =
         seriesLogoImageTag = seriesLogoImageTag,
         seriesArtImageTag = seriesArtImageTag,
         seriesBannerImageTag = seriesBannerImageTag,
+        providerIds = providerIds,
     )
+
+private fun Map<String, String>?.providerValue(name: String): String? =
+    this?.entries?.firstOrNull { it.key.equals(name, ignoreCase = true) }?.value
 
 private fun JellyfinItemDetailRecord.toDomain(): JellyfinItemDetail =
     NetworkJson.default.decodeFromString<JellyfinItemDetailDto>(json).toDomain()

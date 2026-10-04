@@ -1,5 +1,6 @@
 package dev.jellystack.core.jellyseerr
 
+import dev.jellystack.core.profile.ProfileEnvironmentProvider
 import dev.jellystack.core.server.ManagedServer
 import dev.jellystack.core.server.ServerRepository
 import dev.jellystack.core.server.ServerType
@@ -15,14 +16,18 @@ interface JellyseerrEnvironmentProvider {
 
 class ServerRepositoryJellyseerrEnvironmentProvider(
     private val repository: ServerRepository,
+    private val profileEnvironmentProvider: ProfileEnvironmentProvider? = null,
 ) : JellyseerrEnvironmentProvider {
-    override suspend fun current(): JellyseerrEnvironment? =
-        repository
+    override suspend fun current(): JellyseerrEnvironment? {
+        profileEnvironmentProvider?.let { return it.seerr() }
+        return repository
             .activeServer(ServerType.JELLYSEERR)
             ?.toEnvironment()
+    }
 
     override fun observe(): Flow<JellyseerrEnvironment?> =
-        repository.observeActiveServer(ServerType.JELLYSEERR).map { server -> server?.toEnvironment() }
+        profileEnvironmentProvider?.observeSeerr()
+            ?: repository.observeActiveServer(ServerType.JELLYSEERR).map { server -> server?.toEnvironment() }
 }
 
 private fun ManagedServer.toEnvironment(): JellyseerrEnvironment? {

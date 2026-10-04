@@ -1,0 +1,14 @@
+ALTER TABLE jellyfin_favorites RENAME TO legacy_jellyfin_favorites;
+
+CREATE TABLE jellyfin_favorites (
+    scope_id TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (scope_id, item_id)
+);
+
+INSERT INTO jellyfin_favorites(scope_id, item_id, updated_at)
+SELECT 'legacy', item_id, updated_at
+FROM legacy_jellyfin_favorites;
+
+DROP TABLE legacy_jellyfin_favorites;

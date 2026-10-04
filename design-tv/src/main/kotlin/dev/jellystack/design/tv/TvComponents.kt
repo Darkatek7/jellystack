@@ -1,14 +1,18 @@
-@file:Suppress("FunctionName", "FunctionNaming", "LongParameterList", "MaxLineLength", "TooManyFunctions")
+@file:Suppress("FunctionName", "FunctionNaming", "LongMethod", "LongParameterList", "MaxLineLength", "TooManyFunctions")
 
 package dev.jellystack.design.tv
 
 import android.view.KeyEvent
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -34,6 +38,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -46,17 +51,24 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsPropertyKey
+import androidx.compose.ui.semantics.SemanticsPropertyReceiver
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.role
@@ -64,6 +76,7 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -78,29 +91,64 @@ internal const val TV_DETAIL_COMPACT_ACTION_WIDTH_DP = 132
 internal const val TV_DETAIL_ACTION_GAP_DP = 14
 internal const val TV_DETAIL_COMPACT_ACTION_HEIGHT_DP = 72
 
+internal val TvDestructiveActionKey = SemanticsPropertyKey<Boolean>("TvDestructiveAction")
+private var SemanticsPropertyReceiver.tvDestructiveAction by TvDestructiveActionKey
+
 @Composable
 internal fun Modifier.tvFocusable(
-    onClick: () -> Unit,
+    onClick: (() -> Unit)?,
     enabled: Boolean = true,
     shape: RoundedCornerShape = RoundedCornerShape(16.dp),
-    scale: Float = 1.045f,
+    scale: Float = TvLayoutTokens.FOCUS_SCALE,
     onFocused: (() -> Unit)? = null,
     onFocusChanged: ((Boolean) -> Unit)? = null,
     focusToNavigationRailOnLeft: Boolean = false,
     focusTargetId: String? = null,
     providedFocusRequester: FocusRequester? = null,
+    showFocusBorder: Boolean = true,
 ): Modifier {
     val rememberedFocusRequester = remember { FocusRequester() }
     val restorationRequester = providedFocusRequester ?: rememberedFocusRequester
     val focusContext = LocalTvFocusContext.current
+    var horizontalCenter by remember(focusTargetId) { mutableStateOf(0f) }
+    val semanticTarget =
+        focusTargetId?.let { targetId ->
+            tvFocusTarget(
+                targetId = targetId,
+                horizontalCenter = horizontalCenter,
+                actionable = enabled && onClick != null,
+            )
+        }
     if (focusContext != null && focusTargetId != null) {
-        DisposableEffect(focusContext, focusTargetId, restorationRequester) {
-            focusContext.coordinator.register(focusContext.routeKey, focusTargetId, restorationRequester)
+        DisposableEffect(focusContext, focusTargetId, restorationRequester, semanticTarget) {
+            focusContext.coordinator.register(
+                focusContext.routeKey,
+                focusTargetId,
+                restorationRequester,
+                focusTarget = semanticTarget,
+            )
             onDispose {
                 focusContext.coordinator.unregister(focusContext.routeKey, focusTargetId, restorationRequester)
             }
         }
     }
+    val centerActionModifier =
+        if (onClick != null) {
+            Modifier
+                .semantics {
+                    role = Role.Button
+                    if (!enabled) disabled()
+                }.clickable(
+                    interactionSource = null,
+                    // Focus and press visuals come from tvFocusDecoration; the platform highlight is
+                    // drawn as an unclipped rectangle on top of pill-shaped actions.
+                    indication = null,
+                    enabled = enabled,
+                    onClick = onClick,
+                )
+        } else {
+            Modifier
+        }
     return this.then(
         Modifier
             .focusRequester(restorationRequester)
@@ -110,19 +158,25 @@ internal fun Modifier.tvFocusable(
                 onFocused,
                 onFocusChanged = { focused ->
                     if (focused && focusTargetId != null) {
-                        focusContext?.coordinator?.rememberFocused(
-                            focusContext.routeKey,
-                            focusTargetId,
-                            restorationRequester,
-                        )
+                        focusContext
+                            ?.coordinator
+                            ?.rememberFocused(focusContext.routeKey, focusTargetId, restorationRequester)
+                            ?.let { target ->
+                                focusContext.focusMemory?.remember(
+                                    routeKey = focusContext.routeKey,
+                                    anchor = target.anchor,
+                                    horizontalCenter = target.horizontalCenter,
+                                    horizontalIndex = target.horizontalIndex,
+                                )
+                            }
                     }
                     onFocusChanged?.invoke(focused)
                 },
+                showFocusBorder = showFocusBorder,
             ).tvReturnToNavigationRailOnLeft(focusToNavigationRailOnLeft)
-            .semantics {
-                role = Role.Button
-                if (!enabled) disabled()
-            }.clickable(enabled = enabled, onClick = onClick)
+            .onGloballyPositioned { coordinates ->
+                horizontalCenter = coordinates.boundsInRoot().center.x
+            }.then(centerActionModifier)
             .focusable(enabled),
     )
 }
@@ -133,30 +187,49 @@ private fun Modifier.tvFocusDecoration(
     scale: Float,
     onFocused: (() -> Unit)?,
     onFocusChanged: ((Boolean) -> Unit)?,
+    showFocusBorder: Boolean = true,
 ): Modifier {
     var focused by remember { mutableStateOf(false) }
-    val animatedScale by animateFloatAsState(if (focused) scale else 1f, label = "tv-focus-scale")
-    val borderColor by animateColorAsState(if (focused) TvPurple else Color.Transparent, label = "tv-focus-color")
+    val focusAppearance = LocalTvFocusAppearance.current
+    val effectiveScale = if (focusAppearance.reducedMotion) 1f else minOf(scale, focusAppearance.scale)
+    val animatedScale by
+        animateFloatAsState(
+            targetValue = if (focused) effectiveScale else 1f,
+            animationSpec = if (focusAppearance.reducedMotion) snap() else tween(durationMillis = 120),
+            label = "tv-focus-scale",
+        )
     return this
         .onFocusChanged {
             val becameFocused = it.isFocused && !focused
             focused = it.isFocused
-            onFocusChanged?.invoke(it.isFocused)
             if (becameFocused) onFocused?.invoke()
+            // The semantic callback runs last so stable production anchors cannot be replaced by
+            // legacy callbacks that use localized row titles as section identifiers.
+            onFocusChanged?.invoke(it.isFocused)
         }.graphicsLayer {
             scaleX = animatedScale
             scaleY = animatedScale
+            shadowElevation = if (focused) 12.dp.toPx() else 0f
+            this.shape = shape
+            ambientShadowColor = Color.Black
+            spotShadowColor = TvPurpleStrong
         }.drawBehind {
             if (focused) {
-                drawRoundRect(
-                    color = Color.Black.copy(alpha = 0.24f),
-                    cornerRadius =
-                        androidx.compose.ui.geometry
-                            .CornerRadius(22.dp.toPx()),
-                )
+                drawOutline(shape.createOutline(size, layoutDirection, this), Color.Black.copy(alpha = 0.24f))
             }
-        }.border(if (focused) 1.5.dp else 0.dp, borderColor.copy(alpha = 0.9f), shape)
-        .clip(shape)
+        }.drawWithContent {
+            drawContent()
+            if (focused && showFocusBorder) {
+                val outline = shape.createOutline(size, layoutDirection, this)
+                drawOutline(
+                    outline,
+                    TvLayoutTokens.FocusDarkRing,
+                    style = Stroke(width = focusAppearance.ringWidthDp.dp.toPx()),
+                )
+                drawOutline(outline, TvLayoutTokens.FocusLightRing, style = Stroke(width = 2.dp.toPx()))
+                drawOutline(outline, TvLayoutTokens.FocusAccentRing, style = Stroke(width = 1.dp.toPx()))
+            }
+        }.clip(shape)
 }
 
 @Composable
@@ -166,6 +239,8 @@ internal fun TvActionButton(
     modifier: Modifier = Modifier,
     leading: (@Composable () -> Unit)? = null,
     primary: Boolean = false,
+    selected: Boolean = false,
+    destructive: Boolean = false,
     enabled: Boolean = true,
     focusToNavigationRailOnLeft: Boolean = false,
     focusTargetId: String? = null,
@@ -178,10 +253,10 @@ internal fun TvActionButton(
             modifier
                 .height(58.dp)
                 .graphicsLayer { alpha = if (enabled) 1f else 0.5f }
-                .background(if (primary) TvPurple else TvSurfaceRaised, shape)
                 .semantics(mergeDescendants = true) {
                     contentDescription = label
-                    selected = primary
+                    this.selected = selected
+                    if (destructive) tvDestructiveAction = true
                 }.tvFocusable(
                     onClick = onClick,
                     enabled = enabled,
@@ -190,7 +265,30 @@ internal fun TvActionButton(
                     focusTargetId = focusTargetId,
                     providedFocusRequester = focusRequester,
                     onFocusChanged = onFocusChanged,
-                ).padding(horizontal = 24.dp),
+                ).background(
+                    // Inside the focus layer so the fill scales together with the focus ring.
+                    when {
+                        destructive -> Color(0xFFB3261E)
+                        primary -> TvPurple
+                        else -> TvSurfaceRaised
+                    },
+                    shape,
+                ).drawBehind {
+                    if (selected) {
+                        drawRoundRect(
+                            color = TvPurple,
+                            topLeft =
+                                androidx.compose.ui.geometry
+                                    .Offset(3.dp.toPx(), size.height * 0.2f),
+                            size =
+                                androidx.compose.ui.geometry
+                                    .Size(4.dp.toPx(), size.height * 0.6f),
+                            cornerRadius =
+                                androidx.compose.ui.geometry
+                                    .CornerRadius(2.dp.toPx()),
+                        )
+                    }
+                }.padding(horizontal = 24.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
     ) {
@@ -199,7 +297,7 @@ internal fun TvActionButton(
         Text(
             label,
             fontWeight = FontWeight.SemiBold,
-            color = if (primary) Color(0xFF251450) else TvText,
+            color = if (primary && !destructive) Color(0xFF251450) else TvText,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -259,8 +357,10 @@ internal fun TvCompactActionButton(
                 .width(TV_DETAIL_COMPACT_ACTION_WIDTH_DP.dp)
                 .height(TV_DETAIL_COMPACT_ACTION_HEIGHT_DP.dp)
                 .background(if (selected) TvPurpleStrong.copy(alpha = 0.42f) else Color.Black.copy(alpha = 0.52f), shape)
-                .semantics(mergeDescendants = true) { contentDescription = label }
-                .tvFocusable(onClick = onClick, shape = shape, scale = 1.06f)
+                .semantics(mergeDescendants = true) {
+                    contentDescription = label
+                    this.selected = selected
+                }.tvFocusable(onClick = onClick, shape = shape, scale = 1.06f)
                 .padding(horizontal = 10.dp, vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterVertically),
@@ -270,30 +370,37 @@ internal fun TvCompactActionButton(
     }
 }
 
+internal enum class TvMediaCardFormat { LANDSCAPE, POSTER, CAST_PORTRAIT }
+
+internal enum class TvMediaCardArtworkFit { CROP, CONTAIN_PORTRAIT }
+
 @Composable
 internal fun TvMediaCard(
     title: String,
     imageUrl: String?,
-    onClick: () -> Unit,
+    onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
     subtitle: String? = null,
-    landscape: Boolean = true,
+    selected: Boolean = false,
+    format: TvMediaCardFormat = TvMediaCardFormat.LANDSCAPE,
+    artworkFit: TvMediaCardArtworkFit = TvMediaCardArtworkFit.CROP,
     fillWidth: Boolean = false,
     focusable: Boolean = true,
     onFocused: (() -> Unit)? = null,
     onFocusChanged: ((Boolean) -> Unit)? = null,
     focusToNavigationRailOnLeft: Boolean = false,
-    previewing: Boolean = false,
-    previewEngine: AndroidPlayerEngine? = null,
-    previewSoundEnabled: Boolean = true,
-    previewProgress: Float = 0f,
-    previewSurfaceTestTag: String? = null,
     focusTargetId: String? = null,
+    providedFocusRequester: FocusRequester? = null,
 ) {
     val shape = RoundedCornerShape(18.dp)
     var focused by remember { mutableStateOf(false) }
-    val cardWidth = if (landscape) 250.dp else 140.dp
-    val aspectRatio = if (landscape) 16f / 9f else 2f / 3f
+    val cardWidth = if (format == TvMediaCardFormat.LANDSCAPE) TvLayoutTokens.LandscapeArtworkWidth else 140.dp
+    val aspectRatio =
+        if (format == TvMediaCardFormat.LANDSCAPE) {
+            TvLayoutTokens.LandscapeArtworkWidth.value / TvLayoutTokens.LandscapeArtworkHeight.value
+        } else {
+            2f / 3f
+        }
     val bringIntoViewRequester = remember { BringIntoViewRequester() }
     LaunchedEffect(focused) {
         if (focused) {
@@ -313,6 +420,7 @@ internal fun TvMediaCard(
                 },
                 focusToNavigationRailOnLeft = focusToNavigationRailOnLeft,
                 focusTargetId = focusTargetId,
+                providedFocusRequester = providedFocusRequester,
             )
         } else {
             Modifier
@@ -325,26 +433,74 @@ internal fun TvMediaCard(
                 .bringIntoViewRequester(bringIntoViewRequester)
                 .semantics(mergeDescendants = true) {
                     contentDescription = listOfNotNull(title, subtitle).joinToString(", ")
-                }.background(TvSurface, shape),
+                    this.selected = selected
+                }.background(TvSurface, shape)
+                .drawBehind {
+                    if (selected) {
+                        drawRoundRect(
+                            color = TvPurple,
+                            topLeft =
+                                androidx.compose.ui.geometry
+                                    .Offset(3.dp.toPx(), size.height * 0.18f),
+                            size =
+                                androidx.compose.ui.geometry
+                                    .Size(5.dp.toPx(), size.height * 0.64f),
+                            cornerRadius =
+                                androidx.compose.ui.geometry
+                                    .CornerRadius(2.5.dp.toPx()),
+                        )
+                    }
+                },
     ) {
         Box(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .aspectRatio(aspectRatio)
-                    .clip(shape),
+                    .then(
+                        if (format == TvMediaCardFormat.LANDSCAPE) {
+                            Modifier.height(TvLayoutTokens.LandscapeArtworkHeight)
+                        } else {
+                            Modifier.aspectRatio(aspectRatio)
+                        },
+                    ).clip(shape),
         ) {
             TvMediaCardContent(
                 title = title,
                 imageUrl = imageUrl,
                 subtitle = subtitle,
-                previewing = previewing,
-                previewEngine = previewEngine,
-                previewSoundEnabled = previewSoundEnabled,
-                previewProgress = previewProgress,
-                previewSurfaceTestTag = previewSurfaceTestTag,
+                artworkFit = artworkFit,
+                showMetadataOverlay = format == TvMediaCardFormat.CAST_PORTRAIT,
             )
         }
+        if (format != TvMediaCardFormat.CAST_PORTRAIT) {
+            TvMediaCardMetadataBand(title = title, subtitle = subtitle)
+        }
+    }
+}
+
+@Composable
+private fun TvMediaCardMetadataBand(
+    title: String,
+    subtitle: String?,
+) {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(TvLayoutTokens.LandscapeMetadataBandHeight)
+                .background(Color(0xFF11121B))
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            title,
+            color = TvText,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 15.sp,
+        )
+        subtitle?.let { Text(it, color = TvTextMuted, fontSize = 12.sp, maxLines = 1) }
     }
 }
 
@@ -353,30 +509,47 @@ private fun BoxScope.TvMediaCardContent(
     title: String,
     imageUrl: String?,
     subtitle: String?,
-    previewing: Boolean,
-    previewEngine: AndroidPlayerEngine?,
-    previewSoundEnabled: Boolean,
-    previewProgress: Float,
-    previewSurfaceTestTag: String?,
+    artworkFit: TvMediaCardArtworkFit,
+    showMetadataOverlay: Boolean,
 ) {
-    if (previewing && previewEngine != null) {
-        TvTrailerPreviewSurface(
-            previewEngine = previewEngine,
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .then(previewSurfaceTestTag?.let { Modifier.testTag(it) } ?: Modifier),
+    if (imageUrl != null && artworkFit == TvMediaCardArtworkFit.CONTAIN_PORTRAIT) {
+        AsyncImage(
+            model = imageUrl,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize(),
+        )
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.58f)))
+        AsyncImage(
+            model = imageUrl,
+            contentDescription = null,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.fillMaxSize(),
         )
     } else if (imageUrl != null) {
         AsyncImage(
             model = imageUrl,
-            contentDescription = title,
+            contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
         )
     } else {
-        Box(Modifier.fillMaxSize().background(TvSurfaceRaised), contentAlignment = Alignment.Center) {
-            Icon(Icons.Default.ImageNotSupported, contentDescription = null, tint = TvTextMuted)
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.linearGradient(
+                        listOf(Color(0xFF292A3D), Color(0xFF151622), Color(0xFF30234A)),
+                    ),
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Default.ImageNotSupported,
+                contentDescription = null,
+                tint = TvTextMuted,
+                modifier = Modifier.size(38.dp),
+            )
         }
     }
     Box(
@@ -384,30 +557,31 @@ private fun BoxScope.TvMediaCardContent(
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
-                    listOf(Color.Transparent, Color.Transparent, Color.Black.copy(alpha = 0.82f)),
+                    colorStops =
+                        arrayOf(
+                            0f to Color.Transparent,
+                            0.48f to Color.Transparent,
+                            0.72f to Color.Black.copy(alpha = 0.5f),
+                            1f to Color.Black.copy(alpha = 0.94f),
+                        ),
                 ),
             ),
     )
-    if (previewing) {
-        TvTrailerPreviewChrome(
-            previewSoundEnabled = previewSoundEnabled,
-            previewProgress = previewProgress,
-            modifier = Modifier.fillMaxSize(),
-        )
-    }
-    Column(
-        modifier = Modifier.align(Alignment.BottomStart).padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        Text(
-            title,
-            color = TvText,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 18.sp,
-        )
-        subtitle?.let { Text(it, color = TvTextMuted, fontSize = 14.sp, maxLines = 1) }
+    if (showMetadataOverlay) {
+        Column(
+            modifier = Modifier.align(Alignment.BottomStart).padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                title,
+                color = TvText,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 18.sp,
+            )
+            subtitle?.let { Text(it, color = TvTextMuted, fontSize = 14.sp, maxLines = 1) }
+        }
     }
 }
 
@@ -417,7 +591,7 @@ internal fun TvTrailerPreviewSurface(
     modifier: Modifier = Modifier,
 ) {
     AndroidView(
-        factory = { previewEngine.createVideoSurface(it) },
+        factory = { previewEngine.createVideoSurface(it, textureBacked = true) },
         update = previewEngine::updateVideoSurface,
         onRelease = previewEngine::releaseVideoSurface,
         modifier = modifier,
@@ -429,12 +603,13 @@ internal fun TvTrailerPreviewChrome(
     previewSoundEnabled: Boolean,
     previewProgress: Float,
     modifier: Modifier = Modifier,
+    badgeEndPadding: Dp = 16.dp,
 ) {
     Box(modifier) {
         Row(
             Modifier
-                .align(Alignment.TopStart)
-                .padding(12.dp)
+                .align(Alignment.BottomEnd)
+                .padding(end = badgeEndPadding, bottom = 14.dp)
                 .background(TvPurpleStrong.copy(alpha = 0.86f), RoundedCornerShape(8.dp))
                 .padding(horizontal = 9.dp, vertical = 5.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -459,13 +634,43 @@ internal fun TvTrailerPreviewChrome(
     }
 }
 
+/**
+ * Fades stage actions out while a trailer plays so the preview stays unobstructed.
+ *
+ * The actions stay composed and focusable; they reappear as soon as focus moves into them, so
+ * D-pad navigation and focus restoration keep working.
+ */
+@Composable
+internal fun TvTrailerAwareActions(
+    previewing: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    var focused by remember { mutableStateOf(false) }
+    val reducedMotion = LocalTvFocusAppearance.current.reducedMotion
+    val alpha by animateFloatAsState(
+        targetValue = if (previewing && !focused) 0f else 1f,
+        animationSpec = if (reducedMotion) snap() else tween(TV_TRAILER_ACTIONS_FADE_MILLIS),
+        label = "trailer-aware-actions",
+    )
+    Box(
+        modifier
+            .onFocusChanged { focused = it.hasFocus }
+            .graphicsLayer { this.alpha = alpha },
+    ) {
+        content()
+    }
+}
+
+private const val TV_TRAILER_ACTIONS_FADE_MILLIS = 220
+
 @Composable
 internal fun TvLoading(
     label: String,
     modifier: Modifier = Modifier,
 ) {
     Column(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier.fillMaxSize().tvStatusSemantics(label),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
@@ -482,14 +687,60 @@ internal fun TvSectionTitle(
 ) {
     Text(
         title,
-        modifier = modifier.padding(horizontal = 6.dp),
+        modifier = modifier.padding(horizontal = 6.dp).tvHeading(),
         color = TvText,
         fontSize = 20.sp,
         fontWeight = FontWeight.Bold,
     )
 }
 
-internal val TvScreenPadding = PaddingValues(start = 92.dp, end = 36.dp, top = 20.dp, bottom = 54.dp)
+/** Home rows start at [TV_CINEMATIC_ROWS_TOP]; no top padding so scrolled rows never peek into the hero. */
+internal val TvHomeRowsPadding =
+    PaddingValues(
+        start = TvLayoutTokens.ContentStart,
+        end = TvLayoutTokens.SafeInsets.horizontal,
+        bottom = 16.dp,
+    )
+
+/**
+ * Scrolls a vertical browse list so the focused row starts at the top of the list viewport.
+ *
+ * Compose keeps focused items at a 30 % pivot on TV devices, which pushes rows below the preview stage
+ * past the bottom edge. [rowCardOffset] is the distance from a row's top to its cards, so the row title
+ * stays visible above the focused card.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+internal fun rememberTvRowAlignedBringIntoViewSpec(rowCardOffset: Dp): BringIntoViewSpec {
+    val rowCardOffsetPx = with(LocalDensity.current) { rowCardOffset.toPx() }
+    return remember(rowCardOffsetPx) {
+        object : BringIntoViewSpec {
+            override fun calculateScrollDistance(
+                offset: Float,
+                size: Float,
+                containerSize: Float,
+            ): Float = offset - rowCardOffsetPx
+        }
+    }
+}
+
+/** Restores [rowSpec] (the platform behaviour) for a horizontal row nested in a row-aligned column. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+internal fun TvRowScroll(
+    rowSpec: BringIntoViewSpec,
+    content: @Composable () -> Unit,
+) {
+    CompositionLocalProvider(LocalBringIntoViewSpec provides rowSpec, content = content)
+}
+
+internal val TvScreenPadding =
+    PaddingValues(
+        start = TvLayoutTokens.ContentStart,
+        end = TvLayoutTokens.SafeInsets.horizontal,
+        top = TvLayoutTokens.SafeInsets.vertical,
+        bottom = 54.dp,
+    )
 
 @Composable
 internal fun tvOutlinedTextFieldColors() =
@@ -512,6 +763,7 @@ internal val LocalTvScreenEntryFocusRequester = staticCompositionLocalOf<FocusRe
 internal data class TvFocusContext(
     val coordinator: TvFocusCoordinator<FocusRequester>,
     val routeKey: String,
+    val focusMemory: TvFocusMemory? = null,
 )
 
 internal val LocalTvFocusContext = staticCompositionLocalOf<TvFocusContext?> { null }
@@ -536,17 +788,37 @@ internal fun Modifier.tvFocusTarget(
     focusTargetId: String,
 ): Modifier {
     val focusContext = LocalTvFocusContext.current
+    var horizontalCenter by remember(focusTargetId) { mutableStateOf(0f) }
+    val semanticTarget = tvFocusTarget(focusTargetId, horizontalCenter = horizontalCenter)
     if (focusContext != null) {
-        DisposableEffect(focusContext, focusTargetId, requester, fallback) {
-            focusContext.coordinator.register(focusContext.routeKey, focusTargetId, requester, fallback)
+        DisposableEffect(focusContext, focusTargetId, requester, fallback, semanticTarget) {
+            focusContext.coordinator.register(
+                focusContext.routeKey,
+                focusTargetId,
+                requester,
+                fallback,
+                semanticTarget,
+            )
             onDispose {
                 focusContext.coordinator.unregister(focusContext.routeKey, focusTargetId, requester)
             }
         }
     }
-    return onFocusChanged { state ->
+    return onGloballyPositioned { coordinates ->
+        horizontalCenter = coordinates.boundsInRoot().center.x
+    }.onFocusChanged { state ->
         if (state.isFocused) {
-            focusContext?.coordinator?.rememberFocused(focusContext.routeKey, focusTargetId, requester)
+            focusContext
+                ?.coordinator
+                ?.rememberFocused(focusContext.routeKey, focusTargetId, requester)
+                ?.let { target ->
+                    focusContext.focusMemory?.remember(
+                        routeKey = focusContext.routeKey,
+                        anchor = target.anchor,
+                        horizontalCenter = target.horizontalCenter,
+                        horizontalIndex = target.horizontalIndex,
+                    )
+                }
         }
     }
 }
@@ -603,12 +875,22 @@ internal fun jellyfinImageUrl(
     itemId: String,
     tag: String?,
     type: String = "Primary",
-    maxWidth: Int = 1000,
+    maxWidth: Int = TvArtworkSize.LANDSCAPE_CARD.maxWidth,
 ): String? {
     if (baseUrl.isNullOrBlank() || itemId.isBlank()) return null
     val tagQuery = tag?.takeIf(String::isNotBlank)?.let { "tag=$it&" }.orEmpty()
     return "${baseUrl.trimEnd('/')}/Items/$itemId/Images/$type?${tagQuery}maxWidth=$maxWidth&quality=90" +
-        token?.takeIf { it.isNotBlank() }?.let { "&api_key=$it" }.orEmpty()
+        token?.takeIf { it.isNotBlank() }?.let { "&ApiKey=$it" }.orEmpty()
+}
+
+internal fun jellyfinUserImageUrl(
+    baseUrl: String?,
+    token: String?,
+    userId: String,
+): String? {
+    if (baseUrl.isNullOrBlank() || userId.isBlank()) return null
+    return "${baseUrl.trimEnd('/')}/UserImage?userId=$userId&maxWidth=160&quality=90" +
+        token?.takeIf(String::isNotBlank)?.let { "&ApiKey=$it" }.orEmpty()
 }
 
 internal fun tmdbImageUrl(

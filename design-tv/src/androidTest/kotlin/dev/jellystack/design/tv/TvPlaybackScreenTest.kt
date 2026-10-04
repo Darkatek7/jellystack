@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -19,7 +18,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
-import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -42,7 +40,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class TvPlaybackScreenTest {
     @get:Rule
-    val composeRule = createComposeRule()
+    val composeRule = createTvComposeRule()
 
     @Test
     fun controlsActionsAreBottomRightAboveTheTimelineAndExposeStableTags() {
@@ -88,10 +86,12 @@ class TvPlaybackScreenTest {
                         modifier = Modifier.focusRequester(fallback).focusProperties { up = entry },
                     )
                 }
-                LaunchedEffect(Unit) { fallback.requestFocus() }
             }
         }
-        composeRule.onNodeWithText("Stable control").assertIsFocused()
+        composeRule
+            .onNodeWithText("Stable control")
+            .performSemanticsAction(SemanticsActions.RequestFocus)
+            .assertIsFocused()
 
         composeRule.runOnIdle(showAction)
 

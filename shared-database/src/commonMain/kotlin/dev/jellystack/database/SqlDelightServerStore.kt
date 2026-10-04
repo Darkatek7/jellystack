@@ -15,6 +15,16 @@ class SqlDelightServerStore(
         baseUrl: String,
     ): ServerRecord? = queries.selectByTypeAndUrl(type.name, baseUrl).executeAsOneOrNull()?.toRecord()
 
+    override suspend fun findByIdentity(
+        type: ServerType,
+        baseUrl: String,
+        authenticatedPrincipal: String?,
+    ): ServerRecord? =
+        queries
+            .selectByIdentity(type.name, baseUrl, authenticatedPrincipal?.trim()?.takeIf(String::isNotEmpty))
+            .executeAsOneOrNull()
+            ?.toRecord()
+
     override suspend fun get(id: String): ServerRecord? = queries.selectById(id).executeAsOneOrNull()?.toRecord()
 
     override suspend fun upsert(record: ServerRecord) {

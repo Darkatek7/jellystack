@@ -21,6 +21,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -29,7 +30,7 @@ import kotlin.test.assertTrue
 class JellyfinBrowseRepositoryTest {
     private enum class NextUpResponseMode {
         DEFAULT,
-        FORCE_SHOWS_ENDPOINT,
+        RETURN_FOR_LIBRARY,
     }
 
     private enum class LibraryItemsResponseMode {
@@ -38,6 +39,7 @@ class JellyfinBrowseRepositoryTest {
     }
 
     private var nextUpMode: NextUpResponseMode = NextUpResponseMode.DEFAULT
+    private val nextUpParentIds = mutableListOf<String?>()
     private var libraryItemsMode: LibraryItemsResponseMode = LibraryItemsResponseMode.DEFAULT
     private var libraryItemsRequestCount: Int = 0
 
@@ -60,9 +62,10 @@ class JellyfinBrowseRepositoryTest {
             var status = HttpStatusCode.OK
             val body =
                 when (val path = request.url.encodedPath) {
-                    "/Users/user-123/Views" -> LIBRARIES_JSON
-                    "/Users/user-123/Items/Resume" -> RESUME_JSON
-                    "/Users/user-123/Items/NextUp" ->
+                    "/UserViews" -> LIBRARIES_JSON
+                    "/UserItems/Resume" -> RESUME_JSON
+                    "/Shows/NextUp" -> {
+                        nextUpParentIds += request.url.parameters["ParentId"]
                         when (nextUpMode) {
                             NextUpResponseMode.DEFAULT ->
                                 if (request.url.parameters["ParentId"].isNullOrBlank()) {
@@ -70,25 +73,21 @@ class JellyfinBrowseRepositoryTest {
                                 } else {
                                     EMPTY_NEXT_UP_JSON
                                 }
-                            NextUpResponseMode.FORCE_SHOWS_ENDPOINT -> EMPTY_NEXT_UP_JSON
+                            NextUpResponseMode.RETURN_FOR_LIBRARY -> NEXT_UP_JSON
                         }
-                    "/Shows/NextUp" ->
-                        when (nextUpMode) {
-                            NextUpResponseMode.DEFAULT -> EMPTY_NEXT_UP_JSON
-                            NextUpResponseMode.FORCE_SHOWS_ENDPOINT -> NEXT_UP_JSON
-                        }
-                    "/Users/user-123/Items/item-1" -> DETAIL_JSON
-                    "/Users/user-123/Items/episode-artwork" -> EPISODE_ARTWORK_DETAIL_JSON
+                    }
+                    "/Items/item-1" -> DETAIL_JSON
+                    "/Items/episode-artwork" -> EPISODE_ARTWORK_DETAIL_JSON
                     "/Items/item-1/Similar" -> SIMILAR_JSON
-                    "/Users/user-123/PlayedItems/item-1" -> PLAYED_USER_DATA_JSON
+                    "/UserPlayedItems/item-1" -> PLAYED_USER_DATA_JSON
                     "/Items/item-1/LocalTrailers" -> LOCAL_TRAILERS_JSON
-                    "/Users/user-123/Items/Latest" ->
+                    "/Items/Latest" ->
                         when (request.url.parameters["IncludeItemTypes"]) {
                             "Movie" -> LATEST_MOVIES_JSON
                             "Series,Episode" -> LATEST_SHOWS_JSON
                             else -> error("Unexpected includeItemTypes: ${request.url.parameters}")
                         }
-                    "/Users/user-123/Items" ->
+                    "/Items" ->
                         when (libraryItemsMode) {
                             LibraryItemsResponseMode.DEFAULT -> ITEMS_JSON
                             LibraryItemsResponseMode.REJECT_NON_DEFAULT_INCLUDE_TYPES -> {
@@ -151,7 +150,7 @@ class JellyfinBrowseRepositoryTest {
                             stopPayload = (request.body as TextContent).text
                             respond("", HttpStatusCode.NoContent, headers)
                         }
-                        "/Users/user-123/PlayedItems/item-1" -> {
+                        "/UserPlayedItems/item-1" -> {
                             playedRequestCount++
                             respond(PLAYED_USER_DATA_JSON, HttpStatusCode.OK, headers)
                         }
@@ -210,8 +209,8 @@ class JellyfinBrowseRepositoryTest {
                 MockEngine { request ->
                     val headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
                     when (val path = request.url.encodedPath) {
-                        "/Users/user-123/Views" -> respond(THREE_LIBRARIES_JSON, HttpStatusCode.OK, headers)
-                        "/Users/user-123/Items" -> {
+                        "/UserViews" -> respond(THREE_LIBRARIES_JSON, HttpStatusCode.OK, headers)
+                        "/Items" -> {
                             recordedParentIds += request.url.parameters["ParentId"]
                             respond(ITEMS_JSON, HttpStatusCode.OK, headers)
                         }
@@ -257,8 +256,8 @@ class JellyfinBrowseRepositoryTest {
                 MockEngine { request ->
                     val headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
                     when (val path = request.url.encodedPath) {
-                        "/Users/user-123/Views" -> respond(THREE_LIBRARIES_JSON, HttpStatusCode.OK, headers)
-                        "/Users/user-123/Items" -> {
+                        "/UserViews" -> respond(THREE_LIBRARIES_JSON, HttpStatusCode.OK, headers)
+                        "/Items" -> {
                             recordedParameters +=
                                 Triple(
                                     request.url.parameters["ParentId"],
@@ -313,7 +312,7 @@ class JellyfinBrowseRepositoryTest {
                 MockEngine { request ->
                     val headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
                     when (val path = request.url.encodedPath) {
-                        "/Users/user-123/Items" -> {
+                        "/Items" -> {
                             recordedParentId = request.url.parameters["ParentId"]
                             recordedRecursive = request.url.parameters["Recursive"]
                             recordedFilters = request.url.parameters["Filters"]
@@ -384,8 +383,21 @@ class JellyfinBrowseRepositoryTest {
             val items = repository.loadLibraryPage(libraryId = "lib-1", page = 0, pageSize = 2, refresh = true)
 
             assertEquals(2, items.items.size)
+            assertEquals(
+                "603",
+                items.items
+                    .first()
+                    .providerIds.tmdbId,
+            )
+            assertEquals(
+                "item-1",
+                items.items
+                    .first()
+                    .providerIds.sourceLocalId,
+            )
             val stored = itemStore.listByLibrary(environment.serverKey, "lib-1", limit = 10, offset = 0)
             assertEquals(2, stored.size)
+            assertEquals("603", stored.single { it.id == "item-1" }.providerIds.tmdbId)
         }
 
     @Test
@@ -395,8 +407,8 @@ class JellyfinBrowseRepositoryTest {
                 MockEngine { request ->
                     val headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
                     when (val path = request.url.encodedPath) {
-                        "/Users/user-123/Views" -> respond(LIBRARIES_JSON, HttpStatusCode.OK, headers)
-                        "/Users/user-123/Items" -> respond(ITEMS_JSON_WITH_TOTAL, HttpStatusCode.OK, headers)
+                        "/UserViews" -> respond(LIBRARIES_JSON, HttpStatusCode.OK, headers)
+                        "/Items" -> respond(ITEMS_JSON_WITH_TOTAL, HttpStatusCode.OK, headers)
                         else -> error("Unexpected request path: $path")
                     }
                 }
@@ -485,7 +497,130 @@ class JellyfinBrowseRepositoryTest {
                 detail.people,
             )
             assertEquals("603", detail.providerIds["Tmdb"])
-            assertNotNull(detailStore.get("item-1"))
+            assertNotNull(detailStore.get("srv-1:item-1"))
+        }
+
+    @Test
+    fun favoriteItemsAreFetchedWithMetadataAndCached() =
+        runTest {
+            val favorites = repository.refreshFavoriteItems()
+
+            assertEquals(listOf("item-1", "item-2"), favorites.map { it.id })
+            assertEquals("603", favorites.first().providerIds.tmdbId)
+            assertEquals("srv-1", itemStore.get("item-1")?.serverId)
+        }
+
+    @Test
+    fun sessionBrowseQueryNeverMutatesCanonicalLibraryCache() =
+        runTest {
+            val headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+            val isolatedEngine =
+                MockEngine { request ->
+                    when (request.url.encodedPath) {
+                        "/UserViews" -> respond(LIBRARIES_JSON, HttpStatusCode.OK, headers)
+                        "/Items" -> {
+                            val body = if (request.url.parameters["Genres"] == "Drama") FILTERED_ITEMS_JSON else ITEMS_JSON
+                            respond(body, HttpStatusCode.OK, headers)
+                        }
+                        else -> error("Unexpected request path: ${request.url.encodedPath}")
+                    }
+                }
+            val isolatedClient = NetworkClientFactory.create(ClientConfig(engine = isolatedEngine, installLogging = false))
+            val isolatedItems = InMemoryItemStore()
+            val isolatedRepository =
+                JellyfinBrowseRepository(
+                    environmentProvider,
+                    InMemoryLibraryStore(),
+                    isolatedItems,
+                    InMemoryDetailStore(),
+                    apiFactory = { env ->
+                        JellyfinBrowseApi(
+                            isolatedClient,
+                            env.baseUrl,
+                            env.accessToken,
+                            env.deviceId,
+                            clientName = "Test",
+                            deviceName = env.deviceName,
+                            clientVersion = "1.0",
+                        )
+                    },
+                    clock = FixedClock,
+                )
+            isolatedRepository.refreshLibraries()
+            isolatedRepository.loadLibraryPage("lib-1", page = 0, pageSize = 30, refresh = true)
+            val canonicalBefore = isolatedRepository.cachedLibraryPage("lib-1", page = 0, pageSize = 30)
+
+            val filtered =
+                isolatedRepository.loadLibraryPage(
+                    libraryId = "lib-1",
+                    page = 0,
+                    pageSize = 30,
+                    query = LibraryBrowseQuery(genres = setOf("Drama")),
+                    cachePolicy = LibraryCachePolicy.SESSION_ONLY,
+                )
+
+            assertEquals(listOf("filtered-item"), filtered.items.map { it.id })
+            assertEquals(canonicalBefore, isolatedRepository.cachedLibraryPage("lib-1", page = 0, pageSize = 30))
+            assertNull(isolatedItems.get("filtered-item"))
+            isolatedClient.close()
+        }
+
+    @Test
+    fun nonDefaultQueryCannotUseCanonicalCachePolicy() =
+        runTest {
+            assertFailsWith<IllegalArgumentException> {
+                repository.loadLibraryPage(
+                    libraryId = "lib-1",
+                    page = 0,
+                    pageSize = 30,
+                    query = LibraryBrowseQuery(favoritesOnly = true),
+                    cachePolicy = LibraryCachePolicy.CANONICAL_DEFAULT,
+                )
+            }
+        }
+
+    @Test
+    fun detailCacheIsIsolatedByManagedConnection() =
+        runTest {
+            var activeEnvironment = environment.copy(serverKey = "connection-a", userId = "user-a")
+            var networkRequests = 0
+            val isolatedEngine =
+                MockEngine { request ->
+                    networkRequests++
+                    val user = requireNotNull(request.url.parameters["UserId"])
+                    respond(
+                        content = detailJson(user),
+                        status = HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                    )
+                }
+            val isolatedClient = NetworkClientFactory.create(ClientConfig(engine = isolatedEngine, installLogging = false))
+            val isolatedRepository =
+                JellyfinBrowseRepository(
+                    environmentProvider = JellyfinEnvironmentProvider { activeEnvironment },
+                    libraryStore = InMemoryLibraryStore(),
+                    itemStore = InMemoryItemStore(),
+                    detailStore = InMemoryDetailStore(),
+                    apiFactory = { env ->
+                        JellyfinBrowseApi(
+                            isolatedClient,
+                            env.baseUrl,
+                            env.accessToken,
+                            env.deviceId,
+                            clientName = "Test",
+                            deviceName = env.deviceName,
+                            clientVersion = "1.0",
+                        )
+                    },
+                    clock = FixedClock,
+                )
+
+            assertEquals("user-a", isolatedRepository.getItemDetail("shared")?.name)
+            activeEnvironment = environment.copy(serverKey = "connection-b", userId = "user-b")
+            assertEquals("user-b", isolatedRepository.getItemDetail("shared")?.name)
+            activeEnvironment = environment.copy(serverKey = "connection-a", userId = "user-a")
+            assertEquals("user-a", isolatedRepository.getItemDetail("shared")?.name)
+            assertEquals(2, networkRequests)
         }
 
     @Test
@@ -528,7 +663,7 @@ class JellyfinBrowseRepositoryTest {
                 MockEngine { request ->
                     val headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
                     when (val path = request.url.encodedPath) {
-                        "/Users/user-123/Items/movie-1" -> respond(DETAIL_WITH_FAVORITE_JSON, HttpStatusCode.OK, headers)
+                        "/Items/movie-1" -> respond(DETAIL_WITH_FAVORITE_JSON, HttpStatusCode.OK, headers)
                         else -> error("Unexpected request path: $path")
                     }
                 }
@@ -632,6 +767,7 @@ class JellyfinBrowseRepositoryTest {
             val nextUp = repository.refreshNextUp(limit = 12, libraryId = "lib-2")
 
             assertEquals(listOf("next-episode"), nextUp.map { it.id })
+            assertEquals(listOf("lib-2", null), nextUpParentIds)
             val stored = itemStore.listNextUp(environment.serverKey, limit = 10)
             assertEquals(listOf("next-episode"), stored.map { it.id })
             val cached = repository.cachedNextUp(limit = 12)
@@ -639,14 +775,15 @@ class JellyfinBrowseRepositoryTest {
         }
 
     @Test
-    fun refreshNextUpFallsBackToShowsEndpoint() =
+    fun refreshNextUpUsesShowsEndpointWithLibraryFilter() =
         runTest {
-            nextUpMode = NextUpResponseMode.FORCE_SHOWS_ENDPOINT
+            nextUpMode = NextUpResponseMode.RETURN_FOR_LIBRARY
             repository.refreshLibraries()
 
             val nextUp = repository.refreshNextUp(limit = 12, libraryId = "lib-2")
 
             assertEquals(listOf("next-episode"), nextUp.map { it.id })
+            assertEquals(listOf<String?>("lib-2"), nextUpParentIds)
             val stored = itemStore.listNextUp(environment.serverKey, limit = 10)
             assertEquals(listOf("next-episode"), stored.map { it.id })
         }
@@ -791,6 +928,8 @@ class JellyfinBrowseRepositoryTest {
     }
 
     companion object {
+        private fun detailJson(name: String): String = """{"Id":"shared","Name":"$name","Type":"Movie","MediaSources":[]}"""
+
         private const val LIBRARIES_JSON = """
             {
               "Items": [
@@ -818,6 +957,7 @@ class JellyfinBrowseRepositoryTest {
                   "Type": "Movie",
                   "MediaType": "Video",
                   "Overview": "A sample overview",
+                  "ProviderIds": {"Tmdb": "603", "Tvdb": ""},
                   "RunTimeTicks": 36000000000,
                   "ImageTags": {"Primary": "tag-primary"},
                   "UserData": {
@@ -838,6 +978,21 @@ class JellyfinBrowseRepositoryTest {
                 }
               ],
               "TotalRecordCount": 2
+            }
+        """
+
+        private const val FILTERED_ITEMS_JSON = """
+            {
+              "Items": [
+                {
+                  "Id": "filtered-item",
+                  "Name": "Filtered",
+                  "Type": "Movie",
+                  "MediaType": "Video",
+                  "ProviderIds": {"Tmdb": "999"}
+                }
+              ],
+              "TotalRecordCount": 1
             }
         """
 

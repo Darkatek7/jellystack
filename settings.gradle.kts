@@ -34,6 +34,7 @@ include(
     ":design",
     ":design-tv",
     ":design-screenshots",
+    ":tv-benchmark",
     ":testing",
     ":tools",
 )

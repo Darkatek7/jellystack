@@ -3,6 +3,7 @@ package app.jellystack.mobile.playback
 import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
 import dev.jellystack.core.preferences.AppSettings
 import dev.jellystack.core.preferences.SegmentSkipMode
+import dev.jellystack.network.jellyfin.JellyfinClientIdentity
 import dev.jellystack.network.jellyfin.JellyfinMediaSegmentsApi
 import dev.jellystack.network.jellyfin.JellyfinMediaSegmentsResult
 import dev.jellystack.network.jellyfin.JellyfinMediaSegmentsService
@@ -93,6 +94,12 @@ internal class AndroidJellyfinMediaSegmentsService(
             client = client,
             baseUrl = environment.baseUrl,
             accessToken = environment.accessToken,
+            identity =
+                JellyfinClientIdentity(
+                    appVersion = environment.clientVersion,
+                    deviceName = environment.deviceName,
+                    deviceId = environment.deviceId ?: "unknown",
+                ),
         ).fetchSegments(itemId)
     }
 }

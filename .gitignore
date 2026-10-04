@@ -6,6 +6,8 @@
 
 # Local machine configuration
 /local.properties
+# Test-only credentials for manual integration checks
+/local.integration.properties
 
 # IDE
 /.idea/
@@ -35,6 +37,8 @@ keystore.properties
 # (personal entries are better kept in .git/info/exclude)
 /.qa-*
 /.superpowers/
+/.sdd/
+/.zcode/
 /.worktrees/
 /Handle/
 /adb.exe

@@ -62,12 +62,12 @@ For a focused change, run only the unit tests of the touched module, for example
 
 ### Instrumented tests
 
-These need a running emulator or device. CI runs the `design` and `app-android` suites on an API 35 tablet emulator.
+These need a running emulator or device. CI runs the `design` and `app-android` suites on an API 35 tablet emulator and the `design-tv`, `app-tv`, and `tv-benchmark` suites on an API 35 TV emulator; the `design` and `design-tv` suites are sharded across separate emulators. The TV jobs are non-blocking because the CI TV emulator crashes at random (see `docs/tech-debt.md` 2.18), so run them locally before a TV release.
 
 ```bash
 ./gradlew :design:connectedDebugAndroidTest
 ./gradlew :app-android:connectedDebugAndroidTest
-./gradlew :design-tv:connectedDebugAndroidTest   # Android TV emulator; not run in CI
+./gradlew :design-tv:connectedDebugAndroidTest   # Android TV emulator
 ```
 
 ### Screenshot tests

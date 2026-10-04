@@ -8,6 +8,8 @@ CREATE TABLE jellyfin_items (
     type TEXT NOT NULL,
     media_type TEXT,
     location_type TEXT,
+    tmdb_id TEXT,
+    tvdb_id TEXT,
     taglines TEXT,
     parent_id TEXT,
     primary_image_tag TEXT,
@@ -135,6 +137,18 @@ SELECT *
 FROM jellyfin_items
 WHERE id = ?;
 
+selectByTmdbId:
+SELECT *
+FROM jellyfin_items
+WHERE server_id = ? AND LOWER(type) = ? AND tmdb_id = ?
+LIMIT 1;
+
+selectByTvdbId:
+SELECT *
+FROM jellyfin_items
+WHERE server_id = ? AND LOWER(type) = ? AND tvdb_id = ?
+LIMIT 1;
+
 insertOrReplace:
 INSERT OR REPLACE INTO jellyfin_items (
     id,
@@ -146,6 +160,8 @@ INSERT OR REPLACE INTO jellyfin_items (
     type,
     media_type,
     location_type,
+    tmdb_id,
+    tvdb_id,
     taglines,
     parent_id,
     primary_image_tag,
@@ -182,6 +198,8 @@ VALUES (
     :type,
     :media_type,
     :location_type,
+    :tmdb_id,
+    :tvdb_id,
     :taglines,
     :parent_id,
     :primary_image_tag,

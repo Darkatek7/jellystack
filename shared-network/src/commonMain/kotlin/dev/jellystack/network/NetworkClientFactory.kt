@@ -8,6 +8,7 @@ import io.ktor.client.engine.HttpClientEngineFactory
 import io.ktor.client.plugins.DefaultRequest
 import io.ktor.client.plugins.HttpRequestRetry
 import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.api.createClientPlugin
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.logging.LogLevel
 import io.ktor.client.plugins.logging.Logger
@@ -29,6 +30,7 @@ data class ClientConfig(
     val retryDelayMillis: Long = 400,
     val defaultHeaders: Map<String, String> = emptyMap(),
     val userAgent: String = "JellystackMobile/0.1",
+    val acceptLanguageProvider: (() -> String?)? = null,
     val installLogging: Boolean = false,
     val logger: Logger = StdoutLogger,
     val logLevel: LogLevel = LogLevel.INFO,
@@ -69,6 +71,9 @@ object NetworkClientFactory {
                     }
                 }
             }
+            config.acceptLanguageProvider?.let { provider ->
+                install(acceptLanguagePlugin(provider))
+            }
             if (config.installLogging) {
                 install(Logging) {
                     logger = config.logger
@@ -91,3 +96,19 @@ private object StdoutLogger : Logger {
         println("[Network] $message")
     }
 }
+
+/**
+ * Appends the current app language as `Accept-Language` to every request.
+ *
+ * Jellyfin 12.0 servers can localize their responses per client language. The provider is
+ * evaluated per request so runtime language changes apply without recreating the client.
+ */
+private fun acceptLanguagePlugin(languageProvider: () -> String?) =
+    createClientPlugin("JellystackAcceptLanguage") {
+        onRequest { request, _ ->
+            val languageTag = languageProvider()
+            if (!languageTag.isNullOrBlank() && request.headers[HttpHeaders.AcceptLanguage] == null) {
+                request.headers.append(HttpHeaders.AcceptLanguage, languageTag)
+            }
+        }
+    }

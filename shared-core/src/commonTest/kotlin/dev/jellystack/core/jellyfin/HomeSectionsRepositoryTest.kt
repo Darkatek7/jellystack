@@ -8,12 +8,51 @@ import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
 class HomeSectionsRepositoryTest {
+    @Test
+    fun isolatedSessionStartsCleanAndClosedOldLoadCannotPublishIntoNewSession() =
+        runTest {
+            val oldLoadStarted = CompletableDeferred<Unit>()
+            val releaseOldLoad = CompletableDeferred<Unit>()
+            val root =
+                repository { path ->
+                    when {
+                        path.endsWith("/HomeScreen/Meta") -> {
+                            oldLoadStarted.complete(Unit)
+                            releaseOldLoad.await()
+                            """{"Enabled":true,"PaginationEnabled":false}"""
+                        }
+                        path.endsWith("/HomeScreen/Ready") -> ""
+                        path.endsWith("/HomeScreen/Sections") ->
+                            """{"Items":[{"Section":"ContinueWatching","DisplayText":"Account A"}]}"""
+                        path.endsWith("/HomeScreen/Section/ContinueWatching") ->
+                            """{"Items":[{"Id":"account-a-item","Name":"Private A","Type":"Movie"}]}"""
+                        else -> error("Unexpected path $path")
+                    }
+                }
+            val accountA = root.isolatedSession()
+            val accountB = root.isolatedSession()
+            val oldRefresh = async { accountA.refresh(enabledByUser = true, language = "en") }
+            oldLoadStarted.await()
+
+            accountA.close()
+            assertIs<HomeSectionsState.Unavailable>(accountB.state.value)
+            releaseOldLoad.complete(Unit)
+            runCurrent()
+            oldRefresh.await()
+
+            assertIs<HomeSectionsState.Unavailable>(accountA.state.value)
+            assertIs<HomeSectionsState.Unavailable>(accountB.state.value)
+        }
+
     @Test
     fun loadsConfiguredOrderAndSafeActions() =
         runTest {
@@ -167,7 +206,7 @@ class HomeSectionsRepositoryTest {
             assertEquals("series-backdrop", episode.seriesBackdropImageTag)
         }
 
-    private fun repository(responseFor: (String) -> String): HomeSectionsRepository {
+    private fun repository(responseFor: suspend (String) -> String): HomeSectionsRepository {
         val engine =
             MockEngine { request ->
                 respond(

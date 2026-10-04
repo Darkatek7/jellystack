@@ -2,7 +2,7 @@
 
 Jellystack TV is a remote-first companion build in the same Kotlin Multiplatform repository. It shares server, authentication, metadata, settings, and playback code with Jellystack mobile while using a dedicated Compose for TV interface.
 
-The current closed beta is `0.16.0-tv-beta.4` with `versionCode 22` and package ID `app.jellystack.mobile`.
+The current closed beta is `0.16.0-tv-beta.6` with `versionCode 27` and package ID `app.jellystack.mobile`.
 
 ## Supported devices
 
@@ -10,7 +10,7 @@ The current closed beta is `0.16.0-tv-beta.4` with `versionCode 22` and package 
 - Fire TV devices on Fire OS 6 or newer
 - 1080p and 4K landscape displays
 
-The first beta does not include downloads, Cast, App Lock, biometrics, the admin dashboard, picture-in-picture, touch navigation, or voice search.
+The current beta does not include downloads, Cast, App Lock, biometrics, the admin dashboard, picture-in-picture, or touch navigation.
 
 ## Build
 
@@ -71,7 +71,7 @@ Run `:app-tv:verifyTvReleaseManifestPermissions` before every store build. Also 
 
 1. Enable the Android TV form factor for the existing Play Console app.
 2. Create a dedicated closed Android TV test track.
-3. Upload `app-tv-release.aab` with `versionCode 22`.
+3. Upload `app-tv-release.aab` with `versionCode 27`.
 4. Upload `store-assets/tv/google-play-banner-320x180.png` as the localized TV banner.
 5. Upload at least two real 1920x1080 TV screenshots captured from a current build.
 6. Provide reusable English reviewer credentials and Quick Connect instructions under App Access.
