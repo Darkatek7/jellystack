@@ -3,7 +3,7 @@ package dev.jellystack.design.tv
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import dev.jellystack.core.jellyfin.JellyfinBrowseRepository
+import dev.jellystack.core.coroutines.runSuspendCatching
 import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
 import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.JellyfinItemDetail
@@ -15,7 +15,6 @@ import dev.jellystack.players.PlaybackStartDecision
 import dev.jellystack.players.PlaybackStartPolicy
 import dev.jellystack.players.decidePlaybackStart
 import dev.jellystack.players.formatPlaybackTime
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -26,15 +25,34 @@ internal data class TvResumeAsk(
     val positionLabel: String,
 )
 
+/** Starts a resolved request; returns false when there is no server to play from. */
+internal fun interface TvPlaybackStarter {
+    suspend fun start(
+        request: PlaybackRequest,
+        settings: AppSettings,
+    ): Boolean
+}
+
+/** Plays on [controller] and applies the default speed and the stats preference. */
+internal fun controllerPlaybackStarter(
+    controller: PlaybackController,
+    environmentProvider: JellyfinEnvironmentProvider,
+) = TvPlaybackStarter { request, settings ->
+    val environment = environmentProvider.current() ?: return@TvPlaybackStarter false
+    controller.play(request, environment)
+    controller.setPlaybackSpeed(settings.defaultPlaybackSpeed)
+    controller.setStatsForNerdsEnabled(settings.statsForNerdsEnabled)
+    true
+}
+
 /**
  * The one TV entry point for starting Jellyfin playback from Home, Library, Search, and Detail.
- * Applies the resume rule from [decidePlaybackStart], then the default speed and stats preference.
+ * Applies the resume rule from [decidePlaybackStart] before handing the request to [starter].
  */
 internal class TvPlaybackLauncher(
     private val scope: CoroutineScope,
-    private val repository: JellyfinBrowseRepository,
-    private val environmentProvider: JellyfinEnvironmentProvider,
-    private val playbackController: PlaybackController,
+    private val loadDetail: suspend (String) -> JellyfinItemDetail?,
+    private val starter: TvPlaybackStarter,
     private val currentSettings: () -> AppSettings,
     private val onStarted: () -> Unit,
 ) {
@@ -66,19 +84,11 @@ internal class TvPlaybackLauncher(
         policy: PlaybackStartPolicy,
     ) {
         scope.launch {
-            try {
-                val detail = knownDetail ?: repository.getItemDetail(item.id) ?: return@launch
-                val environment = environmentProvider.current() ?: return@launch
-                val settings = currentSettings()
-                playbackController.play(PlaybackRequest.from(item, detail, startPolicy = policy), environment)
-                playbackController.setPlaybackSpeed(settings.defaultPlaybackSpeed)
-                playbackController.setStatsForNerdsEnabled(settings.statsForNerdsEnabled)
-                onStarted()
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (error: Exception) {
-                JellystackLog.e("TV playback could not start", error)
-            }
+            runSuspendCatching {
+                val detail = knownDetail ?: loadDetail(item.id) ?: return@runSuspendCatching
+                val request = PlaybackRequest.from(item, detail, startPolicy = policy)
+                if (starter.start(request, currentSettings())) onStarted()
+            }.onFailure { failure -> JellystackLog.e("TV playback could not start", failure) }
         }
     }
 }

@@ -65,7 +65,10 @@ class TvPlaybackScrubTest {
             TvHiddenControlsCenterAction.RESUME,
             tvHiddenControlsCenterAction(isPaused = true, promptVisible = true),
         )
-        assertEquals(TvHiddenControlsCenterAction.RESUME, tvHiddenControlsCenterAction(isPaused = true, promptVisible = false))
+        assertEquals(
+            TvHiddenControlsCenterAction.RESUME,
+            tvHiddenControlsCenterAction(isPaused = true, promptVisible = false),
+        )
     }
 
     @Test

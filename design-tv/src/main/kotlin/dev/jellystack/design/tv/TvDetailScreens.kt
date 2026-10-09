@@ -76,6 +76,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.tv.material3.Icon
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
+import dev.jellystack.core.coroutines.runSuspendCatching
 import dev.jellystack.core.jellyfin.DetailTrailerContext
 import dev.jellystack.core.jellyfin.DetailTrailerResolver
 import dev.jellystack.core.jellyfin.DetailTrailerSource
@@ -96,7 +97,6 @@ import dev.jellystack.core.jellyseerr.JellyseerrRequestsState
 import dev.jellystack.core.jellyseerr.JellyseerrSearchItem
 import dev.jellystack.players.PlaybackController
 import dev.jellystack.players.PlaybackRequest
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 internal data class TvJellyfinDetailBase(
@@ -770,7 +770,7 @@ internal fun TvJellyfinDetailScreen(
     val visibleEpisodes = activeSeason?.episodes ?: episodes
     LaunchedEffect(route.itemId, initialItem, loadRevision) {
         error = null
-        try {
+        runSuspendCatching {
             val loaded =
                 loadTvJellyfinDetailBase(
                     itemId = route.itemId,
@@ -794,11 +794,7 @@ internal fun TvJellyfinDetailScreen(
                         detail = loadedDetail,
                     ),
                 )
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (failure: Exception) {
-            error = tvDetailErrorMessage(failure, strings)
-        }
+        }.onFailure { failure -> error = tvDetailErrorMessage(failure, strings) }
     }
     val currentItem = item
     val currentDetail = detail

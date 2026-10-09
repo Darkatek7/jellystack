@@ -36,7 +36,10 @@ fun JellystackTvGoldenFixture(
             modifier
                 .fillMaxSize()
                 .background(TvBackground)
-                .padding(horizontal = TvLayoutTokens.SafeInsets.horizontal, vertical = TvLayoutTokens.SafeInsets.vertical),
+                .padding(
+                    horizontal = TvLayoutTokens.SafeInsets.horizontal,
+                    vertical = TvLayoutTokens.SafeInsets.vertical,
+                ),
         ) {
             when (fixture) {
                 TvGoldenFixture.LANDSCAPE_CARDS -> GoldenLandscapeCards(strings)
@@ -63,7 +66,13 @@ private fun GoldenLandscapeCards(strings: TvStrings) {
         Row(horizontalArrangement = Arrangement.spacedBy(TvLayoutTokens.CardSpacing)) {
             GOLDEN_PROGRESS_ITEMS.forEach { item ->
                 val text = item.tvCardText(strings)
-                TvMediaCard(title = text.title, subtitle = text.subtitle, progress = text.progress, imageUrl = null, onClick = {})
+                TvMediaCard(
+                    title = text.title,
+                    subtitle = text.subtitle,
+                    progress = text.progress,
+                    imageUrl = null,
+                    onClick = {},
+                )
             }
         }
     }
@@ -75,7 +84,13 @@ private fun GoldenPortraitCards() {
         horizontalArrangement = Arrangement.spacedBy(TvLayoutTokens.CardSpacing),
         verticalAlignment = Alignment.Top,
     ) {
-        TvMediaCard(title = "Paper Moon", imageUrl = null, onClick = {}, subtitle = "1973", format = TvMediaCardFormat.POSTER)
+        TvMediaCard(
+            title = "Paper Moon",
+            imageUrl = null,
+            onClick = {},
+            subtitle = "1973",
+            format = TvMediaCardFormat.POSTER,
+        )
         TvMediaCard(
             title = "Alex Example",
             imageUrl = null,
@@ -97,19 +112,19 @@ private const val GOLDEN_TICKS_PER_MINUTE = 600_000_000L
 
 private val GOLDEN_PROGRESS_ITEMS =
     listOf(
-        goldenItem("Episode", "The Quiet Signal", seriesName = "Harbor Lights", season = 2, episode = 6, positionMinutes = 26),
-        goldenItem("Episode", "Northbound", seriesName = "Harbor Lights", season = 2, episode = 7),
-        goldenItem("Movie", "Paper Moon", year = 1973, positionMinutes = 82),
+        goldenEpisode("The Quiet Signal", number = 6).copy(positionTicks = 26 * GOLDEN_TICKS_PER_MINUTE),
+        goldenEpisode("Northbound", number = 7),
+        goldenItem("Movie", "Paper Moon").copy(productionYear = 1973, positionTicks = 82 * GOLDEN_TICKS_PER_MINUTE),
     )
+
+private fun goldenEpisode(
+    name: String,
+    number: Int,
+) = goldenItem("Episode", name).copy(seriesName = "Harbor Lights", parentIndexNumber = 2, indexNumber = number)
 
 private fun goldenItem(
     type: String,
     name: String,
-    seriesName: String? = null,
-    season: Int? = null,
-    episode: Int? = null,
-    year: Int? = null,
-    positionMinutes: Long? = null,
 ): JellyfinItem =
     JellyfinItem(
         id = name,
@@ -131,15 +146,15 @@ private fun goldenItem(
         seriesBackdropImageTag = null,
         parentLogoImageTag = null,
         runTimeTicks = 100 * GOLDEN_TICKS_PER_MINUTE,
-        positionTicks = positionMinutes?.times(GOLDEN_TICKS_PER_MINUTE),
+        positionTicks = null,
         playedPercentage = null,
-        productionYear = year,
+        productionYear = null,
         premiereDate = null,
         communityRating = null,
         officialRating = null,
-        indexNumber = episode,
-        parentIndexNumber = season,
-        seriesName = seriesName,
+        indexNumber = null,
+        parentIndexNumber = null,
+        seriesName = null,
         seasonId = null,
         episodeTitle = null,
         lastPlayed = null,
