@@ -13,6 +13,9 @@ import kotlinx.coroutines.launch
 data class PlaybackContinuationTarget(
     val mediaId: String,
     val title: String,
+    /** Short context such as "S2 E7", shown above the title on up-next cards. */
+    val subtitle: String? = null,
+    val imageUrl: String? = null,
     internal val play: suspend () -> Unit,
 )
 
