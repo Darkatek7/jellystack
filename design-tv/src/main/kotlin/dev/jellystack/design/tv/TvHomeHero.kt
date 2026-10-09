@@ -3,12 +3,12 @@
 package dev.jellystack.design.tv
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -76,6 +76,18 @@ internal data class TvHomeHeroCallbacks(
     val onIndicatorVerticalMove: (TvHomeVerticalDirection) -> Unit,
 )
 
+/** Crossfade between spotlights; instant when the user asked for reduced motion. */
+@Composable
+internal fun tvHomeHeroFadeMillis(): Int = if (LocalTvFocusAppearance.current.reducedMotion) 0 else TV_HOME_HERO_FADE_MS
+
+internal fun tvHomeHeroFade(millis: Int): ContentTransform = fadeIn(tween(millis)).togetherWith(fadeOut(tween(millis)))
+
+private const val TV_HOME_HERO_FADE_MS = 240
+
+/**
+ * Text, actions and page dots of the spotlight. It draws no artwork of its own: [TvHomeBackdrop] lies
+ * behind it, so the hero keeps its size and the rows their position.
+ */
 @Composable
 internal fun TvHeroCarousel(
     model: TvHomeHeroModel,
@@ -84,33 +96,47 @@ internal fun TvHeroCarousel(
     strings: TvStrings,
     primaryFocusRequester: FocusRequester,
 ) {
-    val shape = TvShapes.Surface
     val stageItem = model.stageItem
+    val previewing = trailer.state.showsTvHomeStagePreview(stageItem.id, model.stagePresentationId)
+    val fadeMs = tvHomeHeroFadeMillis()
     Box(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .height(TV_HOME_HERO_HEIGHT_DP.dp)
-                .clip(shape)
-                .background(TvBackground)
-                .border(
-                    width = 0.5.dp,
-                    color = TvText.copy(alpha = 0.08f),
-                    shape = shape,
-                ).testTag("tv-home-preview-stage")
+                .testTag("tv-home-preview-stage")
                 .onFocusChanged { if (it.hasFocus) callbacks.onHeroFocused() },
     ) {
-        // Keyed on the shown item, so moving between spotlights and row cards crossfades.
+        if (previewing) {
+            TvTrailerPreviewChrome(
+                label = strings.trailer,
+                previewSoundEnabled = trailer.soundEnabled,
+                previewProgress = trailer.progress.value,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        // Only the text crossfades; the buttons and dots stay single so their focus targets never double.
         AnimatedContent(
-            targetState = stageItem,
-            contentKey = { it.id },
-            transitionSpec = { fadeIn(tween(240)).togetherWith(fadeOut(tween(240))) },
+            targetState = model,
+            contentKey = { it.stageItem.id },
+            transitionSpec = { tvHomeHeroFade(fadeMs) },
             modifier = Modifier.fillMaxSize(),
-        ) { _ ->
-            TvHeroSlide(model, trailer, strings)
+            label = "tv-home-hero-text",
+        ) { shown ->
+            Box(Modifier.fillMaxSize()) {
+                TvHeroText(
+                    model = shown,
+                    strings = strings,
+                    modifier =
+                        Modifier
+                            .align(Alignment.TopStart)
+                            .padding(start = 28.dp, top = 26.dp, end = 24.dp, bottom = 84.dp)
+                            .fillMaxWidth(0.52f),
+                )
+            }
         }
         TvTrailerAwareActions(
-            previewing = trailer.state.showsTvHomeStagePreview(stageItem.id, model.stagePresentationId),
+            previewing = previewing,
             modifier = Modifier.align(Alignment.BottomStart).padding(start = 28.dp, bottom = 22.dp),
         ) {
             TvHomeHeroButtons(stageItem, callbacks, strings, primaryFocusRequester)
@@ -122,7 +148,8 @@ internal fun TvHeroCarousel(
                 contentDescription = strings.metadata.spotlightPosition.format(page.index + 1, page.count),
                 onMove = callbacks.onCarouselMove,
                 onVerticalMove = callbacks.onIndicatorVerticalMove,
-                modifier = Modifier.align(Alignment.TopEnd).padding(top = 18.dp, end = 16.dp),
+                // Below the clock, which sits in the screen's top-right corner.
+                modifier = Modifier.align(Alignment.TopEnd).padding(top = 58.dp, end = 16.dp),
             )
         }
     }
@@ -143,7 +170,7 @@ private fun TvHomeHeroButtons(
             leading = { Icon(Icons.Default.PlayArrow, null, tint = Color(0xFF251450)) },
             modifier =
                 Modifier
-                    .width(180.dp)
+                    .widthIn(min = 180.dp)
                     .focusRequester(primaryFocusRequester)
                     .tvHomeVerticalFocus(callbacks.onActionVerticalMove),
             focusToNavigationRailOnLeft = true,
@@ -155,91 +182,9 @@ private fun TvHomeHeroButtons(
             leading = { Icon(Icons.Default.Info, null, tint = TvText) },
             modifier =
                 Modifier
-                    .width(156.dp)
+                    .widthIn(min = 156.dp)
                     .tvHomeVerticalFocus(callbacks.onActionVerticalMove),
             focusTargetId = TV_HOME_DETAILS_TARGET,
-        )
-    }
-}
-
-@Composable
-private fun TvHeroSlide(
-    model: TvHomeHeroModel,
-    trailer: TvHomeHeroTrailer,
-    strings: TvStrings,
-) {
-    val item = model.stageItem
-    val previewing = trailer.state.showsTvHomeStagePreview(item.id, model.stagePresentationId)
-    Box(Modifier.fillMaxSize()) {
-        if (previewing) {
-            trailer.surface(Modifier.fillMaxSize().testTag("tv-home-hero-preview-surface"))
-        } else {
-            TvHeroBackdrop(
-                jellyfinImageUrl(
-                    model.imageBaseUrl,
-                    model.imageAccessToken,
-                    resolveTvHeroBackdrop(item),
-                    TvArtworkSize.HERO,
-                ),
-            )
-        }
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.horizontalGradient(
-                        listOf(
-                            TvBackground,
-                            TvBackground.copy(alpha = 0.94f),
-                            TvBackground.copy(alpha = 0.64f),
-                            Color.Transparent,
-                        ),
-                    ),
-                ),
-        )
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        listOf(TvBackground.copy(alpha = 0.42f), Color.Transparent, TvBackground.copy(alpha = 0.94f)),
-                    ),
-                ),
-        )
-        if (previewing) {
-            TvTrailerPreviewChrome(
-                label = strings.trailer,
-                previewSoundEnabled = trailer.soundEnabled,
-                previewProgress = trailer.progress.value,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
-        TvHeroText(
-            model = model,
-            strings = strings,
-            modifier =
-                Modifier
-                    .align(Alignment.TopStart)
-                    .padding(start = 28.dp, top = 26.dp, end = 24.dp, bottom = 84.dp)
-                    .fillMaxWidth(0.52f),
-        )
-    }
-}
-
-@Composable
-private fun TvHeroBackdrop(backdropUrl: String?) {
-    if (backdropUrl == null) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(Brush.linearGradient(listOf(Color(0xFF171824), Color(0xFF2B2342), Color(0xFF11121A)))),
-        )
-    } else {
-        AsyncImage(
-            model = backdropUrl,
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop,
         )
     }
 }
@@ -322,17 +267,6 @@ private fun TvHeroModeLabel(
         if (mode == TvHomeHeroMode.RECENT) {
             Text("·  ${strings.lastThirtyDays}", color = TvTextMuted, fontSize = TvTextSize.CardTitle)
         }
-    }
-}
-
-private fun resolveTvHeroBackdrop(item: JellyfinItem): TvJellyfinArtwork? {
-    val seriesId = item.seriesId
-    return when {
-        !seriesId.isNullOrBlank() && !item.seriesBackdropImageTag.isNullOrBlank() ->
-            TvJellyfinArtwork(seriesId, requireNotNull(item.seriesBackdropImageTag), "Backdrop")
-        !item.backdropImageTag.isNullOrBlank() ->
-            TvJellyfinArtwork(item.id, requireNotNull(item.backdropImageTag), "Backdrop")
-        else -> resolveTvJellyfinArtwork(item)
     }
 }
 

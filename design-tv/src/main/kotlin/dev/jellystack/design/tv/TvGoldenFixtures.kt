@@ -51,8 +51,14 @@ fun JellystackTvGoldenFixture(
         JellystackTvTheme { GoldenPlayer(strings, fixture, modifier) }
         return
     }
-    if (fixture == TvGoldenFixture.DETAIL_HERO) {
-        JellystackTvTheme { GoldenDetailHero(strings, modifier) }
+    if (fixture == TvGoldenFixture.HOME_HERO || fixture == TvGoldenFixture.DETAIL_HERO) {
+        JellystackTvTheme {
+            if (fixture == TvGoldenFixture.HOME_HERO) {
+                GoldenHomeHero(strings, modifier)
+            } else {
+                GoldenDetailHero(strings, modifier)
+            }
+        }
         return
     }
     JellystackTvTheme {
@@ -68,7 +74,7 @@ fun JellystackTvGoldenFixture(
             when (fixture) {
                 TvGoldenFixture.LANDSCAPE_CARDS -> GoldenLandscapeCards(strings)
                 TvGoldenFixture.PORTRAIT_CARDS -> GoldenPortraitCards()
-                TvGoldenFixture.HOME_HERO -> GoldenHomeHero(strings)
+                TvGoldenFixture.HOME_HERO,
                 TvGoldenFixture.PLAYER_CONTROLS,
                 TvGoldenFixture.PLAYER_SCRUB,
                 TvGoldenFixture.PLAYER_UP_NEXT,

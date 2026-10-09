@@ -340,6 +340,31 @@ internal fun TvHomeScreen(
         carouselState = carouselState.copy(selectedId = nextTvHomeAutoAdvanceId(candidateIds, carouselState.selectedId))
     }
     val openNavigationRail = LocalTvNavigationRailOpener.current
+    val heroModel =
+        heroCandidates.getOrNull(spotlightIndex)?.let { candidate ->
+            val stageItem = focusedStageItem ?: candidate.actionItem
+            TvHomeHeroModel(
+                stageItem = stageItem,
+                stagePresentationId =
+                    focusedStagePresentationId
+                        ?: (trailerPreviewState as? TvTrailerPreviewState.Playing)
+                            ?.request
+                            ?.takeIf { it.target.itemId == stageItem.id }
+                            ?.presentationId,
+                mode = heroPresentation.mode,
+                page = TvHomeHeroPage(index = spotlightIndex, count = heroCandidates.size),
+                showCarouselContext = focusedStageItem == null,
+                imageBaseUrl = state.imageBaseUrl,
+                imageAccessToken = state.imageAccessToken,
+            )
+        }
+    val heroTrailer =
+        TvHomeHeroTrailer(
+            state = trailerPreviewState,
+            soundEnabled = previewSoundEnabled,
+            progress = previewProgress,
+            surface = { surfaceModifier -> TvTrailerPreviewSurface(trailerPreviewEngine, surfaceModifier) },
+        )
     Box(
         modifier.fillMaxSize().onPreviewKeyEvent {
             // Any remote input restarts the spotlight timer.
@@ -347,6 +372,7 @@ internal fun TvHomeScreen(
             false
         },
     ) {
+        heroModel?.let { TvHomeBackdrop(it, heroTrailer) }
         Box(
             Modifier
                 .fillMaxWidth()
@@ -356,37 +382,14 @@ internal fun TvHomeScreen(
                     top = TvLayoutTokens.SafeInsets.vertical,
                 ),
         ) {
-            if (heroCandidates.isNotEmpty()) {
-                val candidate = heroCandidates[spotlightIndex.coerceIn(0, heroCandidates.lastIndex)]
-                val stageItem = focusedStageItem ?: candidate.actionItem
-                val stagePresentationId =
-                    focusedStagePresentationId
-                        ?: (trailerPreviewState as? TvTrailerPreviewState.Playing)
-                            ?.request
-                            ?.takeIf { it.target.itemId == stageItem.id }
-                            ?.presentationId
+            if (heroModel != null) {
                 TvHeroCarousel(
-                    model =
-                        TvHomeHeroModel(
-                            stageItem = stageItem,
-                            stagePresentationId = stagePresentationId,
-                            mode = heroPresentation.mode,
-                            page = TvHomeHeroPage(index = spotlightIndex, count = heroCandidates.size),
-                            showCarouselContext = focusedStageItem == null,
-                            imageBaseUrl = state.imageBaseUrl,
-                            imageAccessToken = state.imageAccessToken,
-                        ),
-                    trailer =
-                        TvHomeHeroTrailer(
-                            state = trailerPreviewState,
-                            soundEnabled = previewSoundEnabled,
-                            progress = previewProgress,
-                            surface = { surfaceModifier -> TvTrailerPreviewSurface(trailerPreviewEngine, surfaceModifier) },
-                        ),
+                    model = heroModel,
+                    trailer = heroTrailer,
                     callbacks =
                         TvHomeHeroCallbacks(
-                            onPlay = { onPlayItem(stageItem) },
-                            onDetails = { onItem(stageItem) },
+                            onPlay = { onPlayItem(heroModel.stageItem) },
+                            onDetails = { onItem(heroModel.stageItem) },
                             onActionVerticalMove = { direction -> onVerticalMove(TvHomeFocusOrigin.HeroActions, direction, null) },
                             onHeroFocused = {
                                 // The hero shows its own spotlight again, so Play and Details act on it.
@@ -414,6 +417,7 @@ internal fun TvHomeScreen(
                 )
             }
         }
+        TvHomeClock(rememberTvClockLabel(), Modifier.align(Alignment.TopEnd))
         val rowScrollSpec = LocalBringIntoViewSpec.current
         CompositionLocalProvider(
             LocalBringIntoViewSpec provides rememberTvRowAlignedBringIntoViewSpec(TV_HOME_ROW_CARD_OFFSET),
