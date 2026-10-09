@@ -1176,6 +1176,7 @@ private fun TvKeyedDetailItemRow(
                             tvRatingLabel(item.communityRating),
                         ).joinToString("  •  "),
                     progress = episodeText?.progress,
+                    watched = item.isPlayed,
                     imageUrl =
                         if (episodeStillTag != null) {
                             jellyfinImageUrl(homeState.imageBaseUrl, homeState.imageAccessToken, item.id, episodeStillTag, "Primary")

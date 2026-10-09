@@ -263,7 +263,7 @@ private fun TvSearchResult.toCinematicCard(
                 tmdbImageUrl(seerr?.backdropPath ?: seerr?.posterPath, backdrop = seerr?.backdropPath != null)
             },
         selected = jellyfin?.let(isJellyfinSaved) ?: seerr?.let(isSeerrSaved) == true,
-        played = (jellyfin?.playedPercentage ?: 0.0) >= 99.5,
+        played = jellyfin?.isPlayed == true || (jellyfin?.playedPercentage ?: 0.0) >= 99.5,
         resumeFraction =
             jellyfin
                 ?.playedPercentage

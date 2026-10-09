@@ -34,7 +34,8 @@ CREATE TABLE jellyfin_items (
     episode_title TEXT,
     last_played TEXT,
     date_created TEXT,
-    updated_at INTEGER NOT NULL
+    updated_at INTEGER NOT NULL,
+    played INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE jellyfin_next_up (
@@ -186,7 +187,8 @@ INSERT OR REPLACE INTO jellyfin_items (
     episode_title,
     last_played,
     date_created,
-    updated_at
+    updated_at,
+    played
 )
 VALUES (
     :id,
@@ -224,7 +226,8 @@ VALUES (
     :episode_title,
     :last_played,
     :date_created,
-    :updated_at
+    :updated_at,
+    :played
 );
 
 deleteByServerAndLibrary:

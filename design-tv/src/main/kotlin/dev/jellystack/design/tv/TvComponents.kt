@@ -35,6 +35,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ImageNotSupported
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
@@ -383,6 +384,7 @@ internal fun TvMediaCard(
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     progress: Float? = null,
+    watched: Boolean = false,
     selected: Boolean = false,
     format: TvMediaCardFormat = TvMediaCardFormat.LANDSCAPE,
     artworkFit: TvMediaCardArtworkFit = TvMediaCardArtworkFit.CROP,
@@ -476,10 +478,24 @@ internal fun TvMediaCard(
                 showMetadataOverlay = format == TvMediaCardFormat.CAST_PORTRAIT,
             )
             progress?.let { TvMediaCardProgressBar(it, Modifier.align(Alignment.BottomStart)) }
+            if (watched) TvMediaCardWatchedBadge(Modifier.align(Alignment.TopEnd).padding(8.dp))
         }
         if (format != TvMediaCardFormat.CAST_PORTRAIT) {
             TvMediaCardMetadataBand(title = title, subtitle = subtitle)
         }
+    }
+}
+
+/** Check mark for watched items; decorative because the card's own semantics are not about state. */
+@Composable
+private fun TvMediaCardWatchedBadge(modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .size(26.dp)
+            .background(TvBackground.copy(alpha = 0.78f), TvShapes.Pill),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(Icons.Default.Check, contentDescription = null, tint = TvPurple, modifier = Modifier.size(18.dp))
     }
 }
 

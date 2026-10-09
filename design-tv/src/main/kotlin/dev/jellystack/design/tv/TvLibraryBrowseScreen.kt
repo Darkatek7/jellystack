@@ -150,7 +150,7 @@ private fun JellyfinItem.toCinematicCard(
                 TvArtworkSize.HERO,
             ),
         selected = id in selectedIds,
-        played = (playedPercentage ?: 0.0) >= 90.0,
+        played = isPlayed || (playedPercentage ?: 0.0) >= 90.0,
         resumeFraction = playedPercentage?.div(100.0)?.toFloat()?.takeIf { it in 0.01f..0.99f },
     )
 }
@@ -540,7 +540,7 @@ private fun JellyfinItem.actions(
         onPlayOrResume = { if (isBrowseContainer()) onOpenContainer(this) else onPlayItem(this) },
         onDetails = { open(onOpenItem, onOpenContainer) },
         onToggleSaved = { onToggleFavorite(this) },
-        onTogglePlayed = { onTogglePlayed(this, (playedPercentage ?: 0.0) < 90.0) },
+        onTogglePlayed = { onTogglePlayed(this, !isPlayed && (playedPercentage ?: 0.0) < 90.0) },
     )
 
 private fun TvStrings.tvSelectedActionLabels() =

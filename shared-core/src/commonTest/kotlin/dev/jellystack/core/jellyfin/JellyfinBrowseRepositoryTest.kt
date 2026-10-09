@@ -401,6 +401,19 @@ class JellyfinBrowseRepositoryTest {
         }
 
     @Test
+    fun playedUserDataMarksItemsWatchedInResultsAndCache() =
+        runTest {
+            repository.refreshLibraries()
+
+            val items = repository.loadLibraryPage(libraryId = "lib-1", page = 0, pageSize = 2, refresh = true).items
+
+            assertFalse(items.single { it.id == "item-1" }.isPlayed)
+            assertTrue(items.single { it.id == "item-2" }.isPlayed)
+            val stored = itemStore.listByLibrary(environment.serverKey, "lib-1", limit = 10, offset = 0)
+            assertTrue(stored.single { it.id == "item-2" }.played)
+        }
+
+    @Test
     fun loadLibraryPageExposesTotalRecordCount() =
         runTest {
             val recordingEngine =
@@ -974,7 +987,8 @@ class JellyfinBrowseRepositoryTest {
                   "RunTimeTicks": 18000000000,
                   "SeriesName": "Sample Series",
                   "EpisodeTitle": "Pilot",
-                  "ImageTags": {"Primary": "tag-episode"}
+                  "ImageTags": {"Primary": "tag-episode"},
+                  "UserData": {"Played": true}
                 }
               ],
               "TotalRecordCount": 2

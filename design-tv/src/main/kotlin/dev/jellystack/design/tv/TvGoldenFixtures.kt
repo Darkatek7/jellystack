@@ -54,7 +54,14 @@ private fun GoldenLandscapeCards(strings: TvStrings) {
     Column(verticalArrangement = Arrangement.spacedBy(TvLayoutTokens.CardSpacing)) {
         Row(horizontalArrangement = Arrangement.spacedBy(TvLayoutTokens.CardSpacing)) {
             TvMediaCard(title = "The Last Horizon", imageUrl = null, onClick = {}, subtitle = "2024")
-            TvMediaCard(title = "Northern Lights", imageUrl = null, onClick = {}, subtitle = "2021", selected = true)
+            TvMediaCard(
+                title = "Northern Lights",
+                imageUrl = null,
+                onClick = {},
+                subtitle = "2021",
+                selected = true,
+                watched = true,
+            )
             TvMediaCard(
                 title = "A Remarkably Long Title That Cannot Possibly Fit On One Line",
                 imageUrl = null,

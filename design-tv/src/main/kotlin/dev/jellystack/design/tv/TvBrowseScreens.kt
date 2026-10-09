@@ -1034,6 +1034,7 @@ private fun TvJellyfinRow(
                     title = cardText.title,
                     subtitle = cardText.subtitle,
                     progress = cardText.progress,
+                    watched = displayItem.isPlayed,
                     imageUrl =
                         jellyfinImageUrl(
                             state.imageBaseUrl,
