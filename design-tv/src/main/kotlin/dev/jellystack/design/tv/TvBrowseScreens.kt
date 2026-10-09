@@ -781,6 +781,7 @@ private fun TvHeroSlide(
         )
         if (previewing) {
             TvTrailerPreviewChrome(
+                label = strings.trailer,
                 previewSoundEnabled = previewSoundEnabled,
                 previewProgress = previewProgress.value,
                 modifier = Modifier.fillMaxSize(),
@@ -901,9 +902,9 @@ private fun TvEmptyHomeHero(
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.AutoAwesome, null, tint = TvPurple, modifier = Modifier.size(18.dp))
-                Text("Jellystack", color = TvPurple, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text(TV_BRAND_JELLYSTACK, color = TvPurple, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             }
-            Text("Jellystack", color = TvText, fontSize = 40.sp, fontWeight = FontWeight.Bold)
+            Text(TV_BRAND_JELLYSTACK, color = TvText, fontSize = 40.sp, fontWeight = FontWeight.Bold)
             Text(
                 state.homeErrorMessage
                     ?.takeIf { it.isNotBlank() }
@@ -1718,7 +1719,7 @@ internal fun TvSearchScreen(
                     focusTargetId = tvSearchSourceTargetId("all"),
                 )
                 TvActionButton(
-                    "Jellyfin",
+                    TV_BRAND_JELLYFIN,
                     { onSourceChanged(TvSearchSource.JELLYFIN) },
                     modifier = Modifier.testTag("tv-search-source-jellyfin"),
                     primary = source == TvSearchSource.JELLYFIN,
@@ -1726,7 +1727,7 @@ internal fun TvSearchScreen(
                     focusTargetId = tvSearchSourceTargetId("jellyfin"),
                 )
                 TvActionButton(
-                    "Seerr",
+                    TV_BRAND_SEERR,
                     { onSourceChanged(TvSearchSource.SEERR) },
                     modifier = Modifier.testTag("tv-search-source-seerr"),
                     primary = source == TvSearchSource.SEERR,
@@ -1772,7 +1773,7 @@ internal fun TvSearchScreen(
         jellyfinRowIndex?.let {
             item("jellyfin-results") {
                 TvJellyfinRow(
-                    "Jellyfin",
+                    TV_BRAND_JELLYFIN,
                     presentation.jellyfinItems,
                     homeState,
                     strings,
@@ -1805,7 +1806,7 @@ internal fun TvSearchScreen(
         seerrRowIndex?.let {
             item("seerr-results") {
                 TvSeerrRow(
-                    "Seerr",
+                    TV_BRAND_SEERR,
                     presentation.seerrItems,
                     focusMemory,
                     "search",
@@ -1892,8 +1893,8 @@ private fun TvCinematicSearchHeader(
             val label =
                 when (source) {
                     TvSearchSource.ALL -> strings.all
-                    TvSearchSource.JELLYFIN -> "Jellyfin"
-                    TvSearchSource.SEERR -> "Seerr"
+                    TvSearchSource.JELLYFIN -> TV_BRAND_JELLYFIN
+                    TvSearchSource.SEERR -> TV_BRAND_SEERR
                 }
             TvActionButton(
                 label = label,

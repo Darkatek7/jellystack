@@ -3,6 +3,20 @@ package dev.jellystack.design.tv
 import dev.jellystack.core.preferences.AppLanguage
 import java.util.Locale
 
+/**
+ * Duration, rating, and playback statistics labels. New strings go into small groups like this one:
+ * the flat [TvStrings] constructor is at the JVM limit of 255 parameter slots (docs/tech-debt.md 3.7).
+ */
+internal data class TvMetadataStrings(
+    val minutesLeft: String,
+    val minutesShort: String,
+    val rtCritics: String,
+    val rtAudience: String,
+    val frameRate: String,
+    val dynamicRange: String,
+    val buffer: String,
+)
+
 internal data class TvStrings(
     val home: String,
     val library: String,
@@ -246,7 +260,7 @@ internal data class TvStrings(
     val genre: String,
     val mediaType: String,
     val applyLabel: String,
-    val minutesLeft: String,
+    val metadata: TvMetadataStrings,
     private val itemSingular: String,
     private val itemPlural: String,
 ) {
@@ -518,7 +532,16 @@ internal data class TvStrings(
                 genre = "Genre",
                 mediaType = "Media type",
                 applyLabel = "Apply",
-                minutesLeft = "%d min left",
+                metadata =
+                    TvMetadataStrings(
+                        minutesLeft = "%d min left",
+                        minutesShort = "%d min",
+                        rtCritics = "RT Critics %.0f%%",
+                        rtAudience = "RT Audience %.0f%%",
+                        frameRate = "Frame rate",
+                        dynamicRange = "Dynamic range",
+                        buffer = "Buffer",
+                    ),
                 itemSingular = "item",
                 itemPlural = "items",
             )
@@ -775,7 +798,16 @@ internal data class TvStrings(
                 genre = "Genre",
                 mediaType = "Medientyp",
                 applyLabel = "Übernehmen",
-                minutesLeft = "noch %d Min.",
+                metadata =
+                    TvMetadataStrings(
+                        minutesLeft = "noch %d Min.",
+                        minutesShort = "%d Min.",
+                        rtCritics = "RT Kritiker %.0f%%",
+                        rtAudience = "RT Publikum %.0f%%",
+                        frameRate = "Bildrate",
+                        dynamicRange = "Dynamikumfang",
+                        buffer = "Puffer",
+                    ),
                 itemSingular = "Element",
                 itemPlural = "Elemente",
             )

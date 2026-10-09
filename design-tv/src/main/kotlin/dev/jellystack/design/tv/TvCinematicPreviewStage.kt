@@ -77,6 +77,7 @@ internal fun TvCinematicPreviewStage(
         )
         if (previewing && previewEngine != null) {
             TvTrailerPreviewChrome(
+                label = labels.trailer,
                 previewSoundEnabled = previewSoundEnabled,
                 previewProgress = previewProgress?.value ?: 0f,
                 modifier =

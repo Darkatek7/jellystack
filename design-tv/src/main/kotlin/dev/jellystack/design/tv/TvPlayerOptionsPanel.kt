@@ -61,6 +61,7 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Icon
 import androidx.tv.material3.Text
 import dev.jellystack.players.PlaybackState
+import dev.jellystack.players.formatFrameRate
 import dev.jellystack.players.syncplay.SyncPlayCoordinator
 import dev.jellystack.players.syncplay.SyncPlayErrorCode
 import dev.jellystack.players.syncplay.SyncPlayUiState
@@ -522,6 +523,9 @@ internal fun TvStatsForNerdsOverlay(
             stats.width?.let { width -> stats.height?.let { strings.resolution to "$width × $it" } },
             listOfNotNull(stats.videoCodec, stats.audioCodec).joinToString(" / ").takeIf(String::isNotBlank)?.let { strings.video to it },
             stats.videoBitrate?.let { strings.bitrate to "%.1f Mbps".format(it / 1_000_000f) },
+            stats.frameRate?.let(::formatFrameRate)?.let { strings.metadata.frameRate to it },
+            stats.hdr?.let { strings.metadata.dynamicRange to it },
+            stats.bufferedDurationMs?.let { strings.metadata.buffer to "%.1f s".format(it / 1_000f) },
             stats.droppedFrames?.let { strings.droppedFrames to it.toString() },
         )
     Column(

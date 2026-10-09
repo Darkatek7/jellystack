@@ -5,6 +5,13 @@ import dev.jellystack.core.jellyseerr.JellyseerrRecommendationRail
 import dev.jellystack.core.jellyseerr.JellyseerrRequestStatus
 import dev.jellystack.players.PlaybackMode
 
+// Product and service names are the same in every language, so they are constants rather than strings.
+internal const val TV_BRAND_JELLYSTACK = "Jellystack"
+internal const val TV_BRAND_JELLYFIN = "Jellyfin"
+internal const val TV_BRAND_SEERR = "Seerr"
+internal const val TV_BRAND_TMDB = "TMDB"
+internal const val TV_BRAND_IMDB = "IMDb"
+
 /** User-facing labels for shared enums so no raw enum names reach the screen. */
 internal fun JellyseerrRecommendationRail.label(strings: TvStrings): String =
     when (this) {

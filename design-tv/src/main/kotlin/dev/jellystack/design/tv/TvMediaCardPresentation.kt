@@ -16,7 +16,7 @@ internal data class TvMediaCardText(
  */
 internal fun JellyfinItem.tvCardText(strings: TvStrings): TvMediaCardText {
     val progress = watchProgress()
-    val timeLeft = progress?.remainingMinutes?.let { strings.minutesLeft.format(it) }
+    val timeLeft = progress?.remainingMinutes?.let { strings.metadata.minutesLeft.format(it) }
     val episodeName = episodeTitle ?: name
     val series = seriesName?.takeIf { it.isNotBlank() }
     return if (type.equals("Episode", ignoreCase = true)) {
@@ -41,4 +41,21 @@ internal fun JellyfinItem.tvCardText(strings: TvStrings): TvMediaCardText {
     }
 }
 
+/**
+ * Episode cards inside a series detail: the series is already on screen, so they lead with the
+ * episode number and show the time left, or the runtime for unstarted episodes.
+ */
+internal fun JellyfinItem.tvEpisodeCardText(strings: TvStrings): TvMediaCardText {
+    val progress = watchProgress()
+    val runtimeMinutes = runTimeTicks?.takeIf { it > 0L }?.let { it / TV_CARD_TICKS_PER_MINUTE }
+    return TvMediaCardText(
+        title = listOfNotNull(indexNumber?.let { "$it." }, episodeTitle ?: name).joinToString(" "),
+        subtitle =
+            progress?.remainingMinutes?.let { strings.metadata.minutesLeft.format(it) }
+                ?: runtimeMinutes?.let { strings.metadata.minutesShort.format(it) },
+        progress = progress?.fraction,
+    )
+}
+
 private const val TV_CARD_SEPARATOR = "  •  "
+private const val TV_CARD_TICKS_PER_MINUTE = 600_000_000L

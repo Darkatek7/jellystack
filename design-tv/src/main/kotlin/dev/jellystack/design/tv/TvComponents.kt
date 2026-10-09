@@ -631,6 +631,7 @@ internal fun TvTrailerPreviewSurface(
 
 @Composable
 internal fun TvTrailerPreviewChrome(
+    label: String,
     previewSoundEnabled: Boolean,
     previewProgress: Float,
     modifier: Modifier = Modifier,
@@ -646,7 +647,7 @@ internal fun TvTrailerPreviewChrome(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text("Trailer", color = Color.White, fontSize = TvTextSize.Caption, fontWeight = FontWeight.SemiBold)
+            Text(label, color = Color.White, fontSize = TvTextSize.Caption, fontWeight = FontWeight.SemiBold)
             Icon(
                 if (previewSoundEnabled) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
                 null,

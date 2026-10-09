@@ -56,6 +56,20 @@ class TvMediaCardPresentationTest {
         assertNull(item(type = "Movie", name = "Untitled").tvCardText(strings).subtitle)
     }
 
+    @Test
+    fun episodesInsideASeriesLeadWithTheirNumberAndShowRuntimeOrTimeLeft() {
+        val unstarted = item(type = "Episode", name = "Pilot", episode = 1, runTimeTicks = 47 * MINUTE).tvEpisodeCardText(strings)
+        val inProgress =
+            item(type = "Episode", name = "Pilot", episode = 1, runTimeTicks = 47 * MINUTE, positionTicks = 40 * MINUTE)
+                .tvEpisodeCardText(strings)
+
+        assertEquals("1. Pilot", unstarted.title)
+        assertEquals("47 min", unstarted.subtitle)
+        assertNull(unstarted.progress)
+        assertEquals("7 min left", inProgress.subtitle)
+        assertNull(item(type = "Episode", name = "Special").tvEpisodeCardText(strings).subtitle)
+    }
+
     private fun item(
         type: String,
         name: String,

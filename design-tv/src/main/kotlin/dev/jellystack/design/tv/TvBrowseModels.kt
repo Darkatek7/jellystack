@@ -97,6 +97,7 @@ internal data class TvSelectedItemActionLabels(
     val removeFromList: String,
     val markPlayed: String,
     val markUnplayed: String,
+    val trailer: String,
 )
 
 @Immutable

@@ -552,6 +552,7 @@ private fun TvStrings.tvSelectedActionLabels() =
         removeFromList = removeFromMyList,
         markPlayed = markPlayed,
         markUnplayed = markUnplayed,
+        trailer = trailer,
     )
 
 private fun TvStrings.tvLibraryQueryLabels() =

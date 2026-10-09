@@ -77,6 +77,7 @@ fun JellystackTvPerformanceFixture() {
                         removeFromList = "Remove from My List",
                         markPlayed = "Mark played",
                         markUnplayed = "Mark unplayed",
+                        trailer = "Trailer",
                     ),
                 onCardFocused = { anchor, _ -> focusedAnchor = anchor },
                 onCardClick = { activationCount += 1 },

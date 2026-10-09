@@ -351,6 +351,7 @@ private fun cinematicActionLabels(strings: TvStrings): TvSelectedItemActionLabel
         removeFromList = strings.removeFromMyList,
         markPlayed = strings.markPlayed,
         markUnplayed = strings.markUnplayed,
+        trailer = strings.trailer,
     )
 
 internal fun JellyseerrSearchItem.cinematicKey(): String = "${mediaType.name.lowercase()}:$tmdbId"

@@ -563,6 +563,74 @@ class TvDetailFocusTest {
     }
 
     @Test
+    fun seasonButtonsAreReachableBetweenOverviewAndEpisodesAndSwitchTheSeason() {
+        val seasonOne = listOf(jellyfinItem("s1-episode-1"))
+        val seasonTwo = listOf(jellyfinItem("s2-episode-1"))
+        var selectedSeason by mutableStateOf(0)
+        val strings = TvStrings.current(AppLanguage.ENGLISH)
+        composeRule.setContent {
+            val episodes = if (selectedSeason == 0) seasonOne else seasonTwo
+            val uiState =
+                buildTvJellyfinDetailUiState(
+                    routeKey = "series-seasons",
+                    facts = emptyList(),
+                    overview = "Overview",
+                    tagline = null,
+                    seasonGroups = listOf(TvSeasonGroup(1, seasonOne), TvSeasonGroup(2, seasonTwo)),
+                    selectedSeasonIndex = selectedSeason,
+                    episodes = episodes,
+                    cast = emptyList(),
+                    similar = emptyList(),
+                )
+            JellystackTvTheme {
+                TvDetailFocusLayout(
+                    uiState = uiState,
+                    heroContentDescription = "Series with seasons",
+                    modifier = Modifier.fillMaxSize(),
+                    heroContent = { primaryActionModifier, actionRowModifier ->
+                        TvActionButton(
+                            label = "Play",
+                            onClick = {},
+                            primary = true,
+                            modifier =
+                                primaryActionModifier
+                                    .then(actionRowModifier)
+                                    .align(Alignment.BottomStart)
+                                    .width(TV_DETAIL_PRIMARY_ACTION_WIDTH_DP.dp),
+                        )
+                    },
+                ) { bodyFocusModifier, sectionFocusModifiers ->
+                    tvJellyfinDetailSections(
+                        uiState = uiState,
+                        homeState = JellyfinHomeState(),
+                        strings = strings,
+                        bodyFocusModifier = bodyFocusModifier,
+                        sectionFocusModifiers = sectionFocusModifiers,
+                        onOpenItem = {},
+                        onSelectSeason = { selectedSeason = it },
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag("tv-detail-primary-action").performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.onNodeWithTag("tv-detail-body-focus").performKeyInput { pressKey(Key.DirectionDown) }
+        val seasonOneTag = "tv-detail-section-seasons-item-season-1"
+        val seasonTwoTag = "tv-detail-section-seasons-item-season-2"
+        waitUntilTagFocused(seasonOneTag)
+        composeRule.onNodeWithTag(seasonOneTag).performKeyInput { pressKey(Key.DirectionRight) }
+        waitUntilTagFocused(seasonTwoTag)
+        composeRule.onNodeWithTag(seasonTwoTag).performKeyInput { pressKey(Key.DirectionCenter) }
+        composeRule.runOnIdle { assertEquals(1, selectedSeason) }
+
+        composeRule.onNodeWithTag(seasonTwoTag).performKeyInput { pressKey(Key.DirectionDown) }
+        val episodeTag = "tv-detail-section-episodes-item-s2-episode-1"
+        waitUntilTagFocused(episodeTag)
+        composeRule.onNodeWithTag(episodeTag).performKeyInput { pressKey(Key.DirectionUp) }
+        waitUntilTagFocused(seasonTwoTag)
+    }
+
+    @Test
     fun jellyfinProductionSectionsKeepAndRecoverFocusAcrossAsyncChanges() {
         var episodes by mutableStateOf(listOf(jellyfinItem("episode-1")))
         var cast by mutableStateOf(listOf(jellyfinPerson("person-1"), jellyfinPerson("person-2")))

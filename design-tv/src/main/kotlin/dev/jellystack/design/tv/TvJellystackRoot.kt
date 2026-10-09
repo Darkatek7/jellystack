@@ -75,6 +75,7 @@ import dev.jellystack.core.jellyfin.JellyfinSessionState
 import dev.jellystack.core.jellyfin.JellyfinSyncPlayAccess
 import dev.jellystack.core.jellyfin.LocalTrailerContext
 import dev.jellystack.core.jellyfin.LocalTrailerResolver
+import dev.jellystack.core.jellyfin.withBrowsableLibraries
 import dev.jellystack.core.jellyseerr.JellyseerrEnvironmentProvider
 import dev.jellystack.core.jellyseerr.JellyseerrMediaAvailability
 import dev.jellystack.core.jellyseerr.JellyseerrRecommendationsCoordinator
@@ -925,7 +926,8 @@ private fun TvAuthenticatedApp(
                 scope = scope,
             )
         }
-    val homeState by browseCoordinator.state.collectAsStateWithLifecycle()
+    val browseState by browseCoordinator.state.collectAsStateWithLifecycle()
+    val homeState = remember(browseState) { browseState.withBrowsableLibraries() }
     val homeSections by homeSectionsRepository.state.collectAsStateWithLifecycle()
     val recommendations by recommendationsCoordinator.state.collectAsStateWithLifecycle()
     val requests by requestsCoordinator.state.collectAsStateWithLifecycle()

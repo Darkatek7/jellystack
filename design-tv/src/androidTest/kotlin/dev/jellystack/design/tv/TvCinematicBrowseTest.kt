@@ -216,5 +216,6 @@ class TvCinematicBrowseTest {
             removeFromList = "Remove",
             markPlayed = "Played",
             markUnplayed = "Unplayed",
+            trailer = "Trailer",
         )
 }
