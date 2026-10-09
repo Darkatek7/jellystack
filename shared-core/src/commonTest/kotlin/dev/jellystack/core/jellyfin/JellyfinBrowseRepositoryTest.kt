@@ -6,6 +6,7 @@ import dev.jellystack.network.ClientConfig
 import dev.jellystack.network.NetworkClientFactory
 import dev.jellystack.network.jellyfin.JellyfinBrowseApi
 import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.MockRequestHandler
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
@@ -788,6 +789,96 @@ class JellyfinBrowseRepositoryTest {
             assertEquals(listOf("next-episode"), stored.map { it.id })
         }
 
+    @Test
+    fun latestEpisodesForSeriesPrefersTheServerListOverAPartialCache() =
+        runTest {
+            itemStore.upsert(listOf(cachedEpisode("episode-2", indexNumber = 2L)))
+            val headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+            val onlineRepository =
+                repositoryServing { request ->
+                    when (request.url.encodedPath) {
+                        "/Items" -> respond(SERIES_EPISODES_JSON, HttpStatusCode.OK, headers)
+                        else -> error("Unexpected request path: ${request.url.encodedPath}")
+                    }
+                }
+
+            val episodes = onlineRepository.latestEpisodesForSeries("series-1")
+
+            assertEquals(listOf("episode-1", "episode-2"), episodes.map { it.id })
+        }
+
+    @Test
+    fun latestEpisodesForSeriesUsesTheCacheWhenTheServerCannotBeReached() =
+        runTest {
+            itemStore.upsert(listOf(cachedEpisode("episode-2", indexNumber = 2L)))
+            val offlineRepository = repositoryServing { error("Server unreachable") }
+
+            val episodes = offlineRepository.latestEpisodesForSeries("series-1")
+
+            assertEquals(listOf("episode-2"), episodes.map { it.id })
+        }
+
+    private fun repositoryServing(handler: MockRequestHandler): JellyfinBrowseRepository {
+        val client = NetworkClientFactory.create(ClientConfig(engine = MockEngine(handler), installLogging = false))
+        return JellyfinBrowseRepository(
+            environmentProvider,
+            InMemoryLibraryStore(),
+            itemStore,
+            InMemoryDetailStore(),
+            apiFactory = { env ->
+                JellyfinBrowseApi(
+                    client,
+                    env.baseUrl,
+                    env.accessToken,
+                    env.deviceId,
+                    clientName = "Test",
+                    deviceName = env.deviceName,
+                    clientVersion = "1.0",
+                )
+            },
+            clock = FixedClock,
+        )
+    }
+
+    private fun cachedEpisode(
+        id: String,
+        indexNumber: Long,
+    ) = JellyfinItemRecord(
+        id = id,
+        serverId = environment.serverKey,
+        libraryId = "lib-2",
+        name = id,
+        sortName = null,
+        overview = null,
+        type = "Episode",
+        mediaType = "Video",
+        locationType = null,
+        taglines = emptyList(),
+        parentId = "season-1",
+        primaryImageTag = null,
+        thumbImageTag = null,
+        backdropImageTag = null,
+        seriesId = "series-1",
+        seriesPrimaryImageTag = null,
+        seriesThumbImageTag = null,
+        seriesBackdropImageTag = null,
+        parentLogoImageTag = null,
+        runTimeTicks = null,
+        positionTicks = null,
+        playedPercentage = null,
+        productionYear = null,
+        premiereDate = null,
+        communityRating = null,
+        officialRating = null,
+        indexNumber = indexNumber,
+        parentIndexNumber = 1L,
+        seriesName = "Sample Series",
+        seasonId = "season-1",
+        episodeTitle = null,
+        lastPlayed = null,
+        updatedAt = FixedClock.now(),
+    )
+
     private object FixedClock : Clock {
         private val instant = Instant.parse("2024-01-01T00:00:00Z")
 
@@ -907,7 +998,12 @@ class JellyfinBrowseRepositoryTest {
         override suspend fun listEpisodesForSeries(
             serverId: String,
             seriesId: String,
-        ): List<JellyfinItemRecord> = emptyList()
+        ): List<JellyfinItemRecord> =
+            records[serverId]
+                ?.values
+                ?.filter { it.seriesId == seriesId }
+                ?.sortedBy { it.indexNumber }
+                .orEmpty()
 
         override suspend fun listEpisodesForSeason(
             serverId: String,
@@ -1059,6 +1155,33 @@ class JellyfinBrowseRepositoryTest {
         private const val EMPTY_NEXT_UP_JSON = """
             {
               "Items": []
+            }
+        """
+
+        private const val SERIES_EPISODES_JSON = """
+            {
+              "Items": [
+                {
+                  "Id": "episode-1",
+                  "Name": "Episode 1",
+                  "Type": "Episode",
+                  "SeriesId": "series-1",
+                  "ParentId": "season-1",
+                  "SeasonId": "season-1",
+                  "IndexNumber": 1,
+                  "ParentIndexNumber": 1
+                },
+                {
+                  "Id": "episode-2",
+                  "Name": "Episode 2",
+                  "Type": "Episode",
+                  "SeriesId": "series-1",
+                  "ParentId": "season-1",
+                  "SeasonId": "season-1",
+                  "IndexNumber": 2,
+                  "ParentIndexNumber": 1
+                }
+              ]
             }
         """
 
