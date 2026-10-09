@@ -348,6 +348,7 @@ private fun TvCinematicBrowseRow(
                 TvMediaCard(
                     title = card.title,
                     subtitle = card.subtitle,
+                    progress = card.resumeFraction,
                     imageUrl = card.artworkUrl,
                     selected = card.selected,
                     onClick = { onCardClick(card) },

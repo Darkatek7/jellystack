@@ -21,9 +21,19 @@ private annotation class TvResolutionMatrix
 @PreviewTest
 @TvResolutionMatrix
 @Composable
-fun TvMediaCards() = JellystackTvGoldenFixture(TvGoldenFixture.MEDIA_CARDS)
+fun TvLandscapeCards() = JellystackTvGoldenFixture(TvGoldenFixture.LANDSCAPE_CARDS)
 
 @PreviewTest
 @Preview(name = "German 150% 1080p", device = TV_1080P, locale = "de", fontScale = 1.5f)
 @Composable
-fun TvMediaCardsGermanLarge() = JellystackTvGoldenFixture(TvGoldenFixture.MEDIA_CARDS, AppLanguage.GERMAN)
+fun TvLandscapeCardsGermanLarge() = JellystackTvGoldenFixture(TvGoldenFixture.LANDSCAPE_CARDS, AppLanguage.GERMAN)
+
+@PreviewTest
+@Preview(name = "1080p", device = TV_1080P)
+@Composable
+fun TvPortraitCards() = JellystackTvGoldenFixture(TvGoldenFixture.PORTRAIT_CARDS)
+
+@PreviewTest
+@Preview(name = "German 150% 1080p", device = TV_1080P, locale = "de", fontScale = 1.5f)
+@Composable
+fun TvPortraitCardsGermanLarge() = JellystackTvGoldenFixture(TvGoldenFixture.PORTRAIT_CARDS, AppLanguage.GERMAN)

@@ -246,6 +246,7 @@ internal data class TvStrings(
     val genre: String,
     val mediaType: String,
     val applyLabel: String,
+    val minutesLeft: String,
     private val itemSingular: String,
     private val itemPlural: String,
 ) {
@@ -517,6 +518,7 @@ internal data class TvStrings(
                 genre = "Genre",
                 mediaType = "Media type",
                 applyLabel = "Apply",
+                minutesLeft = "%d min left",
                 itemSingular = "item",
                 itemPlural = "items",
             )
@@ -773,6 +775,7 @@ internal data class TvStrings(
                 genre = "Genre",
                 mediaType = "Medientyp",
                 applyLabel = "Übernehmen",
+                minutesLeft = "noch %d Min.",
                 itemSingular = "Element",
                 itemPlural = "Elemente",
             )

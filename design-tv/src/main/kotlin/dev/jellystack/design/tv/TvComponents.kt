@@ -21,9 +21,11 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -380,6 +382,7 @@ internal fun TvMediaCard(
     onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
     subtitle: String? = null,
+    progress: Float? = null,
     selected: Boolean = false,
     format: TvMediaCardFormat = TvMediaCardFormat.LANDSCAPE,
     artworkFit: TvMediaCardArtworkFit = TvMediaCardArtworkFit.CROP,
@@ -434,7 +437,9 @@ internal fun TvMediaCard(
                     contentDescription = listOfNotNull(title, subtitle).joinToString(", ")
                     this.selected = selected
                 }.background(TvSurface, shape)
-                .drawBehind {
+                .drawWithContent {
+                    // Drawn above the artwork; behind it the accent bar was hidden.
+                    drawContent()
                     if (selected) {
                         drawRoundRect(
                             color = TvPurple,
@@ -470,10 +475,32 @@ internal fun TvMediaCard(
                 artworkFit = artworkFit,
                 showMetadataOverlay = format == TvMediaCardFormat.CAST_PORTRAIT,
             )
+            progress?.let { TvMediaCardProgressBar(it, Modifier.align(Alignment.BottomStart)) }
         }
         if (format != TvMediaCardFormat.CAST_PORTRAIT) {
             TvMediaCardMetadataBand(title = title, subtitle = subtitle)
         }
+    }
+}
+
+/** Watch progress along the bottom edge of the artwork. */
+@Composable
+private fun TvMediaCardProgressBar(
+    progress: Float,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier
+            .fillMaxWidth()
+            .height(4.dp)
+            .background(Color.White.copy(alpha = 0.28f)),
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth(progress.coerceIn(0f, 1f))
+                .fillMaxHeight()
+                .background(TvPurple),
+        )
     }
 }
 
@@ -486,7 +513,8 @@ private fun TvMediaCardMetadataBand(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .height(TvLayoutTokens.LandscapeMetadataBandHeight)
+                // Grows with the font scale instead of clipping the subtitle at 150%.
+                .heightIn(min = TvLayoutTokens.LandscapeMetadataBandHeight)
                 .background(Color(0xFF11121B))
                 .padding(horizontal = 12.dp, vertical = 4.dp),
         verticalArrangement = Arrangement.Center,
@@ -499,7 +527,9 @@ private fun TvMediaCardMetadataBand(
             fontWeight = FontWeight.SemiBold,
             fontSize = TvTextSize.CardTitle,
         )
-        subtitle?.let { Text(it, color = TvTextMuted, fontSize = TvTextSize.Caption, maxLines = 1) }
+        subtitle?.let {
+            Text(it, color = TvTextMuted, fontSize = TvTextSize.Caption, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
     }
 }
 
@@ -579,7 +609,9 @@ private fun BoxScope.TvMediaCardContent(
                 fontWeight = FontWeight.SemiBold,
                 fontSize = TvTextSize.Subtitle,
             )
-            subtitle?.let { Text(it, color = TvTextMuted, fontSize = TvTextSize.BodySmall, maxLines = 1) }
+            subtitle?.let {
+                Text(it, color = TvTextMuted, fontSize = TvTextSize.BodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
         }
     }
 }

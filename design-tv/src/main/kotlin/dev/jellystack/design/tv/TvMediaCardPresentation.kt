@@ -1,0 +1,44 @@
+package dev.jellystack.design.tv
+
+import dev.jellystack.core.jellyfin.JellyfinItem
+import dev.jellystack.core.jellyfin.watchProgress
+
+/** Text and progress shown on a Jellyfin media card. */
+internal data class TvMediaCardText(
+    val title: String,
+    val subtitle: String?,
+    val progress: Float?,
+)
+
+/**
+ * Episodes lead with the series name and their S/E number, so "Mr. Robot · S2 E6" reads instead of a
+ * raw episode file name. In-progress items show the time left; others show the episode title or rating.
+ */
+internal fun JellyfinItem.tvCardText(strings: TvStrings): TvMediaCardText {
+    val progress = watchProgress()
+    val timeLeft = progress?.remainingMinutes?.let { strings.minutesLeft.format(it) }
+    val episodeName = episodeTitle ?: name
+    val series = seriesName?.takeIf { it.isNotBlank() }
+    return if (type.equals("Episode", ignoreCase = true)) {
+        TvMediaCardText(
+            title = series ?: episodeName,
+            subtitle =
+                listOfNotNull(
+                    "S${parentIndexNumber ?: 0} E${indexNumber ?: 0}",
+                    timeLeft ?: episodeName.takeIf { series != null },
+                ).joinToString(TV_CARD_SEPARATOR),
+            progress = progress?.fraction,
+        )
+    } else {
+        TvMediaCardText(
+            title = episodeName,
+            subtitle =
+                listOfNotNull(productionYear?.toString(), timeLeft ?: tvRatingLabel(communityRating))
+                    .joinToString(TV_CARD_SEPARATOR)
+                    .ifBlank { null },
+            progress = progress?.fraction,
+        )
+    }
+}
+
+private const val TV_CARD_SEPARATOR = "  •  "

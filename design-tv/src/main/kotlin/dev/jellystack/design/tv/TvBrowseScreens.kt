@@ -438,6 +438,7 @@ internal fun TvHomeScreen(
                             TvRowScroll(rowScrollSpec) {
                                 TvHomeSectionRow(
                                     section = section,
+                                    strings = strings,
                                     imageBaseUrl = homeSections.imageBaseUrl,
                                     imageAccessToken = homeSections.imageAccessToken,
                                     focusMemory = focusMemory,
@@ -468,6 +469,7 @@ internal fun TvHomeScreen(
                                         strings.continueWatching,
                                         state.continueWatching,
                                         state,
+                                        strings,
                                         focusMemory,
                                         onItem,
                                         onPreviewFocus = { item, presentationId ->
@@ -494,6 +496,7 @@ internal fun TvHomeScreen(
                                         strings.nextUp,
                                         state.nextUp,
                                         state,
+                                        strings,
                                         focusMemory,
                                         onItem,
                                         onPreviewFocus = { item, presentationId ->
@@ -953,6 +956,7 @@ private fun TvJellyfinRow(
     title: String,
     items: List<JellyfinItem>,
     state: JellyfinHomeState,
+    strings: TvStrings,
     focusMemory: TvFocusMemory,
     onItem: (JellyfinItem) -> Unit,
     displayItemsById: Map<String, JellyfinItem> = emptyMap(),
@@ -982,9 +986,11 @@ private fun TvJellyfinRow(
                 val targetId = focusTargetId(item.id)
                 val displayItem = displayItemsById[item.id] ?: item
                 val artwork = resolveTvJellyfinArtwork(displayItem)
+                val cardText = displayItem.tvCardText(strings)
                 TvMediaCard(
-                    title = displayItem.episodeTitle ?: displayItem.name,
-                    subtitle = displayItem.subtitleText(),
+                    title = cardText.title,
+                    subtitle = cardText.subtitle,
+                    progress = cardText.progress,
                     imageUrl =
                         jellyfinImageUrl(
                             state.imageBaseUrl,
@@ -1066,6 +1072,7 @@ private fun TvLibraryRow(
 @Composable
 private fun TvHomeSectionRow(
     section: HomeSection,
+    strings: TvStrings,
     imageBaseUrl: String?,
     imageAccessToken: String?,
     focusMemory: TvFocusMemory,
@@ -1095,13 +1102,15 @@ private fun TvHomeSectionRow(
             ) { index, item ->
                 val targetId = tvHomeCardTargetId(rowId, item.id)
                 val previewItem = item.jellyfinItem?.takeIf { item.action == HomeSectionAction.JELLYFIN }
+                val cardText = item.jellyfinItem?.tvCardText(strings)
                 TvMediaCard(
-                    title = item.name,
+                    title = cardText?.title ?: item.name,
                     subtitle =
-                        listOfNotNull(
+                        cardText?.subtitle ?: listOfNotNull(
                             item.productionYear?.toString(),
                             tvRatingLabel(item.communityRating),
                         ).joinToString("  •  ").ifBlank { null },
+                    progress = cardText?.progress,
                     imageUrl = resolveTvHomeSectionImageUrl(item, imageBaseUrl, imageAccessToken),
                     artworkFit =
                         if (section.viewMode == HomeSectionViewMode.PORTRAIT ||
@@ -1766,6 +1775,7 @@ internal fun TvSearchScreen(
                     "Jellyfin",
                     presentation.jellyfinItems,
                     homeState,
+                    strings,
                     focusMemory,
                     onJellyfinItem,
                     routeKey = "search",
