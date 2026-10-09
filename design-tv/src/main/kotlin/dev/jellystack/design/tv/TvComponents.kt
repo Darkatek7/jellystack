@@ -78,7 +78,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.tv.material3.Icon
 import androidx.tv.material3.Text
@@ -98,7 +97,7 @@ private var SemanticsPropertyReceiver.tvDestructiveAction by TvDestructiveAction
 internal fun Modifier.tvFocusable(
     onClick: (() -> Unit)?,
     enabled: Boolean = true,
-    shape: RoundedCornerShape = RoundedCornerShape(16.dp),
+    shape: RoundedCornerShape = TvShapes.Control,
     scale: Float = TvLayoutTokens.FOCUS_SCALE,
     onFocused: (() -> Unit)? = null,
     onFocusChanged: ((Boolean) -> Unit)? = null,
@@ -247,7 +246,7 @@ internal fun TvActionButton(
     focusRequester: FocusRequester? = null,
     onFocusChanged: ((Boolean) -> Unit)? = null,
 ) {
-    val shape = RoundedCornerShape(50)
+    val shape = TvShapes.Pill
     Row(
         modifier =
             modifier
@@ -313,7 +312,7 @@ internal fun TvPlayerIconButton(
     size: androidx.compose.ui.unit.Dp = 60.dp,
     iconSize: androidx.compose.ui.unit.Dp = 30.dp,
 ) {
-    val shape = RoundedCornerShape(50)
+    val shape = TvShapes.Pill
     var focused by remember { mutableStateOf(false) }
     Box(
         modifier =
@@ -350,7 +349,7 @@ internal fun TvCompactActionButton(
     modifier: Modifier = Modifier,
     selected: Boolean = false,
 ) {
-    val shape = RoundedCornerShape(18.dp)
+    val shape = TvShapes.Card
     Column(
         modifier =
             modifier
@@ -366,7 +365,7 @@ internal fun TvCompactActionButton(
         verticalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterVertically),
     ) {
         Icon(icon, null, tint = if (selected) TvPurple else Color.White, modifier = Modifier.size(25.dp))
-        Text(label, color = TvText, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(label, color = TvText, fontSize = TvTextSize.Label, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -392,7 +391,7 @@ internal fun TvMediaCard(
     focusTargetId: String? = null,
     providedFocusRequester: FocusRequester? = null,
 ) {
-    val shape = RoundedCornerShape(18.dp)
+    val shape = TvShapes.Card
     var focused by remember { mutableStateOf(false) }
     val cardWidth = if (format == TvMediaCardFormat.LANDSCAPE) TvLayoutTokens.LandscapeArtworkWidth else 140.dp
     val aspectRatio =
@@ -498,9 +497,9 @@ private fun TvMediaCardMetadataBand(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             fontWeight = FontWeight.SemiBold,
-            fontSize = 15.sp,
+            fontSize = TvTextSize.CardTitle,
         )
-        subtitle?.let { Text(it, color = TvTextMuted, fontSize = 12.sp, maxLines = 1) }
+        subtitle?.let { Text(it, color = TvTextMuted, fontSize = TvTextSize.Caption, maxLines = 1) }
     }
 }
 
@@ -578,9 +577,9 @@ private fun BoxScope.TvMediaCardContent(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 fontWeight = FontWeight.SemiBold,
-                fontSize = 18.sp,
+                fontSize = TvTextSize.Subtitle,
             )
-            subtitle?.let { Text(it, color = TvTextMuted, fontSize = 14.sp, maxLines = 1) }
+            subtitle?.let { Text(it, color = TvTextMuted, fontSize = TvTextSize.BodySmall, maxLines = 1) }
         }
     }
 }
@@ -610,12 +609,12 @@ internal fun TvTrailerPreviewChrome(
             Modifier
                 .align(Alignment.BottomEnd)
                 .padding(end = badgeEndPadding, bottom = 14.dp)
-                .background(TvPurpleStrong.copy(alpha = 0.86f), RoundedCornerShape(8.dp))
+                .background(TvPurpleStrong.copy(alpha = 0.86f), TvShapes.Badge)
                 .padding(horizontal = 9.dp, vertical = 5.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text("Trailer", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            Text("Trailer", color = Color.White, fontSize = TvTextSize.Caption, fontWeight = FontWeight.SemiBold)
             Icon(
                 if (previewSoundEnabled) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
                 null,
@@ -689,7 +688,7 @@ internal fun TvSectionTitle(
         title,
         modifier = modifier.padding(horizontal = 6.dp).tvHeading(),
         color = TvText,
-        fontSize = 20.sp,
+        fontSize = TvTextSize.SectionTitle,
         fontWeight = FontWeight.Bold,
     )
 }
