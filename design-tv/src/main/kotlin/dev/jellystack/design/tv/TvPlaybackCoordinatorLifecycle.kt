@@ -12,7 +12,6 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import dev.jellystack.core.jellyfin.JellyfinBrowseRepository
 import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
-import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.preferences.AppSettings
 import dev.jellystack.network.ClientConfig
 import dev.jellystack.network.NetworkClientFactory
@@ -148,17 +147,13 @@ internal fun rememberTvJellyfinPlaybackCoordinators(
     )
 }
 
-/** Cached episodes of a series, loaded from the server when nothing is cached yet. */
-internal suspend fun JellyfinBrowseRepository.tvEpisodesForSeries(seriesId: String): List<JellyfinItem> =
-    episodesForSeries(seriesId).ifEmpty { refreshEpisodesForSeries(seriesId) }
-
 private suspend fun TvPlaybackCoordinatorSources.resolveNextEpisode(
     mediaId: String,
     seriesId: String,
     controller: PlaybackController,
     router: TvPlaybackCommandRouter,
 ): PlaybackContinuationTarget? {
-    val next = selectNextTvEpisode(browseRepository.tvEpisodesForSeries(seriesId), mediaId)
+    val next = selectNextTvEpisode(browseRepository.latestEpisodesForSeries(seriesId), mediaId)
     val detail = next?.let { browseRepository.getItemDetail(it.id) }
     val environment = environmentProvider.current()
     if (next == null || detail == null || environment == null) return null

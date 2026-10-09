@@ -772,6 +772,78 @@ class JellyfinBrowseRepositoryTest {
         }
 
     @Test
+    fun latestEpisodesForSeriesFallsBackToTheCacheWhenTheServerCannotBeReached() =
+        runTest {
+            val offlineClient =
+                NetworkClientFactory.create(
+                    ClientConfig(engine = MockEngine { error("Server unreachable") }, installLogging = false),
+                )
+            val offlineRepository =
+                JellyfinBrowseRepository(
+                    environmentProvider,
+                    InMemoryLibraryStore(),
+                    itemStore,
+                    InMemoryDetailStore(),
+                    { env ->
+                        JellyfinBrowseApi(
+                            offlineClient,
+                            env.baseUrl,
+                            env.accessToken,
+                            env.deviceId,
+                            clientName = "Test",
+                            deviceName = env.deviceName,
+                            clientVersion = "1.0",
+                        )
+                    },
+                    clock = FixedClock,
+                )
+            itemStore.upsert(listOf(seriesChild("episode-1", type = "Episode"), seriesChild("season-1", type = "Season")))
+
+            val episodes = offlineRepository.latestEpisodesForSeries("series-1")
+
+            assertEquals(listOf("episode-1"), episodes.map { it.id })
+        }
+
+    private fun seriesChild(
+        id: String,
+        type: String,
+    ) = JellyfinItemRecord(
+        id = id,
+        serverId = environment.serverKey,
+        libraryId = "lib-2",
+        name = id,
+        sortName = null,
+        overview = null,
+        type = type,
+        mediaType = null,
+        locationType = null,
+        taglines = emptyList(),
+        parentId = "series-1",
+        primaryImageTag = null,
+        thumbImageTag = null,
+        backdropImageTag = null,
+        seriesId = "series-1",
+        seriesPrimaryImageTag = null,
+        seriesThumbImageTag = null,
+        seriesBackdropImageTag = null,
+        parentLogoImageTag = null,
+        runTimeTicks = null,
+        positionTicks = null,
+        playedPercentage = null,
+        productionYear = null,
+        premiereDate = null,
+        communityRating = null,
+        officialRating = null,
+        indexNumber = 1L,
+        parentIndexNumber = 1L.takeIf { type == "Episode" },
+        seriesName = "Sample Series",
+        seasonId = "season-1".takeIf { type == "Episode" },
+        episodeTitle = null,
+        lastPlayed = null,
+        updatedAt = FixedClock.now(),
+    )
+
+    @Test
     fun refreshNextUpCachesAndReturnsItems() =
         runTest {
             nextUpMode = NextUpResponseMode.DEFAULT
@@ -920,7 +992,11 @@ class JellyfinBrowseRepositoryTest {
         override suspend fun listEpisodesForSeries(
             serverId: String,
             seriesId: String,
-        ): List<JellyfinItemRecord> = emptyList()
+        ): List<JellyfinItemRecord> =
+            records[serverId]
+                ?.values
+                ?.filter { it.seriesId == seriesId && it.type == "Episode" }
+                .orEmpty()
 
         override suspend fun listEpisodesForSeason(
             serverId: String,

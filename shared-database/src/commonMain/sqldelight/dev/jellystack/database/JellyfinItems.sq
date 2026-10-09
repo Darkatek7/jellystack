@@ -124,7 +124,7 @@ VALUES (?, ?, ?, ?);
 selectEpisodesForSeries:
 SELECT *
 FROM jellyfin_items
-WHERE server_id = ? AND series_id = ?
+WHERE server_id = ? AND series_id = ? AND type = 'Episode'
 ORDER BY season_id, index_number;
 
 selectEpisodesForSeason:

@@ -1621,7 +1621,7 @@ private fun TvAuthenticatedApp(
                                         imageBaseUrl = homeState.imageBaseUrl,
                                         imageAccessToken = homeState.imageAccessToken,
                                         onSeekTo = playbackCommandRouter::seekTo,
-                                        loadEpisodes = browseRepository::tvEpisodesForSeries,
+                                        loadEpisodes = browseRepository::latestEpisodesForSeries,
                                         onPlayEpisode = playbackLauncher::play,
                                         onSkipSegment = segmentCoordinator::skip,
                                         onPlayNext = continuationCoordinator::playNext,

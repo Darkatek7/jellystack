@@ -1,5 +1,6 @@
 package dev.jellystack.core.jellyfin
 
+import dev.jellystack.core.coroutines.runSuspendCatching
 import dev.jellystack.core.jellyfin.JellyfinMediaStreamType.AUDIO
 import dev.jellystack.core.jellyfin.JellyfinMediaStreamType.OTHER
 import dev.jellystack.core.jellyfin.JellyfinMediaStreamType.SUBTITLE
@@ -619,6 +620,13 @@ class JellyfinBrowseRepository(
         itemStore.upsert(records)
         return itemStore.listEpisodesForSeries(environment.serverKey, seriesId).map { it.toDomain() }
     }
+
+    /**
+     * Episodes of a series as the server lists them now, or the cached ones when it cannot be reached.
+     * The cache alone can be incomplete, for example when only a "continue watching" episode was stored.
+     */
+    suspend fun latestEpisodesForSeries(seriesId: String): List<JellyfinItem> =
+        runSuspendCatching { refreshEpisodesForSeries(seriesId) }.getOrElse { episodesForSeries(seriesId) }
 
     suspend fun episodesForSeason(seasonId: String): List<JellyfinItem> {
         val environment = environmentProvider.current() ?: return emptyList()
