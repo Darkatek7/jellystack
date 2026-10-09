@@ -141,8 +141,8 @@ internal fun TvPlayerControls(
                 TvPlayerTextButton(Icons.Default.Subtitles, model.subtitleLabel, strings.subtitles, actions.onSubtitles)
             }
             Row(
-                Modifier.padding(horizontal = 20.dp),
-                horizontalArrangement = Arrangement.spacedBy(22.dp),
+                Modifier.padding(horizontal = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(18.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 TvPlayerIconButton(
@@ -308,9 +308,9 @@ internal fun TvPlayerTextButton(
                 contentDescription = listOfNotNull(description, label).joinToString(": ")
             }.clickable(onClick = onClick)
             .focusable()
-            .padding(horizontal = 18.dp),
+            .padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
         Text(

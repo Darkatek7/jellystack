@@ -217,7 +217,7 @@ private fun GoldenPlayer(
             markers = playbackTimelineMarkers(duration, chapters, segments),
             chapters = chapters,
             audioLabel = "English 5.1",
-            subtitleLabel = strings.off,
+            subtitleLabel = "English",
             canShowEpisodes = true,
             canPlayNext = true,
             promptActions = if (upNext) goldenUpNextActions(strings) else goldenSkipIntroActions(strings),
