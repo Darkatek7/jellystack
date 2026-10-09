@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.FastForward
@@ -229,7 +228,14 @@ private fun TvPlayerTimeline(
             }.onFocusChanged { state ->
                 focused = state.isFocused
                 if (!state.isFocused) scrub.clear()
-            }.tvFocusable(onClick = actions.onTogglePlayPause, shape = RoundedCornerShape(12.dp), scale = 1.01f),
+            }
+            // The thicker bar and larger knob show focus; a ring or glow would cover the time labels.
+            .clickable(
+                interactionSource = null,
+                indication = null,
+                role = Role.Button,
+                onClick = actions.onTogglePlayPause,
+            ),
     ) {
         TvPlayerTimelineBody(
             model = model,
