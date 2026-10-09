@@ -13,14 +13,7 @@ package dev.jellystack.design.tv
 
 import android.view.KeyEvent
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,11 +23,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
@@ -45,12 +36,8 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -67,24 +54,19 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Icon
-import coil3.compose.AsyncImage
 import dev.jellystack.core.jellyfin.HomeSection
 import dev.jellystack.core.jellyfin.HomeSectionAction
 import dev.jellystack.core.jellyfin.HomeSectionViewMode
@@ -384,34 +366,43 @@ internal fun TvHomeScreen(
                             ?.takeIf { it.target.itemId == stageItem.id }
                             ?.presentationId
                 TvHeroCarousel(
-                    stageItem = stageItem,
-                    stagePresentationId = stagePresentationId,
-                    mode = heroPresentation.mode,
-                    position = spotlightIndex + 1,
-                    total = heroCandidates.size,
-                    state = state,
+                    model =
+                        TvHomeHeroModel(
+                            stageItem = stageItem,
+                            stagePresentationId = stagePresentationId,
+                            mode = heroPresentation.mode,
+                            page = TvHomeHeroPage(index = spotlightIndex, count = heroCandidates.size),
+                            showCarouselContext = focusedStageItem == null,
+                            imageBaseUrl = state.imageBaseUrl,
+                            imageAccessToken = state.imageAccessToken,
+                        ),
+                    trailer =
+                        TvHomeHeroTrailer(
+                            state = trailerPreviewState,
+                            soundEnabled = previewSoundEnabled,
+                            progress = previewProgress,
+                            surface = { surfaceModifier -> TvTrailerPreviewSurface(trailerPreviewEngine, surfaceModifier) },
+                        ),
+                    callbacks =
+                        TvHomeHeroCallbacks(
+                            onPlay = { onPlayItem(stageItem) },
+                            onDetails = { onItem(stageItem) },
+                            onActionVerticalMove = { direction -> onVerticalMove(TvHomeFocusOrigin.HeroActions, direction, null) },
+                            onHeroFocused = {
+                                // The hero shows its own spotlight again, so Play and Details act on it.
+                                focusedStageItem = null
+                                focusedStagePresentationId = null
+                            },
+                            onCarouselMove = { direction ->
+                                val move = moveTvHomeCarouselManually(candidateIds, carouselState, direction)
+                                if (move.openNavigationRail) openNavigationRail?.invoke() else carouselState = move.state
+                            },
+                            onIndicatorVerticalMove = { direction ->
+                                onVerticalMove(TvHomeFocusOrigin.HeroCarousel, direction, null)
+                            },
+                        ),
                     strings = strings,
-                    trailerPreviewState = trailerPreviewState,
-                    trailerPreviewEngine = trailerPreviewEngine,
-                    previewSoundEnabled = previewSoundEnabled,
-                    previewProgress = previewProgress,
-                    onPlay = { onPlayItem(stageItem) },
-                    onDetails = { onItem(stageItem) },
                     primaryFocusRequester = heroPrimaryFocusRequester,
-                    onActionVerticalMove = { direction -> onVerticalMove(TvHomeFocusOrigin.HeroActions, direction, null) },
-                    showCarouselContext = focusedStageItem == null,
-                    onHeroFocused = {
-                        // The hero shows its own spotlight again, so Play and Details act on it.
-                        focusedStageItem = null
-                        focusedStagePresentationId = null
-                    },
-                    onCarouselMove = { direction ->
-                        val move = moveTvHomeCarouselManually(candidateIds, carouselState, direction)
-                        if (move.openNavigationRail) openNavigationRail?.invoke() else carouselState = move.state
-                    },
-                    onIndicatorVerticalMove = { direction ->
-                        onVerticalMove(TvHomeFocusOrigin.HeroCarousel, direction, null)
-                    },
                 )
             } else {
                 TvEmptyHomeHero(
@@ -657,318 +648,6 @@ internal class TvHomeEntryFocusGate {
         if (consumed || !shouldRequestHomeEntryFocus(hasRecentContent, railOpen)) return false
         consumed = true
         return true
-    }
-}
-
-@Composable
-private fun TvHeroCarousel(
-    stageItem: JellyfinItem,
-    stagePresentationId: String?,
-    mode: TvHomeHeroMode,
-    position: Int,
-    total: Int,
-    state: JellyfinHomeState,
-    strings: TvStrings,
-    trailerPreviewState: TvTrailerPreviewState,
-    trailerPreviewEngine: AndroidPlayerEngine,
-    previewSoundEnabled: Boolean,
-    previewProgress: State<Float>,
-    onPlay: () -> Unit,
-    onDetails: () -> Unit,
-    primaryFocusRequester: FocusRequester,
-    onActionVerticalMove: (TvHomeVerticalDirection) -> Unit,
-    showCarouselContext: Boolean,
-    onHeroFocused: () -> Unit,
-    onCarouselMove: (TvHomeCarouselDirection) -> Unit,
-    onIndicatorVerticalMove: (TvHomeVerticalDirection) -> Unit,
-) {
-    val shape = TvShapes.Surface
-    Box(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .height(TV_HOME_HERO_HEIGHT_DP.dp)
-                .clip(shape)
-                .background(TvBackground)
-                .border(
-                    width = 0.5.dp,
-                    color = TvText.copy(alpha = 0.08f),
-                    shape = shape,
-                ).testTag("tv-home-preview-stage")
-                .onFocusChanged { if (it.hasFocus) onHeroFocused() },
-    ) {
-        // Keyed on the shown item, so moving between spotlights and row cards crossfades.
-        AnimatedContent(
-            targetState = stageItem,
-            contentKey = { it.id },
-            transitionSpec = {
-                (
-                    fadeIn(tween(240))
-                ).togetherWith(fadeOut(tween(240)))
-            },
-            modifier = Modifier.fillMaxSize(),
-        ) { _ ->
-            TvHeroSlide(
-                stageItem = stageItem,
-                stagePresentationId = stagePresentationId,
-                mode = mode.takeIf { showCarouselContext },
-                state = state,
-                strings = strings,
-                trailerPreviewState = trailerPreviewState,
-                trailerPreviewEngine = trailerPreviewEngine,
-                previewSoundEnabled = previewSoundEnabled,
-                previewProgress = previewProgress,
-            )
-        }
-        TvTrailerAwareActions(
-            previewing = trailerPreviewState.showsTvHomeStagePreview(stageItem.id, stagePresentationId),
-            modifier = Modifier.align(Alignment.BottomStart).padding(start = 28.dp, bottom = 22.dp),
-        ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                TvActionButton(
-                    label = if ((stageItem.positionTicks ?: 0L) > 0L) strings.continueLabel else strings.play,
-                    primary = true,
-                    onClick = onPlay,
-                    leading = { Icon(Icons.Default.PlayArrow, null, tint = Color(0xFF251450)) },
-                    modifier =
-                        Modifier
-                            .width(180.dp)
-                            .focusRequester(primaryFocusRequester)
-                            .tvHomeVerticalFocus(onActionVerticalMove),
-                    focusToNavigationRailOnLeft = true,
-                    focusTargetId = TV_HOME_PRIMARY_TARGET,
-                )
-                TvActionButton(
-                    label = strings.details,
-                    onClick = onDetails,
-                    leading = { Icon(Icons.Default.Info, null, tint = TvText) },
-                    modifier =
-                        Modifier
-                            .width(156.dp)
-                            .tvHomeVerticalFocus(onActionVerticalMove),
-                    focusTargetId = TV_HOME_DETAILS_TARGET,
-                )
-            }
-        }
-        if (total > 1 && showCarouselContext) {
-            TvHomeHeroIndicator(
-                page = TvHomeHeroPage(index = position - 1, count = total),
-                contentDescription = strings.metadata.spotlightPosition.format(position, total),
-                onMove = onCarouselMove,
-                onVerticalMove = onIndicatorVerticalMove,
-                modifier = Modifier.align(Alignment.TopEnd).padding(top = 18.dp, end = 16.dp),
-            )
-        }
-    }
-}
-
-@Composable
-private fun TvHeroSlide(
-    stageItem: JellyfinItem,
-    stagePresentationId: String?,
-    mode: TvHomeHeroMode?,
-    state: JellyfinHomeState,
-    strings: TvStrings,
-    trailerPreviewState: TvTrailerPreviewState,
-    trailerPreviewEngine: AndroidPlayerEngine,
-    previewSoundEnabled: Boolean,
-    previewProgress: State<Float>,
-) {
-    val item = stageItem
-    val previewing = trailerPreviewState.showsTvHomeStagePreview(item.id, stagePresentationId)
-    Box(Modifier.fillMaxSize()) {
-        if (previewing) {
-            TvTrailerPreviewSurface(
-                previewEngine = trailerPreviewEngine,
-                modifier = Modifier.fillMaxSize().testTag("tv-home-hero-preview-surface"),
-            )
-        } else {
-            val backdropUrl =
-                jellyfinImageUrl(state.imageBaseUrl, state.imageAccessToken, resolveTvHeroBackdrop(item), TvArtworkSize.HERO)
-            if (backdropUrl == null) {
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.linearGradient(
-                                listOf(Color(0xFF171824), Color(0xFF2B2342), Color(0xFF11121A)),
-                            ),
-                        ),
-                )
-            } else {
-                AsyncImage(
-                    model = backdropUrl,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                )
-            }
-        }
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.horizontalGradient(
-                        listOf(TvBackground, TvBackground.copy(alpha = 0.94f), TvBackground.copy(alpha = 0.64f), Color.Transparent),
-                    ),
-                ),
-        )
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        listOf(TvBackground.copy(alpha = 0.42f), Color.Transparent, TvBackground.copy(alpha = 0.94f)),
-                    ),
-                ),
-        )
-        if (previewing) {
-            TvTrailerPreviewChrome(
-                label = strings.trailer,
-                previewSoundEnabled = previewSoundEnabled,
-                previewProgress = previewProgress.value,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
-        Column(
-            Modifier
-                .align(Alignment.TopStart)
-                .padding(start = 28.dp, top = 26.dp, end = 24.dp, bottom = 84.dp)
-                .fillMaxWidth(0.52f),
-            verticalArrangement = Arrangement.spacedBy(9.dp),
-        ) {
-            // The spotlight label describes the carousel, so a staged row card does not show it.
-            mode?.let { heroMode ->
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.AutoAwesome, null, tint = TvPurple, modifier = Modifier.size(19.dp))
-                    Text(
-                        when (heroMode) {
-                            TvHomeHeroMode.RECENT -> strings.recentlyAdded
-                            TvHomeHeroMode.LATEST -> strings.latestAdditions
-                            TvHomeHeroMode.LIBRARY -> strings.fromYourLibrary
-                            TvHomeHeroMode.EMPTY -> strings.fromYourLibrary
-                        },
-                        color = TvPurple,
-                        fontSize = TvTextSize.Body,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    if (heroMode == TvHomeHeroMode.RECENT) {
-                        Text("·  ${strings.lastThirtyDays}", color = TvTextMuted, fontSize = TvTextSize.CardTitle)
-                    }
-                }
-            }
-            val logoTag = item.logoImageTag ?: item.parentLogoImageTag
-            if (logoTag != null) {
-                AsyncImage(
-                    model =
-                        jellyfinImageUrl(
-                            state.imageBaseUrl,
-                            state.imageAccessToken,
-                            item.seriesId ?: item.id,
-                            logoTag,
-                            "Logo",
-                            TvArtworkSize.LOGO.maxWidth,
-                        ),
-                    contentDescription = null,
-                    modifier = Modifier.widthIn(max = 390.dp).heightIn(max = 68.dp),
-                    contentScale = ContentScale.Fit,
-                )
-            } else {
-                Text(
-                    item.seriesName ?: item.name,
-                    color = TvText,
-                    fontSize = 42.sp,
-                    lineHeight = 44.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            item.overview?.takeIf(String::isNotBlank)?.let { overview ->
-                Text(
-                    overview,
-                    color = TvTextMuted,
-                    fontSize = 16.sp,
-                    lineHeight = 20.sp,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            val metadata =
-                listOfNotNull(
-                    item.productionYear?.toString(),
-                    tvRatingLabel(item.communityRating),
-                    item.officialRating,
-                ).joinToString("  •  ")
-            if (metadata.isNotBlank()) Text(metadata, color = TvTextMuted, fontSize = 15.sp)
-        }
-    }
-}
-
-private fun resolveTvHeroBackdrop(item: JellyfinItem): TvJellyfinArtwork? {
-    val seriesId = item.seriesId
-    return when {
-        !seriesId.isNullOrBlank() && !item.seriesBackdropImageTag.isNullOrBlank() ->
-            TvJellyfinArtwork(seriesId, requireNotNull(item.seriesBackdropImageTag), "Backdrop")
-        !item.backdropImageTag.isNullOrBlank() ->
-            TvJellyfinArtwork(item.id, requireNotNull(item.backdropImageTag), "Backdrop")
-        else -> resolveTvJellyfinArtwork(item)
-    }
-}
-
-@Composable
-private fun TvEmptyHomeHero(
-    state: JellyfinHomeState,
-    strings: TvStrings,
-    onRefresh: () -> Unit,
-    primaryFocusRequester: FocusRequester,
-    onVerticalMove: (TvHomeVerticalDirection) -> Unit,
-) {
-    Box(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .height(TV_HOME_HERO_HEIGHT_DP.dp)
-                .clip(RoundedCornerShape(20.dp))
-                .background(
-                    Brush.horizontalGradient(
-                        listOf(TvSurfaceRaised, TvPurpleStrong.copy(alpha = 0.32f), TvBackground),
-                    ),
-                ),
-    ) {
-        Column(
-            modifier = Modifier.align(Alignment.CenterStart).padding(start = 28.dp).fillMaxWidth(0.58f),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.AutoAwesome, null, tint = TvPurple, modifier = Modifier.size(18.dp))
-                Text(TV_BRAND_JELLYSTACK, color = TvPurple, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-            }
-            Text(TV_BRAND_JELLYSTACK, color = TvText, fontSize = 40.sp, fontWeight = FontWeight.Bold)
-            Text(
-                state.homeErrorMessage
-                    ?.takeIf { it.isNotBlank() }
-                    ?: if (state.isHomeLoading || state.isInitialLoading) strings.loading else strings.noResults,
-                color = TvTextMuted,
-                fontSize = 16.sp,
-                maxLines = 2,
-            )
-            TvActionButton(
-                label = strings.retry,
-                onClick = onRefresh,
-                primary = true,
-                modifier =
-                    Modifier
-                        .width(180.dp)
-                        .focusRequester(primaryFocusRequester)
-                        .tvScreenEntryFocus(focusTargetId = TV_HOME_PRIMARY_TARGET)
-                        .tvHomeVerticalFocus(onVerticalMove),
-                focusToNavigationRailOnLeft = true,
-                focusTargetId = TV_HOME_PRIMARY_TARGET,
-            )
-        }
     }
 }
 
