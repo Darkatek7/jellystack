@@ -315,6 +315,27 @@ class PlaybackSegmentCoordinatorTest {
             )
         }
 
+    @Test
+    fun timelineKeepsEverySegmentRegardlessOfPositionUntilPlaybackStops() =
+        runTest {
+            val service =
+                StaticSegmentService(
+                    available(segment("intro", "Intro", 0, 2_000), segment("credits", "Outro", 50_000, 60_000)),
+                )
+            val coordinator = coordinator(service)
+
+            coordinator.onPlaybackState(active("episode", 10_000))
+            runCurrent()
+
+            assertEquals(listOf("intro", "credits"), coordinator.timelineSegments.value.map { it.id })
+            assertTrue(
+                coordinator.state.value.activeSegments
+                    .isEmpty(),
+            )
+            coordinator.onPlaybackState(PlaybackState.Stopped)
+            assertTrue(coordinator.timelineSegments.value.isEmpty())
+        }
+
     private fun kotlinx.coroutines.test.TestScope.coordinator(
         service: JellyfinMediaSegmentsService,
         mode: (PlaybackSegmentType) -> SegmentSkipMode = { SegmentSkipMode.SHOW_BUTTON },

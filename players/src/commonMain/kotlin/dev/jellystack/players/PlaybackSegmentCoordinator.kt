@@ -58,6 +58,11 @@ class PlaybackSegmentCoordinator(
     private val mutableState = MutableStateFlow(PlaybackSegmentState())
     val state: StateFlow<PlaybackSegmentState> = mutableState.asStateFlow()
 
+    private val mutableTimelineSegments = MutableStateFlow<List<PlaybackSegment>>(emptyList())
+
+    /** Every loaded segment of the current item, for seek bar marks; independent of the position. */
+    val timelineSegments: StateFlow<List<PlaybackSegment>> = mutableTimelineSegments.asStateFlow()
+
     private var currentMediaId: String? = null
     private var currentPositionMs = 0L
     private var segments: List<PlaybackSegment> = emptyList()
@@ -138,6 +143,7 @@ class PlaybackSegmentCoordinator(
         val loadGeneration = generation
         currentMediaId = mediaId
         segments = emptyList()
+        mutableTimelineSegments.value = emptyList()
         consumedAutoSegments.clear()
         mutableState.value = PlaybackSegmentState(mediaId = mediaId, isLoading = true)
         loadJob =
@@ -156,6 +162,7 @@ class PlaybackSegmentCoordinator(
                     }
                 if (loadGeneration != generation || currentMediaId != mediaId) return@launch
                 segments = loaded
+                mutableTimelineSegments.value = loaded
                 publishDerivedState(isLoading = false)
             }
     }
@@ -213,6 +220,7 @@ class PlaybackSegmentCoordinator(
         currentMediaId = null
         currentPositionMs = 0L
         segments = emptyList()
+        mutableTimelineSegments.value = emptyList()
         consumedAutoSegments.clear()
         observationKind = SegmentObservationKind.NONE
         lastActivePhase = null
