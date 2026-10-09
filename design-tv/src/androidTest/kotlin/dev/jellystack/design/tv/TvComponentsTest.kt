@@ -261,7 +261,7 @@ class TvComponentsTest {
         val focused = card.getUnclippedBoundsInRoot()
 
         assertEquals(176f, (before.right - before.left).value, 1f)
-        assertEquals(139f, (before.bottom - before.top).value, 1f)
+        assertEquals(99f, (before.bottom - before.top).value, 1f)
         assertEquals((before.right - before.left).value, (focused.right - focused.left).value, 0.1f)
         assertEquals((before.bottom - before.top).value, (focused.bottom - focused.top).value, 0.1f)
     }
@@ -292,7 +292,7 @@ class TvComponentsTest {
     }
 
     @Test
-    fun upcomingDiscoverRailUsesArtworkPlusOpaqueMetadataBand() {
+    fun upcomingDiscoverRailUsesLandscapeArtworkCards() {
         val item =
             JellyseerrSearchItem(
                 tmdbId = 42,
@@ -339,7 +339,7 @@ class TvComponentsTest {
         val width = (bounds.right - bounds.left).value
         val height = (bounds.bottom - bounds.top).value
         assertTrue("Discover cards should remain landscape", width > height)
-        assertEquals(176f / 139f, width / height, 0.05f)
+        assertEquals(176f / 99f, width / height, 0.05f)
     }
 
     @Test

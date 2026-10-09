@@ -370,7 +370,13 @@ class TvHomeScreenTest {
 
         val heroBounds = composeRule.onNodeWithTag("tv-home-preview-stage").getUnclippedBoundsInRoot()
         val firstCardBounds = composeRule.onAllNodes(cardWithDescription("First media card"))[0].getUnclippedBoundsInRoot()
-        assertEquals(tvHomeHeroHeightDp().toFloat(), (heroBounds.bottom - heroBounds.top).value, 0.01f)
+        // The spotlight reaches from the screen's top edge, through the safe inset, down to the rows.
+        assertEquals(0f, heroBounds.top.value, 0.01f)
+        assertEquals(
+            TvLayoutTokens.SafeInsets.vertical.value + tvHomeHeroHeightDp(),
+            (heroBounds.bottom - heroBounds.top).value,
+            0.01f,
+        )
         assertEquals(tvHomeFirstCardTopDp().toFloat(), firstCardBounds.top.value, 0.51f)
         composeRule.runOnIdle(engine::release)
     }
