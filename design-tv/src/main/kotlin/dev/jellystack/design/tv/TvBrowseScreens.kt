@@ -94,7 +94,6 @@ import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.JellyfinLibrary
 import dev.jellystack.core.jellyfin.LibraryBrowseQuery
 import dev.jellystack.core.jellyfin.LibraryLoadErrorKind
-import dev.jellystack.core.jellyfin.SpotlightCandidate
 import dev.jellystack.core.jellyfin.isBrowseContainer
 import dev.jellystack.core.jellyseerr.JellyseerrRecommendationRail
 import dev.jellystack.core.jellyseerr.JellyseerrRecommendationsState
@@ -104,6 +103,7 @@ import dev.jellystack.core.jellyseerr.JellyseerrSearchItem
 import dev.jellystack.core.profile.MediaIdentity
 import dev.jellystack.core.profile.MyListEntry
 import dev.jellystack.players.AndroidPlayerEngine
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
@@ -186,6 +186,7 @@ internal fun TvHomeScreen(
     onSeerrItem: (TvRoute.SeerrDetail) -> Unit,
     myList: List<MyListEntry> = emptyList(),
     onMyListEntry: (MyListEntry) -> Unit = {},
+    spotlightAutoAdvance: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val heroPresentation =
@@ -257,6 +258,7 @@ internal fun TvHomeScreen(
     val homeFocusLocations =
         buildMap {
             put(TV_HOME_PRIMARY_TARGET, TvLazyFocusLocation(verticalIndex = 0))
+            if (heroCandidates.size > 1) put(TV_HOME_HERO_TARGET, TvLazyFocusLocation(verticalIndex = 0))
             put(TV_HOME_DETAILS_TARGET, TvLazyFocusLocation(verticalIndex = 0))
             focusRows.forEach { row ->
                 row.itemIds.forEachIndexed { index, itemId ->
@@ -341,7 +343,28 @@ internal fun TvHomeScreen(
             carouselState = carouselState.copy(selectedId = selectedId)
         }
     }
-    Box(modifier.fillMaxSize()) {
+    var heroInteraction by remember { mutableStateOf(0) }
+    val autoAdvanceHero =
+        shouldAutoAdvanceTvHomeHero(
+            enabled = spotlightAutoAdvance,
+            candidateCount = candidateIds.size,
+            reducedMotion = LocalTvFocusAppearance.current.reducedMotion,
+            cardStaged = focusedStageItem != null,
+            trailerActive = trailerPreviewState is TvTrailerPreviewState.Armed || trailerPreviewState is TvTrailerPreviewState.Playing,
+        )
+    LaunchedEffect(autoAdvanceHero, candidateIds, carouselState.selectedId, heroInteraction) {
+        if (!autoAdvanceHero) return@LaunchedEffect
+        delay(TV_HOME_HERO_AUTO_ADVANCE_MS)
+        carouselState = carouselState.copy(selectedId = nextTvHomeAutoAdvanceId(candidateIds, carouselState.selectedId))
+    }
+    val openNavigationRail = LocalTvNavigationRailOpener.current
+    Box(
+        modifier.fillMaxSize().onPreviewKeyEvent {
+            // Any remote input restarts the spotlight timer.
+            heroInteraction += 1
+            false
+        },
+    ) {
         Box(
             Modifier
                 .fillMaxWidth()
@@ -361,7 +384,6 @@ internal fun TvHomeScreen(
                             ?.takeIf { it.target.itemId == stageItem.id }
                             ?.presentationId
                 TvHeroCarousel(
-                    candidate = candidate,
                     stageItem = stageItem,
                     stagePresentationId = stagePresentationId,
                     mode = heroPresentation.mode,
@@ -377,6 +399,19 @@ internal fun TvHomeScreen(
                     onDetails = { onItem(stageItem) },
                     primaryFocusRequester = heroPrimaryFocusRequester,
                     onActionVerticalMove = { direction -> onVerticalMove(TvHomeFocusOrigin.HeroActions, direction, null) },
+                    showCarouselContext = focusedStageItem == null,
+                    onHeroFocused = {
+                        // The hero shows its own spotlight again, so Play and Details act on it.
+                        focusedStageItem = null
+                        focusedStagePresentationId = null
+                    },
+                    onCarouselMove = { direction ->
+                        val move = moveTvHomeCarouselManually(candidateIds, carouselState, direction)
+                        if (move.openNavigationRail) openNavigationRail?.invoke() else carouselState = move.state
+                    },
+                    onIndicatorVerticalMove = { direction ->
+                        onVerticalMove(TvHomeFocusOrigin.HeroCarousel, direction, null)
+                    },
                 )
             } else {
                 TvEmptyHomeHero(
@@ -627,7 +662,6 @@ internal class TvHomeEntryFocusGate {
 
 @Composable
 private fun TvHeroCarousel(
-    candidate: SpotlightCandidate,
     stageItem: JellyfinItem,
     stagePresentationId: String?,
     mode: TvHomeHeroMode,
@@ -643,8 +677,12 @@ private fun TvHeroCarousel(
     onDetails: () -> Unit,
     primaryFocusRequester: FocusRequester,
     onActionVerticalMove: (TvHomeVerticalDirection) -> Unit,
+    showCarouselContext: Boolean,
+    onHeroFocused: () -> Unit,
+    onCarouselMove: (TvHomeCarouselDirection) -> Unit,
+    onIndicatorVerticalMove: (TvHomeVerticalDirection) -> Unit,
 ) {
-    val shape = RoundedCornerShape(20.dp)
+    val shape = TvShapes.Surface
     Box(
         modifier =
             Modifier
@@ -656,11 +694,13 @@ private fun TvHeroCarousel(
                     width = 0.5.dp,
                     color = TvText.copy(alpha = 0.08f),
                     shape = shape,
-                ).testTag("tv-home-preview-stage"),
+                ).testTag("tv-home-preview-stage")
+                .onFocusChanged { if (it.hasFocus) onHeroFocused() },
     ) {
+        // Keyed on the shown item, so moving between spotlights and row cards crossfades.
         AnimatedContent(
-            targetState = candidate,
-            contentKey = { it.actionItem.id },
+            targetState = stageItem,
+            contentKey = { it.id },
             transitionSpec = {
                 (
                     fadeIn(tween(240))
@@ -671,9 +711,7 @@ private fun TvHeroCarousel(
             TvHeroSlide(
                 stageItem = stageItem,
                 stagePresentationId = stagePresentationId,
-                mode = mode,
-                position = position,
-                total = total,
+                mode = mode.takeIf { showCarouselContext },
                 state = state,
                 strings = strings,
                 trailerPreviewState = trailerPreviewState,
@@ -714,6 +752,15 @@ private fun TvHeroCarousel(
                 )
             }
         }
+        if (total > 1 && showCarouselContext) {
+            TvHomeHeroIndicator(
+                page = TvHomeHeroPage(index = position - 1, count = total),
+                contentDescription = strings.metadata.spotlightPosition.format(position, total),
+                onMove = onCarouselMove,
+                onVerticalMove = onIndicatorVerticalMove,
+                modifier = Modifier.align(Alignment.TopEnd).padding(top = 18.dp, end = 16.dp),
+            )
+        }
     }
 }
 
@@ -721,9 +768,7 @@ private fun TvHeroCarousel(
 private fun TvHeroSlide(
     stageItem: JellyfinItem,
     stagePresentationId: String?,
-    mode: TvHomeHeroMode,
-    position: Int,
-    total: Int,
+    mode: TvHomeHeroMode?,
     state: JellyfinHomeState,
     strings: TvStrings,
     trailerPreviewState: TvTrailerPreviewState,
@@ -794,19 +839,25 @@ private fun TvHeroSlide(
                 .fillMaxWidth(0.52f),
             verticalArrangement = Arrangement.spacedBy(9.dp),
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.AutoAwesome, null, tint = TvPurple, modifier = Modifier.size(19.dp))
-                Text(
-                    when (mode) {
-                        TvHomeHeroMode.RECENT -> strings.recentlyAdded
-                        TvHomeHeroMode.LATEST -> strings.latestAdditions
-                        TvHomeHeroMode.LIBRARY -> strings.fromYourLibrary
-                        TvHomeHeroMode.EMPTY -> strings.fromYourLibrary
-                    },
-                    color = TvPurple,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold,
-                )
+            // The spotlight label describes the carousel, so a staged row card does not show it.
+            mode?.let { heroMode ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.AutoAwesome, null, tint = TvPurple, modifier = Modifier.size(19.dp))
+                    Text(
+                        when (heroMode) {
+                            TvHomeHeroMode.RECENT -> strings.recentlyAdded
+                            TvHomeHeroMode.LATEST -> strings.latestAdditions
+                            TvHomeHeroMode.LIBRARY -> strings.fromYourLibrary
+                            TvHomeHeroMode.EMPTY -> strings.fromYourLibrary
+                        },
+                        color = TvPurple,
+                        fontSize = TvTextSize.Body,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    if (heroMode == TvHomeHeroMode.RECENT) {
+                        Text("·  ${strings.lastThirtyDays}", color = TvTextMuted, fontSize = TvTextSize.CardTitle)
+                    }
+                }
             }
             val logoTag = item.logoImageTag ?: item.parentLogoImageTag
             if (logoTag != null) {
@@ -852,15 +903,6 @@ private fun TvHeroSlide(
                     item.officialRating,
                 ).joinToString("  •  ")
             if (metadata.isNotBlank()) Text(metadata, color = TvTextMuted, fontSize = 15.sp)
-        }
-        Column(
-            Modifier.align(Alignment.TopEnd).padding(top = 24.dp, end = 22.dp),
-            horizontalAlignment = Alignment.End,
-        ) {
-            Text("%02d | %02d".format(position, total), color = TvPurple, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            if (mode == TvHomeHeroMode.RECENT) {
-                Text(strings.lastThirtyDays, color = TvTextMuted, fontSize = 15.sp)
-            }
         }
     }
 }

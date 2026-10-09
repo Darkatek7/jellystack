@@ -390,7 +390,7 @@ class TvHomeScreenTest {
             )
         }
 
-        composeRule.onAllNodesWithText("01 | 02", useUnmergedTree = true).assertCountEquals(1)
+        composeRule.onNodeWithContentDescription("Spotlight 1 of 2").assertExists()
         composeRule.onAllNodesWithText("Last 30 days", useUnmergedTree = true).assertCountEquals(0)
         composeRule.runOnIdle(engine::release)
     }
@@ -477,6 +477,41 @@ class TvHomeScreenTest {
     }
 
     @Test
+    fun upFromPlayReachesThePageDotsWhichPageTheSpotlightForPlay() {
+        lateinit var engine: AndroidPlayerEngine
+        val playedIds = mutableListOf<String>()
+        val first = item("first", "First hero", dateCreated = (Clock.System.now() - 1.days).toString())
+        val second = item("second", "Second hero", dateCreated = (Clock.System.now() - 2.days).toString())
+        composeRule.setContent {
+            val context = LocalContext.current
+            engine = rememberTestPlayerEngine(context)
+            TestHomeScreen(
+                state = JellyfinHomeState(recentMovies = listOf(first, second)),
+                sections = HomeSectionsState.Unavailable,
+                engine = engine,
+                onPlayItem = { playedIds += it.id },
+            )
+        }
+
+        composeRule.onNodeWithContentDescription("Play").assertIsFocused().performKeyInput { pressKey(Key.DirectionUp) }
+        composeRule.waitForIdle()
+        val dots = composeRule.onNodeWithTag(TV_HOME_HERO_INDICATOR_TAG).assertIsFocused()
+        dots.performKeyInput { pressKey(Key.DirectionRight) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("Spotlight 2 of 2").assertIsFocused()
+        composeRule.onAllNodesWithText("Second hero", useUnmergedTree = true).assertCountEquals(1)
+
+        composeRule.onNodeWithTag(TV_HOME_HERO_INDICATOR_TAG).performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("Play").assertIsFocused().performKeyInput { pressKey(Key.DirectionCenter) }
+
+        composeRule.runOnIdle {
+            assertEquals(listOf("second"), playedIds)
+            engine.release()
+        }
+    }
+
+    @Test
     fun leftBoundaryOpensNavigationRailAndKeepsFirstCandidateActive() {
         lateinit var engine: AndroidPlayerEngine
         var railOpenRequests = 0
@@ -552,7 +587,7 @@ class TvHomeScreenTest {
     }
 
     @Test
-    fun legacyAutoCycleSettingNeverAdvancesTvSpotlight() {
+    fun idleSpotlightAdvancesAfterTheIntervalAndWrapsAround() {
         lateinit var engine: AndroidPlayerEngine
         val first = item("first", "First hero", dateCreated = (Clock.System.now() - 1.days).toString())
         val second = item("second", "Second hero", dateCreated = (Clock.System.now() - 2.days).toString())
@@ -575,16 +610,24 @@ class TvHomeScreenTest {
                 sections = HomeSectionsState.Ready(listOf(section), "", ""),
                 engine = engine,
                 provideEntryFocus = false,
+                spotlightAutoAdvance = true,
             )
         }
 
-        composeRule.mainClock.advanceTimeBy(30_000)
+        composeRule.mainClock.advanceTimeBy(TV_HOME_HERO_AUTO_ADVANCE_MS - 1_000)
+        composeRule.onAllNodesWithText("First hero", useUnmergedTree = true).assertCountEquals(1)
+
+        composeRule.mainClock.advanceTimeBy(1_500)
+        composeRule.onAllNodesWithText("Second hero", useUnmergedTree = true).assertCountEquals(1)
+        composeRule.onAllNodesWithText("First hero", useUnmergedTree = true).assertCountEquals(0)
+
+        composeRule.mainClock.advanceTimeBy(TV_HOME_HERO_AUTO_ADVANCE_MS + 500)
         composeRule.onAllNodesWithText("First hero", useUnmergedTree = true).assertCountEquals(1)
         composeRule.runOnIdle(engine::release)
     }
 
     @Test
-    fun playingHeroPreviewIsNotInterruptedByLegacyAutoCycleInterval() {
+    fun playingPreviewPausesSpotlightAutoAdvance() {
         lateinit var engine: AndroidPlayerEngine
         val target = TvTrailerPreviewTarget("server", "preview", isEpisode = false, seriesId = null)
         val request = TvTrailerPreviewRequest(TvTrailerPreviewOwner.HERO, target)
@@ -601,6 +644,7 @@ class TvHomeScreenTest {
                 engine = engine,
                 provideEntryFocus = false,
                 trailerPreviewState = previewState.value,
+                spotlightAutoAdvance = true,
             )
         }
 
@@ -1247,6 +1291,7 @@ class TvHomeScreenTest {
         trailerPreviewState: TvTrailerPreviewState = TvTrailerPreviewState.Idle,
         myList: List<MyListEntry> = emptyList(),
         onMyListEntry: (MyListEntry) -> Unit = {},
+        spotlightAutoAdvance: Boolean = false,
     ) {
         val entryFocusRequester = remember { FocusRequester() }
         val focusCoordinator = remember { TvFocusCoordinator<FocusRequester>() }
@@ -1284,6 +1329,7 @@ class TvHomeScreenTest {
                     onSeerrItem = {},
                     myList = myList,
                     onMyListEntry = onMyListEntry,
+                    spotlightAutoAdvance = spotlightAutoAdvance,
                 )
             }
         }

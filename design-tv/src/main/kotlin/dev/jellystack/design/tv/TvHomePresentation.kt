@@ -61,6 +61,31 @@ internal fun moveTvHomeCarouselManually(
 
 private fun TvHomeCarouselState.select(itemId: String?) = if (selectedId == itemId) this else copy(selectedId = itemId)
 
+/** Time a spotlight stays on screen before the hero moves on by itself. */
+internal const val TV_HOME_HERO_AUTO_ADVANCE_MS = 10_000L
+
+/**
+ * The hero only moves on by itself while nothing else claims the stage: a focused row card shows its
+ * own item there, a trailer must not be cut off, and Reduced Motion turns automatic movement off.
+ */
+internal fun shouldAutoAdvanceTvHomeHero(
+    enabled: Boolean,
+    candidateCount: Int,
+    reducedMotion: Boolean,
+    cardStaged: Boolean,
+    trailerActive: Boolean,
+): Boolean = enabled && candidateCount > 1 && !reducedMotion && !cardStaged && !trailerActive
+
+/** Next spotlight for automatic movement; unlike manual moves it wraps around after the last one. */
+internal fun nextTvHomeAutoAdvanceId(
+    candidateIds: List<String>,
+    currentId: String?,
+): String? {
+    if (candidateIds.isEmpty()) return null
+    val currentIndex = candidateIds.indexOf(currentId)
+    return candidateIds[(currentIndex + 1) % candidateIds.size]
+}
+
 internal fun SpotlightCandidate.tvHomeTrailerPreviewItem() = actionItem
 
 internal fun TvTrailerPreviewState.showsTvHomeHeroPreview(

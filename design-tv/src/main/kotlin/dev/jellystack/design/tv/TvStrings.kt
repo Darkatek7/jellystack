@@ -15,6 +15,7 @@ internal data class TvMetadataStrings(
     val frameRate: String,
     val dynamicRange: String,
     val buffer: String,
+    val spotlightPosition: String,
 )
 
 internal data class TvStrings(
@@ -541,6 +542,7 @@ internal data class TvStrings(
                         frameRate = "Frame rate",
                         dynamicRange = "Dynamic range",
                         buffer = "Buffer",
+                        spotlightPosition = "Spotlight %1\$d of %2\$d",
                     ),
                 itemSingular = "item",
                 itemPlural = "items",
@@ -807,6 +809,7 @@ internal data class TvStrings(
                         frameRate = "Bildrate",
                         dynamicRange = "Dynamikumfang",
                         buffer = "Puffer",
+                        spotlightPosition = "Highlight %1\$d von %2\$d",
                     ),
                 itemSingular = "Element",
                 itemPlural = "Elemente",

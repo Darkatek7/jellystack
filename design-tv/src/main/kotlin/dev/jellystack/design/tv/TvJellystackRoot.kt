@@ -1430,6 +1430,7 @@ private fun TvAuthenticatedApp(
                                             entry.jellyfinItem?.let(::openJellyfinDetail)
                                                 ?: entry.savedMedia?.toTvRoute()?.let(::push)
                                         },
+                                        spotlightAutoAdvance = settings.spotlightAutoCycle,
                                     )
                                 is TvRoute.Library -> {
                                     val library = homeState.libraries.firstOrNull { it.id == route.libraryId }
