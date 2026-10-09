@@ -59,7 +59,7 @@ Test at minimum:
 - Left/Right with hidden controls: show the seek bar (with a trickplay thumbnail when the server has one) and seek on release; hold for accelerated scrubbing
 - Left/Right on the focused timeline: seek live, with the same thumbnail
 - Up/Down: show controls and move between player information
-- Back: close dialog, close panel, hide controls, leave player, then focus the navigation rail
+- Back: close dialog, close panel, close the seek bar (dropping a seek that is still held), hide controls, leave player, then focus the navigation rail
 - Hardware Play/Pause, Rewind, Fast Forward, Stop, and Menu are handled explicitly
 
 ## Permissions and platform services

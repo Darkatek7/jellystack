@@ -222,6 +222,11 @@ internal fun TvPlaybackScreen(
     val handlePlaybackBack = {
         when {
             navigation.current != TvPlayerPanel.NONE -> navigation = navigation.back()
+            // Back closes the hidden-controls seek bar first; during a hold it also drops the pending seek.
+            !controlsVisible && hiddenScrubVisible -> {
+                hiddenScrub.clear()
+                hiddenScrubVisible = false
+            }
             controlsVisible -> controlsVisible = false
             else -> onClose()
         }
