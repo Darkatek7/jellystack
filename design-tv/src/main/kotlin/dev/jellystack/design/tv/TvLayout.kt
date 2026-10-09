@@ -30,7 +30,6 @@ internal object TvLayoutTokens {
     val MinimumActionSize = 48.dp
     val LandscapeArtworkWidth = 176.dp
     val LandscapeArtworkHeight = 99.dp
-    val LandscapeMetadataBandHeight = 40.dp
     val CardSpacing = 16.dp
     val FocusHaloPadding = 8.dp
     const val FOCUS_SCALE = 1.055f

@@ -104,10 +104,8 @@ internal data class TvSelectedItemActionLabels(
 internal data class TvCinematicGeometry(
     val artworkWidthDp: Float,
     val artworkHeightDp: Float,
-    val metadataBandHeightDp: Float,
     val cardSpacingDp: Float,
     val focusHaloPaddingDp: Float,
-    val metadataBandOpaque: Boolean,
     val minimumActionSizeDp: Float,
 )
 
@@ -115,10 +113,8 @@ internal fun tvCinematicGeometry(): TvCinematicGeometry =
     TvCinematicGeometry(
         artworkWidthDp = TvLayoutTokens.LandscapeArtworkWidth.value,
         artworkHeightDp = TvLayoutTokens.LandscapeArtworkHeight.value,
-        metadataBandHeightDp = TvLayoutTokens.LandscapeMetadataBandHeight.value,
         cardSpacingDp = TvLayoutTokens.CardSpacing.value,
         focusHaloPaddingDp = TvLayoutTokens.FocusHaloPadding.value,
-        metadataBandOpaque = true,
         minimumActionSizeDp = TvLayoutTokens.MinimumActionSize.value,
     )
 

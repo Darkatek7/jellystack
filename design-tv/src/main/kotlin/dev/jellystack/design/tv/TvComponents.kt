@@ -15,7 +15,6 @@ import androidx.compose.foundation.gestures.BringIntoViewSpec
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -25,7 +24,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -36,7 +34,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.ImageNotSupported
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -429,11 +426,19 @@ internal fun TvMediaCard(
         } else {
             Modifier
         }
-    Column(
+    var imageFailed by remember(imageUrl) { mutableStateOf(false) }
+    val shownImageUrl = imageUrl?.takeUnless { imageFailed }
+    Box(
         modifier =
             modifier
                 .then(if (fillWidth) Modifier.fillMaxWidth() else Modifier.width(cardWidth))
-                .then(interactionModifier)
+                .then(
+                    if (format == TvMediaCardFormat.LANDSCAPE) {
+                        Modifier.height(TvLayoutTokens.LandscapeArtworkHeight)
+                    } else {
+                        Modifier.aspectRatio(aspectRatio)
+                    },
+                ).then(interactionModifier)
                 .bringIntoViewRequester(bringIntoViewRequester)
                 .semantics(mergeDescendants = true) {
                     contentDescription = listOfNotNull(title, subtitle).joinToString(", ")
@@ -456,35 +461,41 @@ internal fun TvMediaCard(
                                     .CornerRadius(2.5.dp.toPx()),
                         )
                     }
-                },
+                }.clip(shape),
     ) {
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .then(
-                        if (format == TvMediaCardFormat.LANDSCAPE) {
-                            Modifier.height(TvLayoutTokens.LandscapeArtworkHeight)
-                        } else {
-                            Modifier.aspectRatio(aspectRatio)
-                        },
-                    ).clip(shape),
-        ) {
-            TvMediaCardContent(
+        TvMediaCardContent(
+            imageUrl = shownImageUrl,
+            artworkFit = artworkFit,
+            onImageError = { imageFailed = true },
+        )
+        if (tvMediaCardShowsText(format, artworkFit, hasImage = shownImageUrl != null, focused = focused)) {
+            TvMediaCardText(
                 title = title,
-                imageUrl = imageUrl,
                 subtitle = subtitle,
-                artworkFit = artworkFit,
-                showMetadataOverlay = format == TvMediaCardFormat.CAST_PORTRAIT,
+                large = format == TvMediaCardFormat.CAST_PORTRAIT,
+                modifier = Modifier.align(Alignment.BottomStart),
             )
-            progress?.let { TvMediaCardProgressBar(it, Modifier.align(Alignment.BottomStart)) }
-            if (watched) TvMediaCardWatchedBadge(Modifier.align(Alignment.TopEnd).padding(8.dp))
         }
-        if (format != TvMediaCardFormat.CAST_PORTRAIT) {
-            TvMediaCardMetadataBand(title = title, subtitle = subtitle)
-        }
+        progress?.let { TvMediaCardProgressBar(it, Modifier.align(Alignment.BottomStart)) }
+        if (watched) TvMediaCardWatchedBadge(Modifier.align(Alignment.TopEnd).padding(8.dp))
     }
 }
+
+/**
+ * Text sits inside the artwork. Posters, and posters fitted into landscape cards, usually carry the title in the
+ * artwork, so they name it only while focused; without artwork every card names its title.
+ */
+private fun tvMediaCardShowsText(
+    format: TvMediaCardFormat,
+    artworkFit: TvMediaCardArtworkFit,
+    hasImage: Boolean,
+    focused: Boolean,
+): Boolean =
+    when {
+        !hasImage || focused -> true
+        format == TvMediaCardFormat.CAST_PORTRAIT -> true
+        else -> format == TvMediaCardFormat.LANDSCAPE && artworkFit == TvMediaCardArtworkFit.CROP
+    }
 
 /** Check mark for watched items; decorative because the card's own semantics are not about state. */
 @Composable
@@ -520,42 +531,12 @@ private fun TvMediaCardProgressBar(
     }
 }
 
+/** The card's artwork, or a placeholder gradient without one; [onImageError] reports artwork that failed to load. */
 @Composable
-private fun TvMediaCardMetadataBand(
-    title: String,
-    subtitle: String?,
-) {
-    Column(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                // Grows with the font scale instead of clipping the subtitle at 150%.
-                .heightIn(min = TvLayoutTokens.LandscapeMetadataBandHeight)
-                .background(Color(0xFF11121B))
-                .padding(horizontal = 12.dp, vertical = 4.dp),
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Text(
-            title,
-            color = TvText,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = TvTextSize.CardTitle,
-        )
-        subtitle?.let {
-            Text(it, color = TvTextMuted, fontSize = TvTextSize.Caption, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-    }
-}
-
-@Composable
-private fun BoxScope.TvMediaCardContent(
-    title: String,
+private fun TvMediaCardContent(
     imageUrl: String?,
-    subtitle: String?,
     artworkFit: TvMediaCardArtworkFit,
-    showMetadataOverlay: Boolean,
+    onImageError: () -> Unit,
 ) {
     if (imageUrl != null && artworkFit == TvMediaCardArtworkFit.CONTAIN_PORTRAIT) {
         AsyncImage(
@@ -563,6 +544,7 @@ private fun BoxScope.TvMediaCardContent(
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
+            onError = { onImageError() },
         )
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.58f)))
         AsyncImage(
@@ -577,6 +559,7 @@ private fun BoxScope.TvMediaCardContent(
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
+            onError = { onImageError() },
         )
     } else {
         Box(
@@ -587,47 +570,56 @@ private fun BoxScope.TvMediaCardContent(
                         listOf(Color(0xFF292A3D), Color(0xFF151622), Color(0xFF30234A)),
                     ),
                 ),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                Icons.Default.ImageNotSupported,
-                contentDescription = null,
-                tint = TvTextMuted,
-                modifier = Modifier.size(38.dp),
-            )
-        }
+        )
     }
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colorStops =
-                        arrayOf(
-                            0f to Color.Transparent,
-                            0.48f to Color.Transparent,
-                            0.72f to Color.Black.copy(alpha = 0.5f),
-                            1f to Color.Black.copy(alpha = 0.94f),
-                        ),
+}
+
+/** Title and subtitle at the bottom of the artwork, over a scrim that keeps them readable on bright images. */
+@Composable
+private fun TvMediaCardText(
+    title: String,
+    subtitle: String?,
+    large: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.verticalGradient(
+                        colorStops =
+                            arrayOf(
+                                0f to Color.Transparent,
+                                0.35f to Color.Black.copy(alpha = 0.55f),
+                                1f to Color.Black.copy(alpha = 0.9f),
+                            ),
+                    ),
+                ).padding(
+                    start = if (large) 14.dp else 10.dp,
+                    end = if (large) 14.dp else 10.dp,
+                    top = if (large) 28.dp else 18.dp,
+                    // Room for the progress bar, so text sits at the same height on every card in a row.
+                    bottom = if (large) 14.dp else 11.dp,
                 ),
-            ),
-    )
-    if (showMetadataOverlay) {
-        Column(
-            modifier = Modifier.align(Alignment.BottomStart).padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
+        verticalArrangement = Arrangement.spacedBy(if (large) 2.dp else 0.dp),
+    ) {
+        Text(
+            title,
+            color = TvText,
+            maxLines = if (large) 2 else 1,
+            overflow = TextOverflow.Ellipsis,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = if (large) TvTextSize.Subtitle else TvTextSize.CardTitle,
+        )
+        subtitle?.let {
             Text(
-                title,
-                color = TvText,
-                maxLines = 2,
+                it,
+                color = TvTextMuted,
+                fontSize = if (large) TvTextSize.BodySmall else TvTextSize.Caption,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = TvTextSize.Subtitle,
             )
-            subtitle?.let {
-                Text(it, color = TvTextMuted, fontSize = TvTextSize.BodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
         }
     }
 }
