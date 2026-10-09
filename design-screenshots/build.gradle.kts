@@ -50,6 +50,9 @@ android {
 
 dependencies {
     implementation(projects.design)
+    // No TV screens are rendered here, but design-tv raises the Compose runtime to the version the
+    // compiled design code calls (Composer.shouldExecute); without it every preview fails to render.
+    implementation(projects.designTv)
     implementation(projects.players)
     implementation(projects.sharedCore)
     screenshotTestImplementation(libs.screenshot.validation.api)
