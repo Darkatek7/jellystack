@@ -147,7 +147,7 @@ private fun TvProfileTile(
                     focusTargetId = "$tagPrefix:${profile.id}:select",
                     providedFocusRequester = focusRequester,
                     onFocusChanged = { focused = it },
-                    showFocusBorder = false,
+                    focusIndication = TvFocusIndication.NO_RING,
                 ).testTag("$tagPrefix:${profile.id}:tile"),
             contentAlignment = Alignment.Center,
         ) {
@@ -299,7 +299,7 @@ private fun TvAddProfileTile(
                     shape = CircleShape,
                     focusTargetId = "profile:add",
                     onFocusChanged = { focused = it },
-                    showFocusBorder = false,
+                    focusIndication = TvFocusIndication.NO_RING,
                 ).testTag("profile:add:tile"),
             contentAlignment = Alignment.Center,
         ) {

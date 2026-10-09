@@ -35,7 +35,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -94,8 +93,9 @@ internal fun tvHomeHeroFade(millis: Int): ContentTransform = fadeIn(tween(millis
 private const val TV_HOME_HERO_FADE_MS = 240
 
 /**
- * The spotlight as one focusable card: text and page dots over [TvHomeBackdrop], no buttons. While it
- * has focus a hint row names the keys; the hero keeps its size, so the rows keep their position.
+ * The spotlight is the whole top of the home screen, from edge to edge and down to the rows: text and page dots
+ * over [TvHomeBackdrop], no buttons and no frame. Focus shows as a hint row that names the keys; the hero keeps
+ * its size, so the rows keep their position.
  */
 @Composable
 internal fun TvHeroCarousel(
@@ -114,7 +114,7 @@ internal fun TvHeroCarousel(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .height(TV_HOME_HERO_HEIGHT_DP.dp)
+                .height(TV_HOME_SPOTLIGHT_HEIGHT)
                 .testTag("tv-home-preview-stage")
                 .onFocusChanged { if (it.hasFocus) callbacks.onHeroFocused() }
                 .focusRequester(primaryFocusRequester)
@@ -129,10 +129,11 @@ internal fun TvHeroCarousel(
                         )
                 }.tvFocusable(
                     onClick = callbacks.onDetails,
-                    shape = TvShapes.Surface,
+                    shape = TV_HOME_SPOTLIGHT_SHAPE,
                     scale = 1f,
                     onFocusChanged = { focused = it },
                     focusTargetId = TV_HOME_PRIMARY_TARGET,
+                    focusIndication = TvFocusIndication.NONE,
                 ),
     ) {
         if (previewing) {
@@ -141,6 +142,7 @@ internal fun TvHeroCarousel(
                 previewSoundEnabled = trailer.soundEnabled,
                 previewProgress = trailer.progress.value,
                 modifier = Modifier.fillMaxSize(),
+                badgeEndPadding = TvLayoutTokens.SafeInsets.horizontal,
             )
         }
         AnimatedContent(
@@ -157,8 +159,11 @@ internal fun TvHeroCarousel(
                     modifier =
                         Modifier
                             .align(Alignment.TopStart)
-                            .padding(start = 28.dp, top = 26.dp, end = 24.dp, bottom = 84.dp)
-                            .fillMaxWidth(0.52f),
+                            .padding(
+                                start = TvLayoutTokens.ContentStart,
+                                top = TvLayoutTokens.SafeInsets.vertical + 26.dp,
+                                bottom = 84.dp,
+                            ).fillMaxWidth(0.5f),
                 )
             }
         }
@@ -166,20 +171,37 @@ internal fun TvHeroCarousel(
             TvHomeSpotlightHints(
                 playLabel = playLabel,
                 detailsLabel = strings.details,
-                modifier = Modifier.align(Alignment.BottomStart).padding(start = 28.dp, bottom = 26.dp),
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = TvLayoutTokens.ContentStart, bottom = 26.dp),
             )
         }
-        val page = model.page
-        if (page.count > 1 && model.showCarouselContext) {
-            TvHomeHeroIndicator(
-                page = page,
-                contentDescription = strings.metadata.spotlightPosition.format(page.index + 1, page.count),
-                // Below the clock, which sits in the screen's top-right corner.
-                modifier = Modifier.align(Alignment.TopEnd).padding(top = 58.dp, end = 16.dp),
-            )
+        // A playing trailer puts its badge in the same corner; the spotlight does not page while it plays.
+        if (model.page.count > 1 && model.showCarouselContext && !previewing) {
+            TvHomeSpotlightPageDots(model.page, strings, Modifier.align(Alignment.BottomEnd))
         }
     }
 }
+
+@Composable
+private fun TvHomeSpotlightPageDots(
+    page: TvHomeHeroPage,
+    strings: TvStrings,
+    modifier: Modifier,
+) {
+    TvHomeHeroIndicator(
+        page = page,
+        contentDescription = strings.metadata.spotlightPosition.format(page.index + 1, page.count),
+        // Level with the key hints, below the clock's corner.
+        modifier = modifier.padding(end = TvLayoutTokens.SafeInsets.horizontal + 16.dp, bottom = 35.dp),
+    )
+}
+
+/** From the screen's top edge down to just above the first row. */
+private val TV_HOME_SPOTLIGHT_HEIGHT = TvLayoutTokens.SafeInsets.vertical + TV_HOME_HERO_HEIGHT_DP.dp
+
+private val TV_HOME_SPOTLIGHT_SHAPE = RoundedCornerShape(0.dp)
 
 private fun Modifier.tvHomeSpotlightKeys(callbacks: TvHomeHeroCallbacks): Modifier =
     onPreviewKeyEvent { event ->
@@ -335,16 +357,15 @@ internal fun TvEmptyHomeHero(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .height(TV_HOME_HERO_HEIGHT_DP.dp)
-                .clip(RoundedCornerShape(20.dp))
-                .background(
-                    Brush.horizontalGradient(
-                        listOf(TvSurfaceRaised, TvPurpleStrong.copy(alpha = 0.32f), TvBackground),
-                    ),
-                ),
+                .height(TV_HOME_SPOTLIGHT_HEIGHT)
+                .background(Brush.verticalGradient(listOf(TvPurpleStrong.copy(alpha = 0.22f), TvBackground))),
     ) {
         Column(
-            modifier = Modifier.align(Alignment.CenterStart).padding(start = 28.dp).fillMaxWidth(0.58f),
+            modifier =
+                Modifier
+                    .align(Alignment.CenterStart)
+                    .padding(start = TvLayoutTokens.ContentStart, top = TvLayoutTokens.SafeInsets.vertical)
+                    .fillMaxWidth(0.58f),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {

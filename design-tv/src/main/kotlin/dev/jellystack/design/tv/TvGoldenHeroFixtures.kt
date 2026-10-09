@@ -63,13 +63,7 @@ internal fun GoldenHomeHero(
         )
     Box(modifier.fillMaxSize().background(TvBackground)) {
         TvHomeBackdrop(model, trailer, image = { GoldenBrightArtwork() })
-        Box(
-            Modifier.fillMaxWidth().padding(
-                start = TvLayoutTokens.ContentStart,
-                end = TvLayoutTokens.SafeInsets.horizontal,
-                top = TvLayoutTokens.SafeInsets.vertical,
-            ),
-        ) {
+        Box(Modifier.fillMaxWidth()) {
             TvHeroCarousel(
                 model = model,
                 trailer = trailer,

@@ -91,6 +91,19 @@ internal const val TV_DETAIL_ACTION_GAP_DP = 14
 internal const val TV_DETAIL_COMPACT_ACTION_HEIGHT_DP = 72
 
 internal val TvDestructiveActionKey = SemanticsPropertyKey<Boolean>("TvDestructiveAction")
+
+/** How a focused element shows that it has focus. */
+internal enum class TvFocusIndication {
+    /** Ring, shadow and a dark fill: buttons and cards. */
+    FULL,
+
+    /** Shadow and fill without the ring, for elements that draw their own focus ring. */
+    NO_RING,
+
+    /** No decoration, for full-bleed areas such as the home spotlight that show focus through their content. */
+    NONE,
+}
+
 private var SemanticsPropertyReceiver.tvDestructiveAction by TvDestructiveActionKey
 
 @Composable
@@ -104,7 +117,7 @@ internal fun Modifier.tvFocusable(
     focusToNavigationRailOnLeft: Boolean = false,
     focusTargetId: String? = null,
     providedFocusRequester: FocusRequester? = null,
-    showFocusBorder: Boolean = true,
+    focusIndication: TvFocusIndication = TvFocusIndication.FULL,
 ): Modifier {
     val rememberedFocusRequester = remember { FocusRequester() }
     val restorationRequester = providedFocusRequester ?: rememberedFocusRequester
@@ -171,7 +184,7 @@ internal fun Modifier.tvFocusable(
                     }
                     onFocusChanged?.invoke(focused)
                 },
-                showFocusBorder = showFocusBorder,
+                focusIndication = focusIndication,
             ).tvReturnToNavigationRailOnLeft(focusToNavigationRailOnLeft)
             .onGloballyPositioned { coordinates ->
                 horizontalCenter = coordinates.boundsInRoot().center.x
@@ -186,7 +199,7 @@ private fun Modifier.tvFocusDecoration(
     scale: Float,
     onFocused: (() -> Unit)?,
     onFocusChanged: ((Boolean) -> Unit)?,
-    showFocusBorder: Boolean = true,
+    focusIndication: TvFocusIndication,
 ): Modifier {
     var focused by remember { mutableStateOf(false) }
     val focusAppearance = LocalTvFocusAppearance.current
@@ -208,17 +221,17 @@ private fun Modifier.tvFocusDecoration(
         }.graphicsLayer {
             scaleX = animatedScale
             scaleY = animatedScale
-            shadowElevation = if (focused) 12.dp.toPx() else 0f
+            shadowElevation = if (focused && focusIndication != TvFocusIndication.NONE) 12.dp.toPx() else 0f
             this.shape = shape
             ambientShadowColor = Color.Black
             spotShadowColor = TvPurpleStrong
         }.drawBehind {
-            if (focused) {
+            if (focused && focusIndication != TvFocusIndication.NONE) {
                 drawOutline(shape.createOutline(size, layoutDirection, this), Color.Black.copy(alpha = 0.24f))
             }
         }.drawWithContent {
             drawContent()
-            if (focused && showFocusBorder) {
+            if (focused && focusIndication == TvFocusIndication.FULL) {
                 val outline = shape.createOutline(size, layoutDirection, this)
                 drawOutline(
                     outline,

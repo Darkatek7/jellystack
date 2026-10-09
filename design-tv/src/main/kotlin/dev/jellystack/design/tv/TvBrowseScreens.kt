@@ -369,15 +369,7 @@ internal fun TvHomeScreen(
         },
     ) {
         heroModel?.let { TvHomeBackdrop(it, heroTrailer) }
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .padding(
-                    start = TvLayoutTokens.ContentStart,
-                    end = TvLayoutTokens.SafeInsets.horizontal,
-                    top = TvLayoutTokens.SafeInsets.vertical,
-                ),
-        ) {
+        Box(Modifier.fillMaxWidth()) {
             if (heroModel != null) {
                 TvHeroCarousel(
                     model = heroModel,
