@@ -73,6 +73,21 @@ class TvHomePresentationTest {
     }
 
     @Test
+    fun spotlightKeepsOnlyTheFirstTenCandidatesOfLargeLibraries() {
+        val library = (1..25).map { index -> item("library-$index") }
+
+        val result =
+            buildTvHomeHeroPresentation(
+                state = JellyfinHomeState(libraryItems = library),
+                homeSections = HomeSectionsState.Unavailable,
+                now = now,
+            )
+
+        assertEquals(TvHomeHeroMode.LIBRARY, result.mode)
+        assertEquals((1..10).map { index -> "library-$index" }, result.candidates.map { it.actionItem.id })
+    }
+
+    @Test
     fun datedAdditionalOnlyFallbackUsesLibraryMode() {
         val local = item("dated-local", dateCreated = "2026-08-12T12:00:00Z")
 

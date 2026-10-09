@@ -49,14 +49,7 @@ internal fun TvHomeBackdrop(
                 modifier = Modifier.fillMaxSize(),
                 label = "tv-home-backdrop",
             ) { shown ->
-                image(
-                    jellyfinImageUrl(
-                        model.imageBaseUrl,
-                        model.imageAccessToken,
-                        resolveTvHeroBackdrop(shown),
-                        TvArtworkSize.HERO,
-                    ),
-                )
+                image(tvHeroBackdropUrl(model, shown))
             }
         }
         Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(colorStops = TV_HOME_BACKDROP_SIDE_SCRIM)))
@@ -95,15 +88,15 @@ private val TV_HOME_BACKDROP_BOTTOM_SCRIM =
         1f to TvBackground,
     )
 
+/** The placeholder stays underneath, so a backdrop that is missing or fails to load still leaves a backdrop. */
 @Composable
 private fun TvHomeBackdropImage(backdropUrl: String?) {
-    if (backdropUrl == null) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(Brush.linearGradient(listOf(Color(0xFF171824), Color(0xFF2B2342), Color(0xFF11121A)))),
-        )
-    } else {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Brush.linearGradient(listOf(Color(0xFF171824), Color(0xFF2B2342), Color(0xFF11121A)))),
+    )
+    if (backdropUrl != null) {
         AsyncImage(
             model = backdropUrl,
             contentDescription = null,
@@ -138,6 +131,26 @@ internal fun rememberTvClockLabel(): String {
     val nowMs = rememberTvClockMs()
     val format = DateFormat.getTimeFormat(LocalContext.current)
     return format.format(Date(nowMs))
+}
+
+private fun tvHeroBackdropUrl(
+    model: TvHomeHeroModel,
+    item: JellyfinItem,
+): String? {
+    val artwork = resolveTvHeroBackdrop(item)
+    return if (artwork != null) {
+        jellyfinImageUrl(model.imageBaseUrl, model.imageAccessToken, artwork, TvArtworkSize.HERO)
+    } else {
+        // Items from some sources arrive without image tags; the server still serves an untagged backdrop.
+        jellyfinImageUrl(
+            baseUrl = model.imageBaseUrl,
+            token = model.imageAccessToken,
+            itemId = item.seriesId?.takeIf(String::isNotBlank) ?: item.id,
+            tag = null,
+            type = "Backdrop",
+            maxWidth = TvArtworkSize.HERO.maxWidth,
+        )
+    }
 }
 
 private fun resolveTvHeroBackdrop(item: JellyfinItem): TvJellyfinArtwork? {

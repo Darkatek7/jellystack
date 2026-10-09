@@ -131,7 +131,19 @@ internal fun tvHomeJellyfinDestination(item: JellyfinItem): TvHomeJellyfinDestin
         TvHomeJellyfinDestination.Detail(item)
     }
 
+/** The spotlight pages through at most this many titles, so its page dots stay one short row. */
+internal const val TV_HOME_HERO_MAX_CANDIDATES = 10
+
 internal fun buildTvHomeHeroPresentation(
+    state: JellyfinHomeState,
+    homeSections: HomeSectionsState,
+    now: Instant,
+): TvHomeHeroPresentation {
+    val presentation = buildUncappedTvHomeHeroPresentation(state, homeSections, now)
+    return presentation.copy(candidates = presentation.candidates.take(TV_HOME_HERO_MAX_CANDIDATES))
+}
+
+private fun buildUncappedTvHomeHeroPresentation(
     state: JellyfinHomeState,
     homeSections: HomeSectionsState,
     now: Instant,
