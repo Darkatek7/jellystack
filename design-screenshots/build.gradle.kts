@@ -50,7 +50,6 @@ android {
 
 dependencies {
     implementation(projects.design)
-    implementation(projects.designTv)
     implementation(projects.players)
     implementation(projects.sharedCore)
     screenshotTestImplementation(libs.screenshot.validation.api)

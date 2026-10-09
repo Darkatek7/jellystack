@@ -24,6 +24,7 @@ No Jellystack backend exists: the app talks only to servers the user configures.
 | `design` | Phone/tablet Compose UI and Compose resources. Composition root: `JellystackRoot.kt`. |
 | `design-tv` | Compose for TV UI. Composition root: `TvJellystackRoot.kt`. Does not depend on `design`. |
 | `design-screenshots` | Screenshot tests for `design` with checked-in reference PNGs. |
+| `design-tv-screenshots` | Screenshot tests for the production `design-tv` components (fixtures in `TvGoldenFixtures.kt`). |
 | `app-android`, `app-tv`, `app-ios` | Thin platform hosts: Activity/lifecycle, permissions, platform Koin module, packaging. |
 | `testing`, `tools` | JVM-only leftovers (unused fixtures module, API generator scaffold). Do not build on them without reading `docs/tech-debt.md`. |
 
@@ -43,6 +44,7 @@ JDK 17, Android SDK 36. Always run Gradle from the repository root.
 ./gradlew :<module>:testDebugUnitTest         # unit tests of one module
 ./gradlew :shared-network:jvmTest             # shared-network uses its JVM target for tests
 ./gradlew :design-screenshots:updateDebugScreenshotTest   # after intended visual changes
+./gradlew :design-tv-screenshots:updateDebugScreenshotTest   # same for TV UI
 ```
 
 The full CI gate is listed in `docs/building.md` and mirrors `.github/workflows/ci.yml`. Before finishing a change, run `spotlessCheck detekt` plus the unit tests of every module you touched; for UI changes also validate screenshots.

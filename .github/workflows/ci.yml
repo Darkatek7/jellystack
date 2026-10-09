@@ -57,6 +57,7 @@ jobs:
           verifyUniqueAndroidVersionCodes
           :app-tv:verifyTvReleaseManifestPermissions
           :design-screenshots:validateDebugScreenshotTest
+          :design-tv-screenshots:validateDebugScreenshotTest
           :app-android:assembleDebug
           :app-tv:assembleDebug
           --stacktrace
