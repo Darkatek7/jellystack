@@ -35,6 +35,8 @@ enum class TvGoldenFixture {
     PLAYER_CONTROLS,
     PLAYER_SCRUB,
     PLAYER_UP_NEXT,
+    HOME_HERO,
+    DETAIL_HERO,
 }
 
 /** Screenshot-test entry point; production code never calls it. */
@@ -47,6 +49,10 @@ fun JellystackTvGoldenFixture(
     val strings = TvStrings.current(language)
     if (fixture in GOLDEN_PLAYER_FIXTURES) {
         JellystackTvTheme { GoldenPlayer(strings, fixture, modifier) }
+        return
+    }
+    if (fixture == TvGoldenFixture.DETAIL_HERO) {
+        JellystackTvTheme { GoldenDetailHero(strings, modifier) }
         return
     }
     JellystackTvTheme {
@@ -62,7 +68,12 @@ fun JellystackTvGoldenFixture(
             when (fixture) {
                 TvGoldenFixture.LANDSCAPE_CARDS -> GoldenLandscapeCards(strings)
                 TvGoldenFixture.PORTRAIT_CARDS -> GoldenPortraitCards()
-                TvGoldenFixture.PLAYER_CONTROLS, TvGoldenFixture.PLAYER_SCRUB, TvGoldenFixture.PLAYER_UP_NEXT -> Unit
+                TvGoldenFixture.HOME_HERO -> GoldenHomeHero(strings)
+                TvGoldenFixture.PLAYER_CONTROLS,
+                TvGoldenFixture.PLAYER_SCRUB,
+                TvGoldenFixture.PLAYER_UP_NEXT,
+                TvGoldenFixture.DETAIL_HERO,
+                -> Unit
             }
         }
     }
@@ -148,7 +159,7 @@ private fun goldenEpisode(
     number: Int,
 ) = goldenItem("Episode", name).copy(seriesName = "Harbor Lights", parentIndexNumber = 2, indexNumber = number)
 
-private fun goldenItem(
+internal fun goldenItem(
     type: String,
     name: String,
 ): JellyfinItem =

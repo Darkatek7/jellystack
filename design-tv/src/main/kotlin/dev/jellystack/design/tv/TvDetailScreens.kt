@@ -38,12 +38,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.LocalMovies
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -73,7 +67,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import androidx.tv.material3.Icon
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import dev.jellystack.core.coroutines.runSuspendCatching
@@ -725,7 +718,7 @@ internal fun TvDetailFocusLayout(
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .height(520.dp)
+                    .height(TV_DETAIL_HERO_HEIGHT_DP.dp)
                     .testTag("tv-detail-hero")
                     .semantics { contentDescription = heroContentDescription },
             ) {
@@ -830,6 +823,38 @@ internal fun TvJellyfinDetailScreen(
             tvRatingLabel(currentDetail.communityRating),
             currentDetail.primaryVideoResolution()?.label,
         )
+    val heroModel =
+        TvDetailHeroModel(
+            title = currentDetail.name,
+            backdropUrl =
+                jellyfinImageUrl(
+                    homeState.imageBaseUrl,
+                    homeState.imageAccessToken,
+                    heroId,
+                    backdropTag ?: currentDetail.primaryImageTag,
+                    if (backdropTag != null) "Backdrop" else "Primary",
+                    TvArtworkSize.HERO.maxWidth,
+                ),
+            logoUrl =
+                logoTag?.takeIf { titlePresentation.useGraphicLogo }?.let { tag ->
+                    jellyfinImageUrl(
+                        homeState.imageBaseUrl,
+                        homeState.imageAccessToken,
+                        logoId,
+                        tag,
+                        "Logo",
+                        TvArtworkSize.LOGO.maxWidth,
+                    )
+                },
+            titleColor = titlePresentation.textColor,
+            subtitle =
+                if (currentItem.type.equals("Episode", true)) {
+                    "${currentItem.seriesName.orEmpty()}  •  " +
+                        "S${currentItem.parentIndexNumber ?: 0} E${currentItem.indexNumber ?: 0}"
+                } else {
+                    currentDetail.genres.take(4).joinToString("  •  ")
+                },
+        )
     val uiState =
         buildTvJellyfinDetailUiState(
             routeKey = route.itemId,
@@ -848,131 +873,50 @@ internal fun TvJellyfinDetailScreen(
         heroContentDescription = currentDetail.name,
         modifier = modifier,
         heroContent = { primaryActionModifier, actionRowModifier ->
-            AsyncImage(
-                model =
-                    jellyfinImageUrl(
-                        homeState.imageBaseUrl,
-                        homeState.imageAccessToken,
-                        heroId,
-                        backdropTag ?: currentDetail.primaryImageTag,
-                        if (backdropTag != null) "Backdrop" else "Primary",
-                        TvArtworkSize.HERO.maxWidth,
-                    ),
-                contentDescription = currentDetail.name,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-            )
-            Box(
-                Modifier.fillMaxSize().background(
-                    Brush.horizontalGradient(listOf(TvBackground.copy(0.96f), TvBackground.copy(0.68f), Color.Transparent)),
-                ),
-            )
-            Box(
-                Modifier.fillMaxSize().background(
-                    Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.08f), TvBackground.copy(alpha = 0.12f), TvBackground)),
-                ),
-            )
-            Column(
-                Modifier.align(Alignment.BottomStart).padding(start = 108.dp, end = 48.dp, bottom = 38.dp).widthIn(max = 760.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                if (titlePresentation.useGraphicLogo) {
-                    AsyncImage(
-                        model =
-                            jellyfinImageUrl(
-                                homeState.imageBaseUrl,
-                                homeState.imageAccessToken,
-                                logoId,
-                                checkNotNull(logoTag),
-                                "Logo",
-                                TvArtworkSize.LOGO.maxWidth,
-                            ),
-                        contentDescription = currentDetail.name,
-                        modifier = Modifier.widthIn(max = 380.dp).heightIn(max = 120.dp),
-                        contentScale = ContentScale.Fit,
-                    )
-                } else {
-                    Text(
-                        currentDetail.name,
-                        color = titlePresentation.textColor,
-                        fontSize = 46.sp,
-                        lineHeight = 49.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 2,
-                    )
-                }
-                if (currentItem.type.equals("Episode", true)) {
-                    Text(
-                        "${currentItem.seriesName.orEmpty()}  •  " +
-                            "S${currentItem.parentIndexNumber ?: 0} E${currentItem.indexNumber ?: 0}",
-                        color = TvTextMuted,
-                        fontSize = 19.sp,
-                    )
-                } else {
-                    Text(currentDetail.genres.take(4).joinToString("  •  "), color = TvTextMuted, fontSize = 19.sp)
-                }
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(TV_DETAIL_ACTION_GAP_DP.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    TvActionButton(
-                        if (hasResumePosition) strings.continueLabel else strings.play,
-                        primary = true,
-                        leading = { Icon(Icons.Default.PlayArrow, null, tint = Color(0xFF251450)) },
-                        onClick = { playbackLauncher.play(currentItem, currentDetail) },
-                        modifier = primaryActionModifier.then(actionRowModifier).width(TV_DETAIL_PRIMARY_ACTION_WIDTH_DP.dp),
-                    )
-                    TvCompactActionButton(
-                        label = strings.favorite,
-                        onClick = { scope.launch { browseCoordinator.toggleFavorite(currentItem) } },
-                        icon =
-                            if (currentItem.id in homeState.favorites ||
-                                currentDetail.isFavorite
-                            ) {
-                                Icons.Default.Favorite
-                            } else {
-                                Icons.Default.FavoriteBorder
-                            },
-                        selected = currentItem.id in homeState.favorites || currentDetail.isFavorite,
-                        modifier = actionRowModifier,
-                    )
-                    TvCompactActionButton(
-                        label = strings.watched,
-                        icon = Icons.Default.CheckCircle,
-                        selected = currentDetail.isPlayed,
-                        onClick = {
-                            scope.launch {
-                                detail = repository.setPlayedStatus(currentItem.id, !currentDetail.isPlayed)
-                            }
-                        },
-                        modifier = actionRowModifier,
-                    )
-                    trailer?.let { source ->
-                        TvCompactActionButton(
-                            label = strings.trailer,
-                            icon = Icons.Default.LocalMovies,
-                            onClick = {
-                                when (source) {
-                                    is DetailTrailerSource.Local -> {
-                                        scope.launch {
-                                            val environment = environmentProvider.current() ?: return@launch
-                                            playbackController.play(PlaybackRequest.from(source.item, source.detail), environment)
-                                            onPlaybackStarted()
-                                        }
-                                    }
-                                    is DetailTrailerSource.YouTube ->
-                                        source.trailer.url?.let { trailerUrl ->
-                                            trailerError = runCatching { uriHandler.openUri(trailerUrl) }.isFailure
-                                        }
+            TvDetailHero(heroModel) {
+                TvDetailHeroActions(
+                    state =
+                        TvDetailHeroActionsState(
+                            resume = hasResumePosition,
+                            favorite = currentItem.id in homeState.favorites || currentDetail.isFavorite,
+                            played = currentDetail.isPlayed,
+                            trailerError = trailerError,
+                        ),
+                    callbacks =
+                        TvDetailHeroActionCallbacks(
+                            onPlay = { playbackLauncher.play(currentItem, currentDetail) },
+                            onToggleFavorite = { scope.launch { browseCoordinator.toggleFavorite(currentItem) } },
+                            onTogglePlayed = {
+                                scope.launch {
+                                    detail = repository.setPlayedStatus(currentItem.id, !currentDetail.isPlayed)
                                 }
                             },
-                            modifier = actionRowModifier,
-                        )
-                    }
-                }
-                if (trailerError) {
-                    Text(strings.trailerOpenFailed, color = Color(0xFFFFA59E), fontSize = 16.sp)
-                }
+                            onTrailer =
+                                trailer?.let { source ->
+                                    {
+                                        when (source) {
+                                            is DetailTrailerSource.Local -> {
+                                                scope.launch {
+                                                    val environment = environmentProvider.current() ?: return@launch
+                                                    playbackController.play(
+                                                        PlaybackRequest.from(source.item, source.detail),
+                                                        environment,
+                                                    )
+                                                    onPlaybackStarted()
+                                                }
+                                            }
+                                            is DetailTrailerSource.YouTube ->
+                                                source.trailer.url?.let { trailerUrl ->
+                                                    trailerError = runCatching { uriHandler.openUri(trailerUrl) }.isFailure
+                                                }
+                                        }
+                                    }
+                                },
+                        ),
+                    strings = strings,
+                    primaryActionModifier = primaryActionModifier,
+                    actionRowModifier = actionRowModifier,
+                )
             }
         },
     ) { bodyFocusModifier, sectionFocusModifiers ->
