@@ -1,5 +1,9 @@
 package dev.jellystack.design.tv
 
+import dev.jellystack.core.jellyfin.JellyfinChannelLayout
+import dev.jellystack.core.jellyfin.JellyfinDynamicRange
+import dev.jellystack.core.jellyfin.JellyfinImmersiveAudio
+import dev.jellystack.core.jellyfin.JellyfinMediaFeatures
 import dev.jellystack.core.jellyseerr.JellyseerrMediaStatus
 import dev.jellystack.core.jellyseerr.JellyseerrRecommendationRail
 import dev.jellystack.core.jellyseerr.JellyseerrRequestStatus
@@ -46,6 +50,40 @@ internal fun JellyseerrMediaStatus?.label(strings: TvStrings): String =
         JellyseerrMediaStatus.DELETED,
         -> strings.availabilityUnavailable
     }
+
+// Format names such as Dolby Vision, DTS:X and 5.1 are not translated either.
+internal fun JellyfinDynamicRange.label(): String =
+    when (this) {
+        JellyfinDynamicRange.DOLBY_VISION -> "Dolby Vision"
+        JellyfinDynamicRange.HDR10_PLUS -> "HDR10+"
+        JellyfinDynamicRange.HDR10 -> "HDR10"
+        JellyfinDynamicRange.HLG -> "HLG"
+        JellyfinDynamicRange.HDR -> "HDR"
+    }
+
+internal fun JellyfinImmersiveAudio.label(): String =
+    when (this) {
+        JellyfinImmersiveAudio.DOLBY_ATMOS -> "Dolby Atmos"
+        JellyfinImmersiveAudio.DTS_X -> "DTS:X"
+    }
+
+internal fun JellyfinChannelLayout.label(): String =
+    when (this) {
+        JellyfinChannelLayout.MONO -> "Mono"
+        JellyfinChannelLayout.STEREO -> "Stereo"
+        JellyfinChannelLayout.SURROUND_5_1 -> "5.1"
+        JellyfinChannelLayout.SURROUND_7_1 -> "7.1"
+    }
+
+/** Detail badges in a fixed order: resolution, HDR format, immersive audio, surround, captions. */
+internal fun JellyfinMediaFeatures.badgeLabels(strings: TvStrings): List<String> =
+    listOfNotNull(
+        resolution?.label,
+        dynamicRange?.label(),
+        immersiveAudio?.label(),
+        surround?.label(),
+        strings.metadata.captionsBadge.takeIf { hearingImpairedSubtitles },
+    )
 
 internal fun PlaybackMode.label(strings: TvStrings): String =
     when (this) {

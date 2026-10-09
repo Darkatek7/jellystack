@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.platform.LocalContext
+import dev.jellystack.core.jellyfin.jellyfinChannelLayout
 import dev.jellystack.players.AudioTrack
 import dev.jellystack.players.PlaybackExtrasState
 import dev.jellystack.players.PlaybackSegment
@@ -40,21 +41,11 @@ internal fun PlaybackState.Active.toTvPlayerOsdModel(
 internal fun tvAudioButtonLabel(track: AudioTrack?): String? {
     track ?: return null
     val language = tvLanguageName(track.language) ?: track.title?.takeIf(String::isNotBlank)
-    return listOfNotNull(language, tvChannelLayout(track.channels)).joinToString(" ").ifBlank { null }
+    return listOfNotNull(language, jellyfinChannelLayout(track.channels)?.label()).joinToString(" ").ifBlank { null }
 }
 
 internal fun tvSubtitleButtonLabel(track: SubtitleTrack): String =
     tvLanguageName(track.language) ?: track.title?.takeIf(String::isNotBlank) ?: track.format.name
-
-/** Common channel layouts by channel count; other counts are left out rather than guessed. */
-internal fun tvChannelLayout(channels: Int?): String? =
-    when (channels) {
-        1 -> "Mono"
-        2 -> "Stereo"
-        6 -> "5.1"
-        8 -> "7.1"
-        else -> null
-    }
 
 private fun tvLanguageName(code: String?): String? {
     val tag = code?.trim()?.takeIf(String::isNotBlank) ?: return null

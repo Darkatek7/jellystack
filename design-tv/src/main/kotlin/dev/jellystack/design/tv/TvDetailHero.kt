@@ -83,17 +83,22 @@ internal fun BoxScope.TvDetailHero(
             )
         }
         Text(model.subtitle, color = TvTextMuted, fontSize = 19.sp)
+        if (model.badges.isNotEmpty()) TvTechBadgeRow(model.badges)
         actions()
     }
 }
 
-/** What the detail hero shows above its actions; [logoUrl] replaces the title text when the item has a logo. */
+/**
+ * What the detail hero shows above its actions; [logoUrl] replaces the title text when the item has a logo,
+ * and [badges] are format labels such as 4K or Dolby Atmos.
+ */
 internal data class TvDetailHeroModel(
     val title: String,
     val backdropUrl: String?,
     val logoUrl: String?,
     val titleColor: Color,
     val subtitle: String,
+    val badges: List<String> = emptyList(),
 )
 
 /** Toggle states of the detail actions; [trailerError] shows the line below them. */

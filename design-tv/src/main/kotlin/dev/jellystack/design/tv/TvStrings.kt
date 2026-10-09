@@ -16,6 +16,7 @@ internal data class TvMetadataStrings(
     val dynamicRange: String,
     val buffer: String,
     val spotlightPosition: String,
+    val captionsBadge: String,
 )
 
 /** Labels of the video player: skip prompts, the clock, chapters, and the up-next card. */
@@ -561,6 +562,7 @@ internal data class TvStrings(
                         dynamicRange = "Dynamic range",
                         buffer = "Buffer",
                         spotlightPosition = "Spotlight %1\$d of %2\$d",
+                        captionsBadge = "CC",
                     ),
                 itemSingular = "item",
                 itemPlural = "items",
@@ -836,6 +838,7 @@ internal data class TvStrings(
                         dynamicRange = "Dynamikumfang",
                         buffer = "Puffer",
                         spotlightPosition = "Highlight %1\$d von %2\$d",
+                        captionsBadge = "UT",
                     ),
                 itemSingular = "Element",
                 itemPlural = "Elemente",

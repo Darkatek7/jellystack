@@ -31,11 +31,13 @@ fun jellyfinVideoResolution(
 
 /** Resolution of the first video stream of the first media source, ignoring streams without dimensions. */
 fun JellyfinItemDetail.primaryVideoResolution(): JellyfinVideoResolution? =
+    primaryVideoStream()?.let { jellyfinVideoResolution(it.width, it.height) }
+
+internal fun JellyfinItemDetail.primaryVideoStream(): JellyfinMediaStream? =
     mediaSources
         .firstOrNull()
         ?.streams
         ?.firstOrNull { it.type == JellyfinMediaStreamType.VIDEO && ((it.width ?: 0) > 0 || (it.height ?: 0) > 0) }
-        ?.let { jellyfinVideoResolution(it.width, it.height) }
 
 private const val UHD_MIN_WIDTH = 3200
 private const val UHD_MIN_HEIGHT = 1800

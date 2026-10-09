@@ -14,6 +14,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.unit.dp
+import dev.jellystack.core.jellyfin.JellyfinChannelLayout
+import dev.jellystack.core.jellyfin.JellyfinDynamicRange
+import dev.jellystack.core.jellyfin.JellyfinImmersiveAudio
+import dev.jellystack.core.jellyfin.JellyfinMediaFeatures
+import dev.jellystack.core.jellyfin.JellyfinVideoResolution
 
 // Hero states for TvGoldenFixture.HOME_HERO and DETAIL_HERO: fictional titles, no artwork, no trailer.
 
@@ -72,6 +77,14 @@ internal fun GoldenDetailHero(
                     logoUrl = null,
                     titleColor = TvText,
                     subtitle = "Drama  •  Mystery  •  Thriller",
+                    badges =
+                        JellyfinMediaFeatures(
+                            resolution = JellyfinVideoResolution.UHD_4K,
+                            dynamicRange = JellyfinDynamicRange.DOLBY_VISION,
+                            immersiveAudio = JellyfinImmersiveAudio.DOLBY_ATMOS,
+                            surround = JellyfinChannelLayout.SURROUND_7_1,
+                            hearingImpairedSubtitles = true,
+                        ).badgeLabels(strings),
                 ),
             ) {
                 TvDetailHeroActions(

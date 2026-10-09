@@ -79,7 +79,7 @@ import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
 import dev.jellystack.core.jellyfin.JellyfinHomeState
 import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.JellyfinItemDetail
-import dev.jellystack.core.jellyfin.primaryVideoResolution
+import dev.jellystack.core.jellyfin.mediaFeatures
 import dev.jellystack.core.jellyseerr.JellyseerrCreateSelection
 import dev.jellystack.core.jellyseerr.JellyseerrMediaDetailState
 import dev.jellystack.core.jellyseerr.JellyseerrMediaType
@@ -821,7 +821,6 @@ internal fun TvJellyfinDetailScreen(
             currentDetail.runTimeTicks?.let { strings.metadata.minutesShort.format(it / TV_TICKS_PER_MINUTE) },
             tvVisibleOfficialRating(currentDetail.officialRating),
             tvRatingLabel(currentDetail.communityRating),
-            currentDetail.primaryVideoResolution()?.label,
         )
     val heroModel =
         TvDetailHeroModel(
@@ -847,6 +846,7 @@ internal fun TvJellyfinDetailScreen(
                     )
                 },
             titleColor = titlePresentation.textColor,
+            badges = currentDetail.mediaFeatures().badgeLabels(strings),
             subtitle =
                 if (currentItem.type.equals("Episode", true)) {
                     "${currentItem.seriesName.orEmpty()}  •  " +
