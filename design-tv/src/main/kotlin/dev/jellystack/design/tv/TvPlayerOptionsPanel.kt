@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
@@ -73,6 +74,7 @@ internal fun TvPlayerHeader(
     backDescription: String,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    clock: TvPlayerClock? = null,
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
@@ -90,6 +92,14 @@ internal fun TvPlayerHeader(
             Text(primaryTitle, color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
             secondaryTitle?.let {
                 Text(it, color = Color.White.copy(alpha = 0.72f), fontSize = 17.sp, maxLines = 1)
+            }
+        }
+        clock?.let {
+            Column(horizontalAlignment = Alignment.End) {
+                Text(it.time, color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                it.endsAt?.let { endsAt ->
+                    Text(endsAt, color = Color.White.copy(alpha = 0.72f), fontSize = 17.sp, maxLines = 1)
+                }
             }
         }
     }
@@ -180,6 +190,7 @@ internal fun TvPlayerOptionsPanel(
     onStatsToggled: (Boolean) -> Unit,
     syncPlay: SyncPlayCoordinator,
     modifier: Modifier = Modifier,
+    chapterSummary: String? = null,
 ) {
     val firstFocus = remember(navigation.current) { FocusRequester() }
     val audioFocus = remember { FocusRequester() }
@@ -188,8 +199,10 @@ internal fun TvPlayerOptionsPanel(
     val speedFocus = remember { FocusRequester() }
     val statsFocus = remember { FocusRequester() }
     val syncFocus = remember { FocusRequester() }
+    val chaptersFocus = remember { FocusRequester() }
     val restoreRequester =
         when (navigation.restoreFocusTo) {
+            TvPlayerPanel.CHAPTERS -> chaptersFocus
             TvPlayerPanel.AUDIO -> audioFocus
             TvPlayerPanel.SUBTITLES -> subtitleFocus
             TvPlayerPanel.QUALITY -> qualityFocus
@@ -241,6 +254,18 @@ internal fun TvPlayerOptionsPanel(
                             { onOpenFromMore(TvPlayerPanel.SUBTITLES) },
                             Modifier.focusRequester(subtitleFocus),
                         )
+                    }
+                    chapterSummary?.let { summary ->
+                        item {
+                            TvPlayerOptionRow(
+                                Icons.Default.Bookmarks,
+                                strings.player.chapters,
+                                summary,
+                                false,
+                                { onOpenFromMore(TvPlayerPanel.CHAPTERS) },
+                                Modifier.focusRequester(chaptersFocus),
+                            )
+                        }
                     }
                     item {
                         TvPlayerOptionRow(
@@ -466,13 +491,13 @@ internal fun TvPlayerOptionsPanel(
                         }
                     }
                 }
-            TvPlayerPanel.NONE -> Unit
+            TvPlayerPanel.CHAPTERS, TvPlayerPanel.EPISODES, TvPlayerPanel.NONE -> Unit
         }
     }
 }
 
 @Composable
-private fun TvPlayerPanelHeader(
+internal fun TvPlayerPanelHeader(
     title: String,
     root: Boolean,
     strings: TvStrings,
@@ -568,5 +593,7 @@ private fun TvPlayerPanel.title(strings: TvStrings): String =
         TvPlayerPanel.QUALITY -> strings.quality
         TvPlayerPanel.SPEED -> strings.playbackSpeed
         TvPlayerPanel.SYNCPLAY -> strings.syncPlay
+        TvPlayerPanel.CHAPTERS -> strings.player.chapters
+        TvPlayerPanel.EPISODES -> strings.episodes
         TvPlayerPanel.NONE -> ""
     }

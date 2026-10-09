@@ -7,6 +7,9 @@ import dev.jellystack.network.jellyfin.JellyfinClientIdentity
 import dev.jellystack.network.jellyfin.JellyfinMediaSegmentsApi
 import dev.jellystack.network.jellyfin.JellyfinMediaSegmentsResult
 import dev.jellystack.network.jellyfin.JellyfinMediaSegmentsService
+import dev.jellystack.network.jellyfin.JellyfinPlaybackExtrasApi
+import dev.jellystack.network.jellyfin.JellyfinPlaybackExtrasResult
+import dev.jellystack.network.jellyfin.JellyfinPlaybackExtrasService
 import dev.jellystack.players.PlaybackContinuationState
 import dev.jellystack.players.PlaybackPhase
 import dev.jellystack.players.PlaybackSegmentAction
@@ -24,6 +27,7 @@ import kotlinx.coroutines.launch
 internal enum class TvPlaybackActionKind {
     SEGMENT_SKIP,
     PLAY_NEXT,
+    WATCH_CREDITS,
 }
 
 internal data class TvPlaybackActionModel(
@@ -31,6 +35,18 @@ internal data class TvPlaybackActionModel(
     val kind: TvPlaybackActionKind,
     val label: String,
     val segmentAction: PlaybackSegmentAction? = null,
+    /** Up-next cards: a small heading, the next episode, and its still. */
+    val kicker: String? = null,
+    val detail: String? = null,
+    val imageUrl: String? = null,
+)
+
+/** What the prompts depend on besides the segment and continuation state. */
+internal data class TvPlaybackActionContext(
+    val isEpisode: Boolean,
+    val phase: PlaybackPhase,
+    /** From [dev.jellystack.players.shouldOfferUpNext]: credits started or the episode is about to end. */
+    val upNextDue: Boolean,
 )
 
 internal data class TvPlaybackPromptState(
@@ -52,13 +68,16 @@ internal class TvPlaybackPromptCoordinator(
     val state: StateFlow<TvPlaybackPromptState> = mutableState.asStateFlow()
 
     private var currentActionIds: Set<String> = emptySet()
+    private var persistentActionIds: Set<String> = emptySet()
     private val presentedActionIds = mutableSetOf<String>()
     private val expiryJobs = mutableMapOf<String, Job>()
 
     fun onPresentationChanged(
         actionIds: List<String>,
         controlsVisible: Boolean,
+        persistentActionIds: Set<String> = emptySet(),
     ) {
+        this.persistentActionIds = persistentActionIds
         val updatedIds = actionIds.toCollection(linkedSetOf())
         val removedIds = currentActionIds - updatedIds
         removedIds.forEach { actionId ->
@@ -89,6 +108,7 @@ internal class TvPlaybackPromptCoordinator(
             TvPlaybackPromptState(
                 visibleActionIds = mutableState.value.visibleActionIds + actionId,
             )
+        if (actionId in persistentActionIds) return
         expiryJobs[actionId] =
             scope.launch {
                 delay(STANDALONE_PROMPT_MILLIS)
@@ -125,14 +145,34 @@ internal class TvJellyfinMediaSegmentsService(
     }
 }
 
+internal class TvJellyfinPlaybackExtrasService(
+    private val environmentProvider: JellyfinEnvironmentProvider,
+    private val client: HttpClient,
+) : JellyfinPlaybackExtrasService {
+    override suspend fun fetchExtras(itemId: String): JellyfinPlaybackExtrasResult {
+        val environment = environmentProvider.current() ?: return JellyfinPlaybackExtrasResult.Unavailable
+        return JellyfinPlaybackExtrasApi(
+            client = client,
+            baseUrl = environment.baseUrl,
+            accessToken = environment.accessToken,
+            userId = environment.userId,
+            identity =
+                JellyfinClientIdentity(
+                    appVersion = environment.clientVersion,
+                    deviceName = environment.deviceName,
+                    deviceId = environment.deviceId ?: "unknown",
+                ),
+        ).fetchExtras(itemId)
+    }
+}
+
 internal fun tvPlaybackActionModels(
     segmentState: PlaybackSegmentState,
     continuationState: PlaybackContinuationState,
-    isEpisode: Boolean,
-    playbackPhase: PlaybackPhase,
+    context: TvPlaybackActionContext,
     strings: TvStrings,
 ): List<TvPlaybackActionModel> {
-    if (playbackPhase == PlaybackPhase.Ended) return emptyList()
+    if (context.phase == PlaybackPhase.Ended) return emptyList()
     return buildList {
         segmentState.actions.forEach { action ->
             add(
@@ -144,14 +184,23 @@ internal fun tvPlaybackActionModels(
                 ),
             )
         }
-        val hasActiveOutro = segmentState.activeSegments.any { it.type == PlaybackSegmentType.OUTRO }
         val nextTarget = continuationState.nextTarget
-        if (isEpisode && hasActiveOutro && nextTarget != null) {
+        if (context.isEpisode && context.upNextDue && nextTarget != null) {
             add(
                 TvPlaybackActionModel(
                     id = "tv-player-action:play-next:${nextTarget.mediaId}",
                     kind = TvPlaybackActionKind.PLAY_NEXT,
-                    label = strings.playNextEpisode,
+                    label = strings.player.playNextEpisode,
+                    kicker = strings.player.upNext,
+                    detail = listOfNotNull(nextTarget.subtitle, nextTarget.title).joinToString(" · "),
+                    imageUrl = nextTarget.imageUrl,
+                ),
+            )
+            add(
+                TvPlaybackActionModel(
+                    id = "tv-player-action:watch-credits:${nextTarget.mediaId}",
+                    kind = TvPlaybackActionKind.WATCH_CREDITS,
+                    label = strings.player.watchCredits,
                 ),
             )
         }
@@ -243,9 +292,9 @@ internal fun tvSegmentSkipSettingModels(
 
 private fun PlaybackSegmentType.skipLabel(strings: TvStrings): String =
     when (this) {
-        PlaybackSegmentType.INTRO -> strings.skipIntro
-        PlaybackSegmentType.RECAP -> strings.skipRecap
-        PlaybackSegmentType.PREVIEW -> strings.skipPreview
-        PlaybackSegmentType.COMMERCIAL -> strings.skipCommercial
-        PlaybackSegmentType.OUTRO -> strings.skipCredits
+        PlaybackSegmentType.INTRO -> strings.player.skipIntro
+        PlaybackSegmentType.RECAP -> strings.player.skipRecap
+        PlaybackSegmentType.PREVIEW -> strings.player.skipPreview
+        PlaybackSegmentType.COMMERCIAL -> strings.player.skipCommercial
+        PlaybackSegmentType.OUTRO -> strings.player.skipCredits
     }

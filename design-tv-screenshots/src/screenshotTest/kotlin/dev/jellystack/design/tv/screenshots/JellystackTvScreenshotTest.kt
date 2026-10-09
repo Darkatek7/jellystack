@@ -37,3 +37,23 @@ fun TvPortraitCards() = JellystackTvGoldenFixture(TvGoldenFixture.PORTRAIT_CARDS
 @Preview(name = "German 150% 1080p", device = TV_1080P, locale = "de", fontScale = 1.5f)
 @Composable
 fun TvPortraitCardsGermanLarge() = JellystackTvGoldenFixture(TvGoldenFixture.PORTRAIT_CARDS, AppLanguage.GERMAN)
+
+@PreviewTest
+@TvResolutionMatrix
+@Composable
+fun TvPlayerControls() = JellystackTvGoldenFixture(TvGoldenFixture.PLAYER_CONTROLS)
+
+@PreviewTest
+@Preview(name = "German 150% 1080p", device = TV_1080P, locale = "de", fontScale = 1.5f)
+@Composable
+fun TvPlayerControlsGermanLarge() = JellystackTvGoldenFixture(TvGoldenFixture.PLAYER_CONTROLS, AppLanguage.GERMAN)
+
+@PreviewTest
+@Preview(name = "1080p", device = TV_1080P)
+@Composable
+fun TvPlayerScrub() = JellystackTvGoldenFixture(TvGoldenFixture.PLAYER_SCRUB)
+
+@PreviewTest
+@Preview(name = "1080p", device = TV_1080P)
+@Composable
+fun TvPlayerUpNext() = JellystackTvGoldenFixture(TvGoldenFixture.PLAYER_UP_NEXT)

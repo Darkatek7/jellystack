@@ -13,7 +13,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /** Playback-facing boundary for chapters and trickplay thumbnails of an item. */
-interface JellyfinPlaybackExtrasService {
+fun interface JellyfinPlaybackExtrasService {
     suspend fun fetchExtras(itemId: String): JellyfinPlaybackExtrasResult
 }
 

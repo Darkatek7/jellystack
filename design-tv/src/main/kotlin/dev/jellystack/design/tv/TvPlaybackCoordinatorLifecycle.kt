@@ -8,7 +8,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import dev.jellystack.network.jellyfin.JellyfinPlaybackExtrasResult
+import dev.jellystack.network.jellyfin.JellyfinPlaybackExtrasService
 import dev.jellystack.players.PlaybackContinuationCoordinator
+import dev.jellystack.players.PlaybackExtrasCoordinator
 import dev.jellystack.players.PlaybackSegmentCoordinator
 import dev.jellystack.players.PlaybackState
 import kotlinx.coroutines.CoroutineScope
@@ -21,6 +24,7 @@ internal data class TvJellyfinPlaybackIdentity(
 internal data class TvPlaybackCoordinators(
     val segment: PlaybackSegmentCoordinator,
     val continuation: PlaybackContinuationCoordinator,
+    val extras: PlaybackExtrasCoordinator,
 )
 
 @Composable
@@ -29,6 +33,9 @@ internal fun rememberTvPlaybackCoordinators(
     playbackState: PlaybackState,
     createSegmentCoordinator: (CoroutineScope) -> PlaybackSegmentCoordinator,
     createContinuationCoordinator: (CoroutineScope) -> PlaybackContinuationCoordinator,
+    createExtrasCoordinator: (CoroutineScope) -> PlaybackExtrasCoordinator = { scope ->
+        PlaybackExtrasCoordinator(scope, JellyfinPlaybackExtrasService { JellyfinPlaybackExtrasResult.Unavailable })
+    },
 ): TvPlaybackCoordinators {
     val scope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -37,12 +44,14 @@ internal fun rememberTvPlaybackCoordinators(
             TvPlaybackCoordinators(
                 segment = createSegmentCoordinator(scope),
                 continuation = createContinuationCoordinator(scope),
+                extras = createExtrasCoordinator(scope),
             )
         }
 
     LaunchedEffect(playbackState, coordinators) {
         coordinators.segment.onPlaybackState(playbackState)
         coordinators.continuation.onPlaybackState(playbackState)
+        coordinators.extras.onPlaybackState(playbackState)
     }
     DisposableEffect(lifecycleOwner, coordinators) {
         val lifecycle = lifecycleOwner.lifecycle
@@ -69,6 +78,7 @@ internal fun rememberTvPlaybackCoordinators(
             coordinators.continuation.setForeground(false)
             coordinators.segment.release()
             coordinators.continuation.release()
+            coordinators.extras.release()
         }
     }
 

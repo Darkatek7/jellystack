@@ -107,6 +107,7 @@ import dev.jellystack.players.AndroidPlayerEngine
 import dev.jellystack.players.PlaybackContinuationCoordinator
 import dev.jellystack.players.PlaybackContinuationTarget
 import dev.jellystack.players.PlaybackController
+import dev.jellystack.players.PlaybackExtrasCoordinator
 import dev.jellystack.players.PlaybackRequest
 import dev.jellystack.players.PlaybackSeekAdapter
 import dev.jellystack.players.PlaybackSegmentCoordinator
@@ -1075,7 +1076,12 @@ private fun TvAuthenticatedApp(
                         val next = selectNextTvEpisode(episodes, mediaId) ?: return@resolve null
                         val detail = browseRepository.getItemDetail(next.id) ?: return@resolve null
                         val environment = environmentProvider.current() ?: return@resolve null
-                        PlaybackContinuationTarget(next.id, next.episodeTitle ?: next.name) {
+                        PlaybackContinuationTarget(
+                            mediaId = next.id,
+                            title = next.episodeTitle ?: next.name,
+                            subtitle = "S${next.parentIndexNumber ?: 0} E${next.indexNumber ?: 0}",
+                            imageUrl = jellyfinImageUrl(homeState.imageBaseUrl, homeState.imageAccessToken, next.id, next.primaryImageTag),
+                        ) {
                             playbackCommandRouter.playNext {
                                 playbackController.play(
                                     PlaybackRequest.from(next, detail, startPolicy = PlaybackStartPolicy.RESTART),
@@ -1088,11 +1094,16 @@ private fun TvAuthenticatedApp(
                     },
                 )
             },
+            createExtrasCoordinator = { coordinatorScope ->
+                PlaybackExtrasCoordinator(coordinatorScope, TvJellyfinPlaybackExtrasService(environmentProvider, segmentHttpClient))
+            },
         )
     val segmentCoordinator = playbackCoordinators.segment
     val continuationCoordinator = playbackCoordinators.continuation
     val segmentState by segmentCoordinator.state.collectAsStateWithLifecycle()
     val continuationState by continuationCoordinator.state.collectAsStateWithLifecycle()
+    val extrasState by playbackCoordinators.extras.state.collectAsStateWithLifecycle()
+    val timelineSegments by segmentCoordinator.timelineSegments.collectAsStateWithLifecycle()
     val syncPlayAccess =
         (sessionState as? JellyfinSessionState.Ready)?.capabilities?.syncPlayAccess
             ?: JellyfinSyncPlayAccess.NONE
@@ -1646,6 +1657,17 @@ private fun TvAuthenticatedApp(
                                         seekForwardSeconds = settings.seekForwardSeconds,
                                         subtitleTextSize = settings.subtitleTextSize,
                                         subtitleBackground = settings.subtitleBackground,
+                                        extrasState = extrasState,
+                                        timelineSegments = timelineSegments,
+                                        imageBaseUrl = homeState.imageBaseUrl,
+                                        imageAccessToken = homeState.imageAccessToken,
+                                        onSeekTo = playbackCommandRouter::seekTo,
+                                        loadEpisodes = { seriesId ->
+                                            browseRepository.episodesForSeries(seriesId).ifEmpty {
+                                                browseRepository.refreshEpisodesForSeries(seriesId)
+                                            }
+                                        },
+                                        onPlayEpisode = playbackLauncher::play,
                                         onSkipSegment = segmentCoordinator::skip,
                                         onPlayNext = continuationCoordinator::playNext,
                                         strings = strings,

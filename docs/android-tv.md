@@ -56,7 +56,8 @@ Test at minimum:
 ## Remote controls
 
 - Center with hidden controls: pause and show controls, resume when paused, or activate a visible Skip/Next prompt
-- Left/Right: seek when controls are hidden; hold for accelerated scrubbing
+- Left/Right with hidden controls: show the seek bar (with a trickplay thumbnail when the server has one) and seek on release; hold for accelerated scrubbing
+- Left/Right on the focused timeline: seek live, with the same thumbnail
 - Up/Down: show controls and move between player information
 - Back: close dialog, close panel, hide controls, leave player, then focus the navigation rail
 - Hardware Play/Pause, Rewind, Fast Forward, Stop, and Menu are handled explicitly
