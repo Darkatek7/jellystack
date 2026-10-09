@@ -181,9 +181,7 @@ internal data class TvHomeFocusRow(
 internal enum class TvHomeVerticalDirection { UP, DOWN }
 
 internal sealed interface TvHomeFocusOrigin {
-    data object HeroCarousel : TvHomeFocusOrigin
-
-    data object HeroActions : TvHomeFocusOrigin
+    data object Hero : TvHomeFocusOrigin
 
     data class Row(
         val id: String,
@@ -192,8 +190,6 @@ internal sealed interface TvHomeFocusOrigin {
 }
 
 internal sealed interface TvHomeFocusDestination {
-    data object HeroCarousel : TvHomeFocusDestination
-
     data object HeroPrimary : TvHomeFocusDestination
 
     data class Row(
@@ -278,7 +274,6 @@ internal class TvHomeVerticalFocusCoordinator(
         val move = pendingMove?.takeIf { it.requestId == requestId } ?: return null
         val focused =
             when (val destination = move.destination) {
-                TvHomeFocusDestination.HeroCarousel -> requestTarget(TV_HOME_HERO_TARGET)
                 TvHomeFocusDestination.HeroPrimary -> requestTarget(TV_HOME_PRIMARY_TARGET)
                 is TvHomeFocusDestination.Row -> {
                     val row = rows.firstOrNull { it.id == destination.id }
@@ -310,14 +305,8 @@ internal class TvHomeVerticalFocusCoordinator(
         direction: TvHomeVerticalDirection,
     ): TvHomeFocusDestination? =
         when (origin) {
-            TvHomeFocusOrigin.HeroCarousel ->
-                if (direction == TvHomeVerticalDirection.DOWN) TvHomeFocusDestination.HeroPrimary else null
-            TvHomeFocusOrigin.HeroActions ->
-                if (direction == TvHomeVerticalDirection.UP) {
-                    TvHomeFocusDestination.HeroCarousel
-                } else {
-                    rows.firstOrNull()?.destination()
-                }
+            TvHomeFocusOrigin.Hero ->
+                if (direction == TvHomeVerticalDirection.DOWN) rows.firstOrNull()?.destination() else null
             is TvHomeFocusOrigin.Row -> {
                 val currentIndex = rows.indexOfFirst { it.id == origin.id }
                 if (currentIndex < 0) {

@@ -396,7 +396,7 @@ class TvHomeScreenTest {
     }
 
     @Test
-    fun previewStageIsNotFocusableAndFallsBackToARealActionWhenNoRowsExist() {
+    fun spotlightCardTakesEntryFocusWhenNoRowsExist() {
         lateinit var engine: AndroidPlayerEngine
         val first = item("first", "First hero", dateCreated = (Clock.System.now() - 1.days).toString())
         composeRule.setContent {
@@ -409,15 +409,13 @@ class TvHomeScreenTest {
             )
         }
 
-        val stage = composeRule.onNodeWithTag("tv-home-preview-stage").fetchSemanticsNode()
-        assertTrue(!stage.config.contains(SemanticsActions.RequestFocus))
-        assertTrue(!stage.config.contains(SemanticsActions.OnClick))
-        composeRule.onNodeWithContentDescription("Play").assertIsFocused()
+        val stage = composeRule.onNodeWithTag(SPOTLIGHT).assertIsFocused().fetchSemanticsNode()
+        assertTrue(stage.config.contains(SemanticsActions.OnClick))
         composeRule.runOnIdle(engine::release)
     }
 
     @Test
-    fun previewActionsAndFirstServerRowFollowTheCompleteVerticalFocusPath() {
+    fun spotlightAndFirstServerRowFollowTheCompleteVerticalFocusPath() {
         lateinit var engine: AndroidPlayerEngine
         val recent = item("recent", "Recent", dateCreated = (Clock.System.now() - 1.days).toString())
         val rowItem = item("row-item", "First row item")
@@ -440,17 +438,16 @@ class TvHomeScreenTest {
             )
         }
 
-        val play = composeRule.onNodeWithContentDescription("Play")
-        val details = composeRule.onNodeWithContentDescription("Details")
+        val spotlight = composeRule.onNodeWithTag(SPOTLIGHT)
         val card = composeRule.onAllNodes(cardWithDescription("First row item"))[0]
         card.assertIsFocused().performKeyInput { pressKey(Key.DirectionUp) }
-        play.assertIsFocused().performKeyInput { pressKey(Key.DirectionRight) }
-        details.assertIsFocused()
-        assertTrue(play.getUnclippedBoundsInRoot().top < card.getUnclippedBoundsInRoot().top)
+        spotlight.assertIsFocused().performKeyInput { pressKey(Key.DirectionUp) }
+        spotlight.assertIsFocused()
+        assertTrue(spotlight.getUnclippedBoundsInRoot().top < card.getUnclippedBoundsInRoot().top)
 
-        details.performKeyInput { pressKey(Key.DirectionDown) }
+        spotlight.performKeyInput { pressKey(Key.DirectionDown) }
         card.assertIsFocused().performKeyInput { pressKey(Key.DirectionUp) }
-        play.assertIsFocused()
+        spotlight.assertIsFocused()
         composeRule.runOnIdle(engine::release)
     }
 
@@ -471,15 +468,16 @@ class TvHomeScreenTest {
 
         val card = composeRule.onAllNodes(cardWithDescription("Continue row item"))[0].assertIsFocused()
         card.performKeyInput { pressKey(Key.DirectionUp) }
-        composeRule.onNodeWithContentDescription("Play").assertIsFocused().performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.onNodeWithTag(SPOTLIGHT).assertIsFocused().performKeyInput { pressKey(Key.DirectionDown) }
         card.assertIsFocused()
         composeRule.runOnIdle(engine::release)
     }
 
     @Test
-    fun upFromPlayReachesThePageDotsWhichPageTheSpotlightForPlay() {
+    fun rightPagesTheSpotlightAndItsKeysActOnTheShownItem() {
         lateinit var engine: AndroidPlayerEngine
         val playedIds = mutableListOf<String>()
+        val detailIds = mutableListOf<String>()
         val first = item("first", "First hero", dateCreated = (Clock.System.now() - 1.days).toString())
         val second = item("second", "Second hero", dateCreated = (Clock.System.now() - 2.days).toString())
         composeRule.setContent {
@@ -490,22 +488,21 @@ class TvHomeScreenTest {
                 sections = HomeSectionsState.Unavailable,
                 engine = engine,
                 onPlayItem = { playedIds += it.id },
+                onItem = { detailIds += it.id },
             )
         }
 
-        composeRule.onNodeWithContentDescription("Play").assertIsFocused().performKeyInput { pressKey(Key.DirectionUp) }
+        val spotlight = composeRule.onNodeWithTag(SPOTLIGHT).assertIsFocused()
+        spotlight.performKeyInput { pressKey(Key.DirectionRight) }
         composeRule.waitForIdle()
-        val dots = composeRule.onNodeWithTag(TV_HOME_HERO_INDICATOR_TAG).assertIsFocused()
-        dots.performKeyInput { pressKey(Key.DirectionRight) }
-        composeRule.waitForIdle()
-        composeRule.onNodeWithContentDescription("Spotlight 2 of 2").assertIsFocused()
+        composeRule.onNodeWithContentDescription("Spotlight 2 of 2").assertExists()
         composeRule.onAllNodesWithText("Second hero", useUnmergedTree = true).assertCountEquals(1)
 
-        composeRule.onNodeWithTag(TV_HOME_HERO_INDICATOR_TAG).performKeyInput { pressKey(Key.DirectionDown) }
-        composeRule.waitForIdle()
-        composeRule.onNodeWithContentDescription("Play").assertIsFocused().performKeyInput { pressKey(Key.DirectionCenter) }
+        spotlight.assertIsFocused().performKeyInput { pressKey(Key.DirectionCenter) }
+        spotlight.performKeyInput { pressKey(Key.MediaPlayPause) }
 
         composeRule.runOnIdle {
+            assertEquals(listOf("second"), detailIds)
             assertEquals(listOf("second"), playedIds)
             engine.release()
         }
@@ -532,13 +529,12 @@ class TvHomeScreenTest {
             )
         }
 
-        val play = composeRule.onNodeWithContentDescription("Play").assertIsFocused()
-        play.performKeyInput { pressKey(Key.DirectionLeft) }
+        val spotlight = composeRule.onNodeWithTag(SPOTLIGHT).assertIsFocused()
+        spotlight.performKeyInput { pressKey(Key.DirectionLeft) }
         composeRule.waitForIdle()
         composeRule.onAllNodesWithText("First hero", useUnmergedTree = true).assertCountEquals(1)
-        play.assertIsFocused().performKeyInput { pressKey(Key.DirectionCenter) }
-        play.performKeyInput { pressKey(Key.DirectionRight) }
-        composeRule.onNodeWithContentDescription("Details").assertIsFocused().performKeyInput { pressKey(Key.DirectionCenter) }
+        spotlight.assertIsFocused().performKeyInput { pressKey(Key.MediaPlayPause) }
+        spotlight.performKeyInput { pressKey(Key.DirectionCenter) }
 
         composeRule.runOnIdle {
             assertEquals(1, railOpenRequests)
@@ -654,7 +650,7 @@ class TvHomeScreenTest {
     }
 
     @Test
-    fun playingPreviewRendersInTheNonFocusableHomeStage() {
+    fun playingPreviewRendersBehindTheHomeSpotlight() {
         lateinit var engine: AndroidPlayerEngine
         val episode =
             item("episode", "Episode", dateCreated = (Clock.System.now() - 1.days).toString()).copy(
@@ -827,7 +823,7 @@ class TvHomeScreenTest {
     }
 
     @Test
-    fun previewStageDoesNotEmitLegacyHeroFocusEvents() {
+    fun focusedSpotlightDoesNotEmitPreviewEvents() {
         lateinit var engine: AndroidPlayerEngine
         val events = mutableListOf<String>()
         val first = item("first", "First hero", dateCreated = (Clock.System.now() - 1.days).toString())
@@ -845,11 +841,9 @@ class TvHomeScreenTest {
         }
         composeRule.runOnIdle { events.clear() }
 
-        val stage = composeRule.onNodeWithTag("tv-home-preview-stage").fetchSemanticsNode()
+        composeRule.onNodeWithTag(SPOTLIGHT).assertIsFocused()
 
         composeRule.runOnIdle {
-            assertTrue(!stage.config.contains(SemanticsActions.RequestFocus))
-            assertTrue(!stage.config.contains(SemanticsActions.OnClick))
             assertEquals(emptyList<String>(), events)
             engine.release()
         }
@@ -881,7 +875,7 @@ class TvHomeScreenTest {
         }
 
         composeRule
-            .onNodeWithContentDescription("Play")
+            .onNodeWithTag(SPOTLIGHT)
             .performSemanticsAction(SemanticsActions.RequestFocus)
             .performKeyInput { pressKey(Key.DirectionDown) }
         for (index in 1 until 6) {
@@ -936,7 +930,7 @@ class TvHomeScreenTest {
         }
 
         composeRule
-            .onNodeWithContentDescription("Play")
+            .onNodeWithTag(SPOTLIGHT)
             .performSemanticsAction(SemanticsActions.RequestFocus)
             .performKeyInput { pressKey(Key.DirectionDown) }
         composeRule
@@ -1335,3 +1329,5 @@ class TvHomeScreenTest {
         }
     }
 }
+
+private const val SPOTLIGHT = "tv-home-preview-stage"

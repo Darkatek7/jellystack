@@ -77,10 +77,9 @@ internal fun GoldenHomeHero(
                     TvHomeHeroCallbacks(
                         onPlay = {},
                         onDetails = {},
-                        onActionVerticalMove = {},
+                        onVerticalMove = {},
                         onHeroFocused = {},
                         onCarouselMove = {},
-                        onIndicatorVerticalMove = {},
                     ),
                 strings = strings,
                 primaryFocusRequester = remember { FocusRequester() },

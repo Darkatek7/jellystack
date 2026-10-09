@@ -240,8 +240,6 @@ internal fun TvHomeScreen(
     val homeFocusLocations =
         buildMap {
             put(TV_HOME_PRIMARY_TARGET, TvLazyFocusLocation(verticalIndex = 0))
-            if (heroCandidates.size > 1) put(TV_HOME_HERO_TARGET, TvLazyFocusLocation(verticalIndex = 0))
-            put(TV_HOME_DETAILS_TARGET, TvLazyFocusLocation(verticalIndex = 0))
             focusRows.forEach { row ->
                 row.itemIds.forEachIndexed { index, itemId ->
                     put(
@@ -294,9 +292,7 @@ internal fun TvHomeScreen(
         { origin, direction, previewItem ->
             val previewOwner =
                 when (origin) {
-                    TvHomeFocusOrigin.HeroCarousel,
-                    TvHomeFocusOrigin.HeroActions,
-                    -> TvTrailerPreviewOwner.HERO
+                    TvHomeFocusOrigin.Hero -> TvTrailerPreviewOwner.HERO
                     is TvHomeFocusOrigin.Row -> TvTrailerPreviewOwner.CARD
                 }
             val move =
@@ -390,7 +386,7 @@ internal fun TvHomeScreen(
                         TvHomeHeroCallbacks(
                             onPlay = { onPlayItem(heroModel.stageItem) },
                             onDetails = { onItem(heroModel.stageItem) },
-                            onActionVerticalMove = { direction -> onVerticalMove(TvHomeFocusOrigin.HeroActions, direction, null) },
+                            onVerticalMove = { direction -> onVerticalMove(TvHomeFocusOrigin.Hero, direction, null) },
                             onHeroFocused = {
                                 // The hero shows its own spotlight again, so Play and Details act on it.
                                 focusedStageItem = null
@@ -399,9 +395,6 @@ internal fun TvHomeScreen(
                             onCarouselMove = { direction ->
                                 val move = moveTvHomeCarouselManually(candidateIds, carouselState, direction)
                                 if (move.openNavigationRail) openNavigationRail?.invoke() else carouselState = move.state
-                            },
-                            onIndicatorVerticalMove = { direction ->
-                                onVerticalMove(TvHomeFocusOrigin.HeroCarousel, direction, null)
                             },
                         ),
                     strings = strings,
@@ -413,7 +406,7 @@ internal fun TvHomeScreen(
                     strings = strings,
                     onRefresh = onRefresh,
                     primaryFocusRequester = heroPrimaryFocusRequester,
-                    onVerticalMove = { direction -> onVerticalMove(TvHomeFocusOrigin.HeroActions, direction, null) },
+                    onVerticalMove = { direction -> onVerticalMove(TvHomeFocusOrigin.Hero, direction, null) },
                 )
             }
         }

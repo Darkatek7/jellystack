@@ -49,29 +49,12 @@ class TvHomeFocusCoordinatorTest {
     }
 
     @Test
-    fun heroCarouselDownTargetsPrimaryAction() {
+    fun heroUpDoesNotStartFocusRequestAndDownTargetsFirstNonEmptyMediaRow() {
         val coordinator = TvHomeVerticalFocusCoordinator(rows)
 
-        val move = coordinator.beginMove(TvHomeFocusOrigin.HeroCarousel, TvHomeVerticalDirection.DOWN)
+        assertNull(coordinator.beginMove(TvHomeFocusOrigin.Hero, TvHomeVerticalDirection.UP))
+        val row = coordinator.beginMove(TvHomeFocusOrigin.Hero, TvHomeVerticalDirection.DOWN)
 
-        assertEquals(TvHomeFocusDestination.HeroPrimary, move?.destination)
-    }
-
-    @Test
-    fun heroCarouselUpDoesNotStartFocusRequest() {
-        val coordinator = TvHomeVerticalFocusCoordinator(rows)
-
-        assertNull(coordinator.beginMove(TvHomeFocusOrigin.HeroCarousel, TvHomeVerticalDirection.UP))
-    }
-
-    @Test
-    fun heroActionsUpTargetsCarouselAndDownTargetsFirstNonEmptyMediaRow() {
-        val coordinator = TvHomeVerticalFocusCoordinator(rows)
-
-        val carousel = coordinator.beginMove(TvHomeFocusOrigin.HeroActions, TvHomeVerticalDirection.UP)
-        val row = coordinator.beginMove(TvHomeFocusOrigin.HeroActions, TvHomeVerticalDirection.DOWN)
-
-        assertEquals(TvHomeFocusDestination.HeroCarousel, carousel?.destination)
         assertEquals(TvHomeFocusDestination.Row("portrait", 1, "portrait-1", 0), row?.destination)
     }
 
@@ -139,7 +122,7 @@ class TvHomeFocusCoordinatorTest {
     @Test
     fun unrelatedModelReplacementPreservesPendingRequest() {
         val coordinator = TvHomeVerticalFocusCoordinator(rows)
-        val pending = coordinator.beginMove(TvHomeFocusOrigin.HeroActions, TvHomeVerticalDirection.DOWN)!!
+        val pending = coordinator.beginMove(TvHomeFocusOrigin.Hero, TvHomeVerticalDirection.DOWN)!!
 
         val reconciled = coordinator.replaceRows(rows.map { it.copy() })
 
@@ -247,12 +230,12 @@ class TvHomeFocusCoordinatorTest {
 
         val move =
             coordinator.beginMove(
-                origin = TvHomeFocusOrigin.HeroActions,
-                direction = TvHomeVerticalDirection.UP,
+                origin = TvHomeFocusOrigin.Hero,
+                direction = TvHomeVerticalDirection.DOWN,
                 onAccepted = { cancellations += 1 },
             )
 
-        assertEquals(TvHomeFocusDestination.HeroCarousel, move?.destination)
+        assertEquals(TvHomeFocusDestination.Row("portrait", 1, "portrait-1", 0), move?.destination)
         assertEquals(1, cancellations)
     }
 

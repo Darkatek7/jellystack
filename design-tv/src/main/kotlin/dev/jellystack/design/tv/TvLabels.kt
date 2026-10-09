@@ -16,6 +16,9 @@ internal const val TV_BRAND_SEERR = "Seerr"
 internal const val TV_BRAND_TMDB = "TMDB"
 internal const val TV_BRAND_IMDB = "IMDb"
 
+// The label printed on the remote's centre key.
+internal const val TV_KEY_OK = "OK"
+
 /** User-facing labels for shared enums so no raw enum names reach the screen. */
 internal fun JellyseerrRecommendationRail.label(strings: TvStrings): String =
     when (this) {
