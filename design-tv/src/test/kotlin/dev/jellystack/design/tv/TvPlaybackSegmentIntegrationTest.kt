@@ -117,7 +117,7 @@ class TvPlaybackSegmentIntegrationTest {
     }
 
     @Test
-    fun endedPlaybackSuppressesOutroAndPreparedNextActions() {
+    fun endedEpisodeKeepsOnlyTheUpNextCardWithItsCountdown() {
         val segmentState =
             PlaybackSegmentState(
                 mediaId = "episode-1",
@@ -135,11 +135,34 @@ class TvPlaybackSegmentIntegrationTest {
             tvPlaybackActionModels(
                 segmentState,
                 continuation,
-                context = TvPlaybackActionContext(isEpisode = true, phase = PlaybackPhase.Ended, upNextDue = true),
+                context = TvPlaybackActionContext(isEpisode = true, phase = PlaybackPhase.Ended, upNextDue = false),
                 strings = strings(),
             )
 
-        assertTrue(actions.isEmpty())
+        assertEquals(
+            listOf("tv-player-action:play-next:episode-2", "tv-player-action:cancel-autoplay:episode-2"),
+            actions.map { it.id },
+        )
+        assertEquals(strings().playingInSeconds.format(10), actions.first().label)
+
+        val cancelled =
+            tvPlaybackActionModels(
+                segmentState,
+                continuation.copy(countdownSecondsRemaining = null),
+                context = TvPlaybackActionContext(isEpisode = true, phase = PlaybackPhase.Ended, upNextDue = false),
+                strings = strings(),
+            )
+        assertEquals(listOf(TvPlaybackActionKind.PLAY_NEXT), cancelled.map { it.kind })
+        assertEquals(strings().player.playNextEpisode, cancelled.single().label)
+
+        val movie =
+            tvPlaybackActionModels(
+                segmentState,
+                continuation,
+                context = TvPlaybackActionContext(isEpisode = false, phase = PlaybackPhase.Ended, upNextDue = false),
+                strings = strings(),
+            )
+        assertTrue(movie.isEmpty())
     }
 
     @Test

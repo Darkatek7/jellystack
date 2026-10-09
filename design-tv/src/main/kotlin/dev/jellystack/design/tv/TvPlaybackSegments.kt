@@ -11,6 +11,7 @@ import dev.jellystack.network.jellyfin.JellyfinPlaybackExtrasApi
 import dev.jellystack.network.jellyfin.JellyfinPlaybackExtrasResult
 import dev.jellystack.network.jellyfin.JellyfinPlaybackExtrasService
 import dev.jellystack.players.PlaybackContinuationState
+import dev.jellystack.players.PlaybackContinuationTarget
 import dev.jellystack.players.PlaybackPhase
 import dev.jellystack.players.PlaybackSegmentAction
 import dev.jellystack.players.PlaybackSegmentState
@@ -28,6 +29,7 @@ internal enum class TvPlaybackActionKind {
     SEGMENT_SKIP,
     PLAY_NEXT,
     WATCH_CREDITS,
+    CANCEL_AUTOPLAY,
 }
 
 internal data class TvPlaybackActionModel(
@@ -172,7 +174,10 @@ internal fun tvPlaybackActionModels(
     context: TvPlaybackActionContext,
     strings: TvStrings,
 ): List<TvPlaybackActionModel> {
-    if (context.phase == PlaybackPhase.Ended) return emptyList()
+    val nextTarget = continuationState.nextTarget?.takeIf { context.isEpisode }
+    if (context.phase == PlaybackPhase.Ended) {
+        return tvEndedUpNextActions(nextTarget, continuationState.countdownSecondsRemaining, strings)
+    }
     return buildList {
         segmentState.actions.forEach { action ->
             add(
@@ -184,18 +189,8 @@ internal fun tvPlaybackActionModels(
                 ),
             )
         }
-        val nextTarget = continuationState.nextTarget
-        if (context.isEpisode && context.upNextDue && nextTarget != null) {
-            add(
-                TvPlaybackActionModel(
-                    id = "tv-player-action:play-next:${nextTarget.mediaId}",
-                    kind = TvPlaybackActionKind.PLAY_NEXT,
-                    label = strings.player.playNextEpisode,
-                    kicker = strings.player.upNext,
-                    detail = listOfNotNull(nextTarget.subtitle, nextTarget.title).joinToString(" · "),
-                    imageUrl = nextTarget.imageUrl,
-                ),
-            )
+        if (context.upNextDue && nextTarget != null) {
+            add(tvUpNextAction(nextTarget, strings.player.playNextEpisode, strings))
             add(
                 TvPlaybackActionModel(
                     id = "tv-player-action:watch-credits:${nextTarget.mediaId}",
@@ -206,6 +201,40 @@ internal fun tvPlaybackActionModels(
         }
     }
 }
+
+/** After the end the card stays and carries the autoplay countdown, which can be cancelled. */
+private fun tvEndedUpNextActions(
+    nextTarget: PlaybackContinuationTarget?,
+    countdownSeconds: Int?,
+    strings: TvStrings,
+): List<TvPlaybackActionModel> {
+    nextTarget ?: return emptyList()
+    val label = countdownSeconds?.let { strings.playingInSeconds.format(it) } ?: strings.player.playNextEpisode
+    return listOfNotNull(
+        tvUpNextAction(nextTarget, label, strings),
+        countdownSeconds?.let {
+            TvPlaybackActionModel(
+                id = "tv-player-action:cancel-autoplay:${nextTarget.mediaId}",
+                kind = TvPlaybackActionKind.CANCEL_AUTOPLAY,
+                label = strings.cancel,
+            )
+        },
+    )
+}
+
+// The id stays the same from the credits to the end, so a focused card keeps its focus.
+private fun tvUpNextAction(
+    nextTarget: PlaybackContinuationTarget,
+    label: String,
+    strings: TvStrings,
+) = TvPlaybackActionModel(
+    id = "tv-player-action:play-next:${nextTarget.mediaId}",
+    kind = TvPlaybackActionKind.PLAY_NEXT,
+    label = label,
+    kicker = strings.player.upNext,
+    detail = listOfNotNull(nextTarget.subtitle, nextTarget.title).joinToString(" · "),
+    imageUrl = nextTarget.imageUrl,
+)
 
 internal fun routeTvSegmentSeek(
     positionMs: Long,

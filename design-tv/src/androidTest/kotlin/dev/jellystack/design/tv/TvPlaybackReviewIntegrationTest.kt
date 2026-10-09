@@ -1,6 +1,5 @@
 package dev.jellystack.design.tv
 
-import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
@@ -16,7 +15,6 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
@@ -350,33 +348,34 @@ class TvPlaybackReviewIntegrationTest {
     }
 
     @Test
-    fun endedScreenWithOutroAndPreparedTargetShowsOnlySharedCompletionPrompt() {
+    fun endedEpisodeFocusesTheUpNextCountdownAndCancelStopsIt() {
         val resources = ScreenResources()
-        val continuation = preparedContinuation(countdownSeconds = 10)
+        var cancelled = 0
         composeRule.setContent {
             JellystackTvTheme {
-                Box {
-                    ReviewPlaybackScreen(
-                        resources = resources,
-                        playbackState = activePlayback(positionMs = 90_000L, phase = PlaybackPhase.Ended),
-                        segmentState = outroState(showSkipAction = true),
-                        continuationState = continuation,
-                    )
-                    TvPlaybackCompletionPrompt(
-                        continuationState = continuation,
-                        strings = strings,
-                        onPlayNow = {},
-                        onCancel = {},
-                    )
-                }
+                ReviewPlaybackScreen(
+                    resources = resources,
+                    playbackState = activePlayback(positionMs = 90_000L, phase = PlaybackPhase.Ended),
+                    segmentState = outroState(showSkipAction = true),
+                    continuationState = preparedContinuation(countdownSeconds = 10),
+                    onCancelAutoplay = { cancelled += 1 },
+                )
             }
         }
+        composeRule.waitForIdle()
 
         composeRule.onNodeWithTag("tv-player-action:segment:outro:outro-1").assertDoesNotExist()
-        composeRule.onNodeWithTag("tv-player-action:play-next:episode-2").assertDoesNotExist()
-        composeRule.onNodeWithText("Episode 2").assertExists()
-        composeRule.onNodeWithText(strings.playingInSeconds.format(10)).assertExists()
-        composeRule.runOnIdle(resources::release)
+        composeRule.onNodeWithContentDescription(strings.playingInSeconds.format(10), substring = true).assertIsFocused()
+
+        composeRule.onRoot().performKeyInput { pressKey(Key.DirectionRight) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription(strings.cancel).assertIsFocused()
+        composeRule.onRoot().performKeyInput { pressKey(Key.DirectionCenter) }
+
+        composeRule.runOnIdle {
+            assertEquals(1, cancelled)
+            resources.release()
+        }
     }
 
     @Test
@@ -505,6 +504,7 @@ class TvPlaybackReviewIntegrationTest {
         loadEpisodes: (suspend (String) -> List<JellyfinItem>)? = null,
         onPlayEpisode: (JellyfinItem) -> Unit = {},
         onClose: () -> Unit = {},
+        onCancelAutoplay: () -> Unit = {},
     ) {
         val context = LocalContext.current
         val engine = remember { AndroidPlayerEngine(context) }
@@ -519,6 +519,7 @@ class TvPlaybackReviewIntegrationTest {
             continuationState = continuationState,
             onSkipSegment = onSkipSegment,
             onPlayNext = onPlayNext,
+            onCancelAutoplay = onCancelAutoplay,
             onSeekTo = onSeekTo ?: resources.controller::seekTo,
             extrasState = extrasState,
             loadEpisodes = loadEpisodes,

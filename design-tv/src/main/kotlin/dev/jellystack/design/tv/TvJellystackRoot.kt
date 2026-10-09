@@ -1625,6 +1625,7 @@ private fun TvAuthenticatedApp(
                                         onPlayEpisode = playbackLauncher::play,
                                         onSkipSegment = segmentCoordinator::skip,
                                         onPlayNext = continuationCoordinator::playNext,
+                                        onCancelAutoplay = continuationCoordinator::cancelAutoplay,
                                         strings = strings,
                                         stopPlayback = stopPlayback,
                                         onClose = {
@@ -1672,12 +1673,6 @@ private fun TvAuthenticatedApp(
                 )
             }
         }
-        TvPlaybackCompletionPrompt(
-            continuationState = continuationState,
-            strings = strings,
-            onPlayNow = continuationCoordinator::playNext,
-            onCancel = continuationCoordinator::cancelAutoplay,
-        )
         playbackLauncher.pendingAsk?.let { ask ->
             TvResumeAskDialog(positionLabel = ask.positionLabel, strings = strings, onAnswer = playbackLauncher::answerAsk)
         }

@@ -60,6 +60,7 @@ import dev.jellystack.players.AndroidPlayerEngine
 import dev.jellystack.players.PlaybackContinuationState
 import dev.jellystack.players.PlaybackController
 import dev.jellystack.players.PlaybackExtrasState
+import dev.jellystack.players.PlaybackPhase
 import dev.jellystack.players.PlaybackSegment
 import dev.jellystack.players.PlaybackSegmentAction
 import dev.jellystack.players.PlaybackSegmentState
@@ -93,6 +94,7 @@ internal fun TvPlaybackScreen(
     onPlayEpisode: (JellyfinItem) -> Unit = {},
     onSkipSegment: (PlaybackSegmentAction) -> Unit,
     onPlayNext: () -> Unit,
+    onCancelAutoplay: () -> Unit = {},
     strings: TvStrings,
     stopPlayback: () -> Unit,
     onClose: () -> Unit,
@@ -116,7 +118,7 @@ internal fun TvPlaybackScreen(
             context =
                 TvPlaybackActionContext(
                     isEpisode = active?.metadata?.seriesId != null,
-                    phase = active?.phase ?: dev.jellystack.players.PlaybackPhase.Ready,
+                    phase = active?.phase ?: PlaybackPhase.Ready,
                     upNextDue =
                         !upNextDismissed &&
                             active != null &&
@@ -129,6 +131,12 @@ internal fun TvPlaybackScreen(
             strings = strings,
         )
     val standaloneActions = playbackActions.filter { it.id in promptState.visibleActionIds }
+    // After the end the video is over, so the up-next card takes focus the way the completion dialog did.
+    val endedUpNextId =
+        playbackActions
+            .firstOrNull { it.kind == TvPlaybackActionKind.PLAY_NEXT }
+            ?.id
+            ?.takeIf { active?.phase == PlaybackPhase.Ended }
     val timelineScrub = remember { TvTimelineScrub(liveSeeks = true, nowMs = System::currentTimeMillis) }
     val hiddenScrub = remember { TvTimelineScrub(liveSeeks = false, nowMs = System::currentTimeMillis) }
     var hiddenScrubGeneration by remember { mutableStateOf(0) }
@@ -192,16 +200,24 @@ internal fun TvPlaybackScreen(
         engine.setSubtitleBottomPaddingFraction(subtitleBottomPaddingFraction)
     }
 
-    LaunchedEffect(controlsVisible, navigation.current, interactionGeneration, active?.isPaused) {
-        if (!shouldAutoHideTvControls(controlsVisible, navigation.current != TvPlayerPanel.NONE, active?.isPaused == true)) {
+    LaunchedEffect(endedUpNextId) {
+        if (endedUpNextId != null) controlsVisible = true
+    }
+    LaunchedEffect(controlsVisible, navigation.current, interactionGeneration, active?.isPaused, endedUpNextId) {
+        val holdControls = active?.isPaused == true || endedUpNextId != null
+        if (!shouldAutoHideTvControls(controlsVisible, navigation.current != TvPlayerPanel.NONE, holdControls)) {
             return@LaunchedEffect
         }
         delay(5_000)
         controlsVisible = false
     }
-    LaunchedEffect(active != null, controlsVisible, navigation.current) {
+    LaunchedEffect(active != null, controlsVisible, navigation.current, endedUpNextId) {
         if (active != null && navigation.current == TvPlayerPanel.NONE) {
-            if (controlsVisible) controlsFocusRequester.requestFocus() else playerFocusRequester.requestFocus()
+            when {
+                controlsVisible && endedUpNextId != null -> actionEntryFocusRequester.requestFocus()
+                controlsVisible -> controlsFocusRequester.requestFocus()
+                else -> playerFocusRequester.requestFocus()
+            }
         }
     }
     DisposableEffect(engine) {
@@ -217,6 +233,7 @@ internal fun TvPlaybackScreen(
             TvPlaybackActionKind.SEGMENT_SKIP -> action.segmentAction?.let(onSkipSegment)
             TvPlaybackActionKind.PLAY_NEXT -> onPlayNext()
             TvPlaybackActionKind.WATCH_CREDITS -> upNextDismissed = true
+            TvPlaybackActionKind.CANCEL_AUTOPLAY -> onCancelAutoplay()
         }
     }
     val handlePlaybackBack = {
@@ -541,23 +558,6 @@ private const val TV_SCRUB_REPEAT_ACCELERATION_CAP = 6
 internal const val TV_SCRUB_COMMIT_INTERVAL_MS = 250L
 
 @Composable
-internal fun TvPlaybackCompletionPrompt(
-    continuationState: PlaybackContinuationState,
-    strings: TvStrings,
-    onPlayNow: () -> Unit,
-    onCancel: () -> Unit,
-) {
-    tvAutoplayPromptModel(continuationState)?.let { prompt ->
-        TvAutoplayPrompt(
-            model = prompt,
-            strings = strings,
-            onPlayNow = onPlayNow,
-            onCancel = onCancel,
-        )
-    }
-}
-
-@Composable
 internal fun TvPlaybackActions(
     actions: List<TvPlaybackActionModel>,
     fallbackFocusRequester: FocusRequester,
@@ -610,8 +610,10 @@ internal fun TvPlaybackActions(
                                 .testTag(action.id)
                                 .then(if (index == 0) Modifier.focusRequester(entryFocusRequester) else Modifier)
                                 .focusProperties { down = fallbackFocusRequester },
-                        // "Watch credits" only dismisses the card, so the card stays the visual primary.
-                        primary = action.kind != TvPlaybackActionKind.WATCH_CREDITS,
+                        // "Watch credits" and "Cancel" only dismiss, so the card stays the visual primary.
+                        primary =
+                            action.kind != TvPlaybackActionKind.WATCH_CREDITS &&
+                                action.kind != TvPlaybackActionKind.CANCEL_AUTOPLAY,
                         focusTargetId = action.id,
                         focusRequester = requester,
                         onFocusChanged = { focused -> if (focused) lastFocusedActionId = action.id },
