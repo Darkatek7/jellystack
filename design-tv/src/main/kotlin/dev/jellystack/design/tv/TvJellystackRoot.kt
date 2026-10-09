@@ -101,17 +101,9 @@ import dev.jellystack.core.server.ServerConnectionCoordinator
 import dev.jellystack.core.server.ServerRepository
 import dev.jellystack.core.server.ServerType
 import dev.jellystack.core.server.StoredCredential
-import dev.jellystack.network.ClientConfig
-import dev.jellystack.network.NetworkClientFactory
 import dev.jellystack.players.AndroidPlayerEngine
-import dev.jellystack.players.PlaybackContinuationCoordinator
-import dev.jellystack.players.PlaybackContinuationTarget
 import dev.jellystack.players.PlaybackController
-import dev.jellystack.players.PlaybackExtrasCoordinator
 import dev.jellystack.players.PlaybackRequest
-import dev.jellystack.players.PlaybackSeekAdapter
-import dev.jellystack.players.PlaybackSegmentCoordinator
-import dev.jellystack.players.PlaybackSegmentModeProvider
 import dev.jellystack.players.PlaybackStartPolicy
 import dev.jellystack.players.PlaybackState
 import dev.jellystack.players.syncplay.SyncPlayCoordinator
@@ -1043,8 +1035,6 @@ private fun TvAuthenticatedApp(
     DisposableEffect(searchCoordinator) {
         onDispose(searchCoordinator::shutdown)
     }
-    val segmentHttpClient =
-        remember(accountGeneration) { NetworkClientFactory.create(ClientConfig(installLogging = false)) }
     val playbackCommandRouter =
         remember(playbackController, syncPlay) {
             TvPlaybackCommandRouter(
@@ -1055,48 +1045,18 @@ private fun TvAuthenticatedApp(
             )
         }
     val playbackCoordinators =
-        rememberTvPlaybackCoordinators(
+        rememberTvJellyfinPlaybackCoordinators(
             identity = playbackIdentity,
             playbackState = playbackState,
-            createSegmentCoordinator = { coordinatorScope ->
-                PlaybackSegmentCoordinator(
-                    scope = coordinatorScope,
-                    segmentService = TvJellyfinMediaSegmentsService(environmentProvider, segmentHttpClient),
-                    modeProvider = PlaybackSegmentModeProvider { type -> settingsRepository.settings.value.segmentSkipMode(type) },
-                    seekAdapter = PlaybackSeekAdapter(playbackCommandRouter::seekTo),
-                )
-            },
-            createContinuationCoordinator = { coordinatorScope ->
-                PlaybackContinuationCoordinator(
-                    scope = coordinatorScope,
-                    modeProvider = { currentSettings().autoplayNextMode },
-                    resolveNext = resolve@{ mediaId, seriesId ->
-                        val cached = browseRepository.episodesForSeries(seriesId)
-                        val episodes = if (cached.isEmpty()) browseRepository.refreshEpisodesForSeries(seriesId) else cached
-                        val next = selectNextTvEpisode(episodes, mediaId) ?: return@resolve null
-                        val detail = browseRepository.getItemDetail(next.id) ?: return@resolve null
-                        val environment = environmentProvider.current() ?: return@resolve null
-                        PlaybackContinuationTarget(
-                            mediaId = next.id,
-                            title = next.episodeTitle ?: next.name,
-                            subtitle = "S${next.parentIndexNumber ?: 0} E${next.indexNumber ?: 0}",
-                            imageUrl = jellyfinImageUrl(homeState.imageBaseUrl, homeState.imageAccessToken, next.id, next.primaryImageTag),
-                        ) {
-                            playbackCommandRouter.playNext {
-                                playbackController.play(
-                                    PlaybackRequest.from(next, detail, startPolicy = PlaybackStartPolicy.RESTART),
-                                    environment,
-                                )
-                                playbackController.setPlaybackSpeed(currentSettings().defaultPlaybackSpeed)
-                                playbackController.setStatsForNerdsEnabled(currentSettings().statsForNerdsEnabled)
-                            }
-                        }
-                    },
-                )
-            },
-            createExtrasCoordinator = { coordinatorScope ->
-                PlaybackExtrasCoordinator(coordinatorScope, TvJellyfinPlaybackExtrasService(environmentProvider, segmentHttpClient))
-            },
+            controller = playbackController,
+            router = playbackCommandRouter,
+            sources =
+                TvPlaybackCoordinatorSources(
+                    environmentProvider = environmentProvider,
+                    browseRepository = browseRepository,
+                    settings = currentSettings,
+                    images = { TvPlayerImages(homeState.imageBaseUrl, homeState.imageAccessToken) },
+                ),
         )
     val segmentCoordinator = playbackCoordinators.segment
     val continuationCoordinator = playbackCoordinators.continuation
@@ -1186,7 +1146,7 @@ private fun TvAuthenticatedApp(
             trailerPreviewCoordinator.onBackgrounded()
         }
     }
-    DisposableEffect(accountGeneration, segmentHttpClient) {
+    DisposableEffect(accountGeneration) {
         onDispose {
             browseCoordinator.shutdown()
             homeSectionsRepository.close()
@@ -1194,7 +1154,6 @@ private fun TvAuthenticatedApp(
             recommendationsCoordinator.shutdown()
             requestsCoordinator.shutdown()
             syncPlay.close()
-            segmentHttpClient.close()
             trailerPreviewCoordinator.release()
         }
     }
@@ -1662,11 +1621,7 @@ private fun TvAuthenticatedApp(
                                         imageBaseUrl = homeState.imageBaseUrl,
                                         imageAccessToken = homeState.imageAccessToken,
                                         onSeekTo = playbackCommandRouter::seekTo,
-                                        loadEpisodes = { seriesId ->
-                                            browseRepository.episodesForSeries(seriesId).ifEmpty {
-                                                browseRepository.refreshEpisodesForSeries(seriesId)
-                                            }
-                                        },
+                                        loadEpisodes = browseRepository::tvEpisodesForSeries,
                                         onPlayEpisode = playbackLauncher::play,
                                         onSkipSegment = segmentCoordinator::skip,
                                         onPlayNext = continuationCoordinator::playNext,
