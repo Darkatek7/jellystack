@@ -17,18 +17,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -41,15 +36,11 @@ import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -59,7 +50,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.util.UnstableApi
 import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.ui.NavDisplay
-import androidx.tv.material3.Icon
 import androidx.tv.material3.Text
 import dev.jellystack.core.di.JellystackDI
 import dev.jellystack.core.jellyfin.DetailTrailerResolver
@@ -1640,18 +1630,6 @@ private fun TvAuthenticatedApp(
             )
         }
         if (showRail) {
-            if (appUiState.railExpanded) {
-                Box(
-                    Modifier
-                        .width(TvLayoutTokens.ExpandedRailWidth + 56.dp)
-                        .fillMaxHeight()
-                        .background(
-                            androidx.compose.ui.graphics.Brush.horizontalGradient(
-                                listOf(Color(0xFF080910), Color(0xF20E0F18), Color.Transparent),
-                            ),
-                        ),
-                )
-            }
             CompositionLocalProvider(
                 LocalTvFocusContext provides TvFocusContext(focusCoordinator, TV_FOCUS_RAIL_ROUTE),
             ) {
@@ -1660,16 +1638,19 @@ private fun TvAuthenticatedApp(
                     expanded = appUiState.railExpanded,
                     strings = strings,
                     profileName = activeProfileName,
-                    onProfile = onOpenProfiles,
-                    onSelected = { route ->
-                        selectTopLevel(route)
-                        focusCoordinator.onUserMovement()
-                        appStateHolder.closeRail()
-                    },
-                    onDismiss = {
-                        focusCoordinator.onUserMovement()
-                        appStateHolder.closeRail()
-                    },
+                    callbacks =
+                        TvNavigationRailCallbacks(
+                            onProfile = onOpenProfiles,
+                            onSelected = { route ->
+                                selectTopLevel(route)
+                                focusCoordinator.onUserMovement()
+                                appStateHolder.closeRail()
+                            },
+                            onDismiss = {
+                                focusCoordinator.onUserMovement()
+                                appStateHolder.closeRail()
+                            },
+                        ),
                 )
             }
         }
@@ -1725,110 +1706,7 @@ internal fun TvExitConfirmationDialog(
     }
 }
 
-@Composable
-private fun TvNavigationRail(
-    selected: TvRoute,
-    expanded: Boolean,
-    strings: TvStrings,
-    profileName: String,
-    onProfile: () -> Unit,
-    onSelected: (TvRoute) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val width = if (expanded) TvLayoutTokens.ExpandedRailWidth else TvLayoutTokens.CollapsedRailWidth
-    val entries =
-        listOf(
-            Triple(TvRoute.Home as TvRoute, strings.home, Icons.Default.Home),
-            Triple(TvRoute.Library() as TvRoute, strings.library, Icons.Default.VideoLibrary),
-            Triple(TvRoute.Search as TvRoute, strings.search, Icons.Default.Search),
-            Triple(TvRoute.Discover as TvRoute, strings.discover, Icons.Default.Explore),
-            Triple(TvRoute.Settings() as TvRoute, strings.settings, Icons.Default.Settings),
-        )
-    TvRouteFocusMaterializer(
-        ownerId = "navigation-rail",
-        targetIds = entries.map { tvRailTargetId(it.first) }.toSet() + TV_PROFILE_AVATAR_TARGET,
-        fallbackTargetIds = setOf(tvRailTargetId(TvRoute.Home)),
-    ) { true }
-    Column(
-        modifier =
-            Modifier
-                .width(width)
-                .fillMaxHeight()
-                .background(Color(0xE60B0C14))
-                .padding(horizontal = 10.dp, vertical = TvLayoutTokens.SafeInsets.vertical),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        val profileLabel = "${strings.profiles}: $profileName"
-        Row(
-            Modifier
-                .width(width - 20.dp)
-                .semantics(mergeDescendants = true) { contentDescription = profileLabel }
-                .tvFocusable(
-                    onClick = onProfile,
-                    enabled = tvNavigationRailItemsFocusable(expanded),
-                    shape =
-                        androidx.compose.foundation.shape
-                            .RoundedCornerShape(18.dp),
-                    focusTargetId = TV_PROFILE_AVATAR_TARGET.takeIf { expanded },
-                ).padding(horizontal = 14.dp, vertical = 15.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            Icon(Icons.Default.AccountCircle, null, tint = TvPurple)
-            if (expanded) Text(profileName, color = TvText, fontSize = 18.sp, maxLines = 1)
-        }
-        entries.forEachIndexed { index, (route, label, icon) ->
-            val isSelected = selected.sameTopLevel(route)
-            val targetId = tvRailTargetId(route)
-            Row(
-                Modifier
-                    .width(width - 20.dp)
-                    .onPreviewKeyEvent { event ->
-                        if (
-                            isSelected &&
-                            event.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
-                            event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_RIGHT
-                        ) {
-                            onDismiss()
-                            true
-                        } else {
-                            false
-                        }
-                    }.background(
-                        if (isSelected) TvPurpleStrong.copy(alpha = 0.48f) else Color.Transparent,
-                        androidx.compose.foundation.shape
-                            .RoundedCornerShape(18.dp),
-                    ).semantics(mergeDescendants = true) {
-                        contentDescription = label
-                        this.selected = isSelected
-                    }.tvFocusable(
-                        onClick = { onSelected(route) },
-                        enabled = tvNavigationRailItemsFocusable(expanded),
-                        shape =
-                            androidx.compose.foundation.shape
-                                .RoundedCornerShape(18.dp),
-                        focusTargetId = targetId.takeIf { expanded },
-                    ).padding(horizontal = 14.dp, vertical = 15.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                Icon(icon, null, tint = if (isSelected) TvPurple else TvTextMuted)
-                if (expanded) Text(label, color = if (isSelected) TvText else TvTextMuted, fontSize = 18.sp)
-            }
-        }
-    }
-}
-
-internal fun tvNavigationRailItemsFocusable(expanded: Boolean): Boolean = expanded
-
 internal fun TvRoute.allowsTrailerPreview(): Boolean = this is TvRoute.Home || this is TvRoute.Library || this is TvRoute.Search
-
-private fun TvRoute.sameTopLevel(other: TvRoute): Boolean =
-    (this is TvRoute.Home && other is TvRoute.Home) ||
-        (this is TvRoute.Library && other is TvRoute.Library) ||
-        (this is TvRoute.Search && other is TvRoute.Search) ||
-        (this is TvRoute.Discover && other is TvRoute.Discover) ||
-        (this is TvRoute.Settings && other is TvRoute.Settings)
 
 private fun TvRoute.SeerrDetail.toSearchItem(): JellyseerrSearchItem =
     JellyseerrSearchItem(

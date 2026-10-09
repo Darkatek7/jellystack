@@ -160,7 +160,7 @@ class TvCinematicBrowseTest {
                 .getUnclippedBoundsInRoot()
                 .left
                 .value
-        assertTrue(firstCardLeft >= TvLayoutTokens.CollapsedRailWidth.value)
+        assertTrue(firstCardLeft >= TvLayoutTokens.SafeInsets.horizontal.value)
     }
 
     @Test

@@ -69,7 +69,7 @@ internal fun TvHomeBackdrop(
     }
 }
 
-// Dark behind the rail and the hero text, clear on the right where the artwork shows.
+// Dark behind the hero text and the open rail, clear on the right where the artwork shows.
 private val TV_HOME_BACKDROP_SIDE_SCRIM =
     arrayOf(
         0f to TvBackground.copy(alpha = 0.96f),
