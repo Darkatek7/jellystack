@@ -1100,6 +1100,18 @@ private fun TvAuthenticatedApp(
         appStateHolder.push(route)
     }
 
+    val playbackLauncher =
+        remember(accountGeneration, activeProfileId, playbackController) {
+            TvPlaybackLauncher(
+                scope = scope,
+                repository = browseRepository,
+                environmentProvider = environmentProvider,
+                playbackController = playbackController,
+                currentSettings = currentSettings,
+                onStarted = { push(TvRoute.Player) },
+            )
+        }
+
     fun openJellyfinDetail(item: JellyfinItem) {
         appStateHolder.rememberDetailSource(item)
         push(TvRoute.JellyfinDetail(item.id))
@@ -1403,14 +1415,7 @@ private fun TvAuthenticatedApp(
                                         previewProgress = trailerPreviewProgress,
                                         onPlayItem = { item ->
                                             trailerPreviewCoordinator.clearFocus()
-                                            scope.launch {
-                                                val detail = browseRepository.getItemDetail(item.id) ?: return@launch
-                                                val environment = environmentProvider.current() ?: return@launch
-                                                playbackController.play(PlaybackRequest.from(item, detail), environment)
-                                                playbackController.setPlaybackSpeed(settings.defaultPlaybackSpeed)
-                                                playbackController.setStatsForNerdsEnabled(settings.statsForNerdsEnabled)
-                                                push(TvRoute.Player)
-                                            }
+                                            playbackLauncher.play(item)
                                         },
                                         onItem = {
                                             trailerPreviewCoordinator.clearFocus()
@@ -1474,14 +1479,7 @@ private fun TvAuthenticatedApp(
                                         },
                                         onPlayItem = { item ->
                                             trailerPreviewCoordinator.clearFocus()
-                                            scope.launch {
-                                                val detail = browseRepository.getItemDetail(item.id) ?: return@launch
-                                                val environment = environmentProvider.current() ?: return@launch
-                                                playbackController.play(PlaybackRequest.from(item, detail), environment)
-                                                playbackController.setPlaybackSpeed(settings.defaultPlaybackSpeed)
-                                                playbackController.setStatsForNerdsEnabled(settings.statsForNerdsEnabled)
-                                                push(TvRoute.Player)
-                                            }
+                                            playbackLauncher.play(item)
                                         },
                                         onToggleFavorite = { item -> scope.launch { browseCoordinator.toggleFavorite(item) } },
                                         onTogglePlayed = { item, played ->
@@ -1513,16 +1511,7 @@ private fun TvAuthenticatedApp(
                                         onVoiceSearch = searchCoordinator::launchVoiceSearch,
                                         onJellyfinItem = ::openJellyfinDetail,
                                         onSeerrItem = ::openSeerr,
-                                        onPlayJellyfin = { item ->
-                                            scope.launch {
-                                                val detail = browseRepository.getItemDetail(item.id) ?: return@launch
-                                                val environment = environmentProvider.current() ?: return@launch
-                                                playbackController.play(PlaybackRequest.from(item, detail), environment)
-                                                playbackController.setPlaybackSpeed(settings.defaultPlaybackSpeed)
-                                                playbackController.setStatsForNerdsEnabled(settings.statsForNerdsEnabled)
-                                                push(TvRoute.Player)
-                                            }
-                                        },
+                                        onPlayJellyfin = playbackLauncher::play,
                                         onToggleJellyfinSaved = { item ->
                                             scope.launch {
                                                 browseCoordinator.toggleFavorite(item)
@@ -1614,8 +1603,8 @@ private fun TvAuthenticatedApp(
                                         browseCoordinator = browseCoordinator,
                                         environmentProvider = environmentProvider,
                                         playbackController = playbackController,
+                                        playbackLauncher = playbackLauncher,
                                         trailerResolver = detailTrailerResolver,
-                                        settings = settings,
                                         strings = strings,
                                         onOpenItem = ::openJellyfinDetail,
                                         onPlaybackStarted = { push(TvRoute.Player) },
@@ -1710,6 +1699,9 @@ private fun TvAuthenticatedApp(
             onPlayNow = continuationCoordinator::playNext,
             onCancel = continuationCoordinator::cancelAutoplay,
         )
+        playbackLauncher.pendingAsk?.let { ask ->
+            TvResumeAskDialog(positionLabel = ask.positionLabel, strings = strings, onAnswer = playbackLauncher::answerAsk)
+        }
         if (showExitConfirmation) {
             TvExitConfirmationDialog(
                 strings = strings,

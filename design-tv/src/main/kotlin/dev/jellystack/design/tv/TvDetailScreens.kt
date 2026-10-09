@@ -93,29 +93,14 @@ import dev.jellystack.core.jellyseerr.JellyseerrRequestVariant
 import dev.jellystack.core.jellyseerr.JellyseerrRequestsCoordinator
 import dev.jellystack.core.jellyseerr.JellyseerrRequestsState
 import dev.jellystack.core.jellyseerr.JellyseerrSearchItem
-import dev.jellystack.core.preferences.AppSettings
-import dev.jellystack.core.preferences.ResumeMode
 import dev.jellystack.players.PlaybackController
 import dev.jellystack.players.PlaybackRequest
-import dev.jellystack.players.PlaybackStartPolicy
-import dev.jellystack.players.formatPlaybackTime
 import kotlinx.coroutines.launch
 
 internal data class TvJellyfinDetailBase(
     val item: JellyfinItem,
     val detail: JellyfinItemDetail,
 )
-
-/** Pending "resume or restart?" decision captured from the primary play action. */
-internal data class ResumeAskRequest(
-    val positionLabel: String,
-)
-
-private const val TV_TICKS_PER_MILLISECOND = 10_000L
-
-/** Formats a Jellyfin resume position (100-ns ticks) for the resume prompt. */
-internal fun tvResumePositionLabel(positionTicks: Long?): String =
-    formatPlaybackTime((positionTicks ?: 0L).coerceAtLeast(0L) / TV_TICKS_PER_MILLISECOND)
 
 internal data class TvJellyfinHeroTitlePresentation(
     val useGraphicLogo: Boolean,
@@ -751,8 +736,8 @@ internal fun TvJellyfinDetailScreen(
     browseCoordinator: JellyfinBrowseCoordinator,
     environmentProvider: JellyfinEnvironmentProvider,
     playbackController: PlaybackController,
+    playbackLauncher: TvPlaybackLauncher,
     trailerResolver: DetailTrailerResolver,
-    settings: AppSettings,
     strings: TvStrings,
     onOpenItem: (JellyfinItem) -> Unit,
     onPlaybackStarted: () -> Unit,
@@ -768,7 +753,6 @@ internal fun TvJellyfinDetailScreen(
     var trailerError by remember(route.itemId) { mutableStateOf(false) }
     var error by remember(route.itemId) { mutableStateOf<String?>(null) }
     var loadRevision by remember(route.itemId) { mutableStateOf(0) }
-    var resumeAskRequest by remember(route.itemId) { mutableStateOf<ResumeAskRequest?>(null) }
     val uriHandler = LocalUriHandler.current
     val seasonGroups = remember(episodes) { buildTvSeasonGroups(episodes) }
     val activeSeason =
@@ -858,18 +842,6 @@ internal fun TvJellyfinDetailScreen(
             similar = similar,
         )
 
-    fun startPlayback(startPolicy: PlaybackStartPolicy) {
-        scope.launch {
-            val environment = environmentProvider.current() ?: return@launch
-            playbackController.play(
-                PlaybackRequest.from(currentItem, currentDetail, startPolicy = startPolicy),
-                environment,
-            )
-            playbackController.setPlaybackSpeed(settings.defaultPlaybackSpeed)
-            playbackController.setStatsForNerdsEnabled(settings.statsForNerdsEnabled)
-            onPlaybackStarted()
-        }
-    }
     TvDetailFocusLayout(
         uiState = uiState,
         heroContentDescription = currentDetail.name,
@@ -946,13 +918,7 @@ internal fun TvJellyfinDetailScreen(
                         if (hasResumePosition) strings.continueLabel else strings.play,
                         primary = true,
                         leading = { Icon(Icons.Default.PlayArrow, null, tint = Color(0xFF251450)) },
-                        onClick = {
-                            if (hasResumePosition && settings.resumeMode == ResumeMode.ASK) {
-                                resumeAskRequest = ResumeAskRequest(tvResumePositionLabel(currentItem.positionTicks))
-                            } else {
-                                startPlayback(PlaybackStartPolicy.INHERIT)
-                            }
-                        },
+                        onClick = { playbackLauncher.play(currentItem, currentDetail) },
                         modifier = primaryActionModifier.then(actionRowModifier).width(TV_DETAIL_PRIMARY_ACTION_WIDTH_DP.dp),
                     )
                     TvCompactActionButton(
@@ -1018,50 +984,6 @@ internal fun TvJellyfinDetailScreen(
             onOpenItem = onOpenItem,
             onSelectSeason = { selectedSeasonIndex = it },
         )
-    }
-    resumeAskRequest?.let { request ->
-        Dialog(onDismissRequest = { resumeAskRequest = null }) {
-            Column(
-                Modifier
-                    .width(620.dp)
-                    .background(TvSurfaceRaised, RoundedCornerShape(28.dp))
-                    .padding(34.dp),
-                verticalArrangement = Arrangement.spacedBy(18.dp),
-            ) {
-                Text(
-                    strings.resumeAskTitle,
-                    modifier = Modifier.tvHeading(),
-                    fontSize = 30.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TvText,
-                )
-                Text(
-                    strings.continueFrom.format(request.positionLabel),
-                    fontSize = 19.sp,
-                    color = TvTextMuted,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    TvActionButton(
-                        strings.continueLabel,
-                        primary = true,
-                        modifier = Modifier.width(230.dp),
-                        onClick = {
-                            resumeAskRequest = null
-                            startPlayback(PlaybackStartPolicy.RESUME)
-                        },
-                    )
-                    TvActionButton(
-                        strings.restart,
-                        modifier = Modifier.width(230.dp),
-                        onClick = {
-                            resumeAskRequest = null
-                            startPlayback(PlaybackStartPolicy.RESTART)
-                        },
-                    )
-                    TvActionButton(strings.cancel, onClick = { resumeAskRequest = null })
-                }
-            }
-        }
     }
 }
 

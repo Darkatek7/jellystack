@@ -111,13 +111,4 @@ class TvSeasonPresentationTest {
         assertEquals(strings.detailLoadFailed, tvDetailErrorMessage(detailsError, strings))
         assertEquals(strings.detailLoadFailed, tvDetailErrorMessage(IllegalStateException("boom"), strings))
     }
-
-    @Test
-    fun resumePositionLabelConvertsTicksToClockTime() {
-        // 39,120,500,000 ticks == 3,912,050 ms == 1:05:12.
-        assertEquals("1:05:12", tvResumePositionLabel(39_120_500_000L))
-        assertEquals("6:14", tvResumePositionLabel(3_740_000_000L))
-        assertEquals("0:00", tvResumePositionLabel(0L))
-        assertEquals("0:00", tvResumePositionLabel(null))
-    }
 }
