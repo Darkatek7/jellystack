@@ -51,6 +51,24 @@ class TvPlaybackScrubTest {
     }
 
     @Test
+    fun centerWithHiddenControlsResumesActivatesPromptOrPauses() {
+        assertEquals(
+            TvHiddenControlsCenterAction.PAUSE_AND_SHOW_CONTROLS,
+            tvHiddenControlsCenterAction(isPaused = false, promptVisible = false),
+        )
+        assertEquals(
+            TvHiddenControlsCenterAction.ACTIVATE_PROMPT,
+            tvHiddenControlsCenterAction(isPaused = false, promptVisible = true),
+        )
+        assertEquals(
+            "paused playback resumes even while a prompt is visible",
+            TvHiddenControlsCenterAction.RESUME,
+            tvHiddenControlsCenterAction(isPaused = true, promptVisible = true),
+        )
+        assertEquals(TvHiddenControlsCenterAction.RESUME, tvHiddenControlsCenterAction(isPaused = true, promptVisible = false))
+    }
+
+    @Test
     fun configuredSeekSecondsFeedScrubTargets() {
         val backStep = -15 * 1_000L
         val forwardStep = 60 * 1_000L

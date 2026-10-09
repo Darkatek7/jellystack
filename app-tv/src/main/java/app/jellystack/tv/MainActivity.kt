@@ -27,6 +27,8 @@ import dev.jellystack.players.AndroidTvPlaybackDeviceProfileProvider
 import dev.jellystack.players.JellyfinPlaybackSourceResolver
 import dev.jellystack.players.NetworkJellyfinPlaybackInfoService
 import dev.jellystack.players.PlaybackController
+import dev.jellystack.players.PlaybackNetworkClass
+import dev.jellystack.players.PlaybackNetworkClassifier
 import dev.jellystack.players.PlaybackPreferencesProvider
 import dev.jellystack.players.PlaybackState
 import dev.jellystack.players.SettingsPlaybackProgressStore
@@ -73,6 +75,9 @@ class MainActivity : AppCompatActivity() {
                 playerEngine = playerEngine,
                 streamingProgressReporter = JellyfinStreamingProgressReporter(browseRepository),
                 subtitlePreferenceStore = SettingsSubtitlePreferenceStore(playbackSettings),
+                // TV exposes a single streaming-quality setting (stored as the Wi-Fi quality), so every
+                // network counts as unmetered. Otherwise the mobile quality, which TV cannot change, wins.
+                playbackNetworkClassifier = PlaybackNetworkClassifier { PlaybackNetworkClass.UNMETERED },
                 playbackPreferencesProvider =
                     PlaybackPreferencesProvider {
                         val deviceSettings = settingsRepository.settings.value

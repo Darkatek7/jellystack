@@ -1653,6 +1653,8 @@ private fun TvAuthenticatedApp(
                                         continuationState = continuationState,
                                         seekBackSeconds = settings.seekBackSeconds,
                                         seekForwardSeconds = settings.seekForwardSeconds,
+                                        subtitleTextSize = settings.subtitleTextSize,
+                                        subtitleBackground = settings.subtitleBackground,
                                         onSkipSegment = segmentCoordinator::skip,
                                         onPlayNext = continuationCoordinator::playNext,
                                         strings = strings,

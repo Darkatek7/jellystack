@@ -60,6 +60,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.util.UnstableApi
 import androidx.tv.material3.Text
+import dev.jellystack.core.preferences.SubtitleBackground
+import dev.jellystack.core.preferences.SubtitleTextSize
 import dev.jellystack.players.AndroidPlayerEngine
 import dev.jellystack.players.PlaybackContinuationState
 import dev.jellystack.players.PlaybackController
@@ -83,6 +85,8 @@ internal fun TvPlaybackScreen(
     continuationState: PlaybackContinuationState,
     seekBackSeconds: Int = 10,
     seekForwardSeconds: Int = 30,
+    subtitleTextSize: SubtitleTextSize = SubtitleTextSize.SYSTEM,
+    subtitleBackground: SubtitleBackground = SubtitleBackground.SYSTEM,
     onSkipSegment: (PlaybackSegmentAction) -> Unit,
     onPlayNext: () -> Unit,
     strings: TvStrings,
@@ -121,6 +125,9 @@ internal fun TvPlaybackScreen(
             actionIds = playbackActions.map { it.id },
             controlsVisible = controlsVisible,
         )
+    }
+    LaunchedEffect(engine, subtitleTextSize, subtitleBackground) {
+        engine.setSubtitleAppearance(subtitleTextSize, subtitleBackground)
     }
     LaunchedEffect(engine, subtitleBottomPaddingFraction) {
         engine.setSubtitleBottomPaddingFraction(subtitleBottomPaddingFraction)
@@ -190,7 +197,18 @@ internal fun TvPlaybackScreen(
                         KeyEvent.KEYCODE_ENTER,
                         ->
                             if (navigation.current == TvPlayerPanel.NONE && !controlsVisible) {
-                                controlsVisible = true
+                                if (active == null) {
+                                    controlsVisible = true
+                                } else {
+                                    when (tvHiddenControlsCenterAction(active.isPaused, standaloneActions.isNotEmpty())) {
+                                        TvHiddenControlsCenterAction.ACTIVATE_PROMPT -> activatePlaybackAction(standaloneActions.first())
+                                        TvHiddenControlsCenterAction.PAUSE_AND_SHOW_CONTROLS -> {
+                                            controller.pause()
+                                            controlsVisible = true
+                                        }
+                                        TvHiddenControlsCenterAction.RESUME -> controller.resume()
+                                    }
+                                }
                                 true
                             } else {
                                 false
@@ -461,6 +479,27 @@ internal fun tvScrubTarget(
     val upperBound = durationMs?.takeIf { it > 0L } ?: Long.MAX_VALUE
     return (positionMs + stepMs * multiplier).coerceIn(0L, upperBound)
 }
+
+internal enum class TvHiddenControlsCenterAction {
+    ACTIVATE_PROMPT,
+    PAUSE_AND_SHOW_CONTROLS,
+    RESUME,
+}
+
+/**
+ * Center/Enter while the controls are hidden acts immediately instead of only revealing the controls:
+ * paused playback resumes, a visible skip/next prompt is activated, otherwise playback pauses and the
+ * controls appear so the paused state stays discoverable.
+ */
+internal fun tvHiddenControlsCenterAction(
+    isPaused: Boolean,
+    promptVisible: Boolean,
+): TvHiddenControlsCenterAction =
+    when {
+        isPaused -> TvHiddenControlsCenterAction.RESUME
+        promptVisible -> TvHiddenControlsCenterAction.ACTIVATE_PROMPT
+        else -> TvHiddenControlsCenterAction.PAUSE_AND_SHOW_CONTROLS
+    }
 
 /**
  * Controls may start their hide countdown only while playing with no panel open.

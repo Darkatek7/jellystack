@@ -55,7 +55,7 @@ Test at minimum:
 
 ## Remote controls
 
-- Center: open controls or toggle play/pause when controls are hidden
+- Center with hidden controls: pause and show controls, resume when paused, or activate a visible Skip/Next prompt
 - Left/Right: seek when controls are hidden; hold for accelerated scrubbing
 - Up/Down: show controls and move between player information
 - Back: close dialog, close panel, hide controls, leave player, then focus the navigation rail
