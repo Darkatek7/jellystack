@@ -170,7 +170,6 @@ internal data class TvStrings(
     val preparingPlayback: String,
     val playbackFailedTitle: String,
     val playbackFailedMessage: String,
-    val tvBeta: String,
     val tvTagline: String,
     val playback: String,
     val pause: String,
@@ -433,7 +432,6 @@ internal data class TvStrings(
                 playbackFailedTitle = "Playback could not continue",
                 playbackFailedMessage =
                     "The player could not decode this stream. Try again to request a compatible version from Jellyfin.",
-                tvBeta = "TV beta",
                 tvTagline = "Your Jellyfin and Seerr library, designed for the big screen.",
                 playback = "Playback",
                 pause = "Pause",
@@ -714,7 +712,6 @@ internal data class TvStrings(
                 playbackFailedMessage =
                     "Der Player konnte diesen Stream nicht dekodieren. " +
                         "Versuche es erneut, um eine kompatible Version von Jellyfin anzufordern.",
-                tvBeta = "TV-Beta",
                 tvTagline = "Deine Jellyfin- und Seerr-Bibliothek - gemacht für den großen Bildschirm.",
                 playback = "Wiedergabe",
                 pause = "Pause",

@@ -132,7 +132,6 @@ internal fun TvConnectionScreen(
         ) {
             Column(Modifier.weight(0.85f), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Text(TV_BRAND_JELLYSTACK, color = TvText, fontSize = 50.sp, fontWeight = FontWeight.Bold)
-                Text(strings.tvBeta, color = TvPurple, fontSize = 22.sp)
                 Text(
                     strings.tvTagline,
                     color = TvTextMuted,

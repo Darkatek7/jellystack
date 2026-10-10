@@ -7,7 +7,7 @@ Guidance for coding agents (and humans) working in this repository. Keep it shor
 Jellystack is a privacy-focused Jellyfin + Seerr client written in Kotlin Multiplatform with Compose.
 
 - **Android phone/tablet** (`app-android`) – stable, published on Google Play.
-- **Android TV / Google TV / Fire TV** (`app-tv`) – closed beta, GMS-free, separate Compose for TV UI.
+- **Android TV / Google TV / Fire TV** (`app-tv`) – GMS-free, separate Compose for TV UI.
 - **iOS** (`app-ios`) – experimental, not distributed, only built by a manual workflow.
 
 No Jellystack backend exists: the app talks only to servers the user configures.
