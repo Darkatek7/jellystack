@@ -228,6 +228,12 @@ internal fun TvHomeScreen(
             if (homeSections !is HomeSectionsState.Ready && "libraries" !in this) add("libraries")
         }
     val rowListStates = rememberTvLazyRowStates(homeRowIds)
+    var heroHasFocus by remember { mutableStateOf(false) }
+    LaunchedEffect(heroHasFocus, homeRowIds) {
+        // Rows that load while the spotlight has focus can land above the visible ones, and the list keeps
+        // its first visible row; the rows under the spotlight start at the first row instead.
+        if (heroHasFocus) homeListState.scrollToItem(0)
+    }
     val errorLazyColumnIndex =
         (if (myList.isNotEmpty()) 1 else 0) +
             if (homeSections is HomeSectionsState.Ready) {
@@ -369,7 +375,7 @@ internal fun TvHomeScreen(
         },
     ) {
         heroModel?.let { TvHomeBackdrop(it, heroTrailer) }
-        Box(Modifier.fillMaxWidth()) {
+        Box(Modifier.fillMaxWidth().onFocusChanged { heroHasFocus = it.hasFocus }) {
             if (heroModel != null) {
                 TvHeroCarousel(
                     model = heroModel,

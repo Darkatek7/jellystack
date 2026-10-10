@@ -382,6 +382,48 @@ class TvHomeScreenTest {
     }
 
     @Test
+    fun rowsLoadedAboveTheVisibleRowsWhileTheSpotlightHasFocusStartAtTheFirstRow() {
+        lateinit var engine: AndroidPlayerEngine
+        val recent = item("recent", "Recent", dateCreated = (Clock.System.now() - 1.days).toString())
+
+        fun row(
+            id: String,
+            cardName: String,
+        ) = HomeSection(
+            id = id,
+            title = id,
+            viewMode = HomeSectionViewMode.LANDSCAPE,
+            displayTitle = true,
+            showDetailsMenu = false,
+            items = listOf(homeSectionItem(item("$id-card", cardName))),
+        )
+        val laterRow = row("later-row", "Later row card")
+        var sections by mutableStateOf<HomeSectionsState>(HomeSectionsState.Ready(listOf(laterRow), "", ""))
+        composeRule.setContent {
+            val context = LocalContext.current
+            engine = rememberTestPlayerEngine(context)
+            TestHomeScreen(
+                state = JellyfinHomeState(recentMovies = listOf(recent)),
+                sections = sections,
+                engine = engine,
+                provideEntryFocus = false,
+            )
+        }
+        composeRule.onNodeWithTag(SPOTLIGHT).performSemanticsAction(SemanticsActions.RequestFocus)
+        composeRule.onNodeWithTag(SPOTLIGHT).assertIsFocused()
+
+        // Continue watching loads after the later rows and lands above them.
+        composeRule.runOnIdle {
+            sections = HomeSectionsState.Ready(listOf(row("first-row", "First row card"), laterRow), "", "")
+        }
+
+        composeRule.onNodeWithTag(SPOTLIGHT).assertIsFocused()
+        val firstCardBounds = composeRule.onAllNodes(cardWithDescription("First row card"))[0].getUnclippedBoundsInRoot()
+        assertEquals(tvHomeFirstCardTopDp().toFloat(), firstCardBounds.top.value, 0.51f)
+        composeRule.runOnIdle(engine::release)
+    }
+
+    @Test
     fun latestFallbackShowsCarouselPositionWithoutRecentWindowLabel() {
         lateinit var engine: AndroidPlayerEngine
         val first = item("old-first", "Old first", dateCreated = (Clock.System.now() - 40.days).toString())
