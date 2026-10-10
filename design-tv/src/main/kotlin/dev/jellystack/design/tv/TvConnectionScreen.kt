@@ -13,6 +13,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -52,6 +54,7 @@ import dev.jellystack.core.server.ServerConnectionCoordinator
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun TvConnectionScreen(
     coordinator: ServerConnectionCoordinator,
@@ -248,7 +251,11 @@ internal fun TvConnectionScreen(
                                 .Color(0xFFFFA59E),
                     )
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                // Wraps so longer labels (German "Neuen Code erstellen" next to "Abbrechen") keep their full text.
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
                     if (contentMode.showConnectAction) {
                         TvActionButton(
                             label = strings.connect,

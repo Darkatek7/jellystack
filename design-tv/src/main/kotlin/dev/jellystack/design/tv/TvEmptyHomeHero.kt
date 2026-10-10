@@ -11,7 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.runtime.Composable
@@ -70,7 +70,7 @@ internal fun TvEmptyHomeHero(
                 primary = true,
                 modifier =
                     Modifier
-                        .width(180.dp)
+                        .widthIn(min = 180.dp)
                         .focusRequester(primaryFocusRequester)
                         .tvScreenEntryFocus(focusTargetId = TV_HOME_PRIMARY_TARGET)
                         .tvHomeVerticalFocus(onVerticalMove),
