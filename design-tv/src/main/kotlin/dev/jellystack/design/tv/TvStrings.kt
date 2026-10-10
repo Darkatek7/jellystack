@@ -34,6 +34,25 @@ internal data class TvPlayerStrings(
     val watchCredits: String,
 )
 
+/** Labels of the settings screens. */
+internal data class TvSettingsStrings(
+    val trailerPreviewDelay: String,
+    val secondsShort: String,
+    val decimalSeparator: String,
+) {
+    /** "1.5 s" or "3 s" in the language's number format. */
+    fun seconds(millis: Int): String {
+        val tenths = millis % MILLIS_PER_SECOND / MILLIS_PER_TENTH
+        val whole = millis / MILLIS_PER_SECOND
+        return secondsShort.format(if (tenths == 0) "$whole" else "$whole$decimalSeparator$tenths")
+    }
+
+    private companion object {
+        const val MILLIS_PER_SECOND = 1_000
+        const val MILLIS_PER_TENTH = 100
+    }
+}
+
 internal data class TvStrings(
     val home: String,
     val library: String,
@@ -273,6 +292,7 @@ internal data class TvStrings(
     val mediaType: String,
     val applyLabel: String,
     val metadata: TvMetadataStrings,
+    val settingsLabels: TvSettingsStrings,
     private val itemSingular: String,
     private val itemPlural: String,
 ) {
@@ -564,6 +584,12 @@ internal data class TvStrings(
                         spotlightPosition = "Spotlight %1\$d of %2\$d",
                         captionsBadge = "CC",
                     ),
+                settingsLabels =
+                    TvSettingsStrings(
+                        trailerPreviewDelay = "Preview delay",
+                        secondsShort = "%s s",
+                        decimalSeparator = ".",
+                    ),
                 itemSingular = "item",
                 itemPlural = "items",
             )
@@ -839,6 +865,12 @@ internal data class TvStrings(
                         buffer = "Puffer",
                         spotlightPosition = "Highlight %1\$d von %2\$d",
                         captionsBadge = "UT",
+                    ),
+                settingsLabels =
+                    TvSettingsStrings(
+                        trailerPreviewDelay = "Vorschau-Verzögerung",
+                        secondsShort = "%s s",
+                        decimalSeparator = ",",
                     ),
                 itemSingular = "Element",
                 itemPlural = "Elemente",

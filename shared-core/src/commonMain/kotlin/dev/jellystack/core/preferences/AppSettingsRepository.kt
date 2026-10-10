@@ -66,6 +66,12 @@ class AppSettingsRepository(
     fun setTrailerPreviewSoundEnabled(value: Boolean) =
         update(KEY_TRAILER_PREVIEW_SOUND_ENABLED, value) { copy(trailerPreviewSoundEnabled = value) }
 
+    fun setTrailerPreviewDelayMillis(value: Int) {
+        val normalized = value.takeIf(TRAILER_PREVIEW_DELAYS_MILLIS::contains) ?: TRAILER_PREVIEW_DELAYS_MILLIS.first()
+        storage.putInt(KEY_TRAILER_PREVIEW_DELAY, normalized)
+        publish { copy(trailerPreviewDelayMillis = normalized) }
+    }
+
     fun setMotionPreference(value: MotionPreference) = update(KEY_MOTION_PREFERENCE, value.name) { copy(motionPreference = value) }
 
     fun setHighContrastFocus(value: Boolean) = update(KEY_HIGH_CONTRAST_FOCUS, value) { copy(highContrastFocus = value) }
@@ -110,6 +116,11 @@ class AppSettingsRepository(
             useServerHomeSections = storage.getBoolean(KEY_USE_SERVER_HOME_SECTIONS, true),
             trailerPreviewsEnabled = storage.getBoolean(KEY_TRAILER_PREVIEWS_ENABLED, true),
             trailerPreviewSoundEnabled = storage.getBoolean(KEY_TRAILER_PREVIEW_SOUND_ENABLED, true),
+            trailerPreviewDelayMillis =
+                storage
+                    .getInt(KEY_TRAILER_PREVIEW_DELAY, TRAILER_PREVIEW_DELAYS_MILLIS.first())
+                    .takeIf(TRAILER_PREVIEW_DELAYS_MILLIS::contains)
+                    ?: TRAILER_PREVIEW_DELAYS_MILLIS.first(),
             motionPreference = enumValue(KEY_MOTION_PREFERENCE, MotionPreference.SYSTEM),
             highContrastFocus = storage.getBoolean(KEY_HIGH_CONTRAST_FOCUS, false),
             spotlightIntervalSeconds =
@@ -181,6 +192,7 @@ class AppSettingsRepository(
         const val KEY_USE_SERVER_HOME_SECTIONS = "settings.use_server_home_sections"
         const val KEY_TRAILER_PREVIEWS_ENABLED = "settings.trailer_previews_enabled"
         const val KEY_TRAILER_PREVIEW_SOUND_ENABLED = "settings.trailer_preview_sound_enabled"
+        const val KEY_TRAILER_PREVIEW_DELAY = "settings.trailer_preview_delay_ms"
         const val KEY_MOTION_PREFERENCE = "settings.motion_preference"
         const val KEY_HIGH_CONTRAST_FOCUS = "settings.high_contrast_focus"
         const val KEY_SPOTLIGHT_INTERVAL = "settings.spotlight_interval_seconds"

@@ -1122,6 +1122,9 @@ private fun TvAuthenticatedApp(
     LaunchedEffect(settings.trailerPreviewSoundEnabled) {
         trailerPreviewCoordinator.setSoundEnabled(settings.trailerPreviewSoundEnabled)
     }
+    LaunchedEffect(settings.trailerPreviewDelayMillis) {
+        trailerPreviewCoordinator.setFocusDelayMillis(settings.trailerPreviewDelayMillis.toLong())
+    }
     LaunchedEffect(playbackState) {
         if (playbackState is PlaybackState.Active || playbackState is PlaybackState.Preparing) {
             trailerPreviewCoordinator.clearFocus()
