@@ -1,10 +1,15 @@
 package dev.jellystack.core.profile
 
+import dev.jellystack.core.jellyseerr.JellyseerrEnvironment
 import dev.jellystack.core.server.ManagedServer
 import dev.jellystack.core.server.ServerType
 import dev.jellystack.core.server.StoredCredential
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.Instant
 import kotlin.test.Test
@@ -149,6 +154,29 @@ class ProfileSwitchCoordinatorTest {
             state.value = ActiveProfileState.Active(PROFILE_B, 8)
             assertEquals("user-b", provider.jellyfin()?.userId)
             assertEquals(22, provider.seerr()?.apiUserId)
+        }
+
+    @Test
+    fun seerrEnvironmentFollowsAConnectionAddedWhileTheProfileStaysActive() =
+        runTest {
+            val state = MutableStateFlow<ActiveProfileState>(ActiveProfileState.Active(PROFILE_A, 1))
+            var binding = ProfileConnectionBinding(PROFILE_A, "jf-a", null)
+            val connectionChanges = MutableStateFlow(0)
+            val provider =
+                ProfileEnvironmentProvider(
+                    activeState = state,
+                    bindingResolver = { binding },
+                    serverResolver = { id -> seerrServer(id, "7").takeIf { id == "seerr-a" } },
+                    connectionChanges = connectionChanges,
+                )
+            val emissions = mutableListOf<JellyseerrEnvironment?>()
+            backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { provider.observeSeerr().toList(emissions) }
+
+            assertEquals(listOf<JellyseerrEnvironment?>(null), emissions)
+            binding = binding.copy(seerrConnectionId = "seerr-a")
+            connectionChanges.value += 1
+
+            assertEquals(listOf<Int?>(null, 7), emissions.map { it?.apiUserId })
         }
 
     private fun coordinator(
