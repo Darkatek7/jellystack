@@ -361,13 +361,16 @@ class TvComponentsTest {
                     homeState = JellyfinHomeState(),
                     strings = strings,
                     focusMemory = remember { TvFocusMemory() },
-                    onQueryChanged = { query ->
-                        searchState = searchState.copy(session = searchState.session.copy(query = query))
-                    },
-                    onRetryJellyfin = {},
-                    onRetrySeerr = { seerrRetries += 1 },
-                    onJellyfinItem = {},
-                    onSeerrItem = {},
+                    actions =
+                        testSearchActions(
+                            onQueryChanged = { query ->
+                                searchState = searchState.copy(session = searchState.session.copy(query = query))
+                            },
+                            onRetryJellyfin = {},
+                            onRetrySeerr = { seerrRetries += 1 },
+                            onJellyfinItem = {},
+                            onSeerrItem = {},
+                        ),
                 )
             }
         }
@@ -398,18 +401,21 @@ class TvComponentsTest {
                         homeState = JellyfinHomeState(),
                         strings = strings,
                         focusMemory = remember { TvFocusMemory() },
-                        onQueryChanged = { query ->
-                            searchState = searchState.copy(session = searchState.session.copy(query = query))
-                        },
-                        onRetryJellyfin = {},
-                        onRetrySeerr = {
-                            searchState =
-                                searchState.copy(
-                                    seerr = searchState.seerr.copy(isLoading = true, errorMessage = null),
-                                )
-                        },
-                        onJellyfinItem = {},
-                        onSeerrItem = {},
+                        actions =
+                            testSearchActions(
+                                onQueryChanged = { query ->
+                                    searchState = searchState.copy(session = searchState.session.copy(query = query))
+                                },
+                                onRetryJellyfin = {},
+                                onRetrySeerr = {
+                                    searchState =
+                                        searchState.copy(
+                                            seerr = searchState.seerr.copy(isLoading = true, errorMessage = null),
+                                        )
+                                },
+                                onJellyfinItem = {},
+                                onSeerrItem = {},
+                            ),
                     )
                 }
             }

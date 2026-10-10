@@ -60,8 +60,9 @@ internal fun TvHomeBackdrop(
     }
 }
 
+/** Keeps text and rows readable over full-screen artwork; shared by every screen with a full-bleed backdrop. */
 @Composable
-private fun TvHomeBackdropScrims() {
+internal fun TvHomeBackdropScrims() {
     Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(colorStops = TV_HOME_BACKDROP_SIDE_SCRIM)))
     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(colorStops = TV_HOME_BACKDROP_BOTTOM_SCRIM)))
     // Keeps the clock and the page dots readable when the artwork is bright in that corner.
@@ -99,7 +100,7 @@ private val TV_HOME_BACKDROP_BOTTOM_SCRIM =
 
 /** The placeholder stays underneath, so a backdrop that is missing or fails to load still leaves a backdrop. */
 @Composable
-private fun TvHomeBackdropImage(backdropUrl: String?) {
+internal fun TvHomeBackdropImage(backdropUrl: String?) {
     Box(
         Modifier
             .fillMaxSize()
@@ -145,15 +146,22 @@ internal fun rememberTvClockLabel(): String {
 private fun tvHeroBackdropUrl(
     model: TvHomeHeroModel,
     item: JellyfinItem,
+): String? = tvJellyfinBackdropUrl(model.imageBaseUrl, model.imageAccessToken, item)
+
+/** The full-screen backdrop for [item]: the series backdrop for episodes, then the item's own artwork. */
+internal fun tvJellyfinBackdropUrl(
+    baseUrl: String?,
+    token: String?,
+    item: JellyfinItem,
 ): String? {
     val artwork = resolveTvHeroBackdrop(item)
     return if (artwork != null) {
-        jellyfinImageUrl(model.imageBaseUrl, model.imageAccessToken, artwork, TvArtworkSize.HERO)
+        jellyfinImageUrl(baseUrl, token, artwork, TvArtworkSize.HERO)
     } else {
         // Items from some sources arrive without image tags; the server still serves an untagged backdrop.
         jellyfinImageUrl(
-            baseUrl = model.imageBaseUrl,
-            token = model.imageAccessToken,
+            baseUrl = baseUrl,
+            token = token,
             itemId = item.seriesId?.takeIf(String::isNotBlank) ?: item.id,
             tag = null,
             type = "Backdrop",

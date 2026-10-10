@@ -12,14 +12,12 @@
 package dev.jellystack.design.tv
 
 import android.view.KeyEvent
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -36,10 +34,7 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -55,19 +50,14 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusProperties
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.tv.material3.Icon
 import dev.jellystack.core.jellyfin.HomeSection
 import dev.jellystack.core.jellyfin.HomeSectionAction
 import dev.jellystack.core.jellyfin.HomeSectionViewMode
@@ -99,14 +89,14 @@ internal const val TV_HOME_HERO_HEIGHT_DP = 300
 private val TV_HOME_ROW_CARD_OFFSET = 38.dp
 internal const val TV_FOCUS_MATERIALIZATION_TIMEOUT_MS = 1_000L
 
-private data class TvLazyFocusLocation(
+internal data class TvLazyFocusLocation(
     val verticalIndex: Int,
     val rowId: String? = null,
     val horizontalIndex: Int? = null,
 )
 
 @Composable
-private fun rememberTvLazyRowStates(rowIds: List<String>): Map<String, LazyListState> {
+internal fun rememberTvLazyRowStates(rowIds: List<String>): Map<String, LazyListState> {
     val states = linkedMapOf<String, LazyListState>()
     for (rowId in rowIds) {
         key(rowId) { states[rowId] = rememberLazyListState() }
@@ -114,7 +104,7 @@ private fun rememberTvLazyRowStates(rowIds: List<String>): Map<String, LazyListS
     return states
 }
 
-private suspend fun materializeTvLazyTarget(
+internal suspend fun materializeTvLazyTarget(
     outerState: LazyListState,
     rowStates: Map<String, LazyListState>,
     location: TvLazyFocusLocation,
@@ -681,7 +671,7 @@ internal fun Modifier.tvHomeVerticalFocus(onVerticalMove: (TvHomeVerticalDirecti
 internal fun shouldHandleTvHomeVerticalKey(repeatCount: Int): Boolean = repeatCount == 0
 
 @Composable
-private fun TvJellyfinRow(
+internal fun TvJellyfinRow(
     title: String,
     items: List<JellyfinItem>,
     state: JellyfinHomeState,
@@ -1194,7 +1184,7 @@ internal fun shouldLoadNextLibraryPage(
     return lastVisibleIndex >= thresholdIndex
 }
 
-private data class TvRetryFocusRequest(
+internal data class TvRetryFocusRequest(
     val revision: Long,
     val preferredTargetId: String,
 )
@@ -1205,7 +1195,7 @@ private data class TvDiscoverRetryFocusRequest(
 )
 
 @Composable
-private fun TvRetryFocusRecovery(request: TvRetryFocusRequest?) {
+internal fun TvRetryFocusRecovery(request: TvRetryFocusRequest?) {
     val focusContext = LocalTvFocusContext.current ?: return
     LaunchedEffect(request) {
         request ?: return@LaunchedEffect
@@ -1242,411 +1232,6 @@ private fun TvDiscoverRetryFocusRecovery(
             )
         if (!isRefreshing && restoration is TvFocusRestoration.Focused) {
             onCompleted(activeRequest.revision)
-        }
-    }
-}
-
-@Composable
-internal fun TvSearchScreen(
-    searchState: TvSearchUiState = TvSearchUiState(),
-    homeState: JellyfinHomeState,
-    strings: TvStrings,
-    focusMemory: TvFocusMemory,
-    onQueryChanged: (String) -> Unit,
-    onSourceChanged: (TvSearchSource) -> Unit = {},
-    onEnterEditMode: () -> Unit = {},
-    onEnterBrowseMode: () -> Unit = {},
-    onRetryJellyfin: () -> Unit,
-    onRetrySeerr: () -> Unit,
-    onVoiceSearch: () -> Unit = {},
-    onJellyfinItem: (JellyfinItem) -> Unit,
-    onSeerrItem: (JellyseerrSearchItem) -> Unit,
-    onPlayJellyfin: (JellyfinItem) -> Unit = onJellyfinItem,
-    onToggleJellyfinSaved: ((JellyfinItem) -> Unit)? = null,
-    onToggleJellyfinPlayed: ((JellyfinItem, Boolean) -> Unit)? = null,
-    onToggleSeerrSaved: ((JellyseerrSearchItem) -> Unit)? = null,
-    isJellyfinSaved: (JellyfinItem) -> Boolean = { false },
-    isSeerrSaved: (JellyseerrSearchItem) -> Boolean = { false },
-    modifier: Modifier = Modifier,
-    trailerPreviewState: TvTrailerPreviewState = TvTrailerPreviewState.Idle,
-    trailerPreviewEngine: AndroidPlayerEngine? = null,
-    previewSoundEnabled: Boolean = true,
-    previewProgress: State<Float>? = null,
-    onPreviewFocus: (JellyfinItem, String) -> Unit = { _, _ -> },
-) {
-    val sessionState = searchState.session
-    val query = sessionState.query
-    val source = sessionState.source
-    val queryFocusRequester = remember { FocusRequester() }
-    val sourceFocusRequester = remember { FocusRequester() }
-    val keyboardController = LocalSoftwareKeyboardController.current
-    var retryFocusRequest by remember { mutableStateOf<TvRetryFocusRequest?>(null) }
-    val presentation = tvSearchPresentation(searchState)
-    val visibleJellyfin = presentation.jellyfinItems.isNotEmpty()
-    val visibleSeerr = presentation.seerrItems.isNotEmpty()
-    val outerState = rememberLazyListState()
-    val rowStates = rememberTvLazyRowStates(listOf("jellyfin", "seerr"))
-    var nextOuterIndex = 1
-    val searchingIndex = if (presentation.showSearching) nextOuterIndex++ else null
-    val jellyfinFailureIndex = if (presentation.showJellyfinFailure) nextOuterIndex++ else null
-    val jellyfinRowIndex = if (visibleJellyfin) nextOuterIndex++ else null
-    val seerrFailureIndex = if (presentation.showSeerrFailure) nextOuterIndex++ else null
-    val seerrRowIndex = if (visibleSeerr) nextOuterIndex++ else null
-    val emptyIndex = if (presentation.showNoResults) nextOuterIndex else null
-    val searchLocations =
-        buildMap {
-            put(TV_SEARCH_QUERY_TARGET, TvLazyFocusLocation(0))
-            if (searchState.showVoiceAction) put(TV_SEARCH_VOICE_TARGET, TvLazyFocusLocation(0))
-            TvSearchSource.entries.forEach { put(tvSearchSourceTargetId(it.name.lowercase()), TvLazyFocusLocation(0)) }
-            jellyfinFailureIndex?.let {
-                put(TV_SEARCH_JELLYFIN_RETRY_TARGET, TvLazyFocusLocation(it))
-            }
-            jellyfinRowIndex?.let { rowIndex ->
-                presentation.jellyfinItems.forEachIndexed { index, item ->
-                    put(tvSearchResultTargetId("jellyfin", item.id), TvLazyFocusLocation(rowIndex, "jellyfin", index))
-                }
-            }
-            seerrFailureIndex?.let {
-                put(TV_SEARCH_SEERR_RETRY_TARGET, TvLazyFocusLocation(it))
-            }
-            seerrRowIndex?.let { rowIndex ->
-                presentation.seerrItems.forEachIndexed { index, item ->
-                    put(
-                        tvSearchResultTargetId("seerr", "${item.mediaType}:${item.tmdbId}"),
-                        TvLazyFocusLocation(rowIndex, "seerr", index),
-                    )
-                }
-            }
-        }
-    TvRouteFocusMaterializer(
-        ownerId = "search-lists",
-        targetIds = searchLocations.keys,
-        fallbackTargetIds = setOf(TV_SEARCH_QUERY_TARGET),
-    ) { targetId -> searchLocations[targetId]?.let { materializeTvLazyTarget(outerState, rowStates, it) } ?: false }
-    TvRetryFocusRecovery(retryFocusRequest)
-    BackHandler(enabled = sessionState.mode == TvSearchMode.EDIT) {
-        keyboardController?.hide()
-        onEnterBrowseMode()
-    }
-    LaunchedEffect(sessionState.mode) {
-        // The field and source controls are emitted by the same lazy item. Waiting for
-        // placement prevents a fresh Search route from losing its initial focus request.
-        withFrameNanos { }
-        when (sessionState.mode) {
-            TvSearchMode.EDIT -> {
-                queryFocusRequester.requestFocus()
-                keyboardController?.show()
-            }
-            TvSearchMode.BROWSE -> {
-                keyboardController?.hide()
-                sourceFocusRequester.requestFocus()
-            }
-        }
-    }
-
-    fun retryFailedSearchSources() {
-        if (presentation.showJellyfinFailure) onRetryJellyfin()
-        if (presentation.showSeerrFailure) onRetrySeerr()
-        retryFocusRequest =
-            TvRetryFocusRequest(
-                revision = (retryFocusRequest?.revision ?: 0L) + 1L,
-                preferredTargetId = TV_SEARCH_QUERY_TARGET,
-            )
-    }
-    if (presentation.results.isNotEmpty()) {
-        TvCinematicSearchContent(
-            searchState = searchState,
-            presentation = presentation,
-            homeState = homeState,
-            strings = strings,
-            focusMemory = focusMemory,
-            onJellyfinItem = onJellyfinItem,
-            onSeerrItem = onSeerrItem,
-            onPlayJellyfin = onPlayJellyfin,
-            onToggleJellyfinSaved = onToggleJellyfinSaved,
-            onToggleJellyfinPlayed = onToggleJellyfinPlayed,
-            onToggleSeerrSaved = onToggleSeerrSaved,
-            isJellyfinSaved = isJellyfinSaved,
-            isSeerrSaved = isSeerrSaved,
-            onRetryFailures =
-                if (presentation.showJellyfinFailure || presentation.showSeerrFailure) {
-                    ::retryFailedSearchSources
-                } else {
-                    null
-                },
-            headerContent = {
-                TvCinematicSearchHeader(
-                    sessionState = sessionState,
-                    searchState = searchState,
-                    strings = strings,
-                    queryFocusRequester = queryFocusRequester,
-                    sourceFocusRequester = sourceFocusRequester,
-                    onQueryChanged = onQueryChanged,
-                    onSourceChanged = onSourceChanged,
-                    onEnterEditMode = onEnterEditMode,
-                    onVoiceSearch = onVoiceSearch,
-                )
-            },
-            trailerPreviewState = trailerPreviewState,
-            trailerPreviewEngine = trailerPreviewEngine,
-            previewSoundEnabled = previewSoundEnabled,
-            previewProgress = previewProgress,
-            onPreviewFocus = onPreviewFocus,
-        )
-        return
-    }
-    LazyColumn(
-        state = outerState,
-        modifier = modifier.fillMaxSize(),
-        contentPadding = TvScreenPadding,
-        verticalArrangement = Arrangement.spacedBy(24.dp),
-    ) {
-        item("header") {
-            Text(strings.search, modifier = Modifier.tvHeading(), color = TvText, fontSize = 38.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(16.dp))
-            OutlinedTextField(
-                value = query,
-                onValueChange = onQueryChanged,
-                placeholder = { Text(strings.searchHint) },
-                singleLine = true,
-                readOnly = sessionState.mode == TvSearchMode.BROWSE,
-                colors = tvOutlinedTextFieldColors(),
-                modifier =
-                    Modifier
-                        .tvScreenEntryFocus(focusTargetId = TV_SEARCH_QUERY_TARGET)
-                        .tvFocusTarget(queryFocusRequester, focusTargetId = TV_SEARCH_QUERY_TARGET)
-                        .focusRequester(queryFocusRequester)
-                        .fillMaxWidth(0.66f)
-                        .height(64.dp)
-                        .testTag("tv-search-query")
-                        .onPreviewKeyEvent { event ->
-                            if (
-                                sessionState.mode == TvSearchMode.BROWSE &&
-                                event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
-                                event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_CENTER
-                            ) {
-                                onEnterEditMode()
-                                true
-                            } else {
-                                false
-                            }
-                        }.tvReturnToNavigationRailOnLeft()
-                        .focusProperties {
-                            down = sourceFocusRequester
-                            right = sourceFocusRequester
-                        },
-            )
-            Spacer(Modifier.height(14.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                TvActionButton(
-                    strings.all,
-                    { onSourceChanged(TvSearchSource.ALL) },
-                    modifier = Modifier.focusRequester(sourceFocusRequester).testTag("tv-search-source-all"),
-                    primary = source == TvSearchSource.ALL,
-                    selected = source == TvSearchSource.ALL,
-                    focusToNavigationRailOnLeft = true,
-                    focusTargetId = tvSearchSourceTargetId("all"),
-                )
-                TvActionButton(
-                    TV_BRAND_JELLYFIN,
-                    { onSourceChanged(TvSearchSource.JELLYFIN) },
-                    modifier = Modifier.testTag("tv-search-source-jellyfin"),
-                    primary = source == TvSearchSource.JELLYFIN,
-                    selected = source == TvSearchSource.JELLYFIN,
-                    focusTargetId = tvSearchSourceTargetId("jellyfin"),
-                )
-                TvActionButton(
-                    TV_BRAND_SEERR,
-                    { onSourceChanged(TvSearchSource.SEERR) },
-                    modifier = Modifier.testTag("tv-search-source-seerr"),
-                    primary = source == TvSearchSource.SEERR,
-                    selected = source == TvSearchSource.SEERR,
-                    focusTargetId = tvSearchSourceTargetId("seerr"),
-                )
-                if (searchState.showVoiceAction) {
-                    TvActionButton(
-                        label = if (searchState.isVoiceListening) strings.searching else strings.search,
-                        onClick = onVoiceSearch,
-                        enabled = !searchState.isVoiceListening,
-                        leading = { Icon(Icons.Default.Mic, contentDescription = null, tint = TvText) },
-                        modifier = Modifier.testTag("tv-search-voice"),
-                        focusTargetId = TV_SEARCH_VOICE_TARGET,
-                    )
-                }
-            }
-            searchState.voiceError?.let { message ->
-                Spacer(Modifier.height(12.dp))
-                TvStatusAnchor("${strings.requestFailed}: $message")
-            }
-        }
-        searchingIndex?.let {
-            item("searching") { TvStatusAnchor(strings.searching) }
-        }
-        jellyfinFailureIndex?.let {
-            item("jellyfin-error") {
-                TvSearchSourceFailure(
-                    message = strings.jellyfinSearchFailed,
-                    retryLabel = strings.retry,
-                    focusTargetId = TV_SEARCH_JELLYFIN_RETRY_TARGET,
-                    onRetry = {
-                        onRetryJellyfin()
-                        retryFocusRequest =
-                            TvRetryFocusRequest(
-                                revision = (retryFocusRequest?.revision ?: 0L) + 1L,
-                                preferredTargetId = TV_SEARCH_QUERY_TARGET,
-                            )
-                    },
-                )
-            }
-        }
-        jellyfinRowIndex?.let {
-            item("jellyfin-results") {
-                TvJellyfinRow(
-                    TV_BRAND_JELLYFIN,
-                    presentation.jellyfinItems,
-                    homeState,
-                    strings,
-                    focusMemory,
-                    onJellyfinItem,
-                    routeKey = "search",
-                    listState = rowStates.getValue("jellyfin"),
-                    focusTargetId = { itemId -> tvSearchResultTargetId("jellyfin", itemId) },
-                    edgePadding = 12.dp,
-                )
-            }
-        }
-        seerrFailureIndex?.let {
-            item("seerr-error") {
-                TvSearchSourceFailure(
-                    message = strings.seerrSearchFailed,
-                    retryLabel = strings.retry,
-                    focusTargetId = TV_SEARCH_SEERR_RETRY_TARGET,
-                    onRetry = {
-                        onRetrySeerr()
-                        retryFocusRequest =
-                            TvRetryFocusRequest(
-                                revision = (retryFocusRequest?.revision ?: 0L) + 1L,
-                                preferredTargetId = TV_SEARCH_QUERY_TARGET,
-                            )
-                    },
-                )
-            }
-        }
-        seerrRowIndex?.let {
-            item("seerr-results") {
-                TvSeerrRow(
-                    TV_BRAND_SEERR,
-                    presentation.seerrItems,
-                    focusMemory,
-                    "search",
-                    onSeerrItem,
-                    listState = rowStates.getValue("seerr"),
-                    focusTargetId = { id -> tvSearchResultTargetId("seerr", id) },
-                    edgePadding = 12.dp,
-                )
-            }
-        }
-        emptyIndex?.let {
-            item("empty") { TvStatusAnchor(strings.noResults) }
-        }
-    }
-}
-
-@Composable
-private fun TvSearchSourceFailure(
-    message: String,
-    retryLabel: String,
-    focusTargetId: String,
-    onRetry: () -> Unit,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(message, color = TvTextMuted, modifier = Modifier.weight(1f).tvStatusSemantics(message))
-        TvActionButton(
-            label = retryLabel,
-            onClick = onRetry,
-            focusTargetId = focusTargetId,
-        )
-    }
-}
-
-@Composable
-private fun TvCinematicSearchHeader(
-    sessionState: TvSearchSessionState,
-    searchState: TvSearchUiState,
-    strings: TvStrings,
-    queryFocusRequester: FocusRequester,
-    sourceFocusRequester: FocusRequester,
-    onQueryChanged: (String) -> Unit,
-    onSourceChanged: (TvSearchSource) -> Unit,
-    onEnterEditMode: () -> Unit,
-    onVoiceSearch: () -> Unit,
-) {
-    OutlinedTextField(
-        value = sessionState.query,
-        onValueChange = onQueryChanged,
-        placeholder = { Text(strings.searchHint) },
-        singleLine = true,
-        readOnly = sessionState.mode == TvSearchMode.BROWSE,
-        colors = tvOutlinedTextFieldColors(),
-        modifier =
-            Modifier
-                .tvFocusTarget(queryFocusRequester, focusTargetId = TV_SEARCH_QUERY_TARGET)
-                .focusRequester(queryFocusRequester)
-                .fillMaxWidth(0.66f)
-                .height(64.dp)
-                .testTag("tv-search-query")
-                .onPreviewKeyEvent { event ->
-                    if (
-                        sessionState.mode == TvSearchMode.BROWSE &&
-                        event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
-                        event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_CENTER
-                    ) {
-                        onEnterEditMode()
-                        true
-                    } else {
-                        false
-                    }
-                }.tvReturnToNavigationRailOnLeft()
-                .focusProperties {
-                    down = sourceFocusRequester
-                    right = sourceFocusRequester
-                },
-    )
-    Spacer(Modifier.height(14.dp))
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        TvSearchSource.entries.forEachIndexed { index, source ->
-            val label =
-                when (source) {
-                    TvSearchSource.ALL -> strings.all
-                    TvSearchSource.JELLYFIN -> TV_BRAND_JELLYFIN
-                    TvSearchSource.SEERR -> TV_BRAND_SEERR
-                }
-            TvActionButton(
-                label = label,
-                onClick = { onSourceChanged(source) },
-                modifier =
-                    Modifier
-                        .then(if (index == 0) Modifier.focusRequester(sourceFocusRequester) else Modifier)
-                        .testTag("tv-search-source-${source.name.lowercase()}"),
-                primary = sessionState.source == source,
-                selected = sessionState.source == source,
-                focusToNavigationRailOnLeft = index == 0,
-                focusTargetId = tvSearchSourceTargetId(source.name.lowercase()),
-            )
-        }
-        if (searchState.showVoiceAction) {
-            TvActionButton(
-                label = if (searchState.isVoiceListening) strings.searching else strings.search,
-                onClick = onVoiceSearch,
-                enabled = !searchState.isVoiceListening,
-                leading = { Icon(Icons.Default.Mic, contentDescription = null, tint = TvText) },
-                modifier = Modifier.testTag("tv-search-voice"),
-                focusTargetId = TV_SEARCH_VOICE_TARGET,
-            )
         }
     }
 }
@@ -1939,7 +1524,7 @@ internal fun tvSeerrCardArtwork(
     )
 
 @Composable
-private fun TvSeerrRow(
+internal fun TvSeerrRow(
     title: String,
     items: List<JellyseerrSearchItem>,
     focusMemory: TvFocusMemory,
@@ -1949,6 +1534,7 @@ private fun TvSeerrRow(
     focusTargetId: (String) -> String,
     screenEntry: Boolean = false,
     edgePadding: Dp = 6.dp,
+    onFocused: (JellyseerrSearchItem) -> Unit = {},
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         TvSectionTitle(title)
@@ -1973,7 +1559,10 @@ private fun TvSeerrRow(
                     imageUrl = tmdbImageUrl(artwork.path, backdrop = artwork.isBackdrop),
                     artworkFit = artwork.fit,
                     onClick = { onItem(item) },
-                    onFocused = { focusMemory.remember(routeKey, title, id, horizontalIndex = index) },
+                    onFocused = {
+                        focusMemory.remember(routeKey, title, id, horizontalIndex = index)
+                        onFocused(item)
+                    },
                     modifier =
                         Modifier
                             .tvScreenEntryFocus(screenEntry && index == 0, targetId),

@@ -35,7 +35,7 @@ class TvCinematicSearchDiscoverTest {
     val composeRule = createTvComposeRule()
 
     @Test
-    fun populatedSearchUsesCinematicCardsAndExposesDetails() {
+    fun searchResultCardOpensItsDetails() {
         val item = jellyfinItem("dune", "Dune")
         var details = 0
         composeRule.setContent {
@@ -45,20 +45,23 @@ class TvCinematicSearchDiscoverTest {
                     homeState = JellyfinHomeState(),
                     strings = TvStrings.current(AppLanguage.ENGLISH),
                     focusMemory = remember { TvFocusMemory() },
-                    onQueryChanged = {},
-                    onRetryJellyfin = {},
-                    onRetrySeerr = {},
-                    onJellyfinItem = { details += 1 },
-                    onSeerrItem = {},
+                    actions =
+                        testSearchActions(
+                            onQueryChanged = {},
+                            onRetryJellyfin = {},
+                            onRetrySeerr = {},
+                            onJellyfinItem = { details += 1 },
+                            onSeerrItem = {},
+                        ),
                 )
             }
         }
 
         composeRule
-            .onNodeWithTag("cinematic-card-search-results-jellyfin:dune")
+            .onNodeWithContentDescription("Dune")
             .performSemanticsAction(SemanticsActions.RequestFocus)
             .assertIsFocused()
-        composeRule.onNodeWithTag("cinematic-action-details").performSemanticsAction(SemanticsActions.OnClick)
+            .performSemanticsAction(SemanticsActions.OnClick)
         composeRule.runOnIdle { assertEquals(1, details) }
     }
 
@@ -176,15 +179,18 @@ class TvCinematicSearchDiscoverTest {
                     homeState = JellyfinHomeState(),
                     strings = TvStrings.current(AppLanguage.ENGLISH),
                     focusMemory = remember { TvFocusMemory() },
-                    onQueryChanged = {},
-                    onRetryJellyfin = {},
-                    onRetrySeerr = {},
-                    onJellyfinItem = { activations += 1 },
-                    onSeerrItem = {},
+                    actions =
+                        testSearchActions(
+                            onQueryChanged = {},
+                            onRetryJellyfin = {},
+                            onRetrySeerr = {},
+                            onJellyfinItem = { activations += 1 },
+                            onSeerrItem = {},
+                        ),
                 )
             }
         }
-        val first = composeRule.onNodeWithTag("cinematic-card-search-results-jellyfin:item-1")
+        val first = composeRule.onNodeWithContentDescription("Item 1")
         first.performSemanticsAction(SemanticsActions.RequestFocus)
         first.performKeyInput {
             repeat(50) {

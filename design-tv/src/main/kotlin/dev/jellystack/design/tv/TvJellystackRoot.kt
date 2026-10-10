@@ -1465,48 +1465,7 @@ private fun TvAuthenticatedApp(
                                             homeState = homeState,
                                             strings = strings,
                                             focusMemory = focusMemory,
-                                            onQueryChanged = searchCoordinator::search,
-                                            onSourceChanged = searchCoordinator::selectSource,
-                                            onEnterEditMode = searchCoordinator::enterEditMode,
-                                            onEnterBrowseMode = searchCoordinator::enterBrowseMode,
-                                            onRetryJellyfin = searchCoordinator::retryJellyfin,
-                                            onRetrySeerr = searchCoordinator::retrySeerr,
-                                            onVoiceSearch = searchCoordinator::launchVoiceSearch,
-                                            onJellyfinItem = ::openJellyfinDetail,
-                                            onSeerrItem = ::openSeerr,
-                                            onPlayJellyfin = playbackLauncher::play,
-                                            onToggleJellyfinSaved = { item ->
-                                                scope.launch {
-                                                    browseCoordinator.toggleFavorite(item)
-                                                    searchCoordinator.search(searchState.session.query)
-                                                }
-                                            },
-                                            onToggleJellyfinPlayed = { item, played ->
-                                                scope.launch {
-                                                    browseRepository.setPlayedStatus(item.id, played)
-                                                    searchCoordinator.search(searchState.session.query)
-                                                }
-                                            },
-                                            onToggleSeerrSaved = { item ->
-                                                scope.launch {
-                                                    if (savedMedia.any { it.identity == item.mediaIdentity() }) {
-                                                        myListRepository.removeSeerr(myListProfileId, item)
-                                                    } else {
-                                                        myListRepository.saveSeerr(myListProfileId, item)
-                                                    }
-                                                }
-                                            },
-                                            isJellyfinSaved = { item ->
-                                                myList.any { it.identity == item.mediaIdentity() }
-                                            },
-                                            isSeerrSaved = { item ->
-                                                savedMedia.any { it.identity == item.mediaIdentity() }
-                                            },
-                                            trailerPreviewState = trailerPreviewState,
-                                            trailerPreviewEngine = trailerPreviewEngine,
-                                            previewSoundEnabled = settings.trailerPreviewSoundEnabled,
-                                            previewProgress = trailerPreviewProgress,
-                                            onPreviewFocus = ::focusCinematicTrailer,
+                                            actions = tvSearchActions(searchCoordinator, ::openJellyfinDetail, ::openSeerr),
                                         )
                                     TvRoute.Discover ->
                                         TvDiscoverScreen(
