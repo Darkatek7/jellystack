@@ -24,6 +24,44 @@ class TvProfileStateTest {
     }
 
     @Test
+    fun singlePinProtectedProfileAsksForItsPinOnColdLaunchButNotOnResume() {
+        val pinProtected = setOf(PROFILE_A.id)
+
+        assertEquals(
+            TvProfileState.PinEntry(PROFILE_A),
+            initialTvProfileState(
+                listOf(PROFILE_A),
+                coldLaunch = true,
+                pickerWasVisible = false,
+                rememberedProfileId = PROFILE_A.id,
+            ).lockedOnColdLaunch(coldLaunch = true, pinProtectedProfileIds = pinProtected),
+        )
+        assertEquals(
+            TvProfileState.Content(PROFILE_A, 2),
+            initialTvProfileState(
+                listOf(PROFILE_A),
+                coldLaunch = false,
+                pickerWasVisible = false,
+                rememberedProfileId = PROFILE_A.id,
+                generation = 2,
+            ).lockedOnColdLaunch(coldLaunch = false, pinProtectedProfileIds = pinProtected),
+        )
+    }
+
+    @Test
+    fun profileWithoutPinStillOpensDirectlyOnColdLaunch() {
+        assertEquals(
+            TvProfileState.Content(PROFILE_B, 0),
+            initialTvProfileState(
+                listOf(PROFILE_B),
+                coldLaunch = true,
+                pickerWasVisible = false,
+                rememberedProfileId = PROFILE_B.id,
+            ).lockedOnColdLaunch(coldLaunch = true, pinProtectedProfileIds = setOf(PROFILE_A.id)),
+        )
+    }
+
+    @Test
     fun multipleProfilesShowPickerOnColdLaunch() {
         assertIs<TvProfileState.Picker>(
             initialTvProfileState(

@@ -191,7 +191,10 @@ private fun TvProfileHost(
     val pinRepository = remember(koin) { koin.get<ProfilePinRepository>() }
     val removalCoordinator = remember(koin) { koin.get<ProfileRemovalCoordinator>() }
     val activeServerPreferences = remember(koin) { koin.get<ActiveServerPreferenceRepository>() }
-    val profiles by profileRepository.observeProfiles().collectAsStateWithLifecycle(initialValue = emptyList())
+    // Null until the store has answered, so "not loaded yet" never routes to the connect screen.
+    val loadedProfiles: List<HouseholdProfile>? by
+        profileRepository.observeProfiles().collectAsStateWithLifecycle(initialValue = null)
+    val profiles = loadedProfiles.orEmpty()
     val servers by serverRepository.observeServers().collectAsStateWithLifecycle()
     var profileAvatarUrls by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var profilePinRequired by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
@@ -262,29 +265,8 @@ private fun TvProfileHost(
                 profile.id to (pinRepository.state(profile.id) !is ProfilePinState.NotConfigured)
             }
     }
-    LaunchedEffect(legacyChecked, profiles, initialized) {
-        if (!legacyChecked || initialized) return@LaunchedEffect
-        when (
-            val initial =
-                initialTvProfileState(
-                    profiles = profiles,
-                    coldLaunch = coldLaunch,
-                    pickerWasVisible = pickerVisible,
-                    rememberedProfileId = activeProfiles.profileId.value,
-                    generation = generation,
-                )
-        ) {
-            is TvProfileState.Content -> selectedProfileId = initial.profile.id
-            is TvProfileState.Picker -> {
-                activeProfiles.clear()
-                pickerVisible = true
-            }
-            else -> Unit
-        }
-        initialized = true
-    }
-    LaunchedEffect(profiles.map { it.id }, selectedProfileId) {
-        if (selectedProfileId != null && profiles.none { it.id == selectedProfileId }) {
+    LaunchedEffect(loadedProfiles?.map { it.id }, selectedProfileId) {
+        if (loadedProfiles != null && selectedProfileId != null && profiles.none { it.id == selectedProfileId }) {
             selectedProfileId = null
             pickerVisible = true
         }
@@ -329,24 +311,53 @@ private fun TvProfileHost(
         }
     }
 
-    fun selectProfile(profile: HouseholdProfile) {
-        pinForManagement = false
-        scope.launch {
-            when (val state = pinRepository.state(profile.id)) {
-                ProfilePinState.NotConfigured -> beginActivation(profile)
-                ProfilePinState.Ready -> {
-                    pinProfile = profile
-                    pinValue = ""
-                    pinRemainingAttempts = null
-                    pinLockedUntilMillis = null
-                }
-                is ProfilePinState.Locked -> {
-                    pinProfile = profile
-                    pinValue = ""
-                    pinLockedUntilMillis = state.until.toEpochMilliseconds()
-                }
+    suspend fun openProfile(profile: HouseholdProfile) {
+        when (val state = pinRepository.state(profile.id)) {
+            ProfilePinState.NotConfigured -> beginActivation(profile)
+            ProfilePinState.Ready -> {
+                pinProfile = profile
+                pinValue = ""
+                pinRemainingAttempts = null
+                pinLockedUntilMillis = null
+            }
+            is ProfilePinState.Locked -> {
+                pinProfile = profile
+                pinValue = ""
+                pinLockedUntilMillis = state.until.toEpochMilliseconds()
             }
         }
+    }
+
+    fun selectProfile(profile: HouseholdProfile) {
+        pinForManagement = false
+        scope.launch { openProfile(profile) }
+    }
+    LaunchedEffect(legacyChecked, loadedProfiles, initialized) {
+        val loaded = loadedProfiles
+        if (!legacyChecked || loaded == null || initialized) return@LaunchedEffect
+        val pinProtected = loaded.filter { pinRepository.state(it.id) !is ProfilePinState.NotConfigured }
+        when (
+            val initial =
+                initialTvProfileState(
+                    profiles = loaded,
+                    coldLaunch = coldLaunch,
+                    pickerWasVisible = pickerVisible,
+                    rememberedProfileId = activeProfiles.profileId.value,
+                    generation = generation,
+                ).lockedOnColdLaunch(coldLaunch, pinProtected.mapTo(HashSet()) { it.id })
+        ) {
+            is TvProfileState.Content -> selectedProfileId = initial.profile.id
+            is TvProfileState.Picker -> {
+                activeProfiles.clear()
+                pickerVisible = true
+            }
+            is TvProfileState.PinEntry -> {
+                activeProfiles.clear()
+                openProfile(initial.profile)
+            }
+            else -> Unit
+        }
+        initialized = true
     }
     LaunchedEffect(pinLockedUntilMillis, pinProfile?.id) {
         val deadline = pinLockedUntilMillis ?: return@LaunchedEffect
@@ -383,7 +394,7 @@ private fun TvProfileHost(
         }
     }
 
-    LaunchedEffect(initialized, pickerVisible, selectedProfileId, activatedProfileId) {
+    LaunchedEffect(initialized, loadedProfiles == null, pickerVisible, selectedProfileId, activatedProfileId) {
         val selected = profiles.firstOrNull { it.id == selectedProfileId }
         selected?.let { profile ->
             val activationNeeded = initialized && !pickerVisible
@@ -426,7 +437,7 @@ private fun TvProfileHost(
     Box(modifier.fillMaxSize().background(TvBackground)) {
         val selectedProfile = profiles.firstOrNull { it.id == selectedProfileId }
         when {
-            !legacyChecked || !initialized -> TvProfileStatusScreen(strings.loading)
+            !legacyChecked || !initialized || loadedProfiles == null -> TvProfileStatusScreen(strings.loading)
             switchingProfile != null -> TvProfileStatusScreen(strings.switchingProfile)
             addProfile ->
                 TvConnectionScreen(
