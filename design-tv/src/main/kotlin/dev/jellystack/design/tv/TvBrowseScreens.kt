@@ -59,6 +59,7 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
@@ -360,21 +361,27 @@ internal fun TvHomeScreen(
                 imageAccessToken = state.imageAccessToken,
             )
         }
+    val stageTrailerPlaying =
+        heroModel != null &&
+            trailerPreviewState.showsTvHomeStagePreview(heroModel.stageItem.id, heroModel.stagePresentationId)
+    val homeUiAlpha = rememberTvHomeUiAlpha(stageTrailerPlaying, heroInteraction)
     val heroTrailer =
         TvHomeHeroTrailer(
             state = trailerPreviewState,
             soundEnabled = previewSoundEnabled,
             progress = previewProgress,
             surface = { surfaceModifier -> TvTrailerPreviewSurface(trailerPreviewEngine, surfaceModifier) },
+            homeUiAlpha = homeUiAlpha,
         )
     Box(
         modifier.fillMaxSize().onPreviewKeyEvent {
-            // Any remote input restarts the spotlight timer.
+            // Any remote input restarts the spotlight timer and brings the home UI back over a trailer.
             heroInteraction += 1
             false
         },
     ) {
         heroModel?.let { TvHomeBackdrop(it, heroTrailer) }
+        if (stageTrailerPlaying) TvHomeImmersiveTrailerChrome(heroTrailer, strings.trailer, Modifier.fillMaxSize())
         Box(Modifier.fillMaxWidth().onFocusChanged { heroHasFocus = it.hasFocus }) {
             if (heroModel != null) {
                 TvHeroCarousel(
@@ -408,14 +415,19 @@ internal fun TvHomeScreen(
                 )
             }
         }
-        TvHomeClock(rememberTvClockLabel(), Modifier.align(Alignment.TopEnd))
+        TvHomeFadeLayer(homeUiAlpha, Modifier.align(Alignment.TopEnd)) { TvHomeClock(rememberTvClockLabel()) }
         val rowScrollSpec = LocalBringIntoViewSpec.current
         CompositionLocalProvider(
             LocalBringIntoViewSpec provides rememberTvRowAlignedBringIntoViewSpec(TV_HOME_ROW_CARD_OFFSET),
         ) {
             LazyColumn(
                 state = homeListState,
-                modifier = Modifier.fillMaxSize().padding(top = TV_CINEMATIC_ROWS_TOP),
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .padding(top = TV_CINEMATIC_ROWS_TOP)
+                        // The rows stay composed so the focused card keeps its focus while the trailer has the screen.
+                        .graphicsLayer { alpha = homeUiAlpha.value },
                 contentPadding = TvHomeRowsPadding,
                 verticalArrangement = Arrangement.spacedBy(20.dp),
             ) {

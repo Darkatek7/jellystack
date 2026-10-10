@@ -14,6 +14,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -52,21 +53,29 @@ internal fun TvHomeBackdrop(
                 image(tvHeroBackdropUrl(model, shown))
             }
         }
-        Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(colorStops = TV_HOME_BACKDROP_SIDE_SCRIM)))
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(colorStops = TV_HOME_BACKDROP_BOTTOM_SCRIM)))
-        // Keeps the clock and the page dots readable when the artwork is bright in that corner.
-        Box(
-            Modifier.fillMaxSize().drawBehind {
-                drawRect(
-                    Brush.radialGradient(
-                        colors = listOf(TvBackground.copy(alpha = 0.62f), Color.Transparent),
-                        center = Offset(size.width, 0f),
-                        radius = size.minDimension * 0.75f,
-                    ),
-                )
-            },
-        )
+        // The scrims only keep the home UI readable, so they fade with it while the trailer has the screen.
+        Box(Modifier.fillMaxSize().graphicsLayer { alpha = trailer.homeUiAlpha.value }) {
+            TvHomeBackdropScrims()
+        }
     }
+}
+
+@Composable
+private fun TvHomeBackdropScrims() {
+    Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(colorStops = TV_HOME_BACKDROP_SIDE_SCRIM)))
+    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(colorStops = TV_HOME_BACKDROP_BOTTOM_SCRIM)))
+    // Keeps the clock and the page dots readable when the artwork is bright in that corner.
+    Box(
+        Modifier.fillMaxSize().drawBehind {
+            drawRect(
+                Brush.radialGradient(
+                    colors = listOf(TvBackground.copy(alpha = 0.62f), Color.Transparent),
+                    center = Offset(size.width, 0f),
+                    radius = size.minDimension * 0.75f,
+                ),
+            )
+        },
+    )
 }
 
 // Dark behind the hero text and the open rail, clear on the right where the artwork shows.

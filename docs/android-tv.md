@@ -57,6 +57,7 @@ Test at minimum:
 
 - Navigation rail: hidden while the content has focus; Left at the content's left edge or Back slides it in
 - Home spotlight: Left/Right pages through it (Left on the first page opens the navigation rail), Center opens the details, Play/Pause plays the title, Down moves to the rows
+- Home trailer: after 3 s without input the home UI fades out and the trailer fills the screen; any key brings the UI back and still acts as usual
 - Center with hidden controls: pause and show controls, resume when paused, or activate a visible Skip/Next prompt
 - Left/Right with hidden controls: show the seek bar (with a trickplay thumbnail when the server has one) and seek on release; hold for accelerated scrubbing
 - Left/Right on the focused timeline: seek live, with the same thumbnail

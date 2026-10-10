@@ -733,6 +733,48 @@ class TvHomeScreenTest {
     }
 
     @Test
+    fun playingTrailerTakesTheScreenUntilTheNextKeyPress() {
+        lateinit var engine: AndroidPlayerEngine
+        val hero = item("hero", "Hero title", dateCreated = (Clock.System.now() - 1.days).toString())
+        val previewState =
+            TvTrailerPreviewState.Playing(
+                TvTrailerPreviewRequest(
+                    TvTrailerPreviewOwner.HERO,
+                    TvTrailerPreviewTarget("server", "hero", isEpisode = false, seriesId = null),
+                ),
+            )
+        composeRule.mainClock.autoAdvance = false
+        composeRule.setContent {
+            val context = LocalContext.current
+            engine = rememberTestPlayerEngine(context)
+            TestHomeScreen(
+                state = JellyfinHomeState(recentMovies = listOf(hero)),
+                sections = HomeSectionsState.Unavailable,
+                engine = engine,
+                provideEntryFocus = false,
+                trailerPreviewState = previewState,
+            )
+        }
+        composeRule.onNodeWithTag(SPOTLIGHT).performSemanticsAction(SemanticsActions.RequestFocus)
+        composeRule.mainClock.advanceTimeBy(TV_HOME_IMMERSIVE_DELAY_MS - 500)
+        // The spotlight text stands in for the home UI here.
+        composeRule.onAllNodesWithText("Hero title", useUnmergedTree = true).assertCountEquals(1)
+
+        composeRule.mainClock.advanceTimeBy(1_500)
+        composeRule.onAllNodesWithText("Hero title", useUnmergedTree = true).assertCountEquals(0)
+        composeRule.onNodeWithTag(SPOTLIGHT).assertIsFocused()
+
+        composeRule.onNodeWithTag(SPOTLIGHT).performKeyInput { pressKey(Key.Menu) }
+        composeRule.mainClock.advanceTimeBy(500)
+        composeRule.onAllNodesWithText("Hero title", useUnmergedTree = true).assertCountEquals(1)
+
+        // The key started the wait again.
+        composeRule.mainClock.advanceTimeBy(TV_HOME_IMMERSIVE_DELAY_MS + 1_000)
+        composeRule.onAllNodesWithText("Hero title", useUnmergedTree = true).assertCountEquals(0)
+        composeRule.runOnIdle(engine::release)
+    }
+
+    @Test
     fun entryFocusOnRowArmsItsStagePreview() {
         lateinit var engine: AndroidPlayerEngine
         val previewEvents = mutableListOf<String>()

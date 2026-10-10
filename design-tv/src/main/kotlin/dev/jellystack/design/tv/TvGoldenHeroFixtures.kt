@@ -60,6 +60,7 @@ internal fun GoldenHomeHero(
             soundEnabled = false,
             progress = remember { mutableFloatStateOf(0f) },
             surface = {},
+            homeUiAlpha = remember { mutableFloatStateOf(1f) },
         )
     Box(modifier.fillMaxSize().background(TvBackground)) {
         TvHomeBackdrop(model, trailer, image = { GoldenBrightArtwork() })
