@@ -225,7 +225,6 @@ private fun TvProfileHost(
     var recoverPinProfileId by rememberSaveable { mutableStateOf<String?>(null) }
     var addProfile by rememberSaveable { mutableStateOf(false) }
     var removeProfile by remember { mutableStateOf<HouseholdProfile?>(null) }
-    var connectionsBeforeAdd by remember { mutableStateOf<Set<String>>(emptySet()) }
 
     LaunchedEffect(servers.map { it.id to it.updatedAt }) {
         if (servers.any { it.type == ServerType.JELLYFIN }) {
@@ -456,7 +455,6 @@ private fun TvProfileHost(
             addProfile ->
                 TvAddProfileScreen(
                     profiles = profiles,
-                    connectionsBeforeAdd = connectionsBeforeAdd,
                     appVersion = appVersion,
                     strings = strings,
                     onCreated = { created ->
@@ -664,10 +662,7 @@ private fun TvProfileHost(
                     rememberedProfileId = profiles.maxByOrNull { it.lastActiveAt ?: it.createdAt }?.id,
                     strings = strings,
                     onSelect = { profileId -> profiles.firstOrNull { it.id == profileId }?.let(::selectProfile) },
-                    onAdd = {
-                        connectionsBeforeAdd = servers.map { it.id }.toSet()
-                        addProfile = true
-                    },
+                    onAdd = { addProfile = true },
                     onManage = {
                         managedProfileId = null
                         profileManagementVisible = true

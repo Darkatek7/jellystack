@@ -357,36 +357,7 @@ class JellyfinBrowseCoordinator internal constructor(
         val moviesLibraryId = preferredLibraryId(current.libraries, "movies") ?: defaultLibraryId
         return scope
             .launch {
-                val feeds =
-                    coroutineScope {
-                        val continueWatching =
-                            async {
-                                loadHomeFeed(current.continueWatching) {
-                                    repository.refreshContinueWatching(limit = HOME_SECTION_ITEM_LIMIT)
-                                }
-                            }
-                        val nextUp =
-                            async {
-                                loadHomeFeed(current.nextUp) {
-                                    repository.refreshNextUp(limit = HOME_SECTION_ITEM_LIMIT, libraryId = showsLibraryId)
-                                }
-                            }
-                        val recentShows =
-                            async {
-                                loadHomeFeed(current.recentShows) {
-                                    showsLibraryId?.let { repository.refreshRecentlyAddedShows(it, limit = HOME_SECTION_ITEM_LIMIT) }
-                                        ?: current.recentShows
-                                }
-                            }
-                        val recentMovies =
-                            async {
-                                loadHomeFeed(current.recentMovies) {
-                                    moviesLibraryId?.let { repository.refreshRecentlyAddedMovies(it, limit = HOME_SECTION_ITEM_LIMIT) }
-                                        ?: current.recentMovies
-                                }
-                            }
-                        HomeFeedResults(continueWatching.await(), nextUp.await(), recentShows.await(), recentMovies.await())
-                    }
+                val feeds = reloadHomeFeeds(current, showsLibraryId, moviesLibraryId)
                 updateHomeStateIfCurrent(expectedHomeGeneration) {
                     it.copy(
                         continueWatching = feeds.continueWatching,
@@ -397,6 +368,31 @@ class JellyfinBrowseCoordinator internal constructor(
                 }
             }.also { homeFeedsRefreshJob = it }
     }
+
+    private suspend fun reloadHomeFeeds(
+        current: JellyfinHomeState,
+        showsLibraryId: String?,
+        moviesLibraryId: String?,
+    ): HomeFeedResults =
+        coroutineScope {
+            val limit = HOME_SECTION_ITEM_LIMIT
+            val continueWatching =
+                async { loadHomeFeed(current.continueWatching) { repository.refreshContinueWatching(limit) } }
+            val nextUp = async { loadHomeFeed(current.nextUp) { repository.refreshNextUp(limit, showsLibraryId) } }
+            val recentShows =
+                async {
+                    loadHomeFeed(current.recentShows) {
+                        showsLibraryId?.let { repository.refreshRecentlyAddedShows(it, limit) } ?: current.recentShows
+                    }
+                }
+            val recentMovies =
+                async {
+                    loadHomeFeed(current.recentMovies) {
+                        moviesLibraryId?.let { repository.refreshRecentlyAddedMovies(it, limit) } ?: current.recentMovies
+                    }
+                }
+            HomeFeedResults(continueWatching.await(), nextUp.await(), recentShows.await(), recentMovies.await())
+        }
 
     fun shutdown() {
         homeLoadGeneration += 1

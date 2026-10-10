@@ -1,3 +1,5 @@
+@file:Suppress("FunctionName")
+
 package dev.jellystack.design.tv
 
 import androidx.compose.runtime.Composable

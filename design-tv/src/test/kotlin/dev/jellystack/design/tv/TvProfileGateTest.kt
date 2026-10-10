@@ -7,12 +7,12 @@ import kotlin.test.assertTrue
 class TvProfileGateTest {
     @Test
     fun severalProfilesPickAgainAfterTheGracePeriod() {
-        assertTrue(tvProfileGateOnReturn(profileCount = 2, backgroundedAtMillis = 0L, nowMillis = TV_PROFILE_GATE_GRACE_MILLIS))
+        assertTrue(tvProfileGateOnReturn(profileCount = 2, backgroundedAtMillis = 0L, nowMillis = GRACE))
     }
 
     @Test
     fun shortBreakKeepsTheActiveProfile() {
-        assertFalse(tvProfileGateOnReturn(profileCount = 2, backgroundedAtMillis = 0L, nowMillis = TV_PROFILE_GATE_GRACE_MILLIS - 1))
+        assertFalse(tvProfileGateOnReturn(profileCount = 2, backgroundedAtMillis = 0L, nowMillis = GRACE - 1))
     }
 
     @Test
@@ -23,5 +23,9 @@ class TvProfileGateTest {
     @Test
     fun startWithoutAPrecedingStopNeverAsks() {
         assertFalse(tvProfileGateOnReturn(profileCount = 3, backgroundedAtMillis = null, nowMillis = Long.MAX_VALUE))
+    }
+
+    private companion object {
+        const val GRACE = TV_PROFILE_GATE_GRACE_MILLIS
     }
 }

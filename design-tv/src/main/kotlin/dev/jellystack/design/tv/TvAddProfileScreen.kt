@@ -1,3 +1,5 @@
+@file:Suppress("FunctionName")
+
 package dev.jellystack.design.tv
 
 import androidx.compose.runtime.Composable
@@ -21,7 +23,6 @@ import kotlinx.coroutines.launch
 @Composable
 internal fun TvAddProfileScreen(
     profiles: List<HouseholdProfile>,
-    connectionsBeforeAdd: Set<String>,
     appVersion: String,
     strings: TvStrings,
     onCreated: (HouseholdProfile) -> Unit,
@@ -31,8 +32,10 @@ internal fun TvAddProfileScreen(
     val scope = rememberCoroutineScope()
     val profileRepository = remember(koin) { koin.get<HouseholdProfileRepository>() }
     val serverRepository = remember(koin) { koin.get<ServerRepository>() }
-    val bindings: List<ProfileConnectionBinding>? by
-        remember(profileRepository) { profileRepository.observeBindings() }.collectAsStateWithLifecycle(initialValue = null)
+    // The new member's connection is the one that did not exist when this screen opened.
+    val connectionsBeforeAdd = remember(serverRepository) { serverRepository.currentServers().map { it.id }.toSet() }
+    val bindingsFlow = remember(profileRepository) { profileRepository.observeBindings() }
+    val bindings: List<ProfileConnectionBinding>? by bindingsFlow.collectAsStateWithLifecycle(initialValue = null)
     // Resolved once when the bindings arrive, so later server changes never reset what the user typed.
     val prefill =
         remember(bindings != null) {
