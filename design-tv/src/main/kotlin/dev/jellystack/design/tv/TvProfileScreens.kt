@@ -344,6 +344,15 @@ internal fun TvProfilePinScreen(
     secondaryActionLabel: String? = null,
     onSecondaryAction: (() -> Unit)? = null,
 ) {
+    // The PIN pad can be the first screen after a cold start, so it takes focus itself instead of
+    // waiting for a direction key before Center does anything.
+    val firstDigitFocus = remember { FocusRequester() }
+    LaunchedEffect(locked) {
+        if (!locked) {
+            withFrameNanos { }
+            firstDigitFocus.requestFocus()
+        }
+    }
     Column(
         modifier =
             Modifier
@@ -351,7 +360,7 @@ internal fun TvProfilePinScreen(
                 .background(TvBackground)
                 .padding(horizontal = 220.dp, vertical = TvLayoutTokens.SafeInsets.vertical),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(18.dp, Alignment.CenterVertically),
+        verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
     ) {
         Text(
             title,
@@ -387,19 +396,22 @@ internal fun TvProfilePinScreen(
                             modifier = Modifier.width(74.dp),
                             enabled = pin.length < 4,
                             focusTargetId = "profile:pin:$digit",
+                            focusRequester = firstDigitFocus.takeIf { digit == '1' },
                         )
                     }
                 }
             }
+            // Cancel shares the row with delete and continue so the whole pad fits on a 1080p screen.
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 TvActionButton(strings.back, onDelete, enabled = pin.isNotEmpty())
                 TvActionButton(strings.continueLabel, onSubmit, primary = true, enabled = pin.length == 4)
+                TvActionButton(strings.cancel, onCancel)
             }
         }
         if (secondaryActionLabel != null && onSecondaryAction != null) {
             TvActionButton(secondaryActionLabel, onSecondaryAction)
         }
-        TvActionButton(strings.cancel, onCancel)
+        if (locked) TvActionButton(strings.cancel, onCancel)
     }
 }
 
