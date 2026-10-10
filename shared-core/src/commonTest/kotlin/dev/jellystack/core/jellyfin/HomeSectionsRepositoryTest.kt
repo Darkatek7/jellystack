@@ -10,11 +10,14 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 class HomeSectionsRepositoryTest {
     @Test
@@ -100,6 +103,50 @@ class HomeSectionsRepositoryTest {
                     .single()
                     .seerrTmdbId,
             )
+        }
+
+    @Test
+    fun silentRefreshUpdatesItemsWithoutLoadingAndKeepsSectionsThatFail() =
+        runTest {
+            var resumeItemId = "episode-1"
+            var latestFails = false
+            var serverReachable = true
+            val repository =
+                repository { path ->
+                    if (!serverReachable) error("offline")
+                    when {
+                        path.endsWith("/HomeScreen/Meta") -> """{"Enabled":true,"PaginationEnabled":false}"""
+                        path.endsWith("/HomeScreen/Ready") -> ""
+                        path.endsWith("/HomeScreen/Sections") ->
+                            """{"Items":[
+                            {"Section":"ContinueWatching","DisplayText":"Continue watching","OrderIndex":1},
+                            {"Section":"LatestMovies","DisplayText":"Latest","OrderIndex":2}
+                        ]}"""
+                        path.endsWith("/HomeScreen/Section/ContinueWatching") ->
+                            """{"Items":[{"Id":"$resumeItemId","Name":"Episode","Type":"Episode"}]}"""
+                        path.endsWith("/HomeScreen/Section/LatestMovies") ->
+                            if (latestFails) error("section failed") else """{"Items":[{"Id":"movie-1","Name":"Movie","Type":"Movie"}]}"""
+                        else -> error("Unexpected path $path")
+                    }
+                }
+            repository.refresh(enabledByUser = true, language = "en")
+            val first = assertIs<HomeSectionsState.Ready>(repository.state.value)
+            val published = mutableListOf<HomeSectionsState>()
+            backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { repository.state.collect(published::add) }
+
+            resumeItemId = "episode-2"
+            latestFails = true
+            repository.refresh(enabledByUser = true, language = "en", silent = true)
+
+            val refreshed = assertIs<HomeSectionsState.Ready>(repository.state.value)
+            assertEquals(listOf("episode-2"), refreshed.sections[0].items.map(HomeSectionItem::id))
+            assertEquals(first.sections[1], refreshed.sections[1])
+
+            serverReachable = false
+            repository.refresh(enabledByUser = true, language = "en", silent = true)
+
+            assertEquals(refreshed, repository.state.value)
+            assertTrue(published.none { it is HomeSectionsState.Loading || it is HomeSectionsState.Unavailable })
         }
 
     @Test

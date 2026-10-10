@@ -8,6 +8,15 @@ data class JellyfinItemProgress(
     val remainingMinutes: Int?,
 )
 
+/** This item with the user's progress and watched state taken from [fresher], a newer copy of the same item. */
+fun JellyfinItem.withProgressOf(fresher: JellyfinItem): JellyfinItem =
+    copy(
+        positionTicks = fresher.positionTicks,
+        playedPercentage = fresher.playedPercentage,
+        lastPlayed = fresher.lastPlayed,
+        isPlayed = fresher.isPlayed,
+    )
+
 /**
  * Progress from the resume position and runtime, falling back to the server's played percentage.
  * Returns null for unstarted or finished items, where a progress bar would only add noise.

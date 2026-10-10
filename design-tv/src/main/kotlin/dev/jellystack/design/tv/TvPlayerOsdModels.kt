@@ -31,25 +31,33 @@ internal fun PlaybackState.Active.toTvPlayerOsdModel(
         isPaused = isPaused,
         markers = playbackTimelineMarkers(durationMs, chapters, timelineSegments),
         chapters = chapters,
-        audioLabel = tvAudioButtonLabel(audioTrack) ?: strings.automatic,
-        subtitleLabel = subtitleTrack?.let(::tvSubtitleButtonLabel) ?: strings.off,
+        audioLabel = tvAudioButtonLabel(audioTrack, strings.locale) ?: strings.automatic,
+        subtitleLabel = subtitleTrack?.let { tvSubtitleButtonLabel(it, strings.locale) } ?: strings.off,
         promptActions = promptActions,
     )
 }
 
-/** "English 5.1"-style label: the language name and the channel layout when known. */
-internal fun tvAudioButtonLabel(track: AudioTrack?): String? {
+/** "English 5.1"-style label: the language name in the app's [locale] and the channel layout when known. */
+internal fun tvAudioButtonLabel(
+    track: AudioTrack?,
+    locale: Locale,
+): String? {
     track ?: return null
-    val language = tvLanguageName(track.language) ?: track.title?.takeIf(String::isNotBlank)
+    val language = tvLanguageName(track.language, locale) ?: track.title?.takeIf(String::isNotBlank)
     return listOfNotNull(language, jellyfinChannelLayout(track.channels)?.label()).joinToString(" ").ifBlank { null }
 }
 
-internal fun tvSubtitleButtonLabel(track: SubtitleTrack): String =
-    tvLanguageName(track.language) ?: track.title?.takeIf(String::isNotBlank) ?: track.format.name
+internal fun tvSubtitleButtonLabel(
+    track: SubtitleTrack,
+    locale: Locale,
+): String = tvLanguageName(track.language, locale) ?: track.title?.takeIf(String::isNotBlank) ?: track.format.name
 
-private fun tvLanguageName(code: String?): String? {
+private fun tvLanguageName(
+    code: String?,
+    locale: Locale,
+): String? {
     val tag = code?.trim()?.takeIf(String::isNotBlank) ?: return null
-    val name = Locale.forLanguageTag(tag).getDisplayLanguage(Locale.getDefault())
+    val name = Locale.forLanguageTag(tag).getDisplayLanguage(locale)
     return name.takeIf { it.isNotBlank() && !it.equals(tag, ignoreCase = true) }
 }
 

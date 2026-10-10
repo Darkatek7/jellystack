@@ -47,6 +47,9 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // A restore after process death starts a new household session, so it gets the cold-launch profile gate.
+        val coldLaunch = savedInstanceState == null || !processStarted
+        processStarted = true
         window.decorView.setViewTreeNavigationEventDispatcherOwner(this)
         voiceSearch = AndroidTvVoiceSearch.create(this)
         playerEngine =
@@ -135,7 +138,7 @@ class MainActivity : AppCompatActivity() {
                 trailerPreviewEngine = trailerPreviewEngine,
                 appVersion = BuildConfig.VERSION_NAME,
                 stopPlayback = playbackBridge::stopPlayback,
-                coldLaunch = savedInstanceState == null,
+                coldLaunch = coldLaunch,
                 voiceSearch = voiceSearch,
                 onExitConfirmed = ::finish,
             )
@@ -180,5 +183,10 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         platformActions.onDestroy()
         super.onDestroy()
+    }
+
+    private companion object {
+        /** False in a fresh process, including one Android starts to restore this activity. */
+        var processStarted = false
     }
 }

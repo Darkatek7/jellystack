@@ -190,8 +190,8 @@ class ServerConnectionCoordinator(
     private suspend fun registerSeerr(
         input: SeerrServerInput,
         auth: JellyseerrAuthenticationResult,
-    ): ManagedServer =
-        serverRepository.register(
+    ): ManagedServer {
+        val registration =
             ServerRegistration(
                 id = input.serverId,
                 type = ServerType.JELLYSEERR,
@@ -203,8 +203,14 @@ class ServerConnectionCoordinator(
                         userId = auth.userId?.toString(),
                         sessionCookie = auth.sessionCookie,
                     ),
-            ),
-        )
+            )
+        return try {
+            serverRepository.register(registration)
+        } catch (duplicate: DuplicateServerException) {
+            // The same Seerr account is already stored (e.g. by another profile): refresh that record.
+            serverRepository.register(registration.copy(id = duplicate.existingId))
+        }
+    }
 
     private fun defaultName(
         baseUrl: String,

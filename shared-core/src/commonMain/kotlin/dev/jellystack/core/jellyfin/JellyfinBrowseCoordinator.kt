@@ -137,6 +137,7 @@ class JellyfinBrowseCoordinator internal constructor(
 
     private val mutableState = MutableStateFlow(JellyfinHomeState(isInitialLoading = true, isHomeLoading = true))
     private var refreshJob: Job? = null
+    private var homeFeedsRefreshJob: Job? = null
     private val browseHistory = ArrayDeque<LibraryPageSnapshot>()
     private var browseLoadGeneration = 0L
     private var browseLoadJob: Job? = null
@@ -342,8 +343,61 @@ class JellyfinBrowseCoordinator internal constructor(
             }
     }
 
+    /**
+     * Re-reads the progress-driven home rows (continue watching, next up, and recently added with their
+     * watched marks) without loading flags or browse resets, so progress made on another device shows up
+     * while the app stays open. Rows the server cannot deliver keep their current content.
+     */
+    fun refreshHomeFeeds(): Job? {
+        val current = mutableState.value
+        if (current.isInitialLoading || current.isHomeLoading || homeFeedsRefreshJob?.isActive == true) return null
+        val expectedHomeGeneration = homeLoadGeneration
+        val defaultLibraryId = selectDefaultLibrary(current.libraries)
+        val showsLibraryId = preferredLibraryId(current.libraries, "tvshows", "series") ?: defaultLibraryId
+        val moviesLibraryId = preferredLibraryId(current.libraries, "movies") ?: defaultLibraryId
+        return scope
+            .launch {
+                val feeds = reloadHomeFeeds(current, showsLibraryId, moviesLibraryId)
+                updateHomeStateIfCurrent(expectedHomeGeneration) {
+                    it.copy(
+                        continueWatching = feeds.continueWatching,
+                        nextUp = feeds.nextUp,
+                        recentShows = feeds.recentShows,
+                        recentMovies = feeds.recentMovies,
+                    )
+                }
+            }.also { homeFeedsRefreshJob = it }
+    }
+
+    private suspend fun reloadHomeFeeds(
+        current: JellyfinHomeState,
+        showsLibraryId: String?,
+        moviesLibraryId: String?,
+    ): HomeFeedResults =
+        coroutineScope {
+            val limit = HOME_SECTION_ITEM_LIMIT
+            val continueWatching =
+                async { loadHomeFeed(current.continueWatching) { repository.refreshContinueWatching(limit) } }
+            val nextUp = async { loadHomeFeed(current.nextUp) { repository.refreshNextUp(limit, showsLibraryId) } }
+            val recentShows =
+                async {
+                    loadHomeFeed(current.recentShows) {
+                        showsLibraryId?.let { repository.refreshRecentlyAddedShows(it, limit) } ?: current.recentShows
+                    }
+                }
+            val recentMovies =
+                async {
+                    loadHomeFeed(current.recentMovies) {
+                        moviesLibraryId?.let { repository.refreshRecentlyAddedMovies(it, limit) } ?: current.recentMovies
+                    }
+                }
+            HomeFeedResults(continueWatching.await(), nextUp.await(), recentShows.await(), recentMovies.await())
+        }
+
     fun shutdown() {
         homeLoadGeneration += 1
+        homeFeedsRefreshJob?.cancel()
+        homeFeedsRefreshJob = null
         invalidateBrowseLoad()
         browseHistory.clear()
         favoritesParentSnapshot = null

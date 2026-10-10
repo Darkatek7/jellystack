@@ -1,5 +1,13 @@
 # Release Notes
 
+## 0.17.1 (TV)
+
+- Add another profile without typing the Jellyfin server address again.
+- Sign each profile in to its own Seerr account.
+- Choose the profile on every start and after more than a minute in the background when the household has several profiles.
+- See progress and watched marks from other devices on Home and in details while the app stays open.
+- Fix the year line under two-line titles on Home and Discover, and show audio and subtitle languages in the app language.
+
 ## 0.17.0 (TV)
 
 - Leave the beta: Jellystack TV 0.17.0 is the first stable release for Android TV, Google TV, and Fire TV.
