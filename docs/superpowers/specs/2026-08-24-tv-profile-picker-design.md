@@ -20,7 +20,7 @@ The picker also contains:
 
 The selection screen never places PIN or Delete buttons beside profile tiles. It does not show server URLs, credential IDs, or connection implementation details.
 
-The most recently active profile receives initial focus when it still exists. Otherwise, the first profile receives focus. Center activates the focused profile or begins its PIN flow. Background resume keeps the active profile and does not reopen the picker; cold launch with multiple profiles does.
+The most recently active profile receives initial focus when it still exists. Otherwise, the first profile receives focus. Center activates the focused profile or begins its PIN flow. With multiple profiles, cold launch (including a restore after process death) and a return after more than one minute in the background reopen the picker; a shorter trip keeps the active profile.
 
 ## Avatar and naming behavior
 
