@@ -17,10 +17,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -36,7 +34,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
@@ -47,7 +44,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Icon
 import androidx.tv.material3.Text
-import coil3.compose.AsyncImage
 import dev.jellystack.core.jellyfin.JellyfinItem
 
 /** What the home hero shows: the staged item and, while it is the carousel's own item, the carousel context. */
@@ -235,25 +231,10 @@ private fun TvHeroText(
     Column(modifier, verticalArrangement = Arrangement.spacedBy(9.dp)) {
         // The spotlight label describes the carousel, so a staged row card does not show it.
         if (model.showCarouselContext) TvHeroModeLabel(model.mode, strings)
-        val logoUrl = tvJellyfinLogoUrl(model.imageBaseUrl, model.imageAccessToken, item)
-        if (logoUrl != null) {
-            AsyncImage(
-                model = logoUrl,
-                contentDescription = null,
-                modifier = Modifier.widthIn(max = 390.dp).heightIn(max = 68.dp),
-                contentScale = ContentScale.Fit,
-            )
-        } else {
-            Text(
-                item.seriesName ?: item.name,
-                color = TvText,
-                fontSize = 42.sp,
-                lineHeight = 44.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
+        TvStageTitle(
+            title = item.seriesName ?: item.name,
+            logoUrl = tvJellyfinLogoUrl(model.imageBaseUrl, model.imageAccessToken, item),
+        )
         item.overview?.takeIf(String::isNotBlank)?.let { overview ->
             Text(
                 overview,

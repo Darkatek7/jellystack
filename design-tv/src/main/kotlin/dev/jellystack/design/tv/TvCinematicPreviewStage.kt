@@ -13,25 +13,19 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
-import coil3.compose.AsyncImage
 import dev.jellystack.players.AndroidPlayerEngine
 
 /** Browse rows start where the home rows start, so cards never cover the stage text. */
@@ -134,7 +128,7 @@ private fun TvCinematicStageText(
             label = "cinematic-stage-text",
         ) { shown ->
             Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                TvCinematicStageTitle(shown?.title ?: hero?.title, shown?.logoUrl)
+                TvStageTitle(shown?.title ?: hero?.title, shown?.logoUrl)
                 val overview = if (shown != null) shown.overview else hero?.overview
                 overview?.takeIf(String::isNotBlank)?.let {
                     Text(
@@ -151,31 +145,5 @@ private fun TvCinematicStageText(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun TvCinematicStageTitle(
-    title: String?,
-    logoUrl: String?,
-) {
-    if (logoUrl != null) {
-        AsyncImage(
-            model = logoUrl,
-            contentDescription = title,
-            modifier = Modifier.widthIn(max = 390.dp).heightIn(max = 68.dp).testTag("cinematic-preview-logo"),
-            contentScale = ContentScale.Fit,
-        )
-    } else if (title != null) {
-        Text(
-            text = title,
-            color = TvText,
-            fontSize = 42.sp,
-            lineHeight = 44.sp,
-            fontWeight = FontWeight.Bold,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.semantics { heading() }.testTag("cinematic-preview-title"),
-        )
     }
 }
