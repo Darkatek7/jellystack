@@ -52,7 +52,10 @@ internal fun TvStageTitle(
     }
     val logoAlpha by animateFloatAsState(if (logoLoaded) 1f else 0f, label = "stage-logo")
     Box(modifier.height(TV_STAGE_LOGO_HEIGHT), contentAlignment = Alignment.CenterStart) {
-        if (!logoLoaded && showName && title != null) TvStageTitleText(title, maxLines = 1)
+        if (showName && title != null && logoAlpha < 1f) {
+            // The name fades out as the logo fades in, so the slot is never empty.
+            TvStageTitleText(title, maxLines = 1, modifier = Modifier.graphicsLayer { alpha = 1f - logoAlpha })
+        }
         AsyncImage(
             model = logoUrl,
             contentDescription = title,
