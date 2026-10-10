@@ -220,10 +220,14 @@ internal fun TvHomeScreen(
         }
     val rowListStates = rememberTvLazyRowStates(homeRowIds)
     var heroHasFocus by remember { mutableStateOf(false) }
+    var rowsHaveFocus by remember { mutableStateOf(false) }
+    var laidOutRowIds by remember { mutableStateOf(homeRowIds) }
     LaunchedEffect(heroHasFocus, homeRowIds) {
-        // Rows that load while the spotlight has focus can land above the visible ones, and the list keeps
-        // its first visible row; the rows under the spotlight start at the first row instead.
-        if (heroHasFocus) homeListState.scrollToItem(0)
+        // Rows that load late, as on a cold start, can land above the visible ones, and the list keeps its first
+        // visible row. Unless a card in the rows has focus, the rows start at the first row instead.
+        val rowsChanged = homeRowIds != laidOutRowIds
+        laidOutRowIds = homeRowIds
+        if (heroHasFocus || (rowsChanged && !rowsHaveFocus)) homeListState.scrollToItem(0)
     }
     val errorLazyColumnIndex =
         (if (myList.isNotEmpty()) 1 else 0) +
@@ -423,6 +427,7 @@ internal fun TvHomeScreen(
                     Modifier
                         .fillMaxSize()
                         .padding(top = TV_CINEMATIC_ROWS_TOP)
+                        .onFocusChanged { rowsHaveFocus = it.hasFocus }
                         // The rows stay composed so the focused card keeps its focus while the trailer has the screen.
                         .graphicsLayer { alpha = homeUiAlpha.value },
                 contentPadding = TvHomeRowsPadding,

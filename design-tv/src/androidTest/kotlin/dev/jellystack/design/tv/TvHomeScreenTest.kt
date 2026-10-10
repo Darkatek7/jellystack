@@ -424,6 +424,40 @@ class TvHomeScreenTest {
     }
 
     @Test
+    fun rowsLoadedAboveTheVisibleRowsBeforeAnythingHasFocusStartAtTheFirstRow() {
+        lateinit var engine: AndroidPlayerEngine
+        val recent = item("recent", "Recent", dateCreated = (Clock.System.now() - 1.days).toString())
+        var state by mutableStateOf(JellyfinHomeState(recentMovies = listOf(recent)))
+        composeRule.setContent {
+            val context = LocalContext.current
+            engine = rememberTestPlayerEngine(context)
+            TestHomeScreen(
+                state = state,
+                sections = HomeSectionsState.Unavailable,
+                engine = engine,
+                provideEntryFocus = false,
+            )
+        }
+        composeRule.runOnIdle {
+            state = state.copy(libraries = listOf(JellyfinLibrary("movies", "Movies", "movies", 3L, null)))
+        }
+        composeRule.waitForIdle()
+
+        // As on a cold start, continue watching and next up arrive after the libraries row and land above it.
+        composeRule.runOnIdle {
+            state =
+                state.copy(
+                    continueWatching = listOf(item("continue", "Continue card")),
+                    nextUp = listOf(item("next", "Next card")),
+                )
+        }
+
+        val firstCardBounds = composeRule.onAllNodes(cardWithDescription("Continue card"))[0].getUnclippedBoundsInRoot()
+        assertEquals(tvHomeFirstCardTopDp().toFloat(), firstCardBounds.top.value, 0.51f)
+        composeRule.runOnIdle(engine::release)
+    }
+
+    @Test
     fun latestFallbackShowsCarouselPositionWithoutRecentWindowLabel() {
         lateinit var engine: AndroidPlayerEngine
         val first = item("old-first", "Old first", dateCreated = (Clock.System.now() - 40.days).toString())
