@@ -1158,6 +1158,15 @@ private fun TvAuthenticatedApp(
 
     val currentRoute = appUiState.currentRoute
     val jellyfinServerKey = serverRepository.activeServer(ServerType.JELLYFIN)?.id
+    // Progress and watched marks from other devices show up while Home stays open.
+    TvLiveRefreshEffect(active = currentRoute is TvRoute.Home) {
+        browseCoordinator.refreshHomeFeeds()
+        homeSectionsRepository.refresh(
+            enabledByUser = settings.useServerHomeSections,
+            language = settings.appLanguage.languageTag,
+            silent = true,
+        )
+    }
 
     fun focusCinematicTrailer(
         item: JellyfinItem,

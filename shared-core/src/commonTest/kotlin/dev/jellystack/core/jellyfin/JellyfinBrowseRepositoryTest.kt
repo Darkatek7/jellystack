@@ -709,6 +709,50 @@ class JellyfinBrowseRepositoryTest {
         }
 
     @Test
+    fun refreshedDetailUpdatesCachedItemProgressFromAnotherDevice() =
+        runTest {
+            val engine =
+                MockEngine { request ->
+                    val headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+                    when (val path = request.url.encodedPath) {
+                        "/UserViews" -> respond(LIBRARIES_JSON, HttpStatusCode.OK, headers)
+                        "/Items" -> respond(ITEMS_JSON, HttpStatusCode.OK, headers)
+                        "/Items/item-1" -> respond(DETAIL_WATCHED_ELSEWHERE_JSON, HttpStatusCode.OK, headers)
+                        else -> error("Unexpected request path: $path")
+                    }
+                }
+            val client = NetworkClientFactory.create(ClientConfig(engine = engine, installLogging = false))
+            val syncedRepository =
+                JellyfinBrowseRepository(
+                    environmentProvider,
+                    InMemoryLibraryStore(),
+                    InMemoryItemStore(),
+                    InMemoryDetailStore(),
+                    { env ->
+                        JellyfinBrowseApi(
+                            client,
+                            env.baseUrl,
+                            env.accessToken,
+                            env.deviceId,
+                            clientName = "Test",
+                            deviceName = env.deviceName,
+                            clientVersion = "1.0",
+                        )
+                    },
+                    clock = FixedClock,
+                )
+            syncedRepository.refreshLibraries()
+            syncedRepository.loadLibraryPage(libraryId = "lib-1", page = 0, pageSize = 2, refresh = true)
+            assertEquals(12_000_000_000L, syncedRepository.cachedItem("item-1")?.positionTicks)
+
+            syncedRepository.getItemDetail("item-1", forceRefresh = true)
+
+            val synced = assertNotNull(syncedRepository.cachedItem("item-1"))
+            assertTrue(synced.isPlayed)
+            assertEquals(0L, synced.positionTicks)
+        }
+
+    @Test
     fun setPlayedStatusUpdatesReturnedAndCachedDetail() =
         runTest {
             val initial = repository.getItemDetail("item-1")
@@ -1282,6 +1326,15 @@ class JellyfinBrowseRepositoryTest {
                 "RunTimeTicks": 1200000000
               }
             ]
+        """
+
+        private const val DETAIL_WATCHED_ELSEWHERE_JSON = """
+            {
+              "Id": "item-1",
+              "Name": "Sample Movie",
+              "RunTimeTicks": 36000000000,
+              "UserData": {"PlaybackPositionTicks": 0, "PlayedPercentage": 100.0, "Played": true}
+            }
         """
 
         private const val DETAIL_WITH_FAVORITE_JSON = """
