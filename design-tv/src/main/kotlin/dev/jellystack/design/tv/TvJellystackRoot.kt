@@ -200,7 +200,8 @@ private fun TvProfileHost(
     var profilePinRequired by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
     var profilePinRevision by rememberSaveable { mutableStateOf(0L) }
     var legacyChecked by remember { mutableStateOf(false) }
-    var initialized by rememberSaveable { mutableStateOf(false) }
+    // Not saveable: a restored activity re-runs the profile gate (as a cold launch after process death).
+    var initialized by remember { mutableStateOf(false) }
     var pickerVisible by rememberSaveable { mutableStateOf(false) }
     var profileManagementVisible by rememberSaveable { mutableStateOf(false) }
     var managedProfileId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -332,6 +333,14 @@ private fun TvProfileHost(
         pinForManagement = false
         scope.launch { openProfile(profile) }
     }
+
+    fun openProfilePicker() {
+        stopPlayback()
+        trailerPreviewController.stop(saveProgress = false)
+        activeProfiles.clear()
+        activatedProfileId = null
+        pickerVisible = true
+    }
     LaunchedEffect(legacyChecked, loadedProfiles, initialized) {
         val loaded = loadedProfiles
         if (!legacyChecked || loaded == null || initialized) return@LaunchedEffect
@@ -434,34 +443,25 @@ private fun TvProfileHost(
         }
     }
 
+    TvProfileGateEffect(
+        enabled = activatedProfileId != null && !pickerVisible,
+        profileCount = profiles.size,
+        onGate = ::openProfilePicker,
+    )
     Box(modifier.fillMaxSize().background(TvBackground)) {
         val selectedProfile = profiles.firstOrNull { it.id == selectedProfileId }
         when {
             !legacyChecked || !initialized || loadedProfiles == null -> TvProfileStatusScreen(strings.loading)
             switchingProfile != null -> TvProfileStatusScreen(strings.switchingProfile)
             addProfile ->
-                TvConnectionScreen(
-                    coordinator = koin.get<ServerConnectionCoordinator>(),
-                    quickConnectCoordinator = koin.get<JellyfinQuickConnectCoordinator>(),
+                TvAddProfileScreen(
+                    profiles = profiles,
+                    connectionsBeforeAdd = connectionsBeforeAdd,
                     appVersion = appVersion,
                     strings = strings,
-                    onConnected = {
-                        scope.launch {
-                            val connected =
-                                serverRepository
-                                    .currentServers()
-                                    .filter { it.type == ServerType.JELLYFIN && it.id !in connectionsBeforeAdd }
-                                    .maxByOrNull { it.updatedAt }
-                                    ?: return@launch
-                            val username = (connected.credentials as? StoredCredential.Jellyfin)?.username
-                            val created =
-                                profileRepository.createProfile(
-                                    displayName = username?.takeIf(String::isNotBlank) ?: connected.name,
-                                    jellyfinConnectionId = connected.id,
-                                )
-                            addProfile = false
-                            beginActivation(created)
-                        }
+                    onCreated = { created ->
+                        addProfile = false
+                        beginActivation(created)
                     },
                     onDismiss = { addProfile = false },
                 )
@@ -687,13 +687,7 @@ private fun TvProfileHost(
                     activeProfileName = selectedProfile.displayName,
                     activeProfileId = selectedProfile.id,
                     activeProfileGeneration = generation,
-                    onOpenProfiles = {
-                        stopPlayback()
-                        trailerPreviewController.stop(saveProgress = false)
-                        activeProfiles.clear()
-                        activatedProfileId = null
-                        pickerVisible = true
-                    },
+                    onOpenProfiles = ::openProfilePicker,
                     onAuthenticationExpired = {
                         stopPlayback()
                         trailerPreviewController.stop(saveProgress = false)
@@ -1503,17 +1497,9 @@ private fun TvAuthenticatedApp(
                                                 browseCoordinator.bootstrap(true)
                                                 recommendationsCoordinator.refreshAll()
                                             },
-                                            onSeerrConnected = { server ->
-                                                activeProfileId?.let { profileId ->
-                                                    profileRepository.binding(profileId)?.let { binding ->
-                                                        profileRepository.bindConnections(
-                                                            binding.copy(seerrConnectionId = server.id),
-                                                        )
-                                                    }
-                                                }
-                                            },
                                             profileId = activeProfileId,
                                             profilePreferencesRepository = profilePreferencesRepository,
+                                            profileRepository = profileRepository,
                                         )
                                     is TvRoute.JellyfinDetail ->
                                         TvJellyfinDetailScreen(

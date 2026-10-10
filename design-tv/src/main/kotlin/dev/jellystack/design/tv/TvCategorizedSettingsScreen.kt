@@ -51,12 +51,15 @@ import dev.jellystack.core.preferences.SubtitleBackground
 import dev.jellystack.core.preferences.SubtitleMode
 import dev.jellystack.core.preferences.SubtitleTextSize
 import dev.jellystack.core.preferences.TRAILER_PREVIEW_DELAYS_MILLIS
+import dev.jellystack.core.profile.HouseholdProfileRepository
 import dev.jellystack.core.profile.ProfilePreferencesRepository
+import dev.jellystack.core.profile.resolveProfileConnections
 import dev.jellystack.core.server.JellyfinQuickConnectCoordinator
 import dev.jellystack.core.server.ManagedServer
 import dev.jellystack.core.server.ServerConnectionCoordinator
 import dev.jellystack.core.server.ServerRepository
 import dev.jellystack.core.server.ServerType
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 
 internal data class TvConnectionsFocusRecoveryRequest(
@@ -76,15 +79,28 @@ internal fun TvSettingsScreen(
     strings: TvStrings,
     onOpenCategory: (TvSettingsCategory) -> Unit,
     onServersChanged: () -> Unit,
-    onSeerrConnected: suspend (ManagedServer) -> Unit = {},
     modifier: Modifier = Modifier,
     profileId: String? = null,
     profilePreferencesRepository: ProfilePreferencesRepository? = null,
+    profileRepository: HouseholdProfileRepository? = null,
 ) {
     val scope = rememberCoroutineScope()
     val servers by serverRepository.observeServers().collectAsStateWithLifecycle()
-    val jellyfinServer = servers.firstOrNull { it.type == ServerType.JELLYFIN }
-    val seerrServer = servers.firstOrNull { it.type == ServerType.JELLYSEERR }
+    val bindings by remember(profileRepository) { profileRepository?.observeBindings() ?: flowOf(emptyList()) }
+        .collectAsStateWithLifecycle(initialValue = emptyList())
+    // A household profile manages only its own Jellyfin and Seerr, never another profile's records.
+    val profileConnections =
+        if (profileId != null && profileRepository != null) resolveProfileConnections(profileId, bindings, servers) else null
+    val jellyfinServer =
+        if (profileConnections !=
+            null
+        ) {
+            profileConnections.jellyfin
+        } else {
+            servers.firstOrNull { it.type == ServerType.JELLYFIN }
+        }
+    val seerrServer = if (profileConnections != null) profileConnections.seerr else servers.firstOrNull { it.type == ServerType.JELLYSEERR }
+    val listedServers = profileConnections?.servers ?: servers
     var showJellyfinConnect by remember { mutableStateOf(false) }
     var showSeerrConnect by remember { mutableStateOf(false) }
     var choiceDialog by remember { mutableStateOf<TvChoiceDialogState?>(null) }
@@ -180,7 +196,7 @@ internal fun TvSettingsScreen(
                 buildList {
                     add(manageJellyfinTarget)
                     add(manageSeerrTarget)
-                    servers.forEach { add(tvSettingsServerActionTargetId(it.id, "remove")) }
+                    listedServers.forEach { add(tvSettingsServerActionTargetId(it.id, "remove")) }
                 }
             TvConnectionsFocusRecovery(
                 request = connectionsFocusRecovery,
@@ -194,7 +210,7 @@ internal fun TvSettingsScreen(
                 modifier = modifier,
             ) {
                 TvConnectionsSettings(
-                    servers = servers,
+                    servers = listedServers,
                     jellyfinServer = jellyfinServer,
                     seerrServer = seerrServer,
                     appVersion = appVersion,
@@ -214,11 +230,15 @@ internal fun TvSettingsScreen(
             coordinator = connectionCoordinator,
             appVersion = appVersion,
             strings = strings,
-            existingServerId = seerrServer?.id,
-            initialUrl = seerrServer?.baseUrl.orEmpty(),
+            existingServerId = if (profileConnections != null) profileConnections.seerrReconnectId else seerrServer?.id,
+            initialUrl = (profileConnections?.seerrPrefill ?: seerrServer)?.baseUrl.orEmpty(),
             onDismiss = { showSeerrConnect = false },
             onConnected = { server ->
-                onSeerrConnected(server)
+                if (profileId != null && profileRepository != null) {
+                    val unused = profileRepository.bindSeerr(profileId, server.id)
+                    serverRepository.setActiveServer(ServerType.JELLYSEERR, server.id)
+                    unused?.let { serverRepository.remove(it) }
+                }
                 showSeerrConnect = false
                 onServersChanged()
             },
@@ -237,7 +257,12 @@ internal fun TvSettingsScreen(
             onRemove = {
                 pendingServerRemoval = null
                 scope.launch {
-                    serverRepository.remove(target.id)
+                    if (target.type == ServerType.JELLYSEERR && profileId != null && profileRepository != null) {
+                        // Detach from this profile; the record goes only once no other profile uses it.
+                        profileRepository.bindSeerr(profileId, null)?.let { serverRepository.remove(it) }
+                    } else {
+                        serverRepository.remove(target.id)
+                    }
                     connectionsFocusRecovery =
                         TvConnectionsFocusRecoveryRequest(
                             revision = (connectionsFocusRecovery?.revision ?: 0L) + 1L,
