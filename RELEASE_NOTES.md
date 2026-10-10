@@ -1,5 +1,17 @@
 # Release Notes
 
+## 0.17.0 (TV)
+
+- Leave the beta: Jellystack TV 0.17.0 is the first stable release for Android TV, Google TV, and Fire TV.
+- Watch with a redesigned player: clock and end time, a seek bar with chapters, segments, and trickplay thumbnails, plus chapters and episodes panels.
+- Scrub with Left/Right while the controls are hidden, and pause or resume with Center.
+- Continue to the next episode from an up-next card with artwork and a countdown.
+- Browse a full-screen home spotlight that pages on its own, with trailers that take the screen while the remote rests.
+- Find the same full-screen look in Library and Discover, with an All titles card at the end of each library.
+- See series, episode, time left, progress, and watched marks on cards, and 4K, HDR, Dolby Atmos, and surround badges in details.
+- Get the resume question from every Play button, reach seasons with the remote, and choose how long cards wait before trailers start.
+- Fix quality and subtitle settings, the search field losing the keyboard, cut-off German labels, the PIN pad, and Seerr needing a restart after connecting.
+
 ## 0.16.0
 
 - Connect to Jellyfin 12.0+ with password login or Quick Connect; Jellyfin 10.x servers keep working.

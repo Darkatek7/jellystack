@@ -40,6 +40,8 @@ keystore.properties
 /.sdd/
 /.zcode/
 /.worktrees/
+/.claude/worktrees/
+/.claude/settings.local.json
 /Handle/
 /adb.exe
 /castlog*.txt

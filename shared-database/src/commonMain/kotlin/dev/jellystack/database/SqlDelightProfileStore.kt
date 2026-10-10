@@ -75,6 +75,13 @@ class SqlDelightProfileStore(
     override suspend fun getBinding(profileId: String): ProfileConnectionBinding? =
         queries.selectBindingByProfile(profileId).executeAsOneOrNull()?.toDomain()
 
+    override fun observeBindings(): Flow<List<ProfileConnectionBinding>> =
+        queries
+            .selectBindings()
+            .asFlow()
+            .mapToList(dispatcher)
+            .map { rows -> rows.map(Profile_connection_bindings::toDomain) }
+
     override suspend fun upsertBinding(binding: ProfileConnectionBinding) {
         queries.upsertBinding(
             profile_id = binding.profileId,

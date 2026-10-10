@@ -2,16 +2,22 @@ package dev.jellystack.design.tv
 
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.State
 import dev.jellystack.core.preferences.MotionPreference
+import dev.jellystack.players.AndroidPlayerEngine
 
+/** What the stage shows before a card has focus; [eyebrow] names the screen and stays while cards change. */
 @Immutable
 internal data class TvCinematicHero(
     val title: String,
     val overview: String? = null,
     val eyebrow: String? = null,
-    val metadata: List<String> = emptyList(),
 )
 
+/**
+ * [subtitle] is the line on the card itself; the stage shows [metadata] instead when there is one, and
+ * [logoUrl] in place of the title text.
+ */
 @Immutable
 internal data class TvCinematicCard(
     val id: String,
@@ -23,6 +29,8 @@ internal data class TvCinematicCard(
     val selected: Boolean = false,
     val played: Boolean = false,
     val resumeFraction: Float? = null,
+    val logoUrl: String? = null,
+    val metadata: String? = null,
 ) {
     init {
         require(id.isNotBlank()) { "A cinematic card requires a stable ID" }
@@ -79,34 +87,39 @@ internal data class TvCinematicBrowseState(
             }
 }
 
+/**
+ * The Play key on a focused card: it plays [canPlay] cards with [onPlay], and the stage names the key in a hint
+ * next to OK for Details.
+ */
 @Stable
-internal data class TvSelectedItemActions(
-    val onPlayOrResume: () -> Unit,
-    val onDetails: () -> Unit,
-    val onToggleSaved: (() -> Unit)?,
-    val onTogglePlayed: (() -> Unit)?,
-    val primaryLabel: String? = null,
+internal class TvCinematicCardPlayback(
+    val labels: TvCinematicHintLabels,
+    val canPlay: (TvCinematicCard) -> Boolean,
+    val onPlay: (TvCinematicCard) -> Unit,
 )
 
 @Immutable
-internal data class TvSelectedItemActionLabels(
+internal data class TvCinematicHintLabels(
     val play: String,
     val resume: String,
     val details: String,
-    val addToList: String,
-    val removeFromList: String,
-    val markPlayed: String,
-    val markUnplayed: String,
+)
+
+/** The focused card's trailer while it plays behind a cinematic browse screen. */
+@Stable
+internal class TvCinematicTrailer(
+    val engine: AndroidPlayerEngine,
+    val label: String,
+    val soundEnabled: Boolean,
+    val progress: State<Float>,
 )
 
 @Immutable
 internal data class TvCinematicGeometry(
     val artworkWidthDp: Float,
     val artworkHeightDp: Float,
-    val metadataBandHeightDp: Float,
     val cardSpacingDp: Float,
     val focusHaloPaddingDp: Float,
-    val metadataBandOpaque: Boolean,
     val minimumActionSizeDp: Float,
 )
 
@@ -114,10 +127,8 @@ internal fun tvCinematicGeometry(): TvCinematicGeometry =
     TvCinematicGeometry(
         artworkWidthDp = TvLayoutTokens.LandscapeArtworkWidth.value,
         artworkHeightDp = TvLayoutTokens.LandscapeArtworkHeight.value,
-        metadataBandHeightDp = TvLayoutTokens.LandscapeMetadataBandHeight.value,
         cardSpacingDp = TvLayoutTokens.CardSpacing.value,
         focusHaloPaddingDp = TvLayoutTokens.FocusHaloPadding.value,
-        metadataBandOpaque = true,
         minimumActionSizeDp = TvLayoutTokens.MinimumActionSize.value,
     )
 

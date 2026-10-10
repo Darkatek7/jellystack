@@ -54,6 +54,7 @@ The full CI gate (static checks, resource parity, manifest allowlists, unit test
   :design-tv:testDebugUnitTest \
   :app-android:testDebugUnitTest \
   :design-screenshots:validateDebugScreenshotTest \
+  :design-tv-screenshots:validateDebugScreenshotTest \
   :app-android:assembleDebug \
   :app-tv:assembleDebug
 ```
@@ -72,12 +73,16 @@ These need a running emulator or device. CI runs the `design` and `app-android` 
 
 ### Screenshot tests
 
-Reference images live in `design-screenshots/src/screenshotTestDebug/reference/`. After an intended visual change, regenerate them and review the diff:
+Reference images live in `design-screenshots/src/screenshotTestDebug/reference/` (phone and tablet UI) and `design-tv-screenshots/src/screenshotTestDebug/reference/` (TV UI). After an intended visual change, regenerate them and review the diff:
 
 ```bash
 ./gradlew :design-screenshots:updateDebugScreenshotTest
 ./gradlew :design-screenshots:validateDebugScreenshotTest
+./gradlew :design-tv-screenshots:updateDebugScreenshotTest
+./gradlew :design-tv-screenshots:validateDebugScreenshotTest
 ```
+
+The TV tests render production `design-tv` composables through `JellystackTvGoldenFixture` (`design-tv/.../TvGoldenFixtures.kt`) with fictional data and no network artwork.
 
 ## iOS (experimental)
 

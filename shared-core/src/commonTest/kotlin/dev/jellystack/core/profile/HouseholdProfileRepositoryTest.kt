@@ -107,6 +107,7 @@ internal class InMemoryProfileStore : ProfileStore {
     private val profiles = linkedMapOf<String, HouseholdProfile>()
     private val bindings = linkedMapOf<String, ProfileConnectionBinding>()
     private val profileFlow = MutableStateFlow<List<HouseholdProfile>>(emptyList())
+    private val bindingFlow = MutableStateFlow<List<ProfileConnectionBinding>>(emptyList())
     private val saves = mutableMapOf<String, MutableList<SavedMediaRecord>>()
     var atomicCreations = 0
 
@@ -129,6 +130,7 @@ internal class InMemoryProfileStore : ProfileStore {
         profiles[profile.id] = profile
         bindings[profile.id] = binding
         profileFlow.value = profiles.values.toList()
+        bindingFlow.value = bindings.values.toList()
     }
 
     override suspend fun deleteProfile(profileId: String) {
@@ -136,12 +138,16 @@ internal class InMemoryProfileStore : ProfileStore {
         bindings.remove(profileId)
         saves.remove(profileId)
         profileFlow.value = profiles.values.toList()
+        bindingFlow.value = bindings.values.toList()
     }
 
     override suspend fun getBinding(profileId: String): ProfileConnectionBinding? = bindings[profileId]
 
+    override fun observeBindings(): Flow<List<ProfileConnectionBinding>> = bindingFlow
+
     override suspend fun upsertBinding(binding: ProfileConnectionBinding) {
         bindings[binding.profileId] = binding
+        bindingFlow.value = bindings.values.toList()
     }
 
     override fun observeSavedMedia(profileId: String): Flow<List<SavedMediaRecord>> = MutableStateFlow(saves[profileId].orEmpty())

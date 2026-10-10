@@ -1,6 +1,6 @@
 # Architecture
 
-Jellystack is a Kotlin Multiplatform project with shared domain, networking, persistence, playback coordination, and Compose UI. Android phone/tablet is the stable platform, the Android TV / Fire TV app is in closed beta, and the iOS host is experimental.
+Jellystack is a Kotlin Multiplatform project with shared domain, networking, persistence, playback coordination, and Compose UI. Android phone/tablet and Android TV / Fire TV are the released platforms, and the iOS host is experimental.
 
 ## Modules
 

@@ -106,6 +106,21 @@ class DatabaseMigrationTest {
     }
 
     @Test
+    fun migrationAddsPlayedFlagAndKeepsExistingItemsUnwatched() {
+        driver.execute(null, LEGACY_CREATE_ITEMS_AT_LATEST_KNOWN, 0)
+        driver.execute(
+            null,
+            "INSERT INTO jellyfin_items (id, server_id, name, type, updated_at) VALUES ('item', 'server', 'Movie', 'Movie', 1)",
+            0,
+        )
+        driver.execute(null, "PRAGMA user_version = $KNOWN_VERSION", 0)
+
+        JellystackDatabase.Schema.migrate(driver, KNOWN_VERSION, JellystackDatabase.Schema.version)
+
+        assertEquals(0L, scalarLong("SELECT played FROM jellyfin_items WHERE id = 'item'"))
+    }
+
+    @Test
     fun savedMediaIdentityIsUniqueWithinProfileButReusableAcrossProfiles() {
         JellystackDatabase.Schema.create(driver)
         driver.execute(null, "INSERT INTO household_profiles VALUES ('p1', 'One', 'one', 1, 1, NULL)", 0)

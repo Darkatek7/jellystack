@@ -75,6 +75,9 @@ enum class MotionPreference {
     FULL,
 }
 
+/** How long a card or the spotlight keeps focus before its trailer preview starts; the first is the default. */
+val TRAILER_PREVIEW_DELAYS_MILLIS: List<Int> = listOf(1_500, 3_000, 5_000, 10_000)
+
 data class AppSettings(
     val appLanguage: AppLanguage = AppLanguage.SYSTEM,
     val wifiStreamingQuality: StreamingQualityPreference = StreamingQualityPreference.AUTO,
@@ -99,6 +102,7 @@ data class AppSettings(
     val useServerHomeSections: Boolean = true,
     val trailerPreviewsEnabled: Boolean = true,
     val trailerPreviewSoundEnabled: Boolean = true,
+    val trailerPreviewDelayMillis: Int = TRAILER_PREVIEW_DELAYS_MILLIS.first(),
     val motionPreference: MotionPreference = MotionPreference.SYSTEM,
     val highContrastFocus: Boolean = false,
     val downloadsWifiOnly: Boolean = false,

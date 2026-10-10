@@ -1,172 +1,120 @@
-@file:Suppress("FunctionName", "MatchingDeclarationName", "MaxLineLength", "TooManyFunctions")
+@file:Suppress("FunctionName", "MatchingDeclarationName")
 
 package dev.jellystack.design.tv
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.tv.material3.Text
+import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.preferences.AppLanguage
+import dev.jellystack.players.PlaybackChapter
+import dev.jellystack.players.PlaybackSegment
+import dev.jellystack.players.PlaybackSegmentType
+import dev.jellystack.players.playbackTimelineMarkers
 
-/** Deterministic, credential-free TV states used by screenshot and contrast regression tests. */
+/**
+ * Deterministic, credential-free TV states for the screenshot tests in `design-tv-screenshots`.
+ * Every fixture renders production composables with fictional data and no network artwork.
+ */
 enum class TvGoldenFixture {
-    BROWSE,
-    ALL_TITLES,
-    SEARCH,
-    LOADING,
-    MISSING_ART,
-    SEARCH_PARTIAL_ERROR,
-    DETAIL,
-    DISCOVER,
-    FOCUS_CONTRAST,
+    LANDSCAPE_CARDS,
+    PORTRAIT_CARDS,
+    PLAYER_CONTROLS,
+    PLAYER_SCRUB,
+    PLAYER_UP_NEXT,
+    HOME_HERO,
+    DETAIL_HERO,
 }
 
+/** Screenshot-test entry point; production code never calls it. */
 @Composable
 fun JellystackTvGoldenFixture(
     fixture: TvGoldenFixture,
     language: AppLanguage = AppLanguage.ENGLISH,
-    darkArtwork: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val strings = TvStrings.current(language)
+    if (fixture in GOLDEN_PLAYER_FIXTURES) {
+        JellystackTvTheme { GoldenPlayer(strings, fixture, modifier) }
+        return
+    }
+    if (fixture == TvGoldenFixture.HOME_HERO || fixture == TvGoldenFixture.DETAIL_HERO) {
+        JellystackTvTheme {
+            if (fixture == TvGoldenFixture.HOME_HERO) {
+                GoldenHomeHero(strings, modifier)
+            } else {
+                GoldenDetailHero(strings, modifier)
+            }
+        }
+        return
+    }
     JellystackTvTheme {
-        Box(modifier.fillMaxSize().background(TvBackground)) {
-            GoldenBackdrop(fixture)
-            GoldenRail(strings)
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .padding(
-                        start = 92.dp,
-                        top = TvLayoutTokens.SafeInsets.vertical,
-                        end = TvLayoutTokens.SafeInsets.horizontal,
-                        bottom = TvLayoutTokens.SafeInsets.vertical,
-                    ),
-            ) {
-                when (fixture) {
-                    TvGoldenFixture.BROWSE -> GoldenBrowse(strings)
-                    TvGoldenFixture.ALL_TITLES -> GoldenAllTitles(strings)
-                    TvGoldenFixture.SEARCH -> GoldenSearch(strings, partialError = false)
-                    TvGoldenFixture.LOADING -> GoldenLoading(strings)
-                    TvGoldenFixture.MISSING_ART -> GoldenMissingArt(strings)
-                    TvGoldenFixture.SEARCH_PARTIAL_ERROR -> GoldenSearch(strings, partialError = true)
-                    TvGoldenFixture.DETAIL -> GoldenDetail(strings)
-                    TvGoldenFixture.DISCOVER -> GoldenDiscover(strings)
-                    TvGoldenFixture.FOCUS_CONTRAST -> GoldenFocusContrast(darkArtwork)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun GoldenBackdrop(fixture: TvGoldenFixture) {
-    val accent =
-        when (fixture) {
-            TvGoldenFixture.DETAIL -> Color(0xFF49316E)
-            TvGoldenFixture.DISCOVER -> Color(0xFF173D45)
-            TvGoldenFixture.ALL_TITLES, TvGoldenFixture.SEARCH -> Color(0xFF243047)
-            else -> Color(0xFF251A43)
-        }
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(
-                Brush.radialGradient(
-                    colors = listOf(accent.copy(alpha = 0.82f), TvBackground),
-                    radius = 900f,
+        Column(
+            modifier
+                .fillMaxSize()
+                .background(TvBackground)
+                .padding(
+                    horizontal = TvLayoutTokens.SafeInsets.horizontal,
+                    vertical = TvLayoutTokens.SafeInsets.vertical,
                 ),
-            ),
-    )
-}
-
-@Composable
-private fun GoldenRail(strings: TvStrings) {
-    Column(
-        Modifier
-            .fillMaxHeight()
-            .width(TvLayoutTokens.CollapsedRailWidth)
-            .background(Color.Black.copy(alpha = 0.54f))
-            .padding(vertical = TvLayoutTokens.SafeInsets.vertical),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(22.dp),
-    ) {
-        Text("J", color = TvPurple, fontSize = 26.sp, fontWeight = FontWeight.Black)
-        listOf(strings.home, strings.library, strings.search, strings.discover, strings.settings).forEachIndexed { index, label ->
-            Box(
-                Modifier
-                    .size(46.dp)
-                    .background(if (index == 0) TvSurfaceRaised else Color.Transparent, RoundedCornerShape(14.dp)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(label.take(1), color = if (index == 0) TvPurple else TvTextMuted, fontWeight = FontWeight.Bold)
+        ) {
+            when (fixture) {
+                TvGoldenFixture.LANDSCAPE_CARDS -> GoldenLandscapeCards(strings)
+                TvGoldenFixture.PORTRAIT_CARDS -> GoldenPortraitCards()
+                TvGoldenFixture.HOME_HERO,
+                TvGoldenFixture.PLAYER_CONTROLS,
+                TvGoldenFixture.PLAYER_SCRUB,
+                TvGoldenFixture.PLAYER_UP_NEXT,
+                TvGoldenFixture.DETAIL_HERO,
+                -> Unit
             }
         }
     }
 }
 
 @Composable
-private fun GoldenBrowse(strings: TvStrings) {
-    Column(verticalArrangement = Arrangement.spacedBy(15.dp)) {
-        Text(strings.home, color = TvText, fontSize = 36.sp, fontWeight = FontWeight.Bold)
-        Text("Continue watching", color = TvTextMuted, fontSize = 18.sp)
-        GoldenCardRow(strings)
-        Text(strings.recentlyAdded, color = TvText, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-        GoldenCardRow(strings, secondRow = true)
-    }
-}
-
-@Composable
-private fun GoldenAllTitles(strings: TvStrings) {
-    Column(verticalArrangement = Arrangement.spacedBy(15.dp)) {
-        Text("${strings.library} · ${strings.allTitles}", color = TvText, fontSize = 36.sp, fontWeight = FontWeight.Bold)
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            TvActionButton(strings.sort, {}, enabled = false)
-            TvActionButton(strings.filters, {}, enabled = false)
+private fun GoldenLandscapeCards(strings: TvStrings) {
+    Column(verticalArrangement = Arrangement.spacedBy(TvLayoutTokens.CardSpacing)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(TvLayoutTokens.CardSpacing)) {
+            TvMediaCard(title = "The Last Horizon", imageUrl = null, onClick = {}, subtitle = "2024")
+            TvMediaCard(
+                title = "Northern Lights",
+                imageUrl = null,
+                onClick = {},
+                subtitle = "2021",
+                selected = true,
+                watched = true,
+            )
+            TvMediaCard(
+                title = "A Remarkably Long Title That Cannot Possibly Fit On One Line",
+                imageUrl = null,
+                onClick = {},
+                subtitle = "A subtitle that is also far too long for the metadata band",
+            )
+            TvMediaCard(title = strings.home, imageUrl = null, onClick = null)
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            repeat(5) { index ->
-                Column(Modifier.width(136.dp).background(TvSurface, RoundedCornerShape(14.dp))) {
-                    Box(Modifier.fillMaxWidth().height(190.dp).background(Color(0xFF252638)))
-                    Text("Title ${index + 1}", color = TvText, modifier = Modifier.padding(10.dp))
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun GoldenLoading(strings: TvStrings) {
-    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(24.dp)) {
-        Text(strings.library, color = TvText, fontSize = 38.sp, fontWeight = FontWeight.Bold)
-        TvStatusAnchor(strings.loading, Modifier.fillMaxWidth())
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            repeat(3) {
-                Box(
-                    Modifier
-                        .width(TvLayoutTokens.LandscapeArtworkWidth)
-                        .height(TvLayoutTokens.LandscapeArtworkHeight + TvLayoutTokens.LandscapeMetadataBandHeight)
-                        .background(TvSurface, RoundedCornerShape(18.dp)),
+        Row(horizontalArrangement = Arrangement.spacedBy(TvLayoutTokens.CardSpacing)) {
+            GOLDEN_PROGRESS_ITEMS.forEach { item ->
+                val text = item.tvCardText(strings)
+                TvMediaCard(
+                    title = text.title,
+                    subtitle = text.subtitle,
+                    progress = text.progress,
+                    imageUrl = null,
+                    onClick = {},
                 )
             }
         }
@@ -174,137 +122,201 @@ private fun GoldenLoading(strings: TvStrings) {
 }
 
 @Composable
-private fun GoldenMissingArt(strings: TvStrings) {
-    Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
-        Text(strings.library, color = TvText, fontSize = 38.sp, fontWeight = FontWeight.Bold)
-        Text("Designed missing-art fallback", color = TvTextMuted, fontSize = 17.sp)
-        Row(horizontalArrangement = Arrangement.spacedBy(TvLayoutTokens.CardSpacing)) {
-            TvMediaCard("Unknown movie", null, {}, subtitle = "2026", focusable = false)
-            TvMediaCard("Untitled episode", null, {}, subtitle = "S01 E04", focusable = false)
-            TvMediaCard("Audio library", null, {}, subtitle = strings.itemCount(42), focusable = false)
-        }
-    }
-}
-
-@Composable
-private fun GoldenSearch(
-    strings: TvStrings,
-    partialError: Boolean,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text(strings.search, color = TvText, fontSize = 38.sp, fontWeight = FontWeight.Bold)
-        Box(
-            Modifier
-                .fillMaxWidth(0.78f)
-                .height(58.dp)
-                .background(TvSurfaceRaised, RoundedCornerShape(16.dp))
-                .padding(horizontal = 20.dp),
-            contentAlignment = Alignment.CenterStart,
-        ) {
-            Text("Dune", color = TvText, fontSize = 20.sp)
-        }
-        if (partialError) TvStatusAnchor(strings.seerrSearchFailed, Modifier.fillMaxWidth())
-        GoldenCardRow(strings)
-    }
-}
-
-@Composable
-private fun GoldenDetail(strings: TvStrings) {
-    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Bottom) {
-        Text("The Last Horizon", color = TvText, fontSize = 45.sp, fontWeight = FontWeight.Black)
-        Spacer(Modifier.height(7.dp))
-        Text("2026  •  2h 14m  •  8.4", color = TvTextMuted, fontSize = 17.sp)
-        Spacer(Modifier.height(12.dp))
-        Text(
-            "A small crew crosses a silent frontier and finds a signal that should not exist.",
-            color = TvTextMuted,
-            fontSize = 18.sp,
-        )
-        Spacer(Modifier.height(18.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            TvActionButton(strings.play, {}, primary = true)
-            TvActionButton(strings.details, {})
-        }
-        Spacer(Modifier.height(18.dp))
-        Text(strings.similar, color = TvText, fontSize = 21.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(10.dp))
-        GoldenCardRow(strings, compact = true)
-    }
-}
-
-@Composable
-private fun GoldenDiscover(strings: TvStrings) {
-    Column(verticalArrangement = Arrangement.spacedBy(15.dp)) {
-        Text(strings.discover, color = TvText, fontSize = 38.sp, fontWeight = FontWeight.Bold)
-        Text("Trending this week", color = TvTextMuted, fontSize = 18.sp)
-        GoldenCardRow(strings)
-        TvStatusAnchor(strings.discoverLoadFailed, Modifier.fillMaxWidth())
-    }
-}
-
-@Composable
-private fun GoldenFocusContrast(darkArtwork: Boolean) {
-    Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
-        Text("High-contrast focus", color = TvText, fontSize = 38.sp, fontWeight = FontWeight.Bold)
-        Text("Dual-tone focus remains visible on light and dark artwork.", color = TvTextMuted, fontSize = 17.sp)
-        Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
-            GoldenFocusedCard(if (darkArtwork) Color.Black else Color.White, "Focused title")
-            GoldenFocusedCard(if (darkArtwork) Color(0xFF0E2642) else Color(0xFFFFF2C4), "Selected title", selected = true)
-        }
-    }
-}
-
-@Composable
-private fun GoldenFocusedCard(
-    artworkColor: Color,
-    title: String,
-    selected: Boolean = false,
-) {
-    Column(
-        Modifier
-            .width(TvLayoutTokens.LandscapeArtworkWidth)
-            .border(5.dp, TvLayoutTokens.FocusDarkRing, RoundedCornerShape(20.dp))
-            .border(2.dp, TvLayoutTokens.FocusLightRing, RoundedCornerShape(18.dp))
-            .border(1.dp, TvLayoutTokens.FocusAccentRing, RoundedCornerShape(16.dp))
-            .background(TvSurface, RoundedCornerShape(16.dp)),
+private fun GoldenPortraitCards() {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(TvLayoutTokens.CardSpacing),
+        verticalAlignment = Alignment.Top,
     ) {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(TvLayoutTokens.LandscapeArtworkHeight)
-                .background(artworkColor, RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)),
+        TvMediaCard(
+            title = "Paper Moon",
+            imageUrl = null,
+            onClick = {},
+            subtitle = "1973",
+            format = TvMediaCardFormat.POSTER,
         )
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .height(TvLayoutTokens.LandscapeMetadataBandHeight)
-                .background(Color(0xFF11121B))
-                .padding(horizontal = 13.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(9.dp),
-        ) {
-            if (selected) Box(Modifier.width(4.dp).height(30.dp).background(TvPurple, RoundedCornerShape(2.dp)))
-            Text(title, color = TvText, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
-        }
+        TvMediaCard(
+            title = "Alex Example",
+            imageUrl = null,
+            onClick = {},
+            subtitle = "Detective / Narrator / Older Self",
+            format = TvMediaCardFormat.CAST_PORTRAIT,
+        )
+        TvMediaCard(
+            title = "Maximiliane Beispielname-Langform",
+            imageUrl = null,
+            onClick = {},
+            subtitle = "Sam",
+            format = TvMediaCardFormat.CAST_PORTRAIT,
+        )
     }
 }
 
+private const val GOLDEN_TICKS_PER_MINUTE = 600_000_000L
+
+private val GOLDEN_PROGRESS_ITEMS =
+    listOf(
+        goldenEpisode("The Quiet Signal", number = 6).copy(positionTicks = 26 * GOLDEN_TICKS_PER_MINUTE),
+        goldenEpisode("Northbound", number = 7),
+        goldenItem("Movie", "Paper Moon").copy(productionYear = 1973, positionTicks = 82 * GOLDEN_TICKS_PER_MINUTE),
+    )
+
+private fun goldenEpisode(
+    name: String,
+    number: Int,
+) = goldenItem("Episode", name).copy(seriesName = "Harbor Lights", parentIndexNumber = 2, indexNumber = number)
+
+internal fun goldenItem(
+    type: String,
+    name: String,
+): JellyfinItem =
+    JellyfinItem(
+        id = name,
+        libraryId = null,
+        name = name,
+        sortName = null,
+        overview = null,
+        type = type,
+        mediaType = "Video",
+        locationType = null,
+        taglines = emptyList(),
+        parentId = null,
+        primaryImageTag = null,
+        thumbImageTag = null,
+        backdropImageTag = null,
+        seriesId = null,
+        seriesPrimaryImageTag = null,
+        seriesThumbImageTag = null,
+        seriesBackdropImageTag = null,
+        parentLogoImageTag = null,
+        runTimeTicks = 100 * GOLDEN_TICKS_PER_MINUTE,
+        positionTicks = null,
+        playedPercentage = null,
+        productionYear = null,
+        premiereDate = null,
+        communityRating = null,
+        officialRating = null,
+        indexNumber = null,
+        parentIndexNumber = null,
+        seriesName = null,
+        seasonId = null,
+        episodeTitle = null,
+        lastPlayed = null,
+    )
+
 @Composable
-private fun GoldenCardRow(
+private fun GoldenPlayer(
     strings: TvStrings,
-    secondRow: Boolean = false,
-    compact: Boolean = false,
+    fixture: TvGoldenFixture,
+    modifier: Modifier,
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(TvLayoutTokens.CardSpacing)) {
-        val titles = if (secondRow) listOf("Northern Lights", "Atlas", "Afterglow") else listOf("Signal", "Europa", "Night Train")
-        titles.take(if (compact) 2 else 3).forEachIndexed { index, title ->
-            TvMediaCard(
-                title = title,
-                imageUrl = null,
-                onClick = {},
-                subtitle = if (index == 0) "72%" else strings.itemCount((index + 4).toLong()),
-                focusable = false,
+    val scrubbing = fixture == TvGoldenFixture.PLAYER_SCRUB
+    val upNext = fixture == TvGoldenFixture.PLAYER_UP_NEXT
+    val duration = 49 * 60_000L
+    val chapters =
+        listOf(0L, 9L, 21L, 38L).mapIndexed { index, minute ->
+            PlaybackChapter(
+                index = index,
+                name = "Chapter ${index + 1}",
+                startPositionMs = minute * 60_000L,
+                imageTag = null,
             )
         }
+    val segments =
+        listOf(
+            PlaybackSegment("intro", PlaybackSegmentType.INTRO, 60_000L, 150_000L),
+            PlaybackSegment("credits", PlaybackSegmentType.OUTRO, 46 * 60_000L, duration),
+        )
+    val model =
+        TvPlayerOsdModel(
+            positionMs = if (upNext) 46 * 60_000L + 20_000L else 754_000L,
+            durationMs = duration,
+            isPaused = false,
+            markers = playbackTimelineMarkers(duration, chapters, segments),
+            chapters = chapters,
+            audioLabel = "English 5.1",
+            subtitleLabel = "English",
+            canShowEpisodes = true,
+            canPlayNext = true,
+            promptActions = if (upNext) goldenUpNextActions(strings) else goldenSkipIntroActions(strings),
+        )
+    Box(modifier.fillMaxSize().background(Color(0xFF1E2A36))) {
+        if (scrubbing) {
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .background(Color.Black.copy(alpha = 0.6f))
+                    .padding(start = 42.dp, end = 42.dp, top = 48.dp, bottom = 40.dp),
+            ) {
+                TvPlayerTimelineBody(
+                    model = model,
+                    displayPositionMs = 23 * 60_000L,
+                    active = true,
+                    thumbnail = { GoldenTrickplayFrame() },
+                    strings = strings,
+                )
+            }
+            return@Box
+        }
+        TvPlayerHeader(
+            primaryTitle = "Harbor Lights",
+            secondaryTitle = "S2 · E6 · The Quiet Signal",
+            backDescription = strings.back,
+            onBack = {},
+            modifier = Modifier.align(Alignment.TopCenter).padding(start = 36.dp, end = 36.dp, top = 24.dp),
+            clock = TvPlayerClock(time = "20:41", endsAt = strings.player.endsAt.format("21:17")),
+        )
+        TvPlayerControls(
+            model = model,
+            actions =
+                TvPlayerOsdActions(onSeekTo = {}, onTogglePlayPause = {}, onAudio = {}, onSubtitles = {}, onMore = {}),
+            strings = strings,
+            interaction =
+                TvPlayerOsdInteraction(
+                    controlsFocus = remember { FocusRequester() },
+                    promptEntryFocus = remember { FocusRequester() },
+                    scrub = remember { TvTimelineScrub(liveSeeks = false, nowMs = { 0L }) },
+                    thumbnail = null,
+                ),
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
 }
+
+/** Stand-in for a trickplay tile so the preview position is visible without network artwork. */
+@Composable
+private fun GoldenTrickplayFrame() {
+    Box(
+        Modifier
+            .size(width = TRICKPLAY_WIDTH_DP.dp, height = (TRICKPLAY_WIDTH_DP * 9 / 16).dp)
+            .background(Color(0xFF4A5A6E), TvShapes.Badge),
+    )
+}
+
+private val GOLDEN_PLAYER_FIXTURES =
+    setOf(TvGoldenFixture.PLAYER_CONTROLS, TvGoldenFixture.PLAYER_SCRUB, TvGoldenFixture.PLAYER_UP_NEXT)
+
+private fun goldenSkipIntroActions(strings: TvStrings) =
+    listOf(
+        TvPlaybackActionModel(
+            id = "golden-skip-intro",
+            kind = TvPlaybackActionKind.SEGMENT_SKIP,
+            label = strings.player.skipIntro,
+        ),
+    )
+
+private fun goldenUpNextActions(strings: TvStrings) =
+    listOf(
+        TvPlaybackActionModel(
+            id = "golden-play-next",
+            kind = TvPlaybackActionKind.PLAY_NEXT,
+            label = strings.player.playNextEpisode,
+            kicker = strings.player.upNext,
+            detail = "S2 E7 · Northbound",
+        ),
+        TvPlaybackActionModel(
+            id = "golden-watch-credits",
+            kind = TvPlaybackActionKind.WATCH_CREDITS,
+            label = strings.player.watchCredits,
+        ),
+    )

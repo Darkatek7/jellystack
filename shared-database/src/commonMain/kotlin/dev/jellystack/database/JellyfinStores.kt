@@ -121,6 +121,7 @@ class SqlDelightJellyfinItemStore(
                     last_played,
                     date_created,
                     updated_at,
+                    played,
                 ->
                 mapItemRecord(
                     id = id,
@@ -159,6 +160,7 @@ class SqlDelightJellyfinItemStore(
                     lastPlayed = last_played,
                     dateCreated = date_created,
                     updatedAt = updated_at,
+                    played = played,
                 )
             }.executeAsList()
 
@@ -205,6 +207,7 @@ class SqlDelightJellyfinItemStore(
                     last_played,
                     date_created,
                     updated_at,
+                    played,
                 ->
                 mapItemRecord(
                     id = id,
@@ -243,6 +246,7 @@ class SqlDelightJellyfinItemStore(
                     lastPlayed = last_played,
                     dateCreated = date_created,
                     updatedAt = updated_at,
+                    played = played,
                 )
             }.executeAsList()
 
@@ -288,6 +292,7 @@ class SqlDelightJellyfinItemStore(
                     last_played,
                     date_created,
                     updated_at,
+                    played,
                 ->
                 mapItemRecord(
                     id = id,
@@ -326,6 +331,7 @@ class SqlDelightJellyfinItemStore(
                     lastPlayed = last_played,
                     dateCreated = date_created,
                     updatedAt = updated_at,
+                    played = played,
                 )
             }.executeAsList()
 
@@ -387,6 +393,7 @@ class SqlDelightJellyfinItemStore(
                     last_played,
                     date_created,
                     updated_at,
+                    played,
                 ->
                 mapItemRecord(
                     id = id,
@@ -425,6 +432,7 @@ class SqlDelightJellyfinItemStore(
                     lastPlayed = last_played,
                     dateCreated = date_created,
                     updatedAt = updated_at,
+                    played = played,
                 )
             }.executeAsList()
 
@@ -481,6 +489,7 @@ class SqlDelightJellyfinItemStore(
                     last_played,
                     date_created,
                     updated_at,
+                    played,
                 ->
                 mapItemRecord(
                     id = id,
@@ -519,6 +528,7 @@ class SqlDelightJellyfinItemStore(
                     lastPlayed = last_played,
                     dateCreated = date_created,
                     updatedAt = updated_at,
+                    played = played,
                 )
             }.executeAsList()
 
@@ -564,6 +574,7 @@ class SqlDelightJellyfinItemStore(
                     last_played,
                     date_created,
                     updated_at,
+                    played,
                 ->
                 mapItemRecord(
                     id = id,
@@ -602,6 +613,7 @@ class SqlDelightJellyfinItemStore(
                     lastPlayed = last_played,
                     dateCreated = date_created,
                     updatedAt = updated_at,
+                    played = played,
                 )
             }.executeAsList()
 
@@ -663,6 +675,7 @@ class SqlDelightJellyfinItemStore(
             last_played = record.lastPlayed,
             date_created = record.dateCreated,
             updated_at = record.updatedAt.toEpochMilliseconds(),
+            played = if (record.played) 1L else 0L,
         )
     }
 }
@@ -730,6 +743,7 @@ private fun mapItemRecord(
     lastPlayed: String?,
     dateCreated: String?,
     updatedAt: Long,
+    played: Long,
 ): JellyfinItemRecord =
     JellyfinItemRecord(
         id = id,
@@ -772,6 +786,7 @@ private fun mapItemRecord(
         lastPlayed = lastPlayed,
         dateCreated = dateCreated,
         updatedAt = Instant.fromEpochMilliseconds(updatedAt),
+        played = played != 0L,
     )
 
 private fun Jellyfin_items.toRecord(): JellyfinItemRecord =
@@ -812,6 +827,7 @@ private fun Jellyfin_items.toRecord(): JellyfinItemRecord =
         lastPlayed = last_played,
         dateCreated = date_created,
         updatedAt = updated_at,
+        played = played,
     )
 
 private fun SelectContinueWatching.toRecord(): JellyfinItemRecord =
@@ -852,6 +868,7 @@ private fun SelectContinueWatching.toRecord(): JellyfinItemRecord =
         lastPlayed = last_played,
         dateCreated = date_created,
         updatedAt = updated_at,
+        played = played,
     )
 
 private fun Jellyfin_item_details.toRecord(): JellyfinItemDetailRecord =

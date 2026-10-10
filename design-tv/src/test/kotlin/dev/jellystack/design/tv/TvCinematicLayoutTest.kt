@@ -19,17 +19,15 @@ class TvCinematicLayoutTest {
 
         assertEquals(176f, geometry.artworkWidthDp)
         assertEquals(99f, geometry.artworkHeightDp)
-        assertEquals(40f, geometry.metadataBandHeightDp)
         assertEquals(16f, geometry.cardSpacingDp)
         assertTrue(geometry.focusHaloPaddingDp >= 6f)
-        assertTrue(geometry.metadataBandOpaque)
         assertTrue(geometry.minimumActionSizeDp >= 48f)
     }
 
     @Test
     fun browseRowsStartBelowThePreviewStageAndFitTheViewport() {
         val heroBottom = TvLayoutTokens.SafeInsets.vertical.value + tvHomeHeroHeightDp()
-        val cardHeight = TvLayoutTokens.LandscapeArtworkHeight.value + TvLayoutTokens.LandscapeMetadataBandHeight.value
+        val cardHeight = TvLayoutTokens.LandscapeArtworkHeight.value
         val focusedCardBottom =
             tvHomeFirstCardTopDp() + cardHeight * TvLayoutTokens.FOCUS_SCALE + TvLayoutTokens.FocusHaloPadding.value
 

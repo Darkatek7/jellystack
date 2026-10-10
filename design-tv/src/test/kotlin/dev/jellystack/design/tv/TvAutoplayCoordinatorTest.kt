@@ -1,27 +1,11 @@
 package dev.jellystack.design.tv
 
 import dev.jellystack.core.jellyfin.JellyfinItem
-import dev.jellystack.players.PlaybackContinuationState
-import dev.jellystack.players.PlaybackContinuationTarget
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class TvAutoplayCoordinatorTest {
-    @Test
-    fun autoplayPromptIsDerivedFromTheSharedContinuationState() {
-        val target = PlaybackContinuationTarget("episode-2", "Next") {}
-
-        assertEquals(
-            TvAutoplayPromptModel("Next", 7),
-            tvAutoplayPromptModel(
-                PlaybackContinuationState(nextTarget = target, countdownSecondsRemaining = 7),
-            ),
-        )
-        assertNull(tvAutoplayPromptModel(PlaybackContinuationState(nextTarget = target)))
-        assertNull(tvAutoplayPromptModel(PlaybackContinuationState(countdownSecondsRemaining = 7)))
-    }
-
     @Test
     fun nextEpisodeSelectionIsChronologicalAcrossSeasons() {
         val episodes =

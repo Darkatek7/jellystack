@@ -50,6 +50,7 @@ import dev.jellystack.core.preferences.ResumeMode
 import dev.jellystack.core.preferences.SubtitleBackground
 import dev.jellystack.core.preferences.SubtitleMode
 import dev.jellystack.core.preferences.SubtitleTextSize
+import dev.jellystack.core.preferences.TRAILER_PREVIEW_DELAYS_MILLIS
 import dev.jellystack.core.profile.ProfilePreferencesRepository
 import dev.jellystack.core.server.JellyfinQuickConnectCoordinator
 import dev.jellystack.core.server.ManagedServer
@@ -525,6 +526,22 @@ internal fun TvPlaybackSettings(
             checked = settings.trailerPreviewSoundEnabled,
         ) {
             repository.setTrailerPreviewSoundEnabled(!settings.trailerPreviewSoundEnabled)
+        }
+        val labels = strings.settingsLabels
+        TvSettingTile(
+            labels.trailerPreviewDelay,
+            labels.seconds(settings.trailerPreviewDelayMillis),
+            enabled = settings.trailerPreviewsEnabled,
+            focusTargetId = tvSettingsControlTargetId("trailer-preview-delay"),
+        ) {
+            showChoices(
+                labels.trailerPreviewDelay,
+                TRAILER_PREVIEW_DELAYS_MILLIS.map { millis ->
+                    TvChoiceOption(labels.seconds(millis), millis == settings.trailerPreviewDelayMillis) {
+                        repository.setTrailerPreviewDelayMillis(millis)
+                    }
+                },
+            )
         }
     }
 }

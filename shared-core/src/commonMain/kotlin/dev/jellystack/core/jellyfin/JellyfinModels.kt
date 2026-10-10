@@ -50,6 +50,8 @@ data class JellyfinItem(
     val seriesArtImageTag: String? = null,
     val seriesBannerImageTag: String? = null,
     val providerIds: MediaProviderIds = MediaProviderIds(sourceLocalId = id),
+    /** Whether the user has watched the item, as reported by the server's user data. */
+    val isPlayed: Boolean = false,
 )
 
 data class JellyfinItemDetail(

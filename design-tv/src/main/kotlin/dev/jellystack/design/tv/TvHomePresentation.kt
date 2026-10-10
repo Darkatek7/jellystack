@@ -61,6 +61,31 @@ internal fun moveTvHomeCarouselManually(
 
 private fun TvHomeCarouselState.select(itemId: String?) = if (selectedId == itemId) this else copy(selectedId = itemId)
 
+/** Time a spotlight stays on screen before the hero moves on by itself. */
+internal const val TV_HOME_HERO_AUTO_ADVANCE_MS = 10_000L
+
+/**
+ * The hero only moves on by itself while nothing else claims the stage: a focused row card shows its
+ * own item there, a trailer must not be cut off, and Reduced Motion turns automatic movement off.
+ */
+internal fun shouldAutoAdvanceTvHomeHero(
+    enabled: Boolean,
+    candidateCount: Int,
+    reducedMotion: Boolean,
+    cardStaged: Boolean,
+    trailerActive: Boolean,
+): Boolean = enabled && candidateCount > 1 && !reducedMotion && !cardStaged && !trailerActive
+
+/** Next spotlight for automatic movement; unlike manual moves it wraps around after the last one. */
+internal fun nextTvHomeAutoAdvanceId(
+    candidateIds: List<String>,
+    currentId: String?,
+): String? {
+    if (candidateIds.isEmpty()) return null
+    val currentIndex = candidateIds.indexOf(currentId)
+    return candidateIds[(currentIndex + 1) % candidateIds.size]
+}
+
 internal fun SpotlightCandidate.tvHomeTrailerPreviewItem() = actionItem
 
 internal fun TvTrailerPreviewState.showsTvHomeHeroPreview(
@@ -106,7 +131,19 @@ internal fun tvHomeJellyfinDestination(item: JellyfinItem): TvHomeJellyfinDestin
         TvHomeJellyfinDestination.Detail(item)
     }
 
+/** The spotlight pages through at most this many titles, so its page dots stay one short row. */
+internal const val TV_HOME_HERO_MAX_CANDIDATES = 10
+
 internal fun buildTvHomeHeroPresentation(
+    state: JellyfinHomeState,
+    homeSections: HomeSectionsState,
+    now: Instant,
+): TvHomeHeroPresentation {
+    val presentation = buildUncappedTvHomeHeroPresentation(state, homeSections, now)
+    return presentation.copy(candidates = presentation.candidates.take(TV_HOME_HERO_MAX_CANDIDATES))
+}
+
+private fun buildUncappedTvHomeHeroPresentation(
     state: JellyfinHomeState,
     homeSections: HomeSectionsState,
     now: Instant,
@@ -156,9 +193,7 @@ internal data class TvHomeFocusRow(
 internal enum class TvHomeVerticalDirection { UP, DOWN }
 
 internal sealed interface TvHomeFocusOrigin {
-    data object HeroCarousel : TvHomeFocusOrigin
-
-    data object HeroActions : TvHomeFocusOrigin
+    data object Hero : TvHomeFocusOrigin
 
     data class Row(
         val id: String,
@@ -167,8 +202,6 @@ internal sealed interface TvHomeFocusOrigin {
 }
 
 internal sealed interface TvHomeFocusDestination {
-    data object HeroCarousel : TvHomeFocusDestination
-
     data object HeroPrimary : TvHomeFocusDestination
 
     data class Row(
@@ -253,7 +286,6 @@ internal class TvHomeVerticalFocusCoordinator(
         val move = pendingMove?.takeIf { it.requestId == requestId } ?: return null
         val focused =
             when (val destination = move.destination) {
-                TvHomeFocusDestination.HeroCarousel -> requestTarget(TV_HOME_HERO_TARGET)
                 TvHomeFocusDestination.HeroPrimary -> requestTarget(TV_HOME_PRIMARY_TARGET)
                 is TvHomeFocusDestination.Row -> {
                     val row = rows.firstOrNull { it.id == destination.id }
@@ -285,14 +317,8 @@ internal class TvHomeVerticalFocusCoordinator(
         direction: TvHomeVerticalDirection,
     ): TvHomeFocusDestination? =
         when (origin) {
-            TvHomeFocusOrigin.HeroCarousel ->
-                if (direction == TvHomeVerticalDirection.DOWN) TvHomeFocusDestination.HeroPrimary else null
-            TvHomeFocusOrigin.HeroActions ->
-                if (direction == TvHomeVerticalDirection.UP) {
-                    TvHomeFocusDestination.HeroCarousel
-                } else {
-                    rows.firstOrNull()?.destination()
-                }
+            TvHomeFocusOrigin.Hero ->
+                if (direction == TvHomeVerticalDirection.DOWN) rows.firstOrNull()?.destination() else null
             is TvHomeFocusOrigin.Row -> {
                 val currentIndex = rows.indexOfFirst { it.id == origin.id }
                 if (currentIndex < 0) {

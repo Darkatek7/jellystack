@@ -20,6 +20,8 @@ interface ProfileStore {
 
     suspend fun getBinding(profileId: String): ProfileConnectionBinding?
 
+    fun observeBindings(): Flow<List<ProfileConnectionBinding>>
+
     suspend fun upsertBinding(binding: ProfileConnectionBinding)
 
     fun observeSavedMedia(profileId: String): Flow<List<SavedMediaRecord>>

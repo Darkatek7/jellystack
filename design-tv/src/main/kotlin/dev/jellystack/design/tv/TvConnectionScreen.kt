@@ -13,6 +13,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -52,6 +54,7 @@ import dev.jellystack.core.server.ServerConnectionCoordinator
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun TvConnectionScreen(
     coordinator: ServerConnectionCoordinator,
@@ -128,8 +131,7 @@ internal fun TvConnectionScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(0.85f), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text("Jellystack", color = TvText, fontSize = 50.sp, fontWeight = FontWeight.Bold)
-                Text(strings.tvBeta, color = TvPurple, fontSize = 22.sp)
+                Text(TV_BRAND_JELLYSTACK, color = TvText, fontSize = 50.sp, fontWeight = FontWeight.Bold)
                 Text(
                     strings.tvTagline,
                     color = TvTextMuted,
@@ -248,7 +250,11 @@ internal fun TvConnectionScreen(
                                 .Color(0xFFFFA59E),
                     )
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                // Wraps so longer labels (German "Neuen Code erstellen" next to "Abbrechen") keep their full text.
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
                     if (contentMode.showConnectAction) {
                         TvActionButton(
                             label = strings.connect,

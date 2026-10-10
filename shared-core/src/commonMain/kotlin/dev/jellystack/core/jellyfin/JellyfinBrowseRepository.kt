@@ -817,6 +817,7 @@ class JellyfinBrowseRepository(
                             mergedUserData.playedPercentage
                                 ?: if (mergedUserData.played == true) 100.0 else 0.0,
                         lastPlayed = mergedUserData.lastPlayedDate ?: item.lastPlayed,
+                        played = mergedUserData.played ?: played,
                         updatedAt = now,
                     ),
                 ),
@@ -932,6 +933,7 @@ private fun JellyfinItemDto.toRecord(
         runTimeTicks = runTimeTicks,
         positionTicks = userData?.playbackPositionTicks,
         playedPercentage = userData?.playedPercentage,
+        played = userData?.played == true,
         productionYear = productionYear?.toLong(),
         premiereDate = premiereDate,
         communityRating = communityRating,
@@ -1005,6 +1007,7 @@ private fun JellyfinItemRecord.toDomain(): JellyfinItem =
         seriesArtImageTag = seriesArtImageTag,
         seriesBannerImageTag = seriesBannerImageTag,
         providerIds = providerIds,
+        isPlayed = played,
     )
 
 private fun Map<String, String>?.providerValue(name: String): String? =

@@ -4,16 +4,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.semantics.SemanticsActions
-import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
-import androidx.compose.ui.test.getUnclippedBoundsInRoot
-import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.pressKey
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.jellystack.core.jellyfin.HomeSectionsState
 import dev.jellystack.core.jellyfin.JellyfinHomeState
@@ -22,11 +22,9 @@ import dev.jellystack.core.jellyfin.LibraryBrowseQuery
 import dev.jellystack.core.preferences.AppLanguage
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import kotlin.math.abs
 
 @RunWith(AndroidJUnit4::class)
 class TvLibraryBrowseScreenTest {
@@ -71,7 +69,7 @@ class TvLibraryBrowseScreenTest {
     }
 
     @Test
-    fun browseAndAllTitlesStayLibraryFocusedAndCardsOpenDetails() {
+    fun browseEndsWithAnAllTitlesSegmentThatOpensTheFilterableGrid() {
         val recent = item("recent", "Recent")
         val titles = (0 until 12).map { item("title-$it", "Title $it") }
         var route by mutableStateOf(TvRoute.Library("library", "Movies"))
@@ -106,32 +104,22 @@ class TvLibraryBrowseScreenTest {
             }
         }
 
-        composeRule.onNodeWithTag("tv-library-mode-controls").assertIsDisplayed()
         val browseCard = composeRule.onNodeWithTag("cinematic-card-recent-recent")
         browseCard.performSemanticsAction(SemanticsActions.RequestFocus).assertIsFocused()
-        composeRule.onAllNodes(hasTestTag("cinematic-action-strip")).assertCountEquals(1)
-        composeRule.onNodeWithTag("cinematic-action-play").assertExists()
-        composeRule.onNodeWithTag("cinematic-action-details").assertExists()
         browseCard.performClick()
         composeRule.runOnIdle { assertEquals(listOf("recent"), opened) }
 
-        composeRule.runOnIdle { route = route.copy(mode = TvLibraryMode.ALL_TITLES) }
+        // The library's last row is the "All titles" segment; Down reaches it and OK opens the grid.
+        browseCard.performKeyInput { pressKey(Key.DirectionDown) }
+        val allTitlesSegment =
+            composeRule.onNodeWithTag("cinematic-card-$TV_LIBRARY_ALL_TITLES_ROW-$TV_LIBRARY_ALL_TITLES_CARD")
+        allTitlesSegment.assertIsFocused().performClick()
+        composeRule.runOnIdle { assertEquals(TvLibraryMode.ALL_TITLES, route.mode) }
 
+        composeRule.onNodeWithTag("tv-library-browse-title").assertIsDisplayed()
         composeRule.onNodeWithTag("tv-library-query-controls").assertIsDisplayed()
         val allTitlesCard = composeRule.onNodeWithTag("tv-library-all-title-title-0")
         allTitlesCard.assertIsDisplayed().performSemanticsAction(SemanticsActions.RequestFocus).assertIsFocused()
-        composeRule.onAllNodes(hasTestTag("cinematic-action-strip")).assertCountEquals(0)
-        val titleTop =
-            composeRule
-                .onNodeWithText("Movies")
-                .getUnclippedBoundsInRoot()
-                .top.value
-        val modeControlsTop =
-            composeRule
-                .onNodeWithTag("tv-library-mode-controls")
-                .getUnclippedBoundsInRoot()
-                .top.value
-        assertTrue(abs(titleTop - modeControlsTop) < 20f)
         composeRule.onNodeWithTag("tv-library-query-sort").performClick()
         composeRule.runOnIdle { assertFalse(state.libraryBrowseQuery.isDefault) }
 
