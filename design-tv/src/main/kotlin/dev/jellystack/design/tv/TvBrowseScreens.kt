@@ -371,7 +371,6 @@ internal fun TvHomeScreen(
         },
     ) {
         heroModel?.let { TvHomeBackdrop(it, heroTrailer) }
-        if (stageTrailerPlaying) TvHomeImmersiveTrailerChrome(heroTrailer, strings.trailer, Modifier.fillMaxSize())
         Box(Modifier.fillMaxWidth().onFocusChanged { heroHasFocus = it.hasFocus }) {
             if (heroModel != null) {
                 TvHeroCarousel(
@@ -406,6 +405,7 @@ internal fun TvHomeScreen(
             }
         }
         TvHomeFadeLayer(homeUiAlpha, Modifier.align(Alignment.TopEnd)) { TvHomeClock(rememberTvClockLabel()) }
+        if (stageTrailerPlaying) TvHomeTrailerPill(heroTrailer, strings.trailer, Modifier.align(Alignment.TopEnd))
         val rowScrollSpec = LocalBringIntoViewSpec.current
         CompositionLocalProvider(
             LocalBringIntoViewSpec provides rememberTvRowAlignedBringIntoViewSpec(TV_HOME_ROW_CARD_OFFSET),

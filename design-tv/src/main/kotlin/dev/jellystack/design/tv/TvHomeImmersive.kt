@@ -6,7 +6,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
@@ -57,25 +56,6 @@ internal fun TvHomeFadeLayer(
 ) {
     val shown by remember(alpha) { derivedStateOf { alpha.value > 0f } }
     if (shown) Box(modifier.graphicsLayer { this.alpha = alpha.value }, content = content)
-}
-
-/** While the home UI is hidden, the trailer's badge and progress sit at the bottom of the screen. */
-@Composable
-internal fun TvHomeImmersiveTrailerChrome(
-    trailer: TvHomeHeroTrailer,
-    label: String,
-    modifier: Modifier = Modifier,
-) {
-    val alpha = remember(trailer.homeUiAlpha) { derivedStateOf { 1f - trailer.homeUiAlpha.value } }
-    TvHomeFadeLayer(alpha, modifier) {
-        TvTrailerPreviewChrome(
-            label = label,
-            previewSoundEnabled = trailer.soundEnabled,
-            previewProgress = trailer.progress.value,
-            modifier = Modifier.fillMaxSize(),
-            badgeEndPadding = TvLayoutTokens.SafeInsets.horizontal,
-        )
-    }
 }
 
 internal const val TV_HOME_IMMERSIVE_DELAY_MS = 3_000L

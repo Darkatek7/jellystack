@@ -151,15 +151,6 @@ private fun BoxScope.TvHomeSpotlightContent(
 ) {
     val previewing = trailer.state.showsTvHomeStagePreview(model.stageItem.id, model.stagePresentationId)
     val fadeMs = tvHomeHeroFadeMillis()
-    if (previewing) {
-        TvTrailerPreviewChrome(
-            label = strings.trailer,
-            previewSoundEnabled = trailer.soundEnabled,
-            previewProgress = trailer.progress.value,
-            modifier = Modifier.fillMaxSize(),
-            badgeEndPadding = TvLayoutTokens.SafeInsets.horizontal,
-        )
-    }
     AnimatedContent(
         targetState = model,
         contentKey = { it.stageItem.id },
@@ -192,7 +183,7 @@ private fun BoxScope.TvHomeSpotlightContent(
                     .padding(start = TvLayoutTokens.ContentStart, bottom = 26.dp),
         )
     }
-    // A playing trailer puts its badge in the same corner; the spotlight does not page while it plays.
+    // The spotlight does not page while a trailer plays, so its dots would only mislead.
     if (model.page.count > 1 && model.showCarouselContext && !previewing) {
         TvHomeSpotlightPageDots(model.page, strings, Modifier.align(Alignment.BottomEnd))
     }

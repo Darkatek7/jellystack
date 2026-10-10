@@ -135,6 +135,28 @@ internal fun TvHomeClock(
     )
 }
 
+/**
+ * The playing trailer's pill right under [TvHomeClock]; align it with [Alignment.TopEnd]. It does not fade with
+ * the home UI, so it stays in place while the trailer has the screen.
+ */
+@Composable
+internal fun TvHomeTrailerPill(
+    trailer: TvHomeHeroTrailer,
+    label: String,
+    modifier: Modifier = Modifier,
+) {
+    TvTrailerPill(
+        label = label,
+        soundEnabled = trailer.soundEnabled,
+        progress = trailer.progress,
+        modifier =
+            modifier.padding(
+                top = TvLayoutTokens.SafeInsets.vertical + 54.dp,
+                end = TvLayoutTokens.SafeInsets.horizontal + 16.dp,
+            ),
+    )
+}
+
 /** The current time in the device's 12/24-hour format, updated every minute. */
 @Composable
 internal fun rememberTvClockLabel(): String {
