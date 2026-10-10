@@ -14,9 +14,12 @@ internal data class TvMediaCardText(
  * Episodes lead with the series name and their S/E number, so "Mr. Robot · S2 E6" reads instead of a
  * raw episode file name. In-progress items show the time left; others show the episode title or rating.
  */
-internal fun JellyfinItem.tvCardText(strings: TvStrings): TvMediaCardText {
+internal fun JellyfinItem.tvCardText(strings: TvStrings): TvMediaCardText = tvCardText(strings.metadata.minutesLeft)
+
+/** [minutesLeft] is the "%d min left" format of the UI language. */
+internal fun JellyfinItem.tvCardText(minutesLeft: String): TvMediaCardText {
     val progress = watchProgress()
-    val timeLeft = progress?.remainingMinutes?.let { strings.metadata.minutesLeft.format(it) }
+    val timeLeft = progress?.remainingMinutes?.let { minutesLeft.format(it) }
     val episodeName = episodeTitle ?: name
     val series = seriesName?.takeIf { it.isNotBlank() }
     return if (type.equals("Episode", ignoreCase = true)) {
@@ -55,6 +58,22 @@ internal fun JellyfinItem.tvEpisodeCardText(strings: TvStrings): TvMediaCardText
                 ?: runtimeMinutes?.let { strings.metadata.minutesShort.format(it) },
         progress = progress?.fraction,
     )
+}
+
+/** The line under a stage title: year, community rating, and age rating. */
+internal fun JellyfinItem.tvStageMetadata(): String? =
+    listOfNotNull(productionYear?.toString(), tvRatingLabel(communityRating), officialRating)
+        .joinToString(TV_CARD_SEPARATOR)
+        .ifBlank { null }
+
+/** The title logo of [item], or of its series for an episode; null when the server has none. */
+internal fun tvJellyfinLogoUrl(
+    baseUrl: String?,
+    token: String?,
+    item: JellyfinItem,
+): String? {
+    val logoTag = item.logoImageTag ?: item.parentLogoImageTag ?: return null
+    return jellyfinImageUrl(baseUrl, token, item.seriesId ?: item.id, logoTag, "Logo", TvArtworkSize.LOGO.maxWidth)
 }
 
 private const val TV_CARD_SEPARATOR = "  •  "

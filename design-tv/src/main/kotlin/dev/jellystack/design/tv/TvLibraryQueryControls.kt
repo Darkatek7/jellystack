@@ -11,7 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.Composable
@@ -65,6 +65,7 @@ internal fun TvLibraryQueryControls(
     availableMediaTypes: List<LibraryMediaType>,
     onQueryChanged: (LibraryBrowseQuery) -> Unit,
     modifier: Modifier = Modifier,
+    entryFocus: Boolean = false,
 ) {
     var genreDialogVisible by remember { mutableStateOf(false) }
     val controls =
@@ -156,13 +157,18 @@ internal fun TvLibraryQueryControls(
         contentPadding = PaddingValues(horizontal = TvLayoutTokens.FocusHaloPadding),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        items(controls, key = TvLibraryQueryControl::id) { control ->
+        itemsIndexed(controls, key = { _, control -> control.id }) { index, control ->
+            val targetId = "library:query:${control.id}"
             TvActionButton(
                 label = control.label,
                 onClick = control.onClick,
                 selected = control.selected,
-                focusTargetId = "library:query:${control.id}",
-                modifier = Modifier.testTag("tv-library-query-${control.id}"),
+                focusTargetId = targetId,
+                focusToNavigationRailOnLeft = index == 0,
+                modifier =
+                    Modifier
+                        .tvScreenEntryFocus(entryFocus && index == 0, targetId)
+                        .testTag("tv-library-query-${control.id}"),
             )
         }
     }

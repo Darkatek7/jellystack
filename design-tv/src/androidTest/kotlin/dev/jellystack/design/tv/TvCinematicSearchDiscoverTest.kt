@@ -90,9 +90,7 @@ class TvCinematicSearchDiscoverTest {
         }
 
         composeRule.onNodeWithTag("cinematic-card-discover-trends-movie:1").assertExists()
-        composeRule.onNodeWithTag("cinematic-action-strip").assertExists()
-        composeRule.onNodeWithTag("cinematic-action-play").assertExists()
-        composeRule.onNodeWithTag("cinematic-action-details").assertExists()
+        composeRule.onNodeWithTag("cinematic-preview-stage").assertExists()
         composeRule.onNodeWithContentDescription(strings.discoverLoadFailed).assertExists()
         composeRule.onNodeWithContentDescription(strings.retry).assertDoesNotExist()
     }

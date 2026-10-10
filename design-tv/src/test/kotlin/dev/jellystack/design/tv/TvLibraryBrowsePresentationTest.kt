@@ -134,6 +134,7 @@ class TvLibraryBrowsePresentationTest {
             nextUp = "Next up",
             recentlyAdded = "Recently added",
             myList = "My List",
+            minutesLeft = "%d min left",
         )
 
     private fun item(

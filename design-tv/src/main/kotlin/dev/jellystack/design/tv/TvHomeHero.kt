@@ -9,7 +9,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -25,7 +24,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
@@ -41,7 +39,6 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.CustomAccessibilityAction
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -174,7 +171,7 @@ private fun BoxScope.TvHomeSpotlightContent(
         }
     }
     if (focused) {
-        TvHomeSpotlightHints(
+        TvPlayKeyHints(
             playLabel = playLabel,
             detailsLabel = strings.details,
             modifier =
@@ -228,47 +225,6 @@ private fun Modifier.tvHomeSpotlightKeys(callbacks: TvHomeHeroCallbacks): Modifi
         }
     }.tvHomeVerticalFocus(callbacks.onVerticalMove)
 
-/** "[OK] Details   [▶] Play": what the remote does on the focused spotlight. */
-@Composable
-private fun TvHomeSpotlightHints(
-    playLabel: String,
-    detailsLabel: String,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier.clearAndSetSemantics {},
-        horizontalArrangement = Arrangement.spacedBy(22.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        TvKeyHint(label = detailsLabel) {
-            Text(TV_KEY_OK, color = TvText, fontSize = TvTextSize.Label, fontWeight = FontWeight.Bold)
-        }
-        TvKeyHint(label = playLabel) {
-            Icon(Icons.Default.PlayArrow, null, tint = TvText, modifier = Modifier.size(16.dp))
-        }
-    }
-}
-
-@Composable
-private fun TvKeyHint(
-    label: String,
-    key: @Composable () -> Unit,
-) {
-    Row(horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            Modifier
-                .heightIn(min = 26.dp)
-                .widthIn(min = 30.dp)
-                .border(1.5.dp, TvText.copy(alpha = 0.7f), TvShapes.Badge)
-                .padding(horizontal = 6.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            key()
-        }
-        Text(label, color = TvText, fontSize = TvTextSize.Body, fontWeight = FontWeight.SemiBold)
-    }
-}
-
 @Composable
 private fun TvHeroText(
     model: TvHomeHeroModel,
@@ -279,18 +235,10 @@ private fun TvHeroText(
     Column(modifier, verticalArrangement = Arrangement.spacedBy(9.dp)) {
         // The spotlight label describes the carousel, so a staged row card does not show it.
         if (model.showCarouselContext) TvHeroModeLabel(model.mode, strings)
-        val logoTag = item.logoImageTag ?: item.parentLogoImageTag
-        if (logoTag != null) {
+        val logoUrl = tvJellyfinLogoUrl(model.imageBaseUrl, model.imageAccessToken, item)
+        if (logoUrl != null) {
             AsyncImage(
-                model =
-                    jellyfinImageUrl(
-                        model.imageBaseUrl,
-                        model.imageAccessToken,
-                        item.seriesId ?: item.id,
-                        logoTag,
-                        "Logo",
-                        TvArtworkSize.LOGO.maxWidth,
-                    ),
+                model = logoUrl,
                 contentDescription = null,
                 modifier = Modifier.widthIn(max = 390.dp).heightIn(max = 68.dp),
                 contentScale = ContentScale.Fit,
@@ -316,13 +264,7 @@ private fun TvHeroText(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        val metadata =
-            listOfNotNull(
-                item.productionYear?.toString(),
-                tvRatingLabel(item.communityRating),
-                item.officialRating,
-            ).joinToString("  •  ")
-        if (metadata.isNotBlank()) Text(metadata, color = TvTextMuted, fontSize = 15.sp)
+        item.tvStageMetadata()?.let { Text(it, color = TvTextMuted, fontSize = 15.sp) }
     }
 }
 

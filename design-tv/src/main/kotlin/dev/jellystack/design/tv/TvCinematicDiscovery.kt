@@ -23,7 +23,6 @@ internal fun TvCinematicDiscoverContent(
     strings: TvStrings,
     focusMemory: TvFocusMemory,
     onItem: (JellyseerrSearchItem) -> Unit,
-    onToggleSaved: ((JellyseerrSearchItem) -> Unit)?,
     isSaved: (JellyseerrSearchItem) -> Boolean,
 ) {
     val itemsByKey = linkedMapOf<String, JellyseerrSearchItem>()
@@ -77,12 +76,11 @@ internal fun TvCinematicDiscoverContent(
     LaunchedEffect(effectiveFocusedKey) {
         if (focusedKey != effectiveFocusedKey) focusedKey = effectiveFocusedKey
     }
-    val focusedItem = requireNotNull(itemsByKey[effectiveFocusedKey])
     val focusedRow = rows.first { row -> row.cards.any { it.id == effectiveFocusedKey } }
     TvCinematicBrowse(
         state =
             TvCinematicBrowseState(
-                hero = TvCinematicHero(title = strings.discover),
+                hero = TvCinematicHero(title = strings.discover, eyebrow = strings.discover),
                 rows = rows,
                 focusedAnchor = TvFocusAnchor(focusedRow.id, effectiveFocusedKey, TvFocusDestination.SECTION_ITEM),
                 inlineStatus =
@@ -92,7 +90,6 @@ internal fun TvCinematicDiscoverContent(
                         null
                     },
             ),
-        actionLabels = cinematicActionLabels(strings),
         onCardFocused = { anchor, card ->
             focusedKey = card.id
             val row = rows.first { it.id == anchor.sectionId }
@@ -104,16 +101,7 @@ internal fun TvCinematicDiscoverContent(
             )
         },
         onCardClick = { card -> itemsByKey[card.id]?.let(onItem) },
-        showFocusedMetadata = true,
         resetVerticalFocusToFirstCard = true,
-        selectedItemActions =
-            TvSelectedItemActions(
-                onPlayOrResume = { onItem(focusedItem) },
-                onDetails = { onItem(focusedItem) },
-                onToggleSaved = onToggleSaved?.let { toggle -> { toggle(focusedItem) } },
-                onTogglePlayed = null,
-                primaryLabel = strings.request,
-            ),
     )
 }
 
@@ -136,18 +124,6 @@ private fun JellyseerrSearchItem.toCinematicCard(
         artworkUrl = tmdbImageUrl(backdropPath ?: posterPath, backdrop = backdropPath != null),
         backdropUrl = tmdbImageUrl(backdropPath ?: posterPath, backdrop = backdropPath != null),
         selected = selected,
-    )
-
-private fun cinematicActionLabels(strings: TvStrings): TvSelectedItemActionLabels =
-    TvSelectedItemActionLabels(
-        play = strings.play,
-        resume = strings.continueLabel,
-        details = strings.details,
-        addToList = strings.addToMyList,
-        removeFromList = strings.removeFromMyList,
-        markPlayed = strings.markPlayed,
-        markUnplayed = strings.markUnplayed,
-        trailer = strings.trailer,
     )
 
 internal fun JellyseerrSearchItem.cinematicKey(): String = "${mediaType.name.lowercase()}:$tmdbId"

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
@@ -137,18 +138,19 @@ internal fun TvHomeClock(
 
 /**
  * The playing trailer's pill right under [TvHomeClock]; align it with [Alignment.TopEnd]. It does not fade with
- * the home UI, so it stays in place while the trailer has the screen.
+ * the rest of the UI, so it stays in place while the trailer has the screen.
  */
 @Composable
-internal fun TvHomeTrailerPill(
-    trailer: TvHomeHeroTrailer,
+internal fun TvTrailerPillUnderClock(
     label: String,
+    soundEnabled: Boolean,
+    progress: State<Float>,
     modifier: Modifier = Modifier,
 ) {
     TvTrailerPill(
         label = label,
-        soundEnabled = trailer.soundEnabled,
-        progress = trailer.progress,
+        soundEnabled = soundEnabled,
+        progress = progress,
         modifier =
             modifier.padding(
                 top = TvLayoutTokens.SafeInsets.vertical + 54.dp,

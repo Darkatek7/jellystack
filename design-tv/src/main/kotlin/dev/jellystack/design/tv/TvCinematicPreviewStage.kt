@@ -1,4 +1,4 @@
-@file:Suppress("FunctionNaming", "LongParameterList")
+@file:Suppress("FunctionName")
 
 package dev.jellystack.design.tv
 
@@ -7,20 +7,20 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.heading
@@ -34,195 +34,148 @@ import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import dev.jellystack.players.AndroidPlayerEngine
 
-/** Browse rows start below the preview stage so cards never cover the backdrop, trailer, or stage actions. */
+/** Browse rows start where the home rows start, so cards never cover the stage text. */
 internal val TV_CINEMATIC_ROWS_TOP: Dp = TvLayoutTokens.SafeInsets.vertical + TV_HOME_HERO_HEIGHT_DP.dp + 12.dp
 internal val TV_CINEMATIC_STAGE_HEIGHT: Dp = TV_CINEMATIC_ROWS_TOP
 
 /**
- * Stage height for screens whose list starts with its own header (search field and source chips),
- * so the header and the first result row still fit below the stage.
+ * The focused card's artwork behind the whole screen, as on the home screen; a playing trailer replaces it.
+ * The scrims only keep the text readable, so they fade with [uiAlpha] while the trailer has the screen.
  */
-internal val TV_CINEMATIC_COMPACT_STAGE_HEIGHT: Dp = 270.dp
-
 @Composable
-internal fun TvCinematicPreviewStage(
+internal fun TvCinematicBackdropLayer(
     backdrop: TvCinematicBackdrop,
-    hero: TvCinematicHero?,
-    focusedCard: TvCinematicCard?,
-    actions: TvSelectedItemActions?,
-    labels: TvSelectedItemActionLabels,
-    reducedMotion: Boolean,
-    modifier: Modifier = Modifier,
-    height: Dp = TV_CINEMATIC_STAGE_HEIGHT,
-    contentTopInset: Dp = 0.dp,
-    onActionDown: (() -> Boolean)? = null,
-    previewing: Boolean = false,
-    previewEngine: AndroidPlayerEngine? = null,
-    previewSoundEnabled: Boolean = true,
-    previewProgress: State<Float>? = null,
+    trailerEngine: AndroidPlayerEngine?,
+    uiAlpha: State<Float>,
 ) {
-    Box(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .height(height)
-                .background(TvBackground)
-                .testTag("cinematic-preview-stage"),
-    ) {
-        TvCinematicStageBackdrop(
-            backdrop = backdrop,
-            reducedMotion = reducedMotion,
-            previewing = previewing,
-            previewEngine = previewEngine,
-        )
-        if (previewing && previewEngine != null) {
-            TvTrailerPreviewChrome(
-                label = labels.trailer,
-                previewSoundEnabled = previewSoundEnabled,
-                previewProgress = previewProgress?.value ?: 0f,
-                modifier =
-                    Modifier.fillMaxSize().padding(
-                        start = TvLayoutTokens.ContentStart,
-                        end = TvLayoutTokens.SafeInsets.horizontal,
-                    ),
-                badgeEndPadding = 0.dp,
-            )
+    Box(Modifier.fillMaxSize()) {
+        if (trailerEngine != null) {
+            TvTrailerPreviewSurface(trailerEngine, Modifier.fillMaxSize().testTag("cinematic-preview-player-surface"))
+        } else {
+            val transitionMillis = if (LocalTvFocusAppearance.current.reducedMotion) 0 else backdrop.transitionMillis
+            AnimatedContent(
+                targetState = backdrop.url,
+                modifier = Modifier.fillMaxSize().testTag("cinematic-backdrop"),
+                transitionSpec = { fadeIn(tween(transitionMillis)) togetherWith fadeOut(tween(transitionMillis)) },
+                label = "cinematic-backdrop-crossfade",
+            ) { url ->
+                TvHomeBackdropImage(url)
+            }
         }
-        TvCinematicStageMetadata(
-            hero = hero,
-            focusedCard = focusedCard,
-            actions = actions,
-            labels = labels,
-            onActionDown = onActionDown,
-            previewing = previewing && previewEngine != null,
-            modifier =
-                Modifier
-                    .align(Alignment.TopStart)
-                    .padding(
-                        start = TvLayoutTokens.ContentStart,
-                        end = TvLayoutTokens.SafeInsets.horizontal,
-                        top = TvLayoutTokens.SafeInsets.vertical + contentTopInset,
-                    ),
-        )
+        Box(Modifier.fillMaxSize().graphicsLayer { alpha = uiAlpha.value }) {
+            TvHomeBackdropScrims()
+        }
     }
 }
 
+/**
+ * The top of a cinematic browse screen, where the home spotlight sits: the focused card's text and, for a card
+ * that plays, the key hints. It never takes focus; the rows below it do.
+ */
 @Composable
-private fun TvCinematicStageBackdrop(
-    backdrop: TvCinematicBackdrop,
-    reducedMotion: Boolean,
-    previewing: Boolean,
-    previewEngine: AndroidPlayerEngine?,
+internal fun TvCinematicStage(
+    hero: TvCinematicHero?,
+    focusedCard: TvCinematicCard?,
+    playback: TvCinematicCardPlayback?,
+    uiAlpha: State<Float>,
 ) {
-    if (previewing && previewEngine != null) {
-        TvTrailerPreviewSurface(
-            previewEngine = previewEngine,
-            modifier = Modifier.fillMaxSize().testTag("cinematic-preview-player-surface"),
-        )
-    } else {
-        val transitionMillis = if (reducedMotion) 0 else backdrop.transitionMillis
-        AnimatedContent(
-            targetState = backdrop.url,
-            modifier = Modifier.fillMaxSize().testTag("cinematic-backdrop"),
-            transitionSpec = {
-                fadeIn(tween(transitionMillis)) togetherWith fadeOut(tween(transitionMillis))
-            },
-            label = "cinematic-stage-backdrop-crossfade",
-        ) { url ->
-            if (url == null) {
-                Box(
+    Box(Modifier.fillMaxWidth().height(TV_HOME_SPOTLIGHT_HEIGHT).testTag("cinematic-preview-stage")) {
+        TvHomeFadeLayer(uiAlpha, Modifier.fillMaxSize()) {
+            TvCinematicStageText(
+                hero = hero,
+                card = focusedCard,
+                modifier =
                     Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.linearGradient(
-                                listOf(Color(0xFF171824), Color(0xFF2B2342), Color(0xFF11121A)),
-                            ),
-                        ),
-                )
-            } else {
-                AsyncImage(
-                    model = url,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
+                        .align(Alignment.TopStart)
+                        .padding(
+                            start = TvLayoutTokens.ContentStart,
+                            top = TvLayoutTokens.SafeInsets.vertical + 26.dp,
+                            bottom = 84.dp,
+                        ).fillMaxWidth(0.5f),
+            )
+            if (focusedCard != null && playback != null && playback.canPlay(focusedCard)) {
+                val labels = playback.labels
+                TvPlayKeyHints(
+                    playLabel = if (focusedCard.resumeFraction != null) labels.resume else labels.play,
+                    detailsLabel = labels.details,
+                    modifier =
+                        Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(start = TvLayoutTokens.ContentStart, bottom = 26.dp),
                 )
             }
         }
     }
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(
-                Brush.horizontalGradient(
-                    listOf(TvBackground, TvBackground.copy(alpha = 0.9f), TvBackground.copy(alpha = 0.18f)),
-                ),
-            ),
-    )
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    listOf(TvBackground.copy(alpha = 0.12f), Color.Transparent, TvBackground),
-                ),
-            ),
-    )
 }
 
 @Composable
-private fun TvCinematicStageMetadata(
+private fun TvCinematicStageText(
     hero: TvCinematicHero?,
-    focusedCard: TvCinematicCard?,
-    actions: TvSelectedItemActions?,
-    labels: TvSelectedItemActionLabels,
-    onActionDown: (() -> Boolean)?,
-    previewing: Boolean,
+    card: TvCinematicCard?,
     modifier: Modifier,
 ) {
-    val title = focusedCard?.title ?: hero?.title
-    val subtitle = focusedCard?.subtitle
-    val overview = focusedCard?.overview ?: hero?.overview
-    if (title == null && subtitle == null && overview == null) return
-    Column(
-        modifier = modifier.fillMaxWidth(0.86f),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        hero?.eyebrow?.takeIf { focusedCard == null }?.let {
-            Text(it, color = TvPurple, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-        }
-        title?.let {
+    val fadeMs = tvHomeHeroFadeMillis()
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(9.dp)) {
+        // The eyebrow names the screen, so it stays put while the text under it changes with the focused card.
+        hero?.eyebrow?.takeIf { card != null || it != hero.title }?.let { eyebrow ->
             Text(
-                text = it,
-                color = TvText,
-                fontSize = 34.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.semantics { heading() }.testTag("cinematic-preview-title"),
-            )
-        }
-        subtitle?.let {
-            Text(
-                text = it,
-                color = TvTextMuted,
-                fontSize = 16.sp,
+                eyebrow,
+                color = TvPurple,
+                fontSize = TvTextSize.Body,
+                fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        overview?.let {
-            Text(
-                text = it,
-                color = TvTextMuted,
-                fontSize = 15.sp,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        if (focusedCard != null && actions != null) {
-            TvTrailerAwareActions(previewing = previewing) {
-                TvSelectedItemActionStrip(focusedCard, labels, actions, onDown = onActionDown)
+        AnimatedContent(
+            targetState = card,
+            contentKey = { it?.id },
+            transitionSpec = { tvHomeHeroFade(fadeMs) },
+            label = "cinematic-stage-text",
+        ) { shown ->
+            Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                TvCinematicStageTitle(shown?.title ?: hero?.title, shown?.logoUrl)
+                val overview = if (shown != null) shown.overview else hero?.overview
+                overview?.takeIf(String::isNotBlank)?.let {
+                    Text(
+                        it,
+                        color = TvTextMuted,
+                        fontSize = 16.sp,
+                        lineHeight = 20.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                (shown?.metadata ?: shown?.subtitle)?.let {
+                    Text(it, color = TvTextMuted, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun TvCinematicStageTitle(
+    title: String?,
+    logoUrl: String?,
+) {
+    if (logoUrl != null) {
+        AsyncImage(
+            model = logoUrl,
+            contentDescription = title,
+            modifier = Modifier.widthIn(max = 390.dp).heightIn(max = 68.dp).testTag("cinematic-preview-logo"),
+            contentScale = ContentScale.Fit,
+        )
+    } else if (title != null) {
+        Text(
+            text = title,
+            color = TvText,
+            fontSize = 42.sp,
+            lineHeight = 44.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.semantics { heading() }.testTag("cinematic-preview-title"),
+        )
     }
 }

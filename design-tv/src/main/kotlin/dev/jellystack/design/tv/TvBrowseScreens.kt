@@ -85,8 +85,8 @@ import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
 
 internal const val TV_HOME_HERO_HEIGHT_DP = 300
 
-/** Row title (24 dp), title spacing (8 dp), and row content padding (6 dp) above each home card. */
-private val TV_HOME_ROW_CARD_OFFSET = 38.dp
+/** Row title (24 dp), title spacing (8 dp), and row content padding (6 dp) above each home and browse card. */
+internal val TV_HOME_ROW_CARD_OFFSET = 38.dp
 internal const val TV_FOCUS_MATERIALIZATION_TIMEOUT_MS = 1_000L
 
 internal data class TvLazyFocusLocation(
@@ -405,7 +405,14 @@ internal fun TvHomeScreen(
             }
         }
         TvHomeFadeLayer(homeUiAlpha, Modifier.align(Alignment.TopEnd)) { TvHomeClock(rememberTvClockLabel()) }
-        if (stageTrailerPlaying) TvHomeTrailerPill(heroTrailer, strings.trailer, Modifier.align(Alignment.TopEnd))
+        if (stageTrailerPlaying) {
+            TvTrailerPillUnderClock(
+                strings.trailer,
+                heroTrailer.soundEnabled,
+                heroTrailer.progress,
+                Modifier.align(Alignment.TopEnd),
+            )
+        }
         val rowScrollSpec = LocalBringIntoViewSpec.current
         CompositionLocalProvider(
             LocalBringIntoViewSpec provides rememberTvRowAlignedBringIntoViewSpec(TV_HOME_ROW_CARD_OFFSET),
@@ -905,8 +912,6 @@ internal fun TvLibraryScreen(
     onModeChanged: (TvLibraryMode) -> Unit = {},
     onQueryChanged: (LibraryBrowseQuery) -> Unit = {},
     onPlayItem: (JellyfinItem) -> Unit = {},
-    onToggleFavorite: (JellyfinItem) -> Unit = {},
-    onTogglePlayed: (JellyfinItem, Boolean) -> Unit = { _, _ -> },
     cinematicModesEnabled: Boolean = false,
     modifier: Modifier = Modifier,
     trailerPreviewState: TvTrailerPreviewState = TvTrailerPreviewState.Idle,
@@ -914,6 +919,7 @@ internal fun TvLibraryScreen(
     previewSoundEnabled: Boolean = true,
     previewProgress: State<Float>? = null,
     onPreviewFocus: (JellyfinItem, String) -> Unit = { _, _ -> },
+    onPreviewClear: () -> Unit = {},
 ) {
     LaunchedEffect(route.libraryId) { route.libraryId?.let(onSelectLibrary) }
     if (route.libraryId != null && cinematicModesEnabled) {
@@ -931,8 +937,6 @@ internal fun TvLibraryScreen(
             onOpenItem = onOpenItem,
             onOpenContainer = onOpenContainer,
             onPlayItem = onPlayItem,
-            onToggleFavorite = onToggleFavorite,
-            onTogglePlayed = onTogglePlayed,
             onLoadMore = onLoadMore,
             onRetry = onRetry,
             modifier = modifier,
@@ -941,6 +945,7 @@ internal fun TvLibraryScreen(
             previewSoundEnabled = previewSoundEnabled,
             previewProgress = previewProgress,
             onPreviewFocus = onPreviewFocus,
+            onPreviewClear = onPreviewClear,
         )
         return
     }
@@ -1246,7 +1251,6 @@ internal fun TvDiscoverScreen(
     onItem: (JellyseerrSearchItem) -> Unit,
     onConnectSeerr: () -> Unit,
     onRetry: () -> Unit,
-    onToggleSaved: ((JellyseerrSearchItem) -> Unit)? = null,
     isSaved: (JellyseerrSearchItem) -> Boolean = { false },
     modifier: Modifier = Modifier,
 ) {
@@ -1273,7 +1277,6 @@ internal fun TvDiscoverScreen(
             strings = strings,
             focusMemory = focusMemory,
             onItem = onItem,
-            onToggleSaved = onToggleSaved,
             isSaved = isSaved,
         )
         if (cinematicTargetId != null) {

@@ -31,11 +31,8 @@ import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.VolumeOff
-import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -649,73 +646,6 @@ internal fun TvTrailerPreviewSurface(
         modifier = modifier,
     )
 }
-
-@Composable
-internal fun TvTrailerPreviewChrome(
-    label: String,
-    previewSoundEnabled: Boolean,
-    previewProgress: Float,
-    modifier: Modifier = Modifier,
-    badgeEndPadding: Dp = 16.dp,
-) {
-    Box(modifier) {
-        Row(
-            Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = badgeEndPadding, bottom = 14.dp)
-                .background(TvPurpleStrong.copy(alpha = 0.86f), TvShapes.Badge)
-                .padding(horizontal = 9.dp, vertical = 5.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Text(label, color = Color.White, fontSize = TvTextSize.Caption, fontWeight = FontWeight.SemiBold)
-            Icon(
-                if (previewSoundEnabled) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
-                null,
-                tint = Color.White,
-                modifier = Modifier.size(16.dp),
-            )
-        }
-        if (previewProgress > 0f) {
-            LinearProgressIndicator(
-                progress = { previewProgress.coerceIn(0f, 1f) },
-                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp),
-                color = TvPurple,
-                trackColor = Color.White.copy(alpha = 0.22f),
-            )
-        }
-    }
-}
-
-/**
- * Fades stage actions out while a trailer plays so the preview stays unobstructed.
- *
- * The actions stay composed and focusable; they reappear as soon as focus moves into them, so
- * D-pad navigation and focus restoration keep working.
- */
-@Composable
-internal fun TvTrailerAwareActions(
-    previewing: Boolean,
-    modifier: Modifier = Modifier,
-    content: @Composable () -> Unit,
-) {
-    var focused by remember { mutableStateOf(false) }
-    val reducedMotion = LocalTvFocusAppearance.current.reducedMotion
-    val alpha by animateFloatAsState(
-        targetValue = if (previewing && !focused) 0f else 1f,
-        animationSpec = if (reducedMotion) snap() else tween(TV_TRAILER_ACTIONS_FADE_MILLIS),
-        label = "trailer-aware-actions",
-    )
-    Box(
-        modifier
-            .onFocusChanged { focused = it.hasFocus }
-            .graphicsLayer { this.alpha = alpha },
-    ) {
-        content()
-    }
-}
-
-private const val TV_TRAILER_ACTIONS_FADE_MILLIS = 220
 
 @Composable
 internal fun TvLoading(

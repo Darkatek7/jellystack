@@ -1447,19 +1447,13 @@ private fun TvAuthenticatedApp(
                                                 trailerPreviewCoordinator.clearFocus()
                                                 playbackLauncher.play(item)
                                             },
-                                            onToggleFavorite = { item -> scope.launch { browseCoordinator.toggleFavorite(item) } },
-                                            onTogglePlayed = { item, played ->
-                                                scope.launch {
-                                                    browseRepository.setPlayedStatus(item.id, played)
-                                                    browseCoordinator.refreshSelectedLibrary()
-                                                }
-                                            },
                                             cinematicModesEnabled = true,
                                             trailerPreviewState = trailerPreviewState,
                                             trailerPreviewEngine = trailerPreviewEngine,
                                             previewSoundEnabled = settings.trailerPreviewSoundEnabled,
                                             previewProgress = trailerPreviewProgress,
                                             onPreviewFocus = ::focusCinematicTrailer,
+                                            onPreviewClear = { trailerPreviewCoordinator.clearFocus(TvTrailerPreviewOwner.CARD) },
                                         )
                                     }
                                     TvRoute.Search ->
@@ -1479,15 +1473,6 @@ private fun TvAuthenticatedApp(
                                             ::openSeerr,
                                             onConnectSeerr = ::openSettingsConnections,
                                             onRetry = recommendationsCoordinator::refreshAll,
-                                            onToggleSaved = { item ->
-                                                scope.launch {
-                                                    if (savedMedia.any { it.identity == item.mediaIdentity() }) {
-                                                        myListRepository.removeSeerr(myListProfileId, item)
-                                                    } else {
-                                                        myListRepository.saveSeerr(myListProfileId, item)
-                                                    }
-                                                }
-                                            },
                                             isSaved = { item ->
                                                 savedMedia.any { it.identity == item.mediaIdentity() }
                                             },
