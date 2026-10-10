@@ -301,6 +301,10 @@ internal data class TvStrings(
     val exitApp: String
         get() = if (cancel == "Abbrechen") "Beenden" else "Exit"
 
+    /** Locale of these strings, for names the platform localizes (track languages); the system locale may differ. */
+    val locale: Locale
+        get() = if (cancel == "Abbrechen") Locale.GERMAN else Locale.ENGLISH
+
     fun itemCount(count: Long): String = "$count ${if (count == 1L) itemSingular else itemPlural}"
 
     companion object {
