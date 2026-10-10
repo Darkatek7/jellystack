@@ -62,6 +62,10 @@ SELECT *
 FROM profile_connection_bindings
 WHERE profile_id = ?;
 
+selectBindings:
+SELECT *
+FROM profile_connection_bindings;
+
 upsertBinding:
 INSERT OR REPLACE INTO profile_connection_bindings (
     profile_id, jellyfin_connection_id, seerr_connection_id

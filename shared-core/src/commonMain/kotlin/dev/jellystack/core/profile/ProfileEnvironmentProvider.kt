@@ -9,11 +9,14 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.merge
 
 class ProfileEnvironmentProvider private constructor(
     private val activeProfileIdProvider: () -> String?,
-    private val activeProfileChanges: Flow<*>,
+    /** Anything that can change the resolved environments: profile switches, bindings, stored servers. */
+    private val environmentChanges: Flow<*>,
     private val bindingResolver: suspend (profileId: String) -> ProfileConnectionBinding?,
     private val serverResolver: suspend (connectionId: String) -> ManagedServer?,
     private val deviceNameProvider: () -> String = { "Jellystack" },
@@ -23,11 +26,12 @@ class ProfileEnvironmentProvider private constructor(
         activeState: StateFlow<ActiveProfileState>,
         bindingResolver: suspend (profileId: String) -> ProfileConnectionBinding?,
         serverResolver: suspend (connectionId: String) -> ManagedServer?,
+        connectionChanges: Flow<*> = emptyFlow<Unit>(),
         deviceNameProvider: () -> String = { "Jellystack" },
         clientVersionProvider: () -> String = { "unknown" },
     ) : this(
         activeProfileIdProvider = { (activeState.value as? ActiveProfileState.Active)?.profileId },
-        activeProfileChanges = activeState,
+        environmentChanges = merge(activeState, connectionChanges),
         bindingResolver = bindingResolver,
         serverResolver = serverResolver,
         deviceNameProvider = deviceNameProvider,
@@ -38,11 +42,12 @@ class ProfileEnvironmentProvider private constructor(
         activeProfiles: ActiveProfileRepository,
         bindingResolver: suspend (profileId: String) -> ProfileConnectionBinding?,
         serverResolver: suspend (connectionId: String) -> ManagedServer?,
+        connectionChanges: Flow<*> = emptyFlow<Unit>(),
         deviceNameProvider: () -> String = { "Jellystack" },
         clientVersionProvider: () -> String = { "unknown" },
     ) : this(
         activeProfileIdProvider = { activeProfiles.profileId.value },
-        activeProfileChanges = activeProfiles.profileId,
+        environmentChanges = merge(activeProfiles.profileId, connectionChanges),
         bindingResolver = bindingResolver,
         serverResolver = serverResolver,
         deviceNameProvider = deviceNameProvider,
@@ -83,7 +88,7 @@ class ProfileEnvironmentProvider private constructor(
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    fun observeSeerr(): Flow<JellyseerrEnvironment?> = activeProfileChanges.mapLatest { seerr() }.distinctUntilChanged()
+    fun observeSeerr(): Flow<JellyseerrEnvironment?> = environmentChanges.mapLatest { seerr() }.distinctUntilChanged()
 
     private fun activeProfileId(): String? = activeProfileIdProvider()
 }

@@ -8,6 +8,8 @@ internal enum class TvPlayerPanel {
     QUALITY,
     SPEED,
     SYNCPLAY,
+    CHAPTERS,
+    EPISODES,
 }
 
 internal data class TvPlayerPanelNavigation(

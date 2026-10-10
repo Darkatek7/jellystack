@@ -3,6 +3,56 @@ package dev.jellystack.design.tv
 import dev.jellystack.core.preferences.AppLanguage
 import java.util.Locale
 
+/**
+ * Duration, rating, and playback statistics labels. New strings go into small groups like this one:
+ * the flat [TvStrings] constructor is at the JVM limit of 255 parameter slots (docs/tech-debt.md 3.7).
+ */
+internal data class TvMetadataStrings(
+    val minutesLeft: String,
+    val minutesShort: String,
+    val rtCritics: String,
+    val rtAudience: String,
+    val frameRate: String,
+    val dynamicRange: String,
+    val buffer: String,
+    val spotlightPosition: String,
+    val captionsBadge: String,
+)
+
+/** Labels of the video player: skip prompts, the clock, chapters, and the up-next card. */
+internal data class TvPlayerStrings(
+    val skipIntro: String,
+    val skipRecap: String,
+    val skipPreview: String,
+    val skipCommercial: String,
+    val skipCredits: String,
+    val playNextEpisode: String,
+    val endsAt: String,
+    val chapters: String,
+    val chapterNumber: String,
+    val upNext: String,
+    val watchCredits: String,
+)
+
+/** Labels of the settings screens. */
+internal data class TvSettingsStrings(
+    val trailerPreviewDelay: String,
+    val secondsShort: String,
+    val decimalSeparator: String,
+) {
+    /** "1.5 s" or "3 s" in the language's number format. */
+    fun seconds(millis: Int): String {
+        val tenths = millis % MILLIS_PER_SECOND / MILLIS_PER_TENTH
+        val whole = millis / MILLIS_PER_SECOND
+        return secondsShort.format(if (tenths == 0) "$whole" else "$whole$decimalSeparator$tenths")
+    }
+
+    private companion object {
+        const val MILLIS_PER_SECOND = 1_000
+        const val MILLIS_PER_TENTH = 100
+    }
+}
+
 internal data class TvStrings(
     val home: String,
     val library: String,
@@ -120,7 +170,6 @@ internal data class TvStrings(
     val preparingPlayback: String,
     val playbackFailedTitle: String,
     val playbackFailedMessage: String,
-    val tvBeta: String,
     val tvTagline: String,
     val playback: String,
     val pause: String,
@@ -175,12 +224,7 @@ internal data class TvStrings(
     val commercialSegments: String,
     val showSkipButton: String,
     val skipAutomatically: String,
-    val skipIntro: String,
-    val skipRecap: String,
-    val skipPreview: String,
-    val skipCommercial: String,
-    val skipCredits: String,
-    val playNextEpisode: String,
+    val player: TvPlayerStrings,
     val seasonNumber: String,
     val specials: String,
     val resumeAskTitle: String,
@@ -226,7 +270,6 @@ internal data class TvStrings(
     val removeProfilePin: String,
     val pinMismatch: String,
     val pinAttemptsRemaining: String,
-    val browse: String,
     val allTitles: String,
     val sort: String,
     val filters: String,
@@ -246,6 +289,8 @@ internal data class TvStrings(
     val genre: String,
     val mediaType: String,
     val applyLabel: String,
+    val metadata: TvMetadataStrings,
+    val settingsLabels: TvSettingsStrings,
     private val itemSingular: String,
     private val itemPlural: String,
 ) {
@@ -387,7 +432,6 @@ internal data class TvStrings(
                 playbackFailedTitle = "Playback could not continue",
                 playbackFailedMessage =
                     "The player could not decode this stream. Try again to request a compatible version from Jellyfin.",
-                tvBeta = "TV beta",
                 tvTagline = "Your Jellyfin and Seerr library, designed for the big screen.",
                 playback = "Playback",
                 pause = "Pause",
@@ -444,12 +488,20 @@ internal data class TvStrings(
                 commercialSegments = "Commercials",
                 showSkipButton = "Show skip button",
                 skipAutomatically = "Skip automatically",
-                skipIntro = "Skip intro",
-                skipRecap = "Skip recap",
-                skipPreview = "Skip preview",
-                skipCommercial = "Skip commercial",
-                skipCredits = "Skip credits",
-                playNextEpisode = "Play next episode",
+                player =
+                    TvPlayerStrings(
+                        skipIntro = "Skip intro",
+                        skipRecap = "Skip recap",
+                        skipPreview = "Skip preview",
+                        skipCommercial = "Skip commercial",
+                        skipCredits = "Skip credits",
+                        playNextEpisode = "Play next episode",
+                        endsAt = "Ends at %s",
+                        chapters = "Chapters",
+                        chapterNumber = "Chapter %d",
+                        upNext = "Up next",
+                        watchCredits = "Watch credits",
+                    ),
                 seasonNumber = "Season %d",
                 specials = "Specials",
                 resumeAskTitle = "Resume playback?",
@@ -497,7 +549,6 @@ internal data class TvStrings(
                 removeProfilePin = "Remove PIN",
                 pinMismatch = "PINs did not match. Try again.",
                 pinAttemptsRemaining = "%d attempts remaining",
-                browse = "Browse",
                 allTitles = "All titles",
                 sort = "Sort",
                 filters = "Filters",
@@ -517,6 +568,24 @@ internal data class TvStrings(
                 genre = "Genre",
                 mediaType = "Media type",
                 applyLabel = "Apply",
+                metadata =
+                    TvMetadataStrings(
+                        minutesLeft = "%d min left",
+                        minutesShort = "%d min",
+                        rtCritics = "RT Critics %.0f%%",
+                        rtAudience = "RT Audience %.0f%%",
+                        frameRate = "Frame rate",
+                        dynamicRange = "Dynamic range",
+                        buffer = "Buffer",
+                        spotlightPosition = "Spotlight %1\$d of %2\$d",
+                        captionsBadge = "CC",
+                    ),
+                settingsLabels =
+                    TvSettingsStrings(
+                        trailerPreviewDelay = "Preview delay",
+                        secondsShort = "%s s",
+                        decimalSeparator = ".",
+                    ),
                 itemSingular = "item",
                 itemPlural = "items",
             )
@@ -643,7 +712,6 @@ internal data class TvStrings(
                 playbackFailedMessage =
                     "Der Player konnte diesen Stream nicht dekodieren. " +
                         "Versuche es erneut, um eine kompatible Version von Jellyfin anzufordern.",
-                tvBeta = "TV-Beta",
                 tvTagline = "Deine Jellyfin- und Seerr-Bibliothek - gemacht für den großen Bildschirm.",
                 playback = "Wiedergabe",
                 pause = "Pause",
@@ -700,12 +768,20 @@ internal data class TvStrings(
                 commercialSegments = "Werbung",
                 showSkipButton = "Schaltfläche anzeigen",
                 skipAutomatically = "Automatisch überspringen",
-                skipIntro = "Intro überspringen",
-                skipRecap = "Rückblick überspringen",
-                skipPreview = "Vorschau überspringen",
-                skipCommercial = "Werbung überspringen",
-                skipCredits = "Abspann überspringen",
-                playNextEpisode = "Nächste Folge abspielen",
+                player =
+                    TvPlayerStrings(
+                        skipIntro = "Intro überspringen",
+                        skipRecap = "Rückblick überspringen",
+                        skipPreview = "Vorschau überspringen",
+                        skipCommercial = "Werbung überspringen",
+                        skipCredits = "Abspann überspringen",
+                        playNextEpisode = "Nächste Folge abspielen",
+                        endsAt = "Endet um %s",
+                        chapters = "Kapitel",
+                        chapterNumber = "Kapitel %d",
+                        upNext = "Als Nächstes",
+                        watchCredits = "Abspann ansehen",
+                    ),
                 seasonNumber = "Staffel %d",
                 specials = "Spezialfolgen",
                 resumeAskTitle = "Wiedergabe fortsetzen?",
@@ -753,7 +829,6 @@ internal data class TvStrings(
                 removeProfilePin = "PIN entfernen",
                 pinMismatch = "Die PINs stimmen nicht überein. Versuche es erneut.",
                 pinAttemptsRemaining = "Noch %d Versuche",
-                browse = "Entdecken",
                 allTitles = "Alle Titel",
                 sort = "Sortieren",
                 filters = "Filter",
@@ -773,6 +848,24 @@ internal data class TvStrings(
                 genre = "Genre",
                 mediaType = "Medientyp",
                 applyLabel = "Übernehmen",
+                metadata =
+                    TvMetadataStrings(
+                        minutesLeft = "noch %d Min.",
+                        minutesShort = "%d Min.",
+                        rtCritics = "RT Kritiker %.0f%%",
+                        rtAudience = "RT Publikum %.0f%%",
+                        frameRate = "Bildrate",
+                        dynamicRange = "Dynamikumfang",
+                        buffer = "Puffer",
+                        spotlightPosition = "Highlight %1\$d von %2\$d",
+                        captionsBadge = "UT",
+                    ),
+                settingsLabels =
+                    TvSettingsStrings(
+                        trailerPreviewDelay = "Vorschau-Verzögerung",
+                        secondsShort = "%s s",
+                        decimalSeparator = ",",
+                    ),
                 itemSingular = "Element",
                 itemPlural = "Elemente",
             )

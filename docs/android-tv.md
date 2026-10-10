@@ -2,7 +2,7 @@
 
 Jellystack TV is a remote-first companion build in the same Kotlin Multiplatform repository. It shares server, authentication, metadata, settings, and playback code with Jellystack mobile while using a dedicated Compose for TV interface.
 
-The current closed beta is `0.16.0-tv-beta.6` with `versionCode 27` and package ID `app.jellystack.mobile`.
+It uses the package ID `app.jellystack.mobile`; its `versionName` and `versionCode` live in `app-tv/build.gradle.kts`.
 
 ## Supported devices
 
@@ -10,7 +10,7 @@ The current closed beta is `0.16.0-tv-beta.6` with `versionCode 27` and package 
 - Fire TV devices on Fire OS 6 or newer
 - 1080p and 4K landscape displays
 
-The current beta does not include downloads, Cast, App Lock, biometrics, the admin dashboard, picture-in-picture, or touch navigation.
+The TV app does not include downloads, Cast, App Lock, biometrics, the admin dashboard, picture-in-picture, or touch navigation.
 
 ## Build
 
@@ -55,10 +55,15 @@ Test at minimum:
 
 ## Remote controls
 
-- Center: open controls or toggle play/pause when controls are hidden
-- Left/Right: seek when controls are hidden; hold for accelerated scrubbing
+- Navigation rail: hidden while the content has focus; Left at the content's left edge or Back slides it in
+- Home spotlight: Left/Right pages through it (Left on the first page opens the navigation rail), Center opens the details, Play/Pause plays the title, Down moves to the rows
+- Home trailer: after 3 s without input the home UI fades out and the trailer fills the screen; any key brings the UI back and still acts as usual
+- Library and Discover cards: Center opens the details, Play/Pause plays the focused title; a library's last row opens All titles (sorting and filters), and Back returns to it; trailers take the screen as on home
+- Center with hidden controls: pause and show controls, resume when paused, or activate a visible Skip/Next prompt
+- Left/Right with hidden controls: show the seek bar (with a trickplay thumbnail when the server has one) and seek on release; hold for accelerated scrubbing
+- Left/Right on the focused timeline: seek live, with the same thumbnail
 - Up/Down: show controls and move between player information
-- Back: close dialog, close panel, hide controls, leave player, then focus the navigation rail
+- Back: close dialog, close panel, close the seek bar (dropping a seek that is still held), hide controls, leave player, then focus the navigation rail
 - Hardware Play/Pause, Rewind, Fast Forward, Stop, and Menu are handled explicitly
 
 ## Permissions and platform services
@@ -71,7 +76,7 @@ Run `:app-tv:verifyTvReleaseManifestPermissions` before every store build. Also 
 
 1. Enable the Android TV form factor for the existing Play Console app.
 2. Create a dedicated closed Android TV test track.
-3. Upload `app-tv-release.aab` with `versionCode 27`.
+3. Upload `app-tv-release.aab` with the `versionCode` from `app-tv/build.gradle.kts`.
 4. Upload `store-assets/tv/google-play-banner-320x180.png` as the localized TV banner.
 5. Upload at least two real 1920x1080 TV screenshots captured from a current build.
 6. Provide reusable English reviewer credentials and Quick Connect instructions under App Access.

@@ -38,12 +38,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.LocalMovies
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -73,9 +67,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import androidx.tv.material3.Icon
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
+import dev.jellystack.core.coroutines.runSuspendCatching
 import dev.jellystack.core.jellyfin.DetailTrailerContext
 import dev.jellystack.core.jellyfin.DetailTrailerResolver
 import dev.jellystack.core.jellyfin.DetailTrailerSource
@@ -85,6 +79,7 @@ import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
 import dev.jellystack.core.jellyfin.JellyfinHomeState
 import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.JellyfinItemDetail
+import dev.jellystack.core.jellyfin.mediaFeatures
 import dev.jellystack.core.jellyseerr.JellyseerrCreateSelection
 import dev.jellystack.core.jellyseerr.JellyseerrMediaDetailState
 import dev.jellystack.core.jellyseerr.JellyseerrMediaType
@@ -93,29 +88,14 @@ import dev.jellystack.core.jellyseerr.JellyseerrRequestVariant
 import dev.jellystack.core.jellyseerr.JellyseerrRequestsCoordinator
 import dev.jellystack.core.jellyseerr.JellyseerrRequestsState
 import dev.jellystack.core.jellyseerr.JellyseerrSearchItem
-import dev.jellystack.core.preferences.AppSettings
-import dev.jellystack.core.preferences.ResumeMode
 import dev.jellystack.players.PlaybackController
 import dev.jellystack.players.PlaybackRequest
-import dev.jellystack.players.PlaybackStartPolicy
-import dev.jellystack.players.formatPlaybackTime
 import kotlinx.coroutines.launch
 
 internal data class TvJellyfinDetailBase(
     val item: JellyfinItem,
     val detail: JellyfinItemDetail,
 )
-
-/** Pending "resume or restart?" decision captured from the primary play action. */
-internal data class ResumeAskRequest(
-    val positionLabel: String,
-)
-
-private const val TV_TICKS_PER_MILLISECOND = 10_000L
-
-/** Formats a Jellyfin resume position (100-ns ticks) for the resume prompt. */
-internal fun tvResumePositionLabel(positionTicks: Long?): String =
-    formatPlaybackTime((positionTicks ?: 0L).coerceAtLeast(0L) / TV_TICKS_PER_MILLISECOND)
 
 internal data class TvJellyfinHeroTitlePresentation(
     val useGraphicLogo: Boolean,
@@ -211,6 +191,8 @@ internal data class TvDetailSectionFocusModifiers(
     fun itemFocusRequester(itemId: String): FocusRequester? = itemFocusRequesters[itemId]
 }
 
+private const val TV_TICKS_PER_MINUTE = 600_000_000L
+
 private data class TvPendingFocusRecovery(
     val transactionId: Long,
     val source: TvFocusAnchor,
@@ -218,7 +200,10 @@ private data class TvPendingFocusRecovery(
 )
 
 private fun TvDetailSection.participatesInSectionFocus(): Boolean =
-    this is TvDetailSection.Episodes || this is TvDetailSection.Cast || this is TvDetailSection.Similar
+    this is TvDetailSection.Seasons ||
+        this is TvDetailSection.Episodes ||
+        this is TvDetailSection.Cast ||
+        this is TvDetailSection.Similar
 
 @Composable
 internal fun TvDetailFocusLayout(
@@ -370,6 +355,8 @@ internal fun TvDetailFocusLayout(
         val section = uiState.section(sectionId) ?: return focusBody(cancelPersistedRestoration)
         val itemId =
             preferredItemId?.takeIf(section.itemIds::contains)
+                // Entering the season row lands on the season being shown, not on the first one.
+                ?: (section as? TvDetailSection.Seasons)?.let { it.itemIds.getOrNull(it.selectedIndex) }
                 ?: section.itemIds.firstOrNull()
                 ?: return focusBody(cancelPersistedRestoration)
         val lazyItemIndex =
@@ -731,7 +718,7 @@ internal fun TvDetailFocusLayout(
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .height(520.dp)
+                    .height(TV_DETAIL_HERO_HEIGHT_DP.dp)
                     .testTag("tv-detail-hero")
                     .semantics { contentDescription = heroContentDescription },
             ) {
@@ -751,8 +738,8 @@ internal fun TvJellyfinDetailScreen(
     browseCoordinator: JellyfinBrowseCoordinator,
     environmentProvider: JellyfinEnvironmentProvider,
     playbackController: PlaybackController,
+    playbackLauncher: TvPlaybackLauncher,
     trailerResolver: DetailTrailerResolver,
-    settings: AppSettings,
     strings: TvStrings,
     onOpenItem: (JellyfinItem) -> Unit,
     onPlaybackStarted: () -> Unit,
@@ -762,24 +749,21 @@ internal fun TvJellyfinDetailScreen(
     var item by remember(route.itemId) { mutableStateOf<JellyfinItem?>(null) }
     var detail by remember(route.itemId) { mutableStateOf<JellyfinItemDetail?>(null) }
     var episodes by remember(route.itemId) { mutableStateOf<List<JellyfinItem>>(emptyList()) }
-    var selectedSeasonIndex by remember(route.itemId) { mutableStateOf(0) }
+    var chosenSeasonIndex by remember(route.itemId) { mutableStateOf<Int?>(null) }
     var similar by remember(route.itemId) { mutableStateOf<List<JellyfinItem>>(emptyList()) }
     var trailer by remember(route.itemId) { mutableStateOf<DetailTrailerSource?>(null) }
     var trailerError by remember(route.itemId) { mutableStateOf(false) }
     var error by remember(route.itemId) { mutableStateOf<String?>(null) }
     var loadRevision by remember(route.itemId) { mutableStateOf(0) }
-    var resumeAskRequest by remember(route.itemId) { mutableStateOf<ResumeAskRequest?>(null) }
     val uriHandler = LocalUriHandler.current
     val seasonGroups = remember(episodes) { buildTvSeasonGroups(episodes) }
-    val activeSeason =
-        seasonGroups.getOrElse(selectedSeasonIndex) { seasonGroups.firstOrNull() }
+    // Until the user picks a season, follow the in-progress one as episodes arrive.
+    val selectedSeasonIndex = chosenSeasonIndex?.takeIf { it in seasonGroups.indices } ?: defaultTvSeasonIndex(seasonGroups)
+    val activeSeason = seasonGroups.getOrNull(selectedSeasonIndex)
     val visibleEpisodes = activeSeason?.episodes ?: episodes
-    LaunchedEffect(seasonGroups) {
-        if (selectedSeasonIndex !in seasonGroups.indices) selectedSeasonIndex = defaultTvSeasonIndex(seasonGroups)
-    }
     LaunchedEffect(route.itemId, initialItem, loadRevision) {
         error = null
-        runCatching {
+        runSuspendCatching {
             val loaded =
                 loadTvJellyfinDetailBase(
                     itemId = route.itemId,
@@ -792,7 +776,6 @@ internal fun TvJellyfinDetailScreen(
             item = loadedItem
             detail = loadedDetail
             if (loadedItem.type.equals("Series", true)) episodes = repository.refreshEpisodesForSeries(route.itemId)
-            selectedSeasonIndex = 0
             similar = repository.fetchSimilarItems(route.itemId, 12)
             trailer =
                 trailerResolver.resolve(
@@ -804,7 +787,7 @@ internal fun TvJellyfinDetailScreen(
                         detail = loadedDetail,
                     ),
                 )
-        }.onFailure { currentError -> error = tvDetailErrorMessage(currentError, strings) }
+        }.onFailure { failure -> error = tvDetailErrorMessage(failure, strings) }
     }
     val currentItem = item
     val currentDetail = detail
@@ -835,15 +818,42 @@ internal fun TvJellyfinDetailScreen(
     val facts =
         listOfNotNull(
             currentDetail.productionYear?.toString(),
-            currentDetail.runTimeTicks?.let { "${it / 600_000_000L} min" },
+            currentDetail.runTimeTicks?.let { strings.metadata.minutesShort.format(it / TV_TICKS_PER_MINUTE) },
             tvVisibleOfficialRating(currentDetail.officialRating),
             tvRatingLabel(currentDetail.communityRating),
-            currentDetail.mediaSources
-                .firstOrNull()
-                ?.streams
-                ?.firstOrNull { it.width != null }
-                ?.height
-                ?.let { "${it}p" },
+        )
+    val heroModel =
+        TvDetailHeroModel(
+            title = currentDetail.name,
+            backdropUrl =
+                jellyfinImageUrl(
+                    homeState.imageBaseUrl,
+                    homeState.imageAccessToken,
+                    heroId,
+                    backdropTag ?: currentDetail.primaryImageTag,
+                    if (backdropTag != null) "Backdrop" else "Primary",
+                    TvArtworkSize.HERO.maxWidth,
+                ),
+            logoUrl =
+                logoTag?.takeIf { titlePresentation.useGraphicLogo }?.let { tag ->
+                    jellyfinImageUrl(
+                        homeState.imageBaseUrl,
+                        homeState.imageAccessToken,
+                        logoId,
+                        tag,
+                        "Logo",
+                        TvArtworkSize.LOGO.maxWidth,
+                    )
+                },
+            titleColor = titlePresentation.textColor,
+            badges = currentDetail.mediaFeatures().badgeLabels(strings),
+            subtitle =
+                if (currentItem.type.equals("Episode", true)) {
+                    "${currentItem.seriesName.orEmpty()}  •  " +
+                        "S${currentItem.parentIndexNumber ?: 0} E${currentItem.indexNumber ?: 0}"
+                } else {
+                    currentDetail.genres.take(4).joinToString("  •  ")
+                },
         )
     val uiState =
         buildTvJellyfinDetailUiState(
@@ -858,154 +868,55 @@ internal fun TvJellyfinDetailScreen(
             similar = similar,
         )
 
-    fun startPlayback(startPolicy: PlaybackStartPolicy) {
-        scope.launch {
-            val environment = environmentProvider.current() ?: return@launch
-            playbackController.play(
-                PlaybackRequest.from(currentItem, currentDetail, startPolicy = startPolicy),
-                environment,
-            )
-            playbackController.setPlaybackSpeed(settings.defaultPlaybackSpeed)
-            playbackController.setStatsForNerdsEnabled(settings.statsForNerdsEnabled)
-            onPlaybackStarted()
-        }
-    }
     TvDetailFocusLayout(
         uiState = uiState,
         heroContentDescription = currentDetail.name,
         modifier = modifier,
         heroContent = { primaryActionModifier, actionRowModifier ->
-            AsyncImage(
-                model =
-                    jellyfinImageUrl(
-                        homeState.imageBaseUrl,
-                        homeState.imageAccessToken,
-                        heroId,
-                        backdropTag ?: currentDetail.primaryImageTag,
-                        if (backdropTag != null) "Backdrop" else "Primary",
-                        TvArtworkSize.HERO.maxWidth,
-                    ),
-                contentDescription = currentDetail.name,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-            )
-            Box(
-                Modifier.fillMaxSize().background(
-                    Brush.horizontalGradient(listOf(TvBackground.copy(0.96f), TvBackground.copy(0.68f), Color.Transparent)),
-                ),
-            )
-            Box(
-                Modifier.fillMaxSize().background(
-                    Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.08f), TvBackground.copy(alpha = 0.12f), TvBackground)),
-                ),
-            )
-            Column(
-                Modifier.align(Alignment.BottomStart).padding(start = 108.dp, end = 48.dp, bottom = 38.dp).widthIn(max = 760.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                if (titlePresentation.useGraphicLogo) {
-                    AsyncImage(
-                        model =
-                            jellyfinImageUrl(
-                                homeState.imageBaseUrl,
-                                homeState.imageAccessToken,
-                                logoId,
-                                checkNotNull(logoTag),
-                                "Logo",
-                                TvArtworkSize.LOGO.maxWidth,
-                            ),
-                        contentDescription = currentDetail.name,
-                        modifier = Modifier.widthIn(max = 380.dp).heightIn(max = 120.dp),
-                        contentScale = ContentScale.Fit,
-                    )
-                } else {
-                    Text(
-                        currentDetail.name,
-                        color = titlePresentation.textColor,
-                        fontSize = 46.sp,
-                        lineHeight = 49.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 2,
-                    )
-                }
-                if (currentItem.type.equals("Episode", true)) {
-                    Text(
-                        "${currentItem.seriesName.orEmpty()}  •  " +
-                            "S${currentItem.parentIndexNumber ?: 0} E${currentItem.indexNumber ?: 0}",
-                        color = TvTextMuted,
-                        fontSize = 19.sp,
-                    )
-                } else {
-                    Text(currentDetail.genres.take(4).joinToString("  •  "), color = TvTextMuted, fontSize = 19.sp)
-                }
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(TV_DETAIL_ACTION_GAP_DP.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    TvActionButton(
-                        if (hasResumePosition) strings.continueLabel else strings.play,
-                        primary = true,
-                        leading = { Icon(Icons.Default.PlayArrow, null, tint = Color(0xFF251450)) },
-                        onClick = {
-                            if (hasResumePosition && settings.resumeMode == ResumeMode.ASK) {
-                                resumeAskRequest = ResumeAskRequest(tvResumePositionLabel(currentItem.positionTicks))
-                            } else {
-                                startPlayback(PlaybackStartPolicy.INHERIT)
-                            }
-                        },
-                        modifier = primaryActionModifier.then(actionRowModifier).width(TV_DETAIL_PRIMARY_ACTION_WIDTH_DP.dp),
-                    )
-                    TvCompactActionButton(
-                        label = strings.favorite,
-                        onClick = { scope.launch { browseCoordinator.toggleFavorite(currentItem) } },
-                        icon =
-                            if (currentItem.id in homeState.favorites ||
-                                currentDetail.isFavorite
-                            ) {
-                                Icons.Default.Favorite
-                            } else {
-                                Icons.Default.FavoriteBorder
-                            },
-                        selected = currentItem.id in homeState.favorites || currentDetail.isFavorite,
-                        modifier = actionRowModifier,
-                    )
-                    TvCompactActionButton(
-                        label = strings.watched,
-                        icon = Icons.Default.CheckCircle,
-                        selected = currentDetail.isPlayed,
-                        onClick = {
-                            scope.launch {
-                                detail = repository.setPlayedStatus(currentItem.id, !currentDetail.isPlayed)
-                            }
-                        },
-                        modifier = actionRowModifier,
-                    )
-                    trailer?.let { source ->
-                        TvCompactActionButton(
-                            label = strings.trailer,
-                            icon = Icons.Default.LocalMovies,
-                            onClick = {
-                                when (source) {
-                                    is DetailTrailerSource.Local -> {
-                                        scope.launch {
-                                            val environment = environmentProvider.current() ?: return@launch
-                                            playbackController.play(PlaybackRequest.from(source.item, source.detail), environment)
-                                            onPlaybackStarted()
-                                        }
-                                    }
-                                    is DetailTrailerSource.YouTube ->
-                                        source.trailer.url?.let { trailerUrl ->
-                                            trailerError = runCatching { uriHandler.openUri(trailerUrl) }.isFailure
-                                        }
+            TvDetailHero(heroModel) {
+                TvDetailHeroActions(
+                    state =
+                        TvDetailHeroActionsState(
+                            resume = hasResumePosition,
+                            favorite = currentItem.id in homeState.favorites || currentDetail.isFavorite,
+                            played = currentDetail.isPlayed,
+                            trailerError = trailerError,
+                        ),
+                    callbacks =
+                        TvDetailHeroActionCallbacks(
+                            onPlay = { playbackLauncher.play(currentItem, currentDetail) },
+                            onToggleFavorite = { scope.launch { browseCoordinator.toggleFavorite(currentItem) } },
+                            onTogglePlayed = {
+                                scope.launch {
+                                    detail = repository.setPlayedStatus(currentItem.id, !currentDetail.isPlayed)
                                 }
                             },
-                            modifier = actionRowModifier,
-                        )
-                    }
-                }
-                if (trailerError) {
-                    Text(strings.trailerOpenFailed, color = Color(0xFFFFA59E), fontSize = 16.sp)
-                }
+                            onTrailer =
+                                trailer?.let { source ->
+                                    {
+                                        when (source) {
+                                            is DetailTrailerSource.Local -> {
+                                                scope.launch {
+                                                    val environment = environmentProvider.current() ?: return@launch
+                                                    playbackController.play(
+                                                        PlaybackRequest.from(source.item, source.detail),
+                                                        environment,
+                                                    )
+                                                    onPlaybackStarted()
+                                                }
+                                            }
+                                            is DetailTrailerSource.YouTube ->
+                                                source.trailer.url?.let { trailerUrl ->
+                                                    trailerError = runCatching { uriHandler.openUri(trailerUrl) }.isFailure
+                                                }
+                                        }
+                                    }
+                                },
+                        ),
+                    strings = strings,
+                    primaryActionModifier = primaryActionModifier,
+                    actionRowModifier = actionRowModifier,
+                )
             }
         },
     ) { bodyFocusModifier, sectionFocusModifiers ->
@@ -1016,52 +927,8 @@ internal fun TvJellyfinDetailScreen(
             bodyFocusModifier = bodyFocusModifier,
             sectionFocusModifiers = sectionFocusModifiers,
             onOpenItem = onOpenItem,
-            onSelectSeason = { selectedSeasonIndex = it },
+            onSelectSeason = { chosenSeasonIndex = it },
         )
-    }
-    resumeAskRequest?.let { request ->
-        Dialog(onDismissRequest = { resumeAskRequest = null }) {
-            Column(
-                Modifier
-                    .width(620.dp)
-                    .background(TvSurfaceRaised, RoundedCornerShape(28.dp))
-                    .padding(34.dp),
-                verticalArrangement = Arrangement.spacedBy(18.dp),
-            ) {
-                Text(
-                    strings.resumeAskTitle,
-                    modifier = Modifier.tvHeading(),
-                    fontSize = 30.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TvText,
-                )
-                Text(
-                    strings.continueFrom.format(request.positionLabel),
-                    fontSize = 19.sp,
-                    color = TvTextMuted,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    TvActionButton(
-                        strings.continueLabel,
-                        primary = true,
-                        modifier = Modifier.width(230.dp),
-                        onClick = {
-                            resumeAskRequest = null
-                            startPlayback(PlaybackStartPolicy.RESUME)
-                        },
-                    )
-                    TvActionButton(
-                        strings.restart,
-                        modifier = Modifier.width(230.dp),
-                        onClick = {
-                            resumeAskRequest = null
-                            startPlayback(PlaybackStartPolicy.RESTART)
-                        },
-                    )
-                    TvActionButton(strings.cancel, onClick = { resumeAskRequest = null })
-                }
-            }
-        }
     }
 }
 
@@ -1093,11 +960,18 @@ internal fun LazyListScope.tvJellyfinDetailSections(
                         Text(section.text ?: strings.noOverview, color = TvText, fontSize = 20.sp, lineHeight = 29.sp)
                     }
                 }
-            is TvDetailSection.Seasons ->
+            is TvDetailSection.Seasons -> {
+                val focusModifiers = sectionFocusModifiers.getValue(section.id)
                 item(section.id) {
-                    Column(Modifier.padding(start = 108.dp, end = 48.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column(
+                        Modifier
+                            .padding(start = 108.dp, end = 48.dp)
+                            .then(focusModifiers.navigationModifier),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
                         TvSectionTitle(strings.seasons)
                         LazyRow(
+                            state = focusModifiers.horizontalListState,
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                         ) {
@@ -1111,21 +985,24 @@ internal fun LazyListScope.tvJellyfinDetailSections(
                                     group.seasonNumber
                                         ?.let { season -> strings.seasonNumber.format(season) }
                                         ?: strings.specials
+                                val itemId = section.itemIds[index]
                                 TvActionButton(
                                     label,
                                     { onSelectSeason(index) },
                                     primary = index == section.selectedIndex.coerceIn(section.groups.indices),
                                     selected = index == section.selectedIndex.coerceIn(section.groups.indices),
-                                    modifier = Modifier.widthIn(min = 150.dp),
+                                    modifier = Modifier.widthIn(min = 150.dp).then(focusModifiers.itemModifier(itemId)),
+                                    focusRequester = focusModifiers.itemFocusRequester(itemId),
                                 )
                             }
                         }
                     }
                 }
+            }
             is TvDetailSection.Episodes -> {
                 val focusModifiers = sectionFocusModifiers.getValue(section.id)
                 item(section.id) {
-                    TvDetailItemRow(strings.episodes, section.items, homeState, onOpenItem, focusModifiers)
+                    TvDetailItemRow(strings.episodes, section.items, homeState, strings, onOpenItem, focusModifiers)
                 }
             }
             is TvDetailSection.Cast -> {
@@ -1175,6 +1052,7 @@ internal fun LazyListScope.tvJellyfinDetailSections(
                         title = strings.similar,
                         keyedItems = items.map { TvKeyedJellyfinDetailItem(it.id, it.item) },
                         homeState = homeState,
+                        strings = strings,
                         onOpenItem = onOpenItem,
                         focusModifiers = focusModifiers,
                     )
@@ -1196,12 +1074,14 @@ private fun TvDetailItemRow(
     title: String,
     items: List<JellyfinItem>,
     homeState: JellyfinHomeState,
+    strings: TvStrings,
     onOpenItem: (JellyfinItem) -> Unit,
     focusModifiers: TvDetailSectionFocusModifiers,
 ) = TvKeyedDetailItemRow(
     title = title,
     keyedItems = items.map { TvKeyedJellyfinDetailItem(it.id, it) },
     homeState = homeState,
+    strings = strings,
     onOpenItem = onOpenItem,
     focusModifiers = focusModifiers,
 )
@@ -1211,6 +1091,7 @@ private fun TvKeyedDetailItemRow(
     title: String,
     keyedItems: List<TvKeyedJellyfinDetailItem>,
     homeState: JellyfinHomeState,
+    strings: TvStrings,
     onOpenItem: (JellyfinItem) -> Unit,
     focusModifiers: TvDetailSectionFocusModifiers,
 ) {
@@ -1227,22 +1108,31 @@ private fun TvKeyedDetailItemRow(
         ) {
             items(keyedItems, key = TvKeyedJellyfinDetailItem::id, contentType = { "media-card" }) { keyedItem ->
                 val item = keyedItem.item
-                val hasLandscapeArtwork = item.seriesThumbImageTag != null || item.thumbImageTag != null
+                // Episode primary images are 16:9 stills; showing them beats repeating the series thumb.
+                val episodeStillTag = item.primaryImageTag?.takeIf { item.type.equals("Episode", true) }
+                val hasLandscapeArtwork = episodeStillTag != null || item.seriesThumbImageTag != null || item.thumbImageTag != null
+                val episodeText = if (item.type.equals("Episode", true)) item.tvEpisodeCardText(strings) else null
                 TvMediaCard(
-                    title = item.episodeTitle ?: item.name,
+                    title = episodeText?.title ?: item.episodeTitle ?: item.name,
                     subtitle =
-                        listOfNotNull(
+                        episodeText?.subtitle ?: listOfNotNull(
                             item.productionYear?.toString(),
                             tvRatingLabel(item.communityRating),
                         ).joinToString("  •  "),
+                    progress = episodeText?.progress,
+                    watched = item.isPlayed,
                     imageUrl =
-                        jellyfinImageUrl(
-                            homeState.imageBaseUrl,
-                            homeState.imageAccessToken,
-                            item.seriesId ?: item.id,
-                            item.seriesThumbImageTag ?: item.thumbImageTag ?: item.primaryImageTag,
-                            if (hasLandscapeArtwork) "Thumb" else "Primary",
-                        ),
+                        if (episodeStillTag != null) {
+                            jellyfinImageUrl(homeState.imageBaseUrl, homeState.imageAccessToken, item.id, episodeStillTag, "Primary")
+                        } else {
+                            jellyfinImageUrl(
+                                homeState.imageBaseUrl,
+                                homeState.imageAccessToken,
+                                item.seriesId ?: item.id,
+                                item.seriesThumbImageTag ?: item.thumbImageTag ?: item.primaryImageTag,
+                                if (hasLandscapeArtwork) "Thumb" else "Primary",
+                            )
+                        },
                     artworkFit =
                         if (hasLandscapeArtwork) {
                             TvMediaCardArtworkFit.CROP
@@ -1282,10 +1172,10 @@ internal fun LazyListScope.tvSeerrDetailSections(
                 item(section.id) {
                     Row(Modifier.padding(horizontal = 58.dp), horizontalArrangement = Arrangement.spacedBy(22.dp)) {
                         listOfNotNull(
-                            section.values.tmdb?.let { "TMDB %.1f".format(it) },
-                            section.values.imdb?.let { "IMDb %.1f".format(it) },
-                            section.values.rottenTomatoesCritics?.let { "RT Critics %.0f%%".format(it) },
-                            section.values.rottenTomatoesAudience?.let { "RT Audience %.0f%%".format(it) },
+                            section.values.tmdb?.let { "$TV_BRAND_TMDB %.1f".format(it) },
+                            section.values.imdb?.let { "$TV_BRAND_IMDB %.1f".format(it) },
+                            section.values.rottenTomatoesCritics?.let { strings.metadata.rtCritics.format(it) },
+                            section.values.rottenTomatoesAudience?.let { strings.metadata.rtAudience.format(it) },
                         ).forEach { value ->
                             Box(
                                 Modifier

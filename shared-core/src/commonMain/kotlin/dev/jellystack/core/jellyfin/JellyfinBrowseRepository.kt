@@ -1,5 +1,6 @@
 package dev.jellystack.core.jellyfin
 
+import dev.jellystack.core.coroutines.runSuspendCatching
 import dev.jellystack.core.jellyfin.JellyfinMediaStreamType.AUDIO
 import dev.jellystack.core.jellyfin.JellyfinMediaStreamType.OTHER
 import dev.jellystack.core.jellyfin.JellyfinMediaStreamType.SUBTITLE
@@ -620,6 +621,13 @@ class JellyfinBrowseRepository(
         return itemStore.listEpisodesForSeries(environment.serverKey, seriesId).map { it.toDomain() }
     }
 
+    /**
+     * Episodes of a series as the server lists them now, or the cached ones when it cannot be reached.
+     * The cache alone can be incomplete, for example when only a "continue watching" episode was stored.
+     */
+    suspend fun latestEpisodesForSeries(seriesId: String): List<JellyfinItem> =
+        runSuspendCatching { refreshEpisodesForSeries(seriesId) }.getOrElse { episodesForSeries(seriesId) }
+
     suspend fun episodesForSeason(seasonId: String): List<JellyfinItem> {
         val environment = environmentProvider.current() ?: return emptyList()
         return itemStore.listEpisodesForSeason(environment.serverKey, seasonId).map { it.toDomain() }
@@ -809,6 +817,7 @@ class JellyfinBrowseRepository(
                             mergedUserData.playedPercentage
                                 ?: if (mergedUserData.played == true) 100.0 else 0.0,
                         lastPlayed = mergedUserData.lastPlayedDate ?: item.lastPlayed,
+                        played = mergedUserData.played ?: played,
                         updatedAt = now,
                     ),
                 ),
@@ -924,6 +933,7 @@ private fun JellyfinItemDto.toRecord(
         runTimeTicks = runTimeTicks,
         positionTicks = userData?.playbackPositionTicks,
         playedPercentage = userData?.playedPercentage,
+        played = userData?.played == true,
         productionYear = productionYear?.toLong(),
         premiereDate = premiereDate,
         communityRating = communityRating,
@@ -997,6 +1007,7 @@ private fun JellyfinItemRecord.toDomain(): JellyfinItem =
         seriesArtImageTag = seriesArtImageTag,
         seriesBannerImageTag = seriesBannerImageTag,
         providerIds = providerIds,
+        isPlayed = played,
     )
 
 private fun Map<String, String>?.providerValue(name: String): String? =

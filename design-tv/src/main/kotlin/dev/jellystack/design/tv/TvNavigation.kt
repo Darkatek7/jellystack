@@ -83,9 +83,7 @@ internal fun tvSettingsServerActionTargetId(
 ): String = "settings:server:$serverIdentity:action:$actionKey"
 
 internal const val TV_FOCUS_RAIL_ROUTE = "navigation-rail"
-internal const val TV_HOME_HERO_TARGET = "home:hero"
 internal const val TV_HOME_PRIMARY_TARGET = "home:hero:primary"
-internal const val TV_HOME_DETAILS_TARGET = "home:hero:details"
 internal const val TV_HOME_RETRY_TARGET = "home:retry"
 internal const val TV_SEARCH_QUERY_TARGET = "search:query"
 internal const val TV_SEARCH_VOICE_TARGET = "search:voice"
@@ -262,8 +260,7 @@ internal fun tvFocusTarget(
 ): TvFocusTarget {
     val (anchor, statusTarget) =
         when {
-            targetId == TV_HOME_HERO_TARGET -> TvFocusAnchor("hero", null, TvFocusDestination.HERO) to false
-            targetId == TV_HOME_PRIMARY_TARGET || targetId == TV_HOME_DETAILS_TARGET ->
+            targetId == TV_HOME_PRIMARY_TARGET ->
                 TvFocusAnchor("hero-actions", targetId.substringAfterLast(':'), TvFocusDestination.PRIMARY_ACTION) to false
             targetId.startsWith("home:row:") && ":item:" in targetId -> {
                 val value = targetId.removePrefix("home:row:")

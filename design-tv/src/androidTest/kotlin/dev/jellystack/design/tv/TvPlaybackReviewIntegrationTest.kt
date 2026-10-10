@@ -1,6 +1,5 @@
 package dev.jellystack.design.tv
 
-import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
@@ -16,7 +15,6 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
@@ -28,6 +26,7 @@ import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
+import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.preferences.AppLanguage
 import dev.jellystack.core.preferences.AutoplayNextMode
 import dev.jellystack.core.preferences.SegmentSkipMode
@@ -35,10 +34,12 @@ import dev.jellystack.network.jellyfin.JellyfinMediaSegmentDto
 import dev.jellystack.network.jellyfin.JellyfinMediaSegmentsResult
 import dev.jellystack.network.jellyfin.JellyfinMediaSegmentsService
 import dev.jellystack.players.AndroidPlayerEngine
+import dev.jellystack.players.PlaybackChapter
 import dev.jellystack.players.PlaybackContinuationCoordinator
 import dev.jellystack.players.PlaybackContinuationState
 import dev.jellystack.players.PlaybackContinuationTarget
 import dev.jellystack.players.PlaybackController
+import dev.jellystack.players.PlaybackExtrasState
 import dev.jellystack.players.PlaybackMediaKind
 import dev.jellystack.players.PlaybackMetadata
 import dev.jellystack.players.PlaybackMode
@@ -62,6 +63,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -128,6 +130,158 @@ class TvPlaybackReviewIntegrationTest {
     }
 
     @Test
+    fun leftWithHiddenControlsShowsTheSeekBarAndSeeksOnlyOnRelease() {
+        val resources = ScreenResources()
+        val seeks = mutableListOf<Long>()
+        composeRule.setContent {
+            JellystackTvTheme {
+                ReviewPlaybackScreen(
+                    resources = resources,
+                    playbackState = activePlayback(positionMs = 30_000L),
+                    segmentState = PlaybackSegmentState(),
+                    continuationState = PlaybackContinuationState(),
+                    onSeekTo = { seeks += it },
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Pause").assertIsFocused().performKeyInput { pressKey(Key.Back) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag(TV_PLAYBACK_TIMELINE_TAG).assertDoesNotExist()
+
+        composeRule.onRoot().performKeyInput { keyDown(Key.DirectionLeft) }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag(TV_PLAYBACK_SCRUB_OVERLAY_TAG).assertExists()
+        composeRule.onNodeWithTag(TV_PLAYBACK_TIMELINE_TAG).assertDoesNotExist()
+        composeRule.runOnIdle { assertEquals(emptyList<Long>(), seeks) }
+
+        composeRule.onRoot().performKeyInput { keyUp(Key.DirectionLeft) }
+        composeRule.runOnIdle {
+            assertEquals(listOf(20_000L), seeks)
+            resources.release()
+        }
+    }
+
+    @Test
+    fun backDuringHiddenScrubDropsTheSeekAndKeepsThePlayerOpen() {
+        val resources = ScreenResources()
+        val seeks = mutableListOf<Long>()
+        var closed = false
+        composeRule.setContent {
+            JellystackTvTheme {
+                ReviewPlaybackScreen(
+                    resources = resources,
+                    playbackState = activePlayback(positionMs = 30_000L),
+                    segmentState = PlaybackSegmentState(),
+                    continuationState = PlaybackContinuationState(),
+                    onSeekTo = { seeks += it },
+                    onClose = { closed = true },
+                )
+            }
+        }
+        composeRule.onNodeWithContentDescription("Pause").assertIsFocused().performKeyInput { pressKey(Key.Back) }
+        composeRule.waitForIdle()
+
+        composeRule.onRoot().performKeyInput { keyDown(Key.DirectionRight) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag(TV_PLAYBACK_SCRUB_OVERLAY_TAG).assertExists()
+        composeRule.onRoot().performKeyInput { pressKey(Key.Back) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag(TV_PLAYBACK_SCRUB_OVERLAY_TAG).assertDoesNotExist()
+        composeRule.onRoot().performKeyInput { keyUp(Key.DirectionRight) }
+
+        composeRule.runOnIdle {
+            assertEquals(emptyList<Long>(), seeks)
+            assertFalse(closed)
+            resources.release()
+        }
+    }
+
+    @Test
+    fun episodesPanelReturnsFocusOnBackAndStartsAnotherEpisode() {
+        val resources = ScreenResources()
+        val played = mutableListOf<String>()
+        val episodes = listOf(episodeItem("episode", 1, "Pilot"), episodeItem("episode-2", 2, "Second Tide"))
+        composeRule.setContent {
+            JellystackTvTheme {
+                ReviewPlaybackScreen(
+                    resources = resources,
+                    playbackState = activePlayback(positionMs = 30_000L),
+                    segmentState = PlaybackSegmentState(),
+                    continuationState = PlaybackContinuationState(),
+                    loadEpisodes = { episodes },
+                    onPlayEpisode = { played += it.id },
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription(strings.episodes).performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("1. Pilot").assertIsFocused()
+        composeRule.onRoot().performKeyInput { pressKey(Key.Back) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("1. Pilot").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Pause").assertIsFocused()
+
+        composeRule.onNodeWithContentDescription(strings.episodes).performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("2. Second Tide").performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithContentDescription("Pause").assertIsFocused()
+        composeRule.runOnIdle {
+            assertEquals(listOf("episode-2"), played)
+            resources.release()
+        }
+    }
+
+    @Test
+    fun chaptersFromMoreGoBackToMoreAndSeekOnSelect() {
+        val resources = ScreenResources()
+        val seeks = mutableListOf<Long>()
+        val chapters =
+            listOf(
+                PlaybackChapter(index = 0, name = "Opening", startPositionMs = 0L, imageTag = null),
+                PlaybackChapter(index = 1, name = "Harbor", startPositionMs = 45_000L, imageTag = null),
+            )
+        composeRule.setContent {
+            JellystackTvTheme {
+                ReviewPlaybackScreen(
+                    resources = resources,
+                    playbackState = activePlayback(positionMs = 30_000L),
+                    segmentState = PlaybackSegmentState(),
+                    continuationState = PlaybackContinuationState(),
+                    onSeekTo = { seeks += it },
+                    extrasState = PlaybackExtrasState(mediaId = "episode", chapters = chapters),
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription(strings.more).performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.waitForIdle()
+        val chaptersRow = "${strings.player.chapters}, Opening"
+        composeRule.onNodeWithContentDescription(chaptersRow).performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("Opening, 0:00").assertIsFocused()
+
+        composeRule.onRoot().performKeyInput { pressKey(Key.Back) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription(chaptersRow).assertIsFocused()
+
+        composeRule.onNodeWithContentDescription(chaptersRow).performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("Harbor, 0:45").performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithContentDescription("Pause").assertIsFocused()
+        composeRule.runOnIdle {
+            assertEquals(listOf(45_000L), seeks)
+            resources.release()
+        }
+    }
+
+    @Test
     fun realScreenKeepsSecondActionFocusedAcrossFirstRemovalThenUsesPlaybackFallback() {
         val resources = ScreenResources()
         var segmentState by mutableStateOf(outroState(showSkipAction = true))
@@ -144,12 +298,12 @@ class TvPlaybackReviewIntegrationTest {
         }
 
         composeRule
-            .onNodeWithContentDescription("Play next episode")
+            .onNodeWithContentDescription("Play next episode", substring = true)
             .performSemanticsAction(SemanticsActions.RequestFocus)
             .assertIsFocused()
 
         composeRule.runOnIdle { segmentState = outroState(showSkipAction = false) }
-        composeRule.onNodeWithContentDescription("Play next episode").assertIsFocused()
+        composeRule.onNodeWithContentDescription("Play next episode", substring = true).assertIsFocused()
 
         composeRule.runOnIdle { continuationState = PlaybackContinuationState(mediaId = "episode") }
         composeRule.onNodeWithContentDescription("Pause").assertIsFocused()
@@ -184,7 +338,7 @@ class TvPlaybackReviewIntegrationTest {
 
         composeRule.onNodeWithContentDescription("Skip credits").performClick()
         composeRule.runOnIdle { syncPlayActive = true }
-        composeRule.onNodeWithContentDescription("Play next episode").performClick()
+        composeRule.onNodeWithContentDescription("Play next episode", substring = true).performClick()
         composeRule.waitUntil { events.size == 2 }
 
         composeRule.runOnIdle {
@@ -194,33 +348,34 @@ class TvPlaybackReviewIntegrationTest {
     }
 
     @Test
-    fun endedScreenWithOutroAndPreparedTargetShowsOnlySharedCompletionPrompt() {
+    fun endedEpisodeFocusesTheUpNextCountdownAndCancelStopsIt() {
         val resources = ScreenResources()
-        val continuation = preparedContinuation(countdownSeconds = 10)
+        var cancelled = 0
         composeRule.setContent {
             JellystackTvTheme {
-                Box {
-                    ReviewPlaybackScreen(
-                        resources = resources,
-                        playbackState = activePlayback(positionMs = 90_000L, phase = PlaybackPhase.Ended),
-                        segmentState = outroState(showSkipAction = true),
-                        continuationState = continuation,
-                    )
-                    TvPlaybackCompletionPrompt(
-                        continuationState = continuation,
-                        strings = strings,
-                        onPlayNow = {},
-                        onCancel = {},
-                    )
-                }
+                ReviewPlaybackScreen(
+                    resources = resources,
+                    playbackState = activePlayback(positionMs = 90_000L, phase = PlaybackPhase.Ended),
+                    segmentState = outroState(showSkipAction = true),
+                    continuationState = preparedContinuation(countdownSeconds = 10),
+                    onCancelAutoplay = { cancelled += 1 },
+                )
             }
         }
+        composeRule.waitForIdle()
 
         composeRule.onNodeWithTag("tv-player-action:segment:outro:outro-1").assertDoesNotExist()
-        composeRule.onNodeWithTag("tv-player-action:play-next:episode-2").assertDoesNotExist()
-        composeRule.onNodeWithText("Episode 2").assertExists()
-        composeRule.onNodeWithText(strings.playingInSeconds.format(10)).assertExists()
-        composeRule.runOnIdle(resources::release)
+        composeRule.onNodeWithContentDescription(strings.playingInSeconds.format(10), substring = true).assertIsFocused()
+
+        composeRule.onRoot().performKeyInput { pressKey(Key.DirectionRight) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription(strings.cancel).assertIsFocused()
+        composeRule.onRoot().performKeyInput { pressKey(Key.DirectionCenter) }
+
+        composeRule.runOnIdle {
+            assertEquals(1, cancelled)
+            resources.release()
+        }
     }
 
     @Test
@@ -344,6 +499,12 @@ class TvPlaybackReviewIntegrationTest {
         continuationState: PlaybackContinuationState,
         onSkipSegment: (PlaybackSegmentAction) -> Unit = {},
         onPlayNext: () -> Unit = {},
+        onSeekTo: ((Long) -> Unit)? = null,
+        extrasState: PlaybackExtrasState = PlaybackExtrasState(),
+        loadEpisodes: (suspend (String) -> List<JellyfinItem>)? = null,
+        onPlayEpisode: (JellyfinItem) -> Unit = {},
+        onClose: () -> Unit = {},
+        onCancelAutoplay: () -> Unit = {},
     ) {
         val context = LocalContext.current
         val engine = remember { AndroidPlayerEngine(context) }
@@ -358,9 +519,14 @@ class TvPlaybackReviewIntegrationTest {
             continuationState = continuationState,
             onSkipSegment = onSkipSegment,
             onPlayNext = onPlayNext,
+            onCancelAutoplay = onCancelAutoplay,
+            onSeekTo = onSeekTo ?: resources.controller::seekTo,
+            extrasState = extrasState,
+            loadEpisodes = loadEpisodes,
+            onPlayEpisode = onPlayEpisode,
             strings = strings,
             stopPlayback = {},
-            onClose = {},
+            onClose = onClose,
             modifier = Modifier,
         )
     }
@@ -516,6 +682,44 @@ class TvPlaybackReviewIntegrationTest {
             nextTarget = PlaybackContinuationTarget("episode-2", "Episode 2") {},
             countdownSecondsRemaining = countdownSeconds,
         )
+
+    private fun episodeItem(
+        id: String,
+        index: Int,
+        title: String,
+    ) = JellyfinItem(
+        id = id,
+        libraryId = null,
+        name = title,
+        sortName = null,
+        overview = null,
+        type = "Episode",
+        mediaType = null,
+        locationType = null,
+        taglines = emptyList(),
+        parentId = null,
+        primaryImageTag = null,
+        thumbImageTag = null,
+        backdropImageTag = null,
+        seriesId = "series",
+        seriesPrimaryImageTag = null,
+        seriesThumbImageTag = null,
+        seriesBackdropImageTag = null,
+        parentLogoImageTag = null,
+        runTimeTicks = null,
+        positionTicks = null,
+        playedPercentage = null,
+        productionYear = null,
+        premiereDate = null,
+        communityRating = null,
+        officialRating = null,
+        indexNumber = index,
+        parentIndexNumber = 1,
+        seriesName = "Series",
+        seasonId = null,
+        episodeTitle = title,
+        lastPlayed = null,
+    )
 
     private fun activePlayback(
         positionMs: Long = 10_000L,

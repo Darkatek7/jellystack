@@ -25,12 +25,12 @@ internal data class TvLayoutBounds(
 internal object TvLayoutTokens {
     val SafeInsets = TvSafeInsets()
     val ExpandedRailWidth = 228.dp
-    val CollapsedRailWidth = 72.dp
-    val ContentStart = 92.dp
+
+    // The navigation rail hides while the content has focus, so content starts at the safe inset.
+    val ContentStart = SafeInsets.horizontal
     val MinimumActionSize = 48.dp
     val LandscapeArtworkWidth = 176.dp
     val LandscapeArtworkHeight = 99.dp
-    val LandscapeMetadataBandHeight = 40.dp
     val CardSpacing = 16.dp
     val FocusHaloPadding = 8.dp
     const val FOCUS_SCALE = 1.055f

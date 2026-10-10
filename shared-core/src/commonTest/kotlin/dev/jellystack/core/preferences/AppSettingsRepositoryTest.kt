@@ -70,6 +70,7 @@ class AppSettingsRepositoryTest {
         repository.setUseServerHomeSections(false)
         repository.setTrailerPreviewsEnabled(false)
         repository.setTrailerPreviewSoundEnabled(false)
+        repository.setTrailerPreviewDelayMillis(10_000)
         repository.setMotionPreference(MotionPreference.REDUCED)
         repository.setHighContrastFocus(true)
         repository.setDownloadsWifiOnly(true)
@@ -91,6 +92,7 @@ class AppSettingsRepositoryTest {
         assertFalse(repository.settings.value.useServerHomeSections)
         assertFalse(repository.settings.value.trailerPreviewsEnabled)
         assertFalse(repository.settings.value.trailerPreviewSoundEnabled)
+        assertEquals(10_000, repository.settings.value.trailerPreviewDelayMillis)
         assertEquals(MotionPreference.REDUCED, repository.settings.value.motionPreference)
         assertTrue(repository.settings.value.highContrastFocus)
         assertEquals(1.5f, repository.settings.value.defaultPlaybackSpeed)
@@ -106,6 +108,7 @@ class AppSettingsRepositoryTest {
                     "settings.mobile_quality" to "BROKEN",
                     "settings.seek_back_seconds" to 999,
                     "settings.spotlight_interval_seconds" to 7,
+                    "settings.trailer_preview_delay_ms" to 2_000,
                     "settings.audio_language" to "  ",
                     "settings.default_playback_speed" to 3f,
                     "settings.intro_skip_mode" to "BROKEN",
@@ -122,6 +125,7 @@ class AppSettingsRepositoryTest {
         assertEquals(StreamingQualityPreference.AUTO, value.mobileStreamingQuality)
         assertEquals(10, value.seekBackSeconds)
         assertEquals(6, value.spotlightIntervalSeconds)
+        assertEquals(1_500, value.trailerPreviewDelayMillis)
         assertNull(value.preferredAudioLanguage)
         assertEquals(SegmentSkipMode.SHOW_BUTTON, value.introSkipMode)
         assertEquals(SegmentSkipMode.AUTO_SKIP, value.recapSkipMode)

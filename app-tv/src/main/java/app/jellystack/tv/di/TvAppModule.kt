@@ -31,6 +31,7 @@ import dev.jellystack.database.jellyfinLibraryStore
 import dev.jellystack.database.jellyseerrRecommendationStore
 import dev.jellystack.database.profileStore
 import dev.jellystack.database.serverStore
+import kotlinx.coroutines.flow.merge
 import org.koin.android.ext.koin.androidContext
 import org.koin.dsl.module
 import java.util.Locale
@@ -68,6 +69,11 @@ val tvAppModule =
                 activeProfiles = get(),
                 bindingResolver = get<ProfileStore>()::getBinding,
                 serverResolver = get<dev.jellystack.core.server.ServerRepository>()::findServer,
+                connectionChanges =
+                    merge(
+                        get<ProfileStore>().observeBindings(),
+                        get<dev.jellystack.core.server.ServerRepository>().observeServers(),
+                    ),
                 clientVersionProvider = { get<JellystackClientVersionProvider>().versionName() },
             )
         }

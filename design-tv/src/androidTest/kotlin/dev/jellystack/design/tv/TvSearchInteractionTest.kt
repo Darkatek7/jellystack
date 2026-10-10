@@ -1,12 +1,10 @@
 package dev.jellystack.design.tv
 
 import androidx.activity.ComponentActivity
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
@@ -56,12 +54,15 @@ class TvSearchInteractionTest {
                     homeState = JellyfinHomeState(),
                     strings = strings,
                     focusMemory = remember { TvFocusMemory() },
-                    onQueryChanged = {},
-                    onRetryJellyfin = {},
-                    onRetrySeerr = {},
-                    onVoiceSearch = { launches += 1 },
-                    onJellyfinItem = {},
-                    onSeerrItem = {},
+                    actions =
+                        testSearchActions(
+                            onQueryChanged = {},
+                            onRetryJellyfin = {},
+                            onRetrySeerr = {},
+                            onVoiceSearch = { launches += 1 },
+                            onJellyfinItem = {},
+                            onSeerrItem = {},
+                        ),
                 )
             }
         }
@@ -92,22 +93,25 @@ class TvSearchInteractionTest {
                     homeState = JellyfinHomeState(),
                     strings = strings,
                     focusMemory = remember { TvFocusMemory() },
-                    onQueryChanged = { query ->
-                        searchState = searchState.copy(session = searchState.session.copy(query = query))
-                    },
-                    onSourceChanged = { source ->
-                        searchState = searchState.copy(session = searchState.session.copy(source = source))
-                    },
-                    onEnterEditMode = {
-                        searchState = searchState.copy(session = searchState.session.copy(mode = TvSearchMode.EDIT))
-                    },
-                    onEnterBrowseMode = {
-                        searchState = searchState.copy(session = searchState.session.copy(mode = TvSearchMode.BROWSE))
-                    },
-                    onRetryJellyfin = {},
-                    onRetrySeerr = {},
-                    onJellyfinItem = {},
-                    onSeerrItem = {},
+                    actions =
+                        testSearchActions(
+                            onQueryChanged = { query ->
+                                searchState = searchState.copy(session = searchState.session.copy(query = query))
+                            },
+                            onSourceChanged = { source ->
+                                searchState = searchState.copy(session = searchState.session.copy(source = source))
+                            },
+                            onEnterEditMode = {
+                                searchState = searchState.copy(session = searchState.session.copy(mode = TvSearchMode.EDIT))
+                            },
+                            onEnterBrowseMode = {
+                                searchState = searchState.copy(session = searchState.session.copy(mode = TvSearchMode.BROWSE))
+                            },
+                            onRetryJellyfin = {},
+                            onRetrySeerr = {},
+                            onJellyfinItem = {},
+                            onSeerrItem = {},
+                        ),
                 )
             }
         }
@@ -132,6 +136,48 @@ class TvSearchInteractionTest {
     }
 
     @Test
+    fun queryFieldKeepsItsFocusAndPlaceWhileResultsArrive() {
+        val strings = TvStrings.current(AppLanguage.ENGLISH)
+        val dune = jellyfinItem("dune", "Dune")
+        val dunkirk = jellyfinItem("dunkirk", "Dunkirk")
+
+        fun typing(
+            query: String,
+            vararg results: JellyfinItem,
+        ) = TvSearchUiState(
+            session = TvSearchSessionState(query = query),
+            jellyfin = TvSearchSourceResult(query = query, items = results.toList(), isLoading = results.isEmpty()),
+        )
+        var searchState by mutableStateOf(typing("d"))
+        composeRule.setContent {
+            JellystackTvTheme {
+                TvSearchScreen(
+                    searchState = searchState,
+                    homeState = JellyfinHomeState(),
+                    strings = strings,
+                    focusMemory = remember { TvFocusMemory() },
+                    actions = testSearchActions(onQueryChanged = {}),
+                )
+            }
+        }
+        val field = composeRule.onNodeWithTag("tv-search-query")
+        composeRule.waitUntil {
+            runCatching {
+                field.assertIsFocused()
+                true
+            }.getOrDefault(false)
+        }
+        val top = field.getUnclippedBoundsInRoot().top.value
+
+        // Results arrive, the next letter clears them while it searches, then other results arrive.
+        listOf(typing("d", dune), typing("du"), typing("du", dune, dunkirk)).forEach { next ->
+            composeRule.runOnIdle { searchState = next }
+            field.assertIsFocused()
+            assertEquals(top, field.getUnclippedBoundsInRoot().top.value, 0.5f)
+        }
+    }
+
+    @Test
     fun firstSearchResultKeepsItsFocusBoundsInsideTheSafeInset() {
         val strings = TvStrings.current(AppLanguage.ENGLISH)
         val item = jellyfinItem("dune", "Dune")
@@ -147,12 +193,14 @@ class TvSearchInteractionTest {
                     homeState = JellyfinHomeState(),
                     strings = strings,
                     focusMemory = remember { TvFocusMemory() },
-                    onQueryChanged = {},
-                    onRetryJellyfin = {},
-                    onRetrySeerr = {},
-                    onJellyfinItem = {},
-                    onSeerrItem = {},
-                    modifier = Modifier.fillMaxSize(),
+                    actions =
+                        testSearchActions(
+                            onQueryChanged = {},
+                            onRetryJellyfin = {},
+                            onRetrySeerr = {},
+                            onJellyfinItem = {},
+                            onSeerrItem = {},
+                        ),
                 )
             }
         }

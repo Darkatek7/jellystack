@@ -57,6 +57,7 @@ data class JellyfinItemRecord(
     val seriesArtImageTag: String? = null,
     val seriesBannerImageTag: String? = null,
     val providerIds: MediaProviderIds = MediaProviderIds(sourceLocalId = id),
+    val played: Boolean = false,
 )
 
 data class JellyfinItemDetailRecord(

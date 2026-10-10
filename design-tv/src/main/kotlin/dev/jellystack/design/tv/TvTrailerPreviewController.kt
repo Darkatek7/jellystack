@@ -64,7 +64,7 @@ internal class TvTrailerPreviewController(
     private val scope: CoroutineScope,
     private val resolve: suspend (TvTrailerPreviewTarget) -> DetailTrailerSource.Local?,
     private val player: TvTrailerPreviewPlayer,
-    private val focusDelayMillis: Long = DEFAULT_FOCUS_DELAY_MILLIS,
+    private var focusDelayMillis: Long = DEFAULT_FOCUS_DELAY_MILLIS,
 ) {
     private val mutableState = MutableStateFlow<TvTrailerPreviewState>(TvTrailerPreviewState.Idle)
     val state: StateFlow<TvTrailerPreviewState> = mutableState.asStateFlow()
@@ -152,6 +152,11 @@ internal class TvTrailerPreviewController(
     fun setSoundEnabled(value: Boolean) {
         soundEnabled = value
         player.setSoundEnabled(value)
+    }
+
+    /** Applies from the next focus; a preview that is already waiting keeps its delay. */
+    fun setFocusDelayMillis(value: Long) {
+        focusDelayMillis = value
     }
 
     fun invalidateCache() {

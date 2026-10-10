@@ -12,6 +12,34 @@ import kotlin.test.assertTrue
 
 class TvHomeCarouselSelectionTest {
     @Test
+    fun spotlightAutoAdvancesOnlyWhileNothingElseClaimsTheStage() {
+        fun advance(
+            enabled: Boolean = true,
+            candidateCount: Int = 3,
+            reducedMotion: Boolean = false,
+            cardStaged: Boolean = false,
+            trailerActive: Boolean = false,
+        ) = shouldAutoAdvanceTvHomeHero(enabled, candidateCount, reducedMotion, cardStaged, trailerActive)
+
+        assertTrue(advance())
+        assertFalse(advance(enabled = false))
+        assertFalse(advance(candidateCount = 1), "a single spotlight has nothing to advance to")
+        assertFalse(advance(reducedMotion = true))
+        assertFalse(advance(cardStaged = true), "a focused row card owns the stage")
+        assertFalse(advance(trailerActive = true), "a trailer must not be cut off")
+    }
+
+    @Test
+    fun automaticMovementWrapsAroundAfterTheLastSpotlight() {
+        val ids = listOf("a", "b", "c")
+
+        assertEquals("b", nextTvHomeAutoAdvanceId(ids, "a"))
+        assertEquals("a", nextTvHomeAutoAdvanceId(ids, "c"))
+        assertEquals("a", nextTvHomeAutoAdvanceId(ids, null), "an unknown selection restarts at the first")
+        assertNull(nextTvHomeAutoAdvanceId(emptyList(), "a"))
+    }
+
+    @Test
     fun trailerPreviewIsLimitedToJellyfinCinematicBrowseRoutes() {
         assertTrue(TvRoute.Home.allowsTrailerPreview())
         assertTrue(TvRoute.Library("movies", "Movies").allowsTrailerPreview())

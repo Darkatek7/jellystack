@@ -54,5 +54,16 @@ internal fun initialTvProfileState(
     }
 }
 
+/** On a cold start a remembered profile with a PIN asks for it before anything of that profile shows. */
+internal fun TvProfileState.lockedOnColdLaunch(
+    coldLaunch: Boolean,
+    pinProtectedProfileIds: Set<String>,
+): TvProfileState =
+    if (coldLaunch && this is TvProfileState.Content && profile.id in pinProtectedProfileIds) {
+        TvProfileState.PinEntry(profile)
+    } else {
+        this
+    }
+
 internal const val TV_PROFILE_AVATAR_TARGET = "rail:profile-avatar"
 internal const val TV_TOP_LEVEL_DESTINATION_COUNT = 5

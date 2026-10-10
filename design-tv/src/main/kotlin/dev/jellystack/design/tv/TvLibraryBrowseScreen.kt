@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -46,6 +45,7 @@ import dev.jellystack.core.jellyfin.HomeSectionAction
 import dev.jellystack.core.jellyfin.HomeSectionsState
 import dev.jellystack.core.jellyfin.JellyfinHomeState
 import dev.jellystack.core.jellyfin.JellyfinItem
+import dev.jellystack.core.jellyfin.JellyfinLibrary
 import dev.jellystack.core.jellyfin.LibraryBrowseQuery
 import dev.jellystack.core.jellyfin.LibraryMediaType
 import dev.jellystack.core.jellyfin.isBrowseContainer
@@ -66,6 +66,7 @@ internal data class TvLibraryBrowseLabels(
     val nextUp: String,
     val recentlyAdded: String,
     val myList: String,
+    val minutesLeft: String,
 )
 
 internal fun buildTvLibraryBrowseRows(
@@ -91,7 +92,7 @@ internal fun buildTvLibraryBrowseRows(
             TvCinematicRow(
                 id = id,
                 title = title,
-                cards = values.map { it.toCinematicCard(state, selectedIds) },
+                cards = values.map { it.toCinematicCard(state, selectedIds, labels.minutesLeft) },
             )
         }
 
@@ -126,34 +127,65 @@ internal fun buildTvLibraryBrowseRows(
 private fun JellyfinItem.toCinematicCard(
     state: JellyfinHomeState,
     selectedIds: Set<String>,
+    minutesLeft: String,
 ): TvCinematicCard {
-    val cardArtwork = resolveTvJellyfinArtwork(this, landscape = true)
-    val backdropArtwork =
-        listOfNotNull(
-            seriesId?.takeIf { seriesBackdropImageTag != null }?.let {
-                TvJellyfinArtwork(it, requireNotNull(seriesBackdropImageTag), "Backdrop")
-            },
-            backdropImageTag?.let { TvJellyfinArtwork(id, it, "Backdrop") },
-            cardArtwork,
-        ).firstOrNull()
+    val text = tvCardText(minutesLeft)
     return TvCinematicCard(
         id = id,
-        title = name,
-        subtitle = subtitleText(),
+        title = text.title,
+        subtitle = text.subtitle,
         overview = overview,
-        artworkUrl = jellyfinImageUrl(state.imageBaseUrl, state.imageAccessToken, cardArtwork),
-        backdropUrl =
-            jellyfinImageUrl(
-                state.imageBaseUrl,
-                state.imageAccessToken,
-                backdropArtwork,
-                TvArtworkSize.HERO,
-            ),
+        artworkUrl =
+            jellyfinImageUrl(state.imageBaseUrl, state.imageAccessToken, resolveTvJellyfinArtwork(this, landscape = true)),
+        backdropUrl = tvJellyfinBackdropUrl(state.imageBaseUrl, state.imageAccessToken, this),
         selected = id in selectedIds,
-        played = (playedPercentage ?: 0.0) >= 90.0,
-        resumeFraction = playedPercentage?.div(100.0)?.toFloat()?.takeIf { it in 0.01f..0.99f },
+        played = isPlayed || (playedPercentage ?: 0.0) >= 90.0,
+        resumeFraction = text.progress?.takeIf { it in 0.01f..0.99f },
+        logoUrl = tvJellyfinLogoUrl(state.imageBaseUrl, state.imageAccessToken, this),
+        metadata = tvStageMetadata(),
     )
 }
+
+/**
+ * The last segment of a library's browse rows: one card that opens every title of the library with sorting and
+ * filters. It shows the library's own artwork, as the library cards on the home screen do.
+ */
+internal fun tvLibraryAllTitlesRow(
+    state: JellyfinHomeState,
+    library: JellyfinLibrary?,
+    rowTitle: String,
+    cardTitle: String,
+    itemCount: String?,
+): TvCinematicRow =
+    TvCinematicRow(
+        id = TV_LIBRARY_ALL_TITLES_ROW,
+        title = rowTitle,
+        cards =
+            listOf(
+                TvCinematicCard(
+                    id = TV_LIBRARY_ALL_TITLES_CARD,
+                    title = cardTitle,
+                    subtitle = itemCount,
+                    artworkUrl =
+                        library?.let {
+                            jellyfinImageUrl(state.imageBaseUrl, state.imageAccessToken, it.id, it.primaryImageTag)
+                        },
+                    backdropUrl =
+                        library?.let {
+                            jellyfinImageUrl(
+                                baseUrl = state.imageBaseUrl,
+                                token = state.imageAccessToken,
+                                itemId = it.id,
+                                tag = it.primaryImageTag,
+                                maxWidth = TvArtworkSize.HERO.maxWidth,
+                            )
+                        },
+                ),
+            ),
+    )
+
+internal const val TV_LIBRARY_ALL_TITLES_ROW = "all-titles"
+internal const val TV_LIBRARY_ALL_TITLES_CARD = "all-titles"
 
 internal fun tvLibraryAllTitlesColumnCount(
     widthDp: Float,
@@ -192,8 +224,6 @@ internal fun TvSelectedLibraryScreen(
     onOpenItem: (JellyfinItem) -> Unit,
     onOpenContainer: (JellyfinItem) -> Unit,
     onPlayItem: (JellyfinItem) -> Unit,
-    onToggleFavorite: (JellyfinItem) -> Unit,
-    onTogglePlayed: (JellyfinItem, Boolean) -> Unit,
     onLoadMore: () -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
@@ -202,12 +232,15 @@ internal fun TvSelectedLibraryScreen(
     previewSoundEnabled: Boolean = true,
     previewProgress: State<Float>? = null,
     onPreviewFocus: (JellyfinItem, String) -> Unit = { _, _ -> },
+    onPreviewClear: () -> Unit = {},
 ) {
     val routeKey = route.focusRouteKey(state.browsePath.map { it.id })
     val allKnownItems = remember(state, homeSections, myListItems) { tvLibraryKnownItems(state, homeSections, myListItems) }
     if (route.mode == TvLibraryMode.BROWSE) {
+        val library = state.libraries.firstOrNull { it.id == route.libraryId }
+        val libraryName = route.title ?: library?.name ?: strings.library
         val rows =
-            remember(state, homeSections, myListItems, collectionType, strings) {
+            remember(state, homeSections, myListItems, collectionType, strings, library) {
                 buildTvLibraryBrowseRows(
                     state = state,
                     homeSections = homeSections,
@@ -218,9 +251,17 @@ internal fun TvSelectedLibraryScreen(
                             nextUp = strings.nextUp,
                             recentlyAdded = strings.recentlyAdded,
                             myList = strings.myList,
+                            minutesLeft = strings.metadata.minutesLeft,
                         ),
                     collectionType = collectionType,
-                )
+                ) +
+                    tvLibraryAllTitlesRow(
+                        state = state,
+                        library = library,
+                        rowTitle = strings.library,
+                        cardTitle = strings.allTitles,
+                        itemCount = library?.itemCount?.let(strings::itemCount),
+                    )
             }
         var focusedAnchor by remember(routeKey) { mutableStateOf(focusMemory.restore(routeKey)?.anchor) }
         val focusedItem = focusedAnchor?.itemId?.let(allKnownItems::get)
@@ -228,46 +269,47 @@ internal fun TvSelectedLibraryScreen(
             focusedAnchor?.let { anchor ->
                 tvCinematicFocusTargetId(requireNotNull(anchor.sectionId), requireNotNull(anchor.itemId))
             }
+        val trailerPlaying =
+            focusedItem?.let { item -> trailerPreviewState.showsTvStagePreview(item.id, focusedPresentationId) } == true
         TvCinematicBrowse(
             state =
                 TvCinematicBrowseState(
+                    hero = TvCinematicHero(title = libraryName, eyebrow = libraryName),
                     rows = rows,
                     focusedAnchor = focusedAnchor,
-                    inlineStatus = state.tvLibraryInlineStatus(strings),
                 ),
-            actionLabels = strings.tvSelectedActionLabels(),
             onCardFocused = { anchor, _ ->
                 focusedAnchor = anchor
                 focusMemory.remember(routeKey, anchor, horizontalCenter = 0f)
-                allKnownItems[anchor.itemId]?.let { item ->
+                val item = allKnownItems[anchor.itemId]
+                if (item != null) {
                     onPreviewFocus(
                         item,
                         tvCinematicFocusTargetId(requireNotNull(anchor.sectionId), requireNotNull(anchor.itemId)),
                     )
+                } else {
+                    // The "All titles" card has no trailer, so the previous card's trailer stops with its picture.
+                    onPreviewClear()
                 }
             },
-            onCardClick = { card -> allKnownItems[card.id]?.let { item -> item.open(onOpenItem, onOpenContainer) } },
-            selectedItemActions =
-                focusedItem?.let { item ->
-                    item.actions(onPlayItem, onOpenItem, onOpenContainer, onToggleFavorite, onTogglePlayed)
-                },
-            showFocusedMetadata = true,
-            topHeaderContent = {
-                TvLibraryBrowseHeader(
-                    title = route.title ?: strings.library,
-                    mode = route.mode,
-                    strings = strings,
-                    onModeChanged = onModeChanged,
-                )
+            onCardClick = { card ->
+                if (card.id == TV_LIBRARY_ALL_TITLES_CARD) {
+                    onModeChanged(TvLibraryMode.ALL_TITLES)
+                } else {
+                    allKnownItems[card.id]?.open(onOpenItem, onOpenContainer)
+                }
             },
+            playback =
+                TvCinematicCardPlayback(
+                    labels = TvCinematicHintLabels(play = strings.play, resume = strings.continueLabel, details = strings.details),
+                    canPlay = { card -> allKnownItems[card.id]?.isBrowseContainer() == false },
+                    onPlay = { card -> allKnownItems[card.id]?.let(onPlayItem) },
+                ),
+            trailer =
+                trailerPreviewEngine?.takeIf { trailerPlaying }?.let { engine ->
+                    TvCinematicTrailer(engine, strings.trailer, previewSoundEnabled, previewProgress ?: TvNoTrailerProgress)
+                },
             modifier = modifier,
-            previewing =
-                focusedItem?.let { item ->
-                    trailerPreviewState.showsTvStagePreview(item.id, focusedPresentationId)
-                } == true,
-            previewEngine = trailerPreviewEngine,
-            previewSoundEnabled = previewSoundEnabled,
-            previewProgress = previewProgress,
         )
     } else {
         LaunchedEffect(route.libraryId, rememberedQuery) {
@@ -279,7 +321,6 @@ internal fun TvSelectedLibraryScreen(
             strings = strings,
             focusMemory = focusMemory,
             collectionType = collectionType,
-            onModeChanged = onModeChanged,
             onQueryChanged = onQueryChanged,
             onOpenItem = onOpenItem,
             onOpenContainer = onOpenContainer,
@@ -297,7 +338,6 @@ private fun TvLibraryAllTitles(
     strings: TvStrings,
     focusMemory: TvFocusMemory,
     collectionType: String?,
-    onModeChanged: (TvLibraryMode) -> Unit,
     onQueryChanged: (LibraryBrowseQuery) -> Unit,
     onOpenItem: (JellyfinItem) -> Unit,
     onOpenContainer: (JellyfinItem) -> Unit,
@@ -372,12 +412,7 @@ private fun TvLibraryAllTitles(
         ) {
             item(key = "all-titles-header", span = { GridItemSpan(maxLineSpan) }) {
                 Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    TvLibraryBrowseHeader(
-                        title = route.title ?: strings.library,
-                        mode = route.mode,
-                        strings = strings,
-                        onModeChanged = onModeChanged,
-                    )
+                    TvLibraryAllTitlesHeader(route.title ?: strings.library)
                     TvLibraryQueryControls(
                         query = state.libraryBrowseQuery,
                         labels = strings.tvLibraryQueryLabels(),
@@ -388,6 +423,8 @@ private fun TvLibraryAllTitles(
                                 .sortedDescending(),
                         availableMediaTypes = tvLibraryMediaTypes(collectionType),
                         onQueryChanged = onQueryChanged,
+                        // While the first page loads there is no card yet, so focus starts on the first control.
+                        entryFocus = state.libraryItems.isEmpty(),
                     )
                 }
             }
@@ -452,60 +489,16 @@ private fun TvLibraryAllTitles(
 }
 
 @Composable
-private fun TvLibraryBrowseHeader(
-    title: String,
-    mode: TvLibraryMode,
-    strings: TvStrings,
-    onModeChanged: (TvLibraryMode) -> Unit,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(24.dp),
-    ) {
-        Text(
-            text = title,
-            color = TvText,
-            fontSize = 30.sp,
-            fontWeight = FontWeight.Bold,
-            maxLines = 1,
-            modifier = Modifier.weight(1f).semantics { heading() }.testTag("tv-library-browse-title"),
-        )
-        TvLibraryModeControls(mode, strings, onModeChanged)
-    }
+private fun TvLibraryAllTitlesHeader(title: String) {
+    Text(
+        text = title,
+        color = TvText,
+        fontSize = 30.sp,
+        fontWeight = FontWeight.Bold,
+        maxLines = 1,
+        modifier = Modifier.fillMaxWidth().semantics { heading() }.testTag("tv-library-browse-title"),
+    )
 }
-
-@Composable
-internal fun TvLibraryModeControls(
-    mode: TvLibraryMode,
-    strings: TvStrings,
-    onModeChanged: (TvLibraryMode) -> Unit,
-) {
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.testTag("tv-library-mode-controls")) {
-        TvActionButton(
-            label = strings.browse,
-            onClick = { onModeChanged(TvLibraryMode.BROWSE) },
-            selected = mode == TvLibraryMode.BROWSE,
-            focusTargetId = "library:mode:browse",
-            focusToNavigationRailOnLeft = true,
-            modifier = Modifier.tvScreenEntryFocus(mode == TvLibraryMode.BROWSE, "library:mode:browse").width(180.dp),
-        )
-        TvActionButton(
-            label = strings.allTitles,
-            onClick = { onModeChanged(TvLibraryMode.ALL_TITLES) },
-            selected = mode == TvLibraryMode.ALL_TITLES,
-            focusTargetId = "library:mode:all-titles",
-            modifier = Modifier.tvScreenEntryFocus(mode == TvLibraryMode.ALL_TITLES, "library:mode:all-titles").width(180.dp),
-        )
-    }
-}
-
-private fun JellyfinHomeState.tvLibraryInlineStatus(strings: TvStrings): TvCinematicInlineStatus? =
-    when {
-        isLibraryLoading || isPageLoading -> TvCinematicInlineStatus(strings.loading, TvCinematicStatusKind.LOADING)
-        libraryErrorMessage != null -> TvCinematicInlineStatus(strings.libraryLoadFailed, TvCinematicStatusKind.ERROR)
-        else -> null
-    }
 
 private fun tvLibraryKnownItems(
     state: JellyfinHomeState,
@@ -528,31 +521,6 @@ private fun JellyfinItem.open(
     onOpenItem: (JellyfinItem) -> Unit,
     onOpenContainer: (JellyfinItem) -> Unit,
 ) = if (isBrowseContainer()) onOpenContainer(this) else onOpenItem(this)
-
-private fun JellyfinItem.actions(
-    onPlayItem: (JellyfinItem) -> Unit,
-    onOpenItem: (JellyfinItem) -> Unit,
-    onOpenContainer: (JellyfinItem) -> Unit,
-    onToggleFavorite: (JellyfinItem) -> Unit,
-    onTogglePlayed: (JellyfinItem, Boolean) -> Unit,
-): TvSelectedItemActions =
-    TvSelectedItemActions(
-        onPlayOrResume = { if (isBrowseContainer()) onOpenContainer(this) else onPlayItem(this) },
-        onDetails = { open(onOpenItem, onOpenContainer) },
-        onToggleSaved = { onToggleFavorite(this) },
-        onTogglePlayed = { onTogglePlayed(this, (playedPercentage ?: 0.0) < 90.0) },
-    )
-
-private fun TvStrings.tvSelectedActionLabels() =
-    TvSelectedItemActionLabels(
-        play = play,
-        resume = continueLabel,
-        details = details,
-        addToList = addToMyList,
-        removeFromList = removeFromMyList,
-        markPlayed = markPlayed,
-        markUnplayed = markUnplayed,
-    )
 
 private fun TvStrings.tvLibraryQueryLabels() =
     TvLibraryQueryLabels(
@@ -587,4 +555,9 @@ private fun tvLibraryHasReliablePosters(items: List<JellyfinItem>): Boolean {
     if (items.isEmpty()) return true
     val withPoster = items.count { it.primaryImageTag != null || it.seriesPrimaryImageTag != null }
     return withPoster.toFloat() / items.size >= 0.6f
+}
+
+/** Progress of a trailer whose player reports none. */
+private object TvNoTrailerProgress : State<Float> {
+    override val value: Float = 0f
 }

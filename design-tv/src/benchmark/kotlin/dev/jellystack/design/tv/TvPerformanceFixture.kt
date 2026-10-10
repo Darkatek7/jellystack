@@ -68,19 +68,8 @@ fun JellystackTvPerformanceFixture() {
         ) {
             TvCinematicBrowse(
                 state = state,
-                actionLabels =
-                    TvSelectedItemActionLabels(
-                        play = "Play",
-                        resume = "Resume",
-                        details = "Details",
-                        addToList = "Add to My List",
-                        removeFromList = "Remove from My List",
-                        markPlayed = "Mark played",
-                        markUnplayed = "Mark unplayed",
-                    ),
                 onCardFocused = { anchor, _ -> focusedAnchor = anchor },
                 onCardClick = { activationCount += 1 },
-                selectedItemActions = null,
             )
         }
     }

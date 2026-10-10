@@ -93,24 +93,31 @@ class TvPlaybackSegmentIntegrationTest {
             tvPlaybackActionModels(
                 segmentState,
                 continuation,
-                isEpisode = true,
-                playbackPhase = PlaybackPhase.Ready,
+                context = TvPlaybackActionContext(isEpisode = true, phase = PlaybackPhase.Ready, upNextDue = true),
                 strings = strings(),
             )
 
-        assertEquals(listOf(TvPlaybackActionKind.SEGMENT_SKIP, TvPlaybackActionKind.PLAY_NEXT), actions.map { it.kind })
-        assertEquals(listOf("Skip credits", "Play next episode"), actions.map { it.label })
+        assertEquals(
+            listOf(
+                TvPlaybackActionKind.SEGMENT_SKIP,
+                TvPlaybackActionKind.PLAY_NEXT,
+                TvPlaybackActionKind.WATCH_CREDITS,
+            ),
+            actions.map { it.kind },
+        )
+        assertEquals(listOf("Skip credits", "Play next episode", "Watch credits"), actions.map { it.label })
         assertEquals(
             listOf(
                 "tv-player-action:segment:outro:outro-1",
                 "tv-player-action:play-next:episode-2",
+                "tv-player-action:watch-credits:episode-2",
             ),
             actions.map { it.id },
         )
     }
 
     @Test
-    fun endedPlaybackSuppressesOutroAndPreparedNextActions() {
+    fun endedEpisodeKeepsOnlyTheUpNextCardWithItsCountdown() {
         val segmentState =
             PlaybackSegmentState(
                 mediaId = "episode-1",
@@ -128,12 +135,34 @@ class TvPlaybackSegmentIntegrationTest {
             tvPlaybackActionModels(
                 segmentState,
                 continuation,
-                isEpisode = true,
-                playbackPhase = PlaybackPhase.Ended,
+                context = TvPlaybackActionContext(isEpisode = true, phase = PlaybackPhase.Ended, upNextDue = false),
                 strings = strings(),
             )
 
-        assertTrue(actions.isEmpty())
+        assertEquals(
+            listOf("tv-player-action:play-next:episode-2", "tv-player-action:cancel-autoplay:episode-2"),
+            actions.map { it.id },
+        )
+        assertEquals(strings().playingInSeconds.format(10), actions.first().label)
+
+        val cancelled =
+            tvPlaybackActionModels(
+                segmentState,
+                continuation.copy(countdownSecondsRemaining = null),
+                context = TvPlaybackActionContext(isEpisode = true, phase = PlaybackPhase.Ended, upNextDue = false),
+                strings = strings(),
+            )
+        assertEquals(listOf(TvPlaybackActionKind.PLAY_NEXT), cancelled.map { it.kind })
+        assertEquals(strings().player.playNextEpisode, cancelled.single().label)
+
+        val movie =
+            tvPlaybackActionModels(
+                segmentState,
+                continuation,
+                context = TvPlaybackActionContext(isEpisode = false, phase = PlaybackPhase.Ended, upNextDue = false),
+                strings = strings(),
+            )
+        assertTrue(movie.isEmpty())
     }
 
     @Test
@@ -153,12 +182,14 @@ class TvPlaybackSegmentIntegrationTest {
             tvPlaybackActionModels(
                 segmentState,
                 continuation,
-                isEpisode = true,
-                playbackPhase = PlaybackPhase.Ready,
+                context = TvPlaybackActionContext(isEpisode = true, phase = PlaybackPhase.Ready, upNextDue = true),
                 strings = strings(),
             )
 
-        assertEquals(listOf(TvPlaybackActionKind.PLAY_NEXT), actions.map { it.kind })
+        assertEquals(
+            listOf(TvPlaybackActionKind.PLAY_NEXT, TvPlaybackActionKind.WATCH_CREDITS),
+            actions.map { it.kind },
+        )
     }
 
     @Test
@@ -178,8 +209,7 @@ class TvPlaybackSegmentIntegrationTest {
             tvPlaybackActionModels(
                 segmentState,
                 availableNext,
-                isEpisode = false,
-                playbackPhase = PlaybackPhase.Ready,
+                context = TvPlaybackActionContext(isEpisode = false, phase = PlaybackPhase.Ready, upNextDue = true),
                 strings = strings(),
             ).isEmpty(),
         )
@@ -187,11 +217,39 @@ class TvPlaybackSegmentIntegrationTest {
             tvPlaybackActionModels(
                 segmentState,
                 PlaybackContinuationState(),
-                isEpisode = true,
-                playbackPhase = PlaybackPhase.Ready,
+                context = TvPlaybackActionContext(isEpisode = true, phase = PlaybackPhase.Ready, upNextDue = true),
                 strings = strings(),
             ).isEmpty(),
         )
+    }
+
+    @Test
+    fun upNextCardCarriesTheNextEpisodeAndWaitsUntilItIsDue() {
+        val continuation =
+            PlaybackContinuationState(
+                mediaId = "episode-1",
+                nextTarget =
+                    PlaybackContinuationTarget(
+                        mediaId = "episode-2",
+                        title = "Northbound",
+                        subtitle = "S2 E7",
+                        imageUrl = "https://example.invalid/still.jpg",
+                    ) {},
+            )
+
+        fun actions(upNextDue: Boolean) =
+            tvPlaybackActionModels(
+                PlaybackSegmentState(mediaId = "episode-1"),
+                continuation,
+                context = TvPlaybackActionContext(isEpisode = true, phase = PlaybackPhase.Ready, upNextDue = upNextDue),
+                strings = strings(),
+            )
+
+        assertTrue(actions(upNextDue = false).isEmpty())
+        val card = actions(upNextDue = true).first()
+        assertEquals("Up next", card.kicker)
+        assertEquals("S2 E7 · Northbound", card.detail)
+        assertEquals("https://example.invalid/still.jpg", card.imageUrl)
     }
 
     @Test

@@ -15,12 +15,12 @@ import androidx.compose.foundation.gestures.BringIntoViewSpec
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -31,11 +31,8 @@ import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.VolumeOff
-import androidx.compose.material.icons.automirrored.filled.VolumeUp
-import androidx.compose.material.icons.filled.ImageNotSupported
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -78,7 +75,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.tv.material3.Icon
 import androidx.tv.material3.Text
@@ -92,20 +88,33 @@ internal const val TV_DETAIL_ACTION_GAP_DP = 14
 internal const val TV_DETAIL_COMPACT_ACTION_HEIGHT_DP = 72
 
 internal val TvDestructiveActionKey = SemanticsPropertyKey<Boolean>("TvDestructiveAction")
+
+/** How a focused element shows that it has focus. */
+internal enum class TvFocusIndication {
+    /** Ring, shadow and a dark fill: buttons and cards. */
+    FULL,
+
+    /** Shadow and fill without the ring, for elements that draw their own focus ring. */
+    NO_RING,
+
+    /** No decoration, for full-bleed areas such as the home spotlight that show focus through their content. */
+    NONE,
+}
+
 private var SemanticsPropertyReceiver.tvDestructiveAction by TvDestructiveActionKey
 
 @Composable
 internal fun Modifier.tvFocusable(
     onClick: (() -> Unit)?,
     enabled: Boolean = true,
-    shape: RoundedCornerShape = RoundedCornerShape(16.dp),
+    shape: RoundedCornerShape = TvShapes.Control,
     scale: Float = TvLayoutTokens.FOCUS_SCALE,
     onFocused: (() -> Unit)? = null,
     onFocusChanged: ((Boolean) -> Unit)? = null,
     focusToNavigationRailOnLeft: Boolean = false,
     focusTargetId: String? = null,
     providedFocusRequester: FocusRequester? = null,
-    showFocusBorder: Boolean = true,
+    focusIndication: TvFocusIndication = TvFocusIndication.FULL,
 ): Modifier {
     val rememberedFocusRequester = remember { FocusRequester() }
     val restorationRequester = providedFocusRequester ?: rememberedFocusRequester
@@ -172,7 +181,7 @@ internal fun Modifier.tvFocusable(
                     }
                     onFocusChanged?.invoke(focused)
                 },
-                showFocusBorder = showFocusBorder,
+                focusIndication = focusIndication,
             ).tvReturnToNavigationRailOnLeft(focusToNavigationRailOnLeft)
             .onGloballyPositioned { coordinates ->
                 horizontalCenter = coordinates.boundsInRoot().center.x
@@ -187,7 +196,7 @@ private fun Modifier.tvFocusDecoration(
     scale: Float,
     onFocused: (() -> Unit)?,
     onFocusChanged: ((Boolean) -> Unit)?,
-    showFocusBorder: Boolean = true,
+    focusIndication: TvFocusIndication,
 ): Modifier {
     var focused by remember { mutableStateOf(false) }
     val focusAppearance = LocalTvFocusAppearance.current
@@ -209,17 +218,17 @@ private fun Modifier.tvFocusDecoration(
         }.graphicsLayer {
             scaleX = animatedScale
             scaleY = animatedScale
-            shadowElevation = if (focused) 12.dp.toPx() else 0f
+            shadowElevation = if (focused && focusIndication != TvFocusIndication.NONE) 12.dp.toPx() else 0f
             this.shape = shape
             ambientShadowColor = Color.Black
             spotShadowColor = TvPurpleStrong
         }.drawBehind {
-            if (focused) {
+            if (focused && focusIndication != TvFocusIndication.NONE) {
                 drawOutline(shape.createOutline(size, layoutDirection, this), Color.Black.copy(alpha = 0.24f))
             }
         }.drawWithContent {
             drawContent()
-            if (focused && showFocusBorder) {
+            if (focused && focusIndication == TvFocusIndication.FULL) {
                 val outline = shape.createOutline(size, layoutDirection, this)
                 drawOutline(
                     outline,
@@ -247,7 +256,7 @@ internal fun TvActionButton(
     focusRequester: FocusRequester? = null,
     onFocusChanged: ((Boolean) -> Unit)? = null,
 ) {
-    val shape = RoundedCornerShape(50)
+    val shape = TvShapes.Pill
     Row(
         modifier =
             modifier
@@ -313,7 +322,7 @@ internal fun TvPlayerIconButton(
     size: androidx.compose.ui.unit.Dp = 60.dp,
     iconSize: androidx.compose.ui.unit.Dp = 30.dp,
 ) {
-    val shape = RoundedCornerShape(50)
+    val shape = TvShapes.Pill
     var focused by remember { mutableStateOf(false) }
     Box(
         modifier =
@@ -350,7 +359,7 @@ internal fun TvCompactActionButton(
     modifier: Modifier = Modifier,
     selected: Boolean = false,
 ) {
-    val shape = RoundedCornerShape(18.dp)
+    val shape = TvShapes.Card
     Column(
         modifier =
             modifier
@@ -366,7 +375,7 @@ internal fun TvCompactActionButton(
         verticalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterVertically),
     ) {
         Icon(icon, null, tint = if (selected) TvPurple else Color.White, modifier = Modifier.size(25.dp))
-        Text(label, color = TvText, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(label, color = TvText, fontSize = TvTextSize.Label, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -381,6 +390,8 @@ internal fun TvMediaCard(
     onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
     subtitle: String? = null,
+    progress: Float? = null,
+    watched: Boolean = false,
     selected: Boolean = false,
     format: TvMediaCardFormat = TvMediaCardFormat.LANDSCAPE,
     artworkFit: TvMediaCardArtworkFit = TvMediaCardArtworkFit.CROP,
@@ -392,7 +403,7 @@ internal fun TvMediaCard(
     focusTargetId: String? = null,
     providedFocusRequester: FocusRequester? = null,
 ) {
-    val shape = RoundedCornerShape(18.dp)
+    val shape = TvShapes.Card
     var focused by remember { mutableStateOf(false) }
     val cardWidth = if (format == TvMediaCardFormat.LANDSCAPE) TvLayoutTokens.LandscapeArtworkWidth else 140.dp
     val aspectRatio =
@@ -425,17 +436,27 @@ internal fun TvMediaCard(
         } else {
             Modifier
         }
-    Column(
+    var imageFailed by remember(imageUrl) { mutableStateOf(false) }
+    val shownImageUrl = imageUrl?.takeUnless { imageFailed }
+    Box(
         modifier =
             modifier
                 .then(if (fillWidth) Modifier.fillMaxWidth() else Modifier.width(cardWidth))
-                .then(interactionModifier)
+                .then(
+                    if (format == TvMediaCardFormat.LANDSCAPE) {
+                        Modifier.height(TvLayoutTokens.LandscapeArtworkHeight)
+                    } else {
+                        Modifier.aspectRatio(aspectRatio)
+                    },
+                ).then(interactionModifier)
                 .bringIntoViewRequester(bringIntoViewRequester)
                 .semantics(mergeDescendants = true) {
                     contentDescription = listOfNotNull(title, subtitle).joinToString(", ")
                     this.selected = selected
                 }.background(TvSurface, shape)
-                .drawBehind {
+                .drawWithContent {
+                    // Drawn above the artwork; behind it the accent bar was hidden.
+                    drawContent()
                     if (selected) {
                         drawRoundRect(
                             color = TvPurple,
@@ -450,67 +471,82 @@ internal fun TvMediaCard(
                                     .CornerRadius(2.5.dp.toPx()),
                         )
                     }
-                },
+                }.clip(shape),
     ) {
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .then(
-                        if (format == TvMediaCardFormat.LANDSCAPE) {
-                            Modifier.height(TvLayoutTokens.LandscapeArtworkHeight)
-                        } else {
-                            Modifier.aspectRatio(aspectRatio)
-                        },
-                    ).clip(shape),
-        ) {
-            TvMediaCardContent(
+        TvMediaCardContent(
+            imageUrl = shownImageUrl,
+            artworkFit = artworkFit,
+            onImageError = { imageFailed = true },
+        )
+        if (tvMediaCardShowsText(format, artworkFit, hasImage = shownImageUrl != null, focused = focused)) {
+            TvMediaCardText(
                 title = title,
-                imageUrl = imageUrl,
                 subtitle = subtitle,
-                artworkFit = artworkFit,
-                showMetadataOverlay = format == TvMediaCardFormat.CAST_PORTRAIT,
+                large = format == TvMediaCardFormat.CAST_PORTRAIT,
+                modifier = Modifier.align(Alignment.BottomStart),
             )
         }
-        if (format != TvMediaCardFormat.CAST_PORTRAIT) {
-            TvMediaCardMetadataBand(title = title, subtitle = subtitle)
-        }
+        progress?.let { TvMediaCardProgressBar(it, Modifier.align(Alignment.BottomStart)) }
+        if (watched) TvMediaCardWatchedBadge(Modifier.align(Alignment.TopEnd).padding(8.dp))
     }
 }
 
-@Composable
-private fun TvMediaCardMetadataBand(
-    title: String,
-    subtitle: String?,
-) {
-    Column(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .height(TvLayoutTokens.LandscapeMetadataBandHeight)
-                .background(Color(0xFF11121B))
-                .padding(horizontal = 12.dp, vertical = 4.dp),
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Text(
-            title,
-            color = TvText,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 15.sp,
-        )
-        subtitle?.let { Text(it, color = TvTextMuted, fontSize = 12.sp, maxLines = 1) }
-    }
-}
-
-@Composable
-private fun BoxScope.TvMediaCardContent(
-    title: String,
-    imageUrl: String?,
-    subtitle: String?,
+/**
+ * Text sits inside the artwork. Posters, and posters fitted into landscape cards, usually carry the title in the
+ * artwork, so they name it only while focused; without artwork every card names its title.
+ */
+private fun tvMediaCardShowsText(
+    format: TvMediaCardFormat,
     artworkFit: TvMediaCardArtworkFit,
-    showMetadataOverlay: Boolean,
+    hasImage: Boolean,
+    focused: Boolean,
+): Boolean =
+    when {
+        !hasImage || focused -> true
+        format == TvMediaCardFormat.CAST_PORTRAIT -> true
+        else -> format == TvMediaCardFormat.LANDSCAPE && artworkFit == TvMediaCardArtworkFit.CROP
+    }
+
+/** Check mark for watched items; decorative because the card's own semantics are not about state. */
+@Composable
+private fun TvMediaCardWatchedBadge(modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .size(26.dp)
+            .background(TvBackground.copy(alpha = 0.78f), TvShapes.Pill),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(Icons.Default.Check, contentDescription = null, tint = TvPurple, modifier = Modifier.size(18.dp))
+    }
+}
+
+/** Watch progress along the bottom edge of the artwork. */
+@Composable
+private fun TvMediaCardProgressBar(
+    progress: Float,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier
+            .fillMaxWidth()
+            .height(4.dp)
+            .background(Color.White.copy(alpha = 0.28f)),
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth(progress.coerceIn(0f, 1f))
+                .fillMaxHeight()
+                .background(TvPurple),
+        )
+    }
+}
+
+/** The card's artwork, or a placeholder gradient without one; [onImageError] reports artwork that failed to load. */
+@Composable
+private fun TvMediaCardContent(
+    imageUrl: String?,
+    artworkFit: TvMediaCardArtworkFit,
+    onImageError: () -> Unit,
 ) {
     if (imageUrl != null && artworkFit == TvMediaCardArtworkFit.CONTAIN_PORTRAIT) {
         AsyncImage(
@@ -518,6 +554,7 @@ private fun BoxScope.TvMediaCardContent(
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
+            onError = { onImageError() },
         )
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.58f)))
         AsyncImage(
@@ -532,6 +569,7 @@ private fun BoxScope.TvMediaCardContent(
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
+            onError = { onImageError() },
         )
     } else {
         Box(
@@ -542,45 +580,56 @@ private fun BoxScope.TvMediaCardContent(
                         listOf(Color(0xFF292A3D), Color(0xFF151622), Color(0xFF30234A)),
                     ),
                 ),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                Icons.Default.ImageNotSupported,
-                contentDescription = null,
-                tint = TvTextMuted,
-                modifier = Modifier.size(38.dp),
-            )
-        }
+        )
     }
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colorStops =
-                        arrayOf(
-                            0f to Color.Transparent,
-                            0.48f to Color.Transparent,
-                            0.72f to Color.Black.copy(alpha = 0.5f),
-                            1f to Color.Black.copy(alpha = 0.94f),
-                        ),
+}
+
+/** Title and subtitle at the bottom of the artwork, over a scrim that keeps them readable on bright images. */
+@Composable
+private fun TvMediaCardText(
+    title: String,
+    subtitle: String?,
+    large: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.verticalGradient(
+                        colorStops =
+                            arrayOf(
+                                0f to Color.Transparent,
+                                0.35f to Color.Black.copy(alpha = 0.55f),
+                                1f to Color.Black.copy(alpha = 0.9f),
+                            ),
+                    ),
+                ).padding(
+                    start = if (large) 14.dp else 10.dp,
+                    end = if (large) 14.dp else 10.dp,
+                    top = if (large) 28.dp else 18.dp,
+                    // Room for the progress bar, so text sits at the same height on every card in a row.
+                    bottom = if (large) 14.dp else 11.dp,
                 ),
-            ),
-    )
-    if (showMetadataOverlay) {
-        Column(
-            modifier = Modifier.align(Alignment.BottomStart).padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
+        verticalArrangement = Arrangement.spacedBy(if (large) 2.dp else 0.dp),
+    ) {
+        Text(
+            title,
+            color = TvText,
+            maxLines = if (large) 2 else 1,
+            overflow = TextOverflow.Ellipsis,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = if (large) TvTextSize.Subtitle else TvTextSize.CardTitle,
+        )
+        subtitle?.let {
             Text(
-                title,
-                color = TvText,
-                maxLines = 2,
+                it,
+                color = TvTextMuted,
+                fontSize = if (large) TvTextSize.BodySmall else TvTextSize.Caption,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 18.sp,
             )
-            subtitle?.let { Text(it, color = TvTextMuted, fontSize = 14.sp, maxLines = 1) }
         }
     }
 }
@@ -597,72 +646,6 @@ internal fun TvTrailerPreviewSurface(
         modifier = modifier,
     )
 }
-
-@Composable
-internal fun TvTrailerPreviewChrome(
-    previewSoundEnabled: Boolean,
-    previewProgress: Float,
-    modifier: Modifier = Modifier,
-    badgeEndPadding: Dp = 16.dp,
-) {
-    Box(modifier) {
-        Row(
-            Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = badgeEndPadding, bottom = 14.dp)
-                .background(TvPurpleStrong.copy(alpha = 0.86f), RoundedCornerShape(8.dp))
-                .padding(horizontal = 9.dp, vertical = 5.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Text("Trailer", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-            Icon(
-                if (previewSoundEnabled) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
-                null,
-                tint = Color.White,
-                modifier = Modifier.size(16.dp),
-            )
-        }
-        if (previewProgress > 0f) {
-            LinearProgressIndicator(
-                progress = { previewProgress.coerceIn(0f, 1f) },
-                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp),
-                color = TvPurple,
-                trackColor = Color.White.copy(alpha = 0.22f),
-            )
-        }
-    }
-}
-
-/**
- * Fades stage actions out while a trailer plays so the preview stays unobstructed.
- *
- * The actions stay composed and focusable; they reappear as soon as focus moves into them, so
- * D-pad navigation and focus restoration keep working.
- */
-@Composable
-internal fun TvTrailerAwareActions(
-    previewing: Boolean,
-    modifier: Modifier = Modifier,
-    content: @Composable () -> Unit,
-) {
-    var focused by remember { mutableStateOf(false) }
-    val reducedMotion = LocalTvFocusAppearance.current.reducedMotion
-    val alpha by animateFloatAsState(
-        targetValue = if (previewing && !focused) 0f else 1f,
-        animationSpec = if (reducedMotion) snap() else tween(TV_TRAILER_ACTIONS_FADE_MILLIS),
-        label = "trailer-aware-actions",
-    )
-    Box(
-        modifier
-            .onFocusChanged { focused = it.hasFocus }
-            .graphicsLayer { this.alpha = alpha },
-    ) {
-        content()
-    }
-}
-
-private const val TV_TRAILER_ACTIONS_FADE_MILLIS = 220
 
 @Composable
 internal fun TvLoading(
@@ -689,7 +672,7 @@ internal fun TvSectionTitle(
         title,
         modifier = modifier.padding(horizontal = 6.dp).tvHeading(),
         color = TvText,
-        fontSize = 20.sp,
+        fontSize = TvTextSize.SectionTitle,
         fontWeight = FontWeight.Bold,
     )
 }
