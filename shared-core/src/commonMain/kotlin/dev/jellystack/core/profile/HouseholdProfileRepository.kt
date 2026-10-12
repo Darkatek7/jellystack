@@ -25,6 +25,28 @@ class HouseholdProfileRepository(
 
     suspend fun binding(profileId: String): ProfileConnectionBinding? = store.getBinding(profileId)
 
+    fun observeBindings(): Flow<List<ProfileConnectionBinding>> = store.observeBindings()
+
+    /**
+     * Points the profile at [seerrConnectionId], or at no Seerr when null. Returns the previous Seerr
+     * connection when no profile uses it anymore, so the caller can delete that local record.
+     */
+    suspend fun bindSeerr(
+        profileId: String,
+        seerrConnectionId: String?,
+    ): String? =
+        mutex.withLock {
+            val binding = requireNotNull(store.getBinding(profileId))
+            val next = seerrConnectionId?.takeIf(String::isNotBlank)
+            store.upsertBinding(binding.copy(seerrConnectionId = next))
+            val previous = binding.seerrConnectionId?.takeIf { it != next } ?: return@withLock null
+            val stillUsed =
+                store.listProfiles().any { profile ->
+                    store.getBinding(profile.id)?.seerrConnectionId == previous
+                }
+            previous.takeUnless { stillUsed }
+        }
+
     suspend fun ensureLegacyDefaultProfile(): HouseholdProfile? =
         mutex.withLock {
             store.listProfiles().firstOrNull()?.let {

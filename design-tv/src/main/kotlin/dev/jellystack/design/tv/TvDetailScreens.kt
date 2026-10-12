@@ -80,6 +80,7 @@ import dev.jellystack.core.jellyfin.JellyfinHomeState
 import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.JellyfinItemDetail
 import dev.jellystack.core.jellyfin.mediaFeatures
+import dev.jellystack.core.jellyfin.withProgressOf
 import dev.jellystack.core.jellyseerr.JellyseerrCreateSelection
 import dev.jellystack.core.jellyseerr.JellyseerrMediaDetailState
 import dev.jellystack.core.jellyseerr.JellyseerrMediaType
@@ -763,6 +764,7 @@ internal fun TvJellyfinDetailScreen(
     val visibleEpisodes = activeSeason?.episodes ?: episodes
     LaunchedEffect(route.itemId, initialItem, loadRevision) {
         error = null
+        val detailWasCached = runSuspendCatching { repository.cachedItemDetail(route.itemId) != null }.getOrDefault(false)
         runSuspendCatching {
             val loaded =
                 loadTvJellyfinDetailBase(
@@ -788,6 +790,15 @@ internal fun TvJellyfinDetailScreen(
                     ),
                 )
         }.onFailure { failure -> error = tvDetailErrorMessage(failure, strings) }
+        // Cached details never expire: re-read watched state and progress, which may have changed elsewhere.
+        if (detailWasCached && item != null) {
+            runSuspendCatching {
+                repository.getItemDetail(route.itemId, forceRefresh = true)?.let { detail = it }
+                val synced = repository.cachedItem(route.itemId)
+                item =
+                    item?.let { shown -> synced?.let(shown::withProgressOf) ?: shown.copy(isPlayed = detail?.isPlayed ?: shown.isPlayed) }
+            }
+        }
     }
     val currentItem = item
     val currentDetail = detail

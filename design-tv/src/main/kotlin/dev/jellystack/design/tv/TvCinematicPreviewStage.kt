@@ -131,6 +131,7 @@ private fun TvCinematicStageText(
                 TvStageTitle(shown?.title ?: hero?.title, shown?.logoUrl)
                 val overview = if (shown != null) shown.overview else hero?.overview
                 overview?.takeIf(String::isNotBlank)?.let {
+                    // Takes only the space left, so a title that wraps to two lines shortens it, not the metadata.
                     Text(
                         it,
                         color = TvTextMuted,
@@ -138,6 +139,7 @@ private fun TvCinematicStageText(
                         lineHeight = 20.sp,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
                     )
                 }
                 (shown?.metadata ?: shown?.subtitle)?.let {
