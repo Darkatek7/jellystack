@@ -718,6 +718,58 @@ class JellyfinBrowseCoordinatorTest {
         }
 
     @Test
+    fun refreshHomeFeedsPublishesNewProgressWithoutResettingBrowsing() =
+        runTest {
+            var serverResume = listOf(favoriteJellyfinItem("episode-1"))
+            val repository =
+                FakeBrowseRepository(
+                    loadPage = { _, _, _, _, _ -> LibraryPage(listOf(favoriteJellyfinItem("library-item")), 1) },
+                    loadContinueWatching = { serverResume },
+                )
+            val coordinator =
+                JellyfinBrowseCoordinator(repository, backgroundScope, favoritesStore = FakeJellyfinFavoritesStore(), pageSize = 2)
+            val loaded = awaitState(coordinator) { !it.isInitialLoading && !it.isLibraryLoading && it.continueWatching.isNotEmpty() }
+            coordinator.selectLibrary("lib-1")
+            awaitState(coordinator) { it.selectedLibraryId == "lib-1" && !it.isLibraryLoading }
+
+            serverResume = listOf(favoriteJellyfinItem("episode-2"))
+            withContext(Dispatchers.Default) { withTimeout(15_000) { coordinator.refreshHomeFeeds()?.join() } }
+
+            val refreshed = coordinator.state.value
+            assertEquals(listOf("episode-2"), refreshed.continueWatching.map { it.id })
+            assertEquals("lib-1", refreshed.selectedLibraryId)
+            assertEquals(listOf("library-item"), refreshed.libraryItems.map { it.id })
+            assertFalse(refreshed.isHomeLoading)
+            assertEquals(loaded.libraries, refreshed.libraries)
+        }
+
+    @Test
+    fun refreshHomeFeedsKeepsRowsWhenTheServerFails() =
+        runTest {
+            var failing = false
+            val repository =
+                FakeBrowseRepository(
+                    loadContinueWatching = {
+                        if (failing) error("offline")
+                        listOf(favoriteJellyfinItem("episode-1"))
+                    },
+                )
+            val coordinator =
+                JellyfinBrowseCoordinator(repository, backgroundScope, favoritesStore = FakeJellyfinFavoritesStore(), pageSize = 2)
+            awaitState(coordinator) { !it.isInitialLoading && it.continueWatching.isNotEmpty() }
+
+            failing = true
+            withContext(Dispatchers.Default) { withTimeout(15_000) { coordinator.refreshHomeFeeds()?.join() } }
+
+            assertEquals(
+                listOf("episode-1"),
+                coordinator.state.value.continueWatching
+                    .map { it.id },
+            )
+            assertNull(coordinator.state.value.homeErrorMessage)
+        }
+
+    @Test
     fun blockedHomeFeedDoesNotDelayLibrarySelection() =
         runTest {
             val homeFeedStarted = CompletableDeferred<Unit>()
@@ -1633,6 +1685,7 @@ class JellyfinBrowseCoordinatorTest {
         private val loadLibraries: suspend () -> List<JellyfinLibrary> = { libraries },
         private val refreshLibraryCatalog: suspend () -> List<JellyfinLibrary> = { libraries },
         private val loadCachedContinueWatching: suspend (Int) -> List<JellyfinItem> = { emptyList() },
+        private val loadContinueWatching: suspend (Int) -> List<JellyfinItem> = { emptyList() },
     ) : JellyfinBrowseRepositoryApi {
         override suspend fun refreshLibraries(): List<JellyfinLibrary> = refreshLibraryCatalog()
 
@@ -1682,7 +1735,7 @@ class JellyfinBrowseCoordinatorTest {
             refresh: Boolean,
         ): LibraryPage = loadPage(parentId, page, pageSize, refresh, null)
 
-        override suspend fun refreshContinueWatching(limit: Int): List<JellyfinItem> = emptyList()
+        override suspend fun refreshContinueWatching(limit: Int): List<JellyfinItem> = loadContinueWatching(limit)
 
         override suspend fun refreshNextUp(
             limit: Int,

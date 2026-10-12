@@ -35,9 +35,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
@@ -70,8 +72,12 @@ internal fun TvProfilePickerScreen(
             selectInitialTvProfileId(profiles, rememberedProfileId)
         }
     val initialFocusRequester = remember(initialProfileId) { FocusRequester() }
-    LaunchedEffect(initialProfileId) {
-        if (initialProfileId != null) {
+    val windowFocused = LocalWindowInfo.current.isWindowFocused
+    var tilesHaveFocus by remember { mutableStateOf(false) }
+    // Shown while the app returns to the foreground, the window regaining focus moves focus to its own
+    // default, so the picker puts it back on a profile once the window is focused.
+    LaunchedEffect(initialProfileId, windowFocused) {
+        if (initialProfileId != null && !tilesHaveFocus) {
             withFrameNanos { }
             initialFocusRequester.requestFocus()
         }
@@ -97,7 +103,11 @@ internal fun TvProfilePickerScreen(
         )
         LazyVerticalGrid(
             columns = GridCells.Adaptive(PROFILE_TILE_WIDTH),
-            modifier = Modifier.fillMaxWidth(0.9f).heightIn(max = 230.dp),
+            modifier =
+                Modifier
+                    .fillMaxWidth(0.9f)
+                    .heightIn(max = 230.dp)
+                    .onFocusChanged { tilesHaveFocus = it.hasFocus },
             horizontalArrangement = Arrangement.spacedBy(22.dp, Alignment.CenterHorizontally),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {

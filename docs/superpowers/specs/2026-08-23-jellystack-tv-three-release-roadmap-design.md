@@ -25,7 +25,7 @@ Exit criteria: no reproducible crash, silent playback, top-level Back loop, or f
 ## Release 2 — Household profiles and My List
 
 - Introduce real Jellyfin-user profiles. Each profile has its own Jellyfin credentials, libraries, progress, favorites, permissions, optional Seerr identity, preferences, and My List.
-- When multiple profiles exist, show the picker on cold launch. Background resume retains the active profile. Add a focusable avatar above—not inside—the five navigation destinations.
+- When multiple profiles exist, show the picker on cold launch and when the app returns after more than one minute in the background. Shorter trips retain the active profile. Add a focusable avatar above—not inside—the five navigation destinations.
 - Support adding profiles with existing password or Quick Connect flows, including multiple users on the same Jellyfin URL.
 - Add optional four-digit profile PINs. Store only a versioned salted verifier in secure storage; after five failures apply a 30-second lockout. Recovery requires Jellyfin reauthentication.
 - Switch profiles atomically: unlock target → stop playback, trailers, and SyncPlay → cancel the previous state generation → activate target → clear navigation/focus/detail state → bootstrap target caches → refresh. Never expose previous-profile content during the transition.

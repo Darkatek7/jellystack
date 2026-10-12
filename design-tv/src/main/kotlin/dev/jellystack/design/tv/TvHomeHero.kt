@@ -236,6 +236,7 @@ private fun TvHeroText(
             logoUrl = tvJellyfinLogoUrl(model.imageBaseUrl, model.imageAccessToken, item),
         )
         item.overview?.takeIf(String::isNotBlank)?.let { overview ->
+            // Takes only the space left, so a title that wraps to two lines shortens it, not the metadata.
             Text(
                 overview,
                 color = TvTextMuted,
@@ -243,6 +244,7 @@ private fun TvHeroText(
                 lineHeight = 20.sp,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
             )
         }
         item.tvStageMetadata()?.let { Text(it, color = TvTextMuted, fontSize = 15.sp) }

@@ -78,6 +78,30 @@ class HouseholdProfileRepositoryTest {
         }
 
     @Test
+    fun bindSeerrReturnsThePreviousConnectionOnlyWhenNoProfileUsesItAnymore() =
+        runTest {
+            val store = InMemoryProfileStore()
+            var nextId = 0
+            val repository =
+                HouseholdProfileRepository(
+                    store = store,
+                    activeServerPreferences = ActiveServerPreferenceRepository(InMemorySettings()),
+                    idGenerator = { "profile-${nextId++}" },
+                )
+            val first = repository.createProfile("First", "jellyfin-a", seerrConnectionId = "seerr-shared")
+            val second = repository.createProfile("Second", "jellyfin-b", seerrConnectionId = "seerr-shared")
+
+            assertNull(repository.bindSeerr(first.id, "seerr-first"))
+            assertEquals("seerr-first", store.getBinding(first.id)?.seerrConnectionId)
+
+            assertEquals("seerr-shared", repository.bindSeerr(second.id, null))
+            assertNull(store.getBinding(second.id)?.seerrConnectionId)
+            assertEquals("jellyfin-b", store.getBinding(second.id)?.jellyfinConnectionId)
+
+            assertNull(repository.bindSeerr(first.id, "seerr-first"))
+        }
+
+    @Test
     fun legacyRepairReplacesOnlyUntouchedDefaultIdentity() =
         runTest {
             val store = InMemoryProfileStore()

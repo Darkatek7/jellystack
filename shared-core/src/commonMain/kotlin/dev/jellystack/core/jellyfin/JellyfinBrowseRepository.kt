@@ -759,8 +759,9 @@ class JellyfinBrowseRepository(
                 updatedAt = now,
             ),
         )
-        // Sync base item metadata with latest detail overview.
+        // Sync base item metadata and the user's progress with the latest detail.
         itemStore.get(itemId)?.takeIf { it.serverId == environment.serverKey }?.let { existing ->
+            val userData = dto.userData
             itemStore.upsert(
                 listOf(
                     existing.copy(
@@ -769,6 +770,10 @@ class JellyfinBrowseRepository(
                         runTimeTicks = dto.runTimeTicks ?: existing.runTimeTicks,
                         communityRating = dto.communityRating ?: existing.communityRating,
                         officialRating = dto.officialRating ?: existing.officialRating,
+                        positionTicks = if (userData != null) userData.playbackPositionTicks else existing.positionTicks,
+                        playedPercentage = if (userData != null) userData.playedPercentage else existing.playedPercentage,
+                        lastPlayed = userData?.lastPlayedDate ?: existing.lastPlayed,
+                        played = userData?.played ?: existing.played,
                         updatedAt = now,
                     ),
                 ),

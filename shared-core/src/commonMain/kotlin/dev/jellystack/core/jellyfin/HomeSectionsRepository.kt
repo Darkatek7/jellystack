@@ -71,9 +71,14 @@ class HomeSectionsRepository(
         mutableState.value = HomeSectionsState.Unavailable
     }
 
+    /**
+     * Loads the server's home sections. A [silent] refresh keeps the shown sections while it loads and
+     * whenever a section or the whole request fails, so watched state can be refreshed without flicker.
+     */
     suspend fun refresh(
         enabledByUser: Boolean,
         language: String?,
+        silent: Boolean = false,
     ) {
         generation += 1L
         val refreshGeneration = generation
@@ -91,7 +96,8 @@ class HomeSectionsRepository(
             if (isCurrent()) mutableState.value = HomeSectionsState.Unavailable
             return
         }
-        if (isCurrent(environment)) mutableState.value = HomeSectionsState.Loading
+        val previous = (mutableState.value as? HomeSectionsState.Ready)?.takeIf { silent }
+        if (isCurrent(environment) && previous == null) mutableState.value = HomeSectionsState.Loading
         try {
             val api = apiFactory(environment)
             val meta = api.meta()
@@ -108,8 +114,9 @@ class HomeSectionsRepository(
                         .sortedBy(HomeSectionInfoDto::orderIndex)
                         .map { descriptor ->
                             async {
+                                val type = descriptor.section?.takeIf(String::isNotBlank) ?: return@async null
+                                val id = "$type:${descriptor.additionalData.orEmpty()}"
                                 runCatching {
-                                    val type = descriptor.section?.takeIf(String::isNotBlank) ?: return@runCatching null
                                     val items =
                                         api
                                             .sectionItems(type, environment.userId, descriptor.additionalData, language)
@@ -118,14 +125,14 @@ class HomeSectionsRepository(
                                             .mapNotNull { it.toDomain(environment.baseUrl) }
                                             .distinctBy(HomeSectionItem::id)
                                     HomeSection(
-                                        id = "$type:${descriptor.additionalData.orEmpty()}",
+                                        id = id,
                                         title = descriptor.displayText?.takeIf(String::isNotBlank) ?: type,
                                         viewMode = descriptor.viewMode.toViewMode(),
                                         displayTitle = descriptor.displayTitleText,
                                         showDetailsMenu = descriptor.showDetailsMenu,
                                         items = items,
                                     )
-                                }.getOrNull()
+                                }.getOrNull() ?: previous?.sections?.firstOrNull { it.id == id }
                             }
                         }.awaitAll()
                         .filterNotNull()
@@ -133,7 +140,7 @@ class HomeSectionsRepository(
                 }
             if (!isCurrent(environment)) return
             if (sections.isEmpty()) {
-                mutableState.value = HomeSectionsState.Unavailable
+                mutableState.value = previous ?: HomeSectionsState.Unavailable
             } else {
                 mutableState.value =
                     HomeSectionsState.Ready(
@@ -145,7 +152,7 @@ class HomeSectionsRepository(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Throwable) {
-            if (isCurrent(environment)) mutableState.value = HomeSectionsState.Unavailable
+            if (isCurrent(environment)) mutableState.value = previous ?: HomeSectionsState.Unavailable
         }
     }
 

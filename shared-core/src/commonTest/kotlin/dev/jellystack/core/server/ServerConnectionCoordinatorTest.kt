@@ -52,6 +52,28 @@ class ServerConnectionCoordinatorTest {
         }
 
     @Test
+    fun connectingAnAlreadyStoredSeerrAccountRefreshesThatRecord() =
+        runTest {
+            val repository = repository()
+            val coordinator = ServerConnectionCoordinator(repository, RecordingAuthenticator())
+            coordinator.connectJellyfin(
+                JellyfinConnectionInput(
+                    name = "Media",
+                    baseUrl = "https://media.example",
+                    username = "dummy-linked-user",
+                    password = "dummy-linked-password",
+                ),
+            )
+            val input = SeerrServerInput(name = "Requests", baseUrl = "https://requests.example")
+            val first = assertIs<SeerrConnectionResult.Connected>(coordinator.connectSeerrAutomatically(input))
+
+            val second = assertIs<SeerrConnectionResult.Connected>(coordinator.connectSeerrAutomatically(input))
+
+            assertEquals(first.server.id, second.server.id)
+            assertEquals(1, repository.currentServers().count { it.type == ServerType.JELLYSEERR })
+        }
+
+    @Test
     fun automaticSeerrConnectionUsesQuickConnectForStoredPasswordlessJellyfinCredentials() =
         runTest {
             val authenticator = RecordingAuthenticator()
