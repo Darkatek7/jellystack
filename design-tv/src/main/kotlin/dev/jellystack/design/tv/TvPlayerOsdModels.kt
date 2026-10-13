@@ -32,25 +32,83 @@ internal fun PlaybackState.Active.toTvPlayerOsdModel(
         markers = playbackTimelineMarkers(durationMs, chapters, timelineSegments),
         chapters = chapters,
         audioLabel = tvAudioButtonLabel(audioTrack, strings.locale) ?: strings.automatic,
+        audioCompactLabel = tvAudioButtonLabel(audioTrack, strings.locale, withChannels = false),
         subtitleLabel = subtitleTrack?.let { tvSubtitleButtonLabel(it, strings.locale) } ?: strings.off,
         promptActions = promptActions,
     )
 }
 
-/** "English 5.1"-style label: the language name in the app's [locale] and the channel layout when known. */
+/**
+ * "English 5.1"-style label: the language name in the app's [locale] and, [withChannels], the channel layout when
+ * known.
+ */
 internal fun tvAudioButtonLabel(
     track: AudioTrack?,
     locale: Locale,
+    withChannels: Boolean = true,
 ): String? {
     track ?: return null
     val language = tvLanguageName(track.language, locale) ?: track.title?.takeIf(String::isNotBlank)
-    return listOfNotNull(language, jellyfinChannelLayout(track.channels)?.label()).joinToString(" ").ifBlank { null }
+    val channels = jellyfinChannelLayout(track.channels)?.label()?.takeIf { withChannels }
+    return listOfNotNull(language, channels).joinToString(" ").ifBlank { null }
 }
 
 internal fun tvSubtitleButtonLabel(
     track: SubtitleTrack,
     locale: Locale,
 ): String = tvLanguageName(track.language, locale) ?: track.title?.takeIf(String::isNotBlank) ?: track.format.name
+
+/** Title and detail line of a track in the audio or subtitle list. */
+internal data class TvTrackRowText(
+    val title: String,
+    val detail: String?,
+)
+
+/**
+ * Audio list rows titled like the player chip ("German 5.1"), with codec and default flag as detail. When a title
+ * repeats, the server's track title joins the detail, so commentary and main audio stay apart.
+ */
+internal fun tvAudioTrackRows(
+    tracks: List<AudioTrack>,
+    strings: TvStrings,
+): List<TvTrackRowText> {
+    val titles =
+        tracks.mapIndexed { index, track ->
+            tvAudioButtonLabel(track, strings.locale) ?: strings.audioTrack.format(track.streamIndex ?: (index + 1))
+        }
+    return tracks.mapIndexed { index, track ->
+        val flags = listOfNotNull(track.codec?.uppercase(), strings.player.defaultTrack.takeIf { track.isDefault })
+        val title = titles[index]
+        TvTrackRowText(title, tvTrackDetail(flags, track.title, repeated = titles.count { it == title } > 1))
+    }
+}
+
+/** Subtitle list rows titled like the player chip, with forced and default flags and the format as detail. */
+internal fun tvSubtitleTrackRows(
+    tracks: List<SubtitleTrack>,
+    strings: TvStrings,
+): List<TvTrackRowText> {
+    val titles = tracks.map { tvSubtitleButtonLabel(it, strings.locale) }
+    return tracks.mapIndexed { index, track ->
+        val flags =
+            listOfNotNull(
+                strings.player.forcedTrack.takeIf { track.isForced },
+                strings.player.defaultTrack.takeIf { track.isDefault },
+                track.format.name,
+            )
+        val title = titles[index]
+        TvTrackRowText(title, tvTrackDetail(flags, track.title, repeated = titles.count { it == title } > 1))
+    }
+}
+
+private fun tvTrackDetail(
+    flags: List<String>,
+    serverTitle: String?,
+    repeated: Boolean,
+): String? {
+    val title = serverTitle?.takeIf { repeated && it.isNotBlank() }
+    return (flags + listOfNotNull(title)).joinToString(" · ").ifBlank { null }
+}
 
 private fun tvLanguageName(
     code: String?,

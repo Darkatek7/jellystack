@@ -1032,6 +1032,13 @@ private fun TvAuthenticatedApp(
                 requestSyncSeek = syncPlay::requestSeek,
                 requestLocalSeek = playbackController::seekTo,
                 requestSyncNext = syncPlay::requestNext,
+                pauseCommands =
+                    TvPlaybackPauseCommands(
+                        requestSyncPause = syncPlay::requestPause,
+                        requestSyncUnpause = syncPlay::requestUnpause,
+                        pauseLocal = playbackController::pause,
+                        resumeLocal = playbackController::resume,
+                    ),
             )
         }
     val playbackCoordinators =
@@ -1560,6 +1567,7 @@ private fun TvAuthenticatedApp(
                                             imageBaseUrl = homeState.imageBaseUrl,
                                             imageAccessToken = homeState.imageAccessToken,
                                             onSeekTo = playbackCommandRouter::seekTo,
+                                            onSetPaused = playbackCommandRouter::setPaused,
                                             loadEpisodes = browseRepository::latestEpisodesForSeries,
                                             onPlayEpisode = playbackLauncher::play,
                                             onSkipSegment = segmentCoordinator::skip,
@@ -1568,6 +1576,8 @@ private fun TvAuthenticatedApp(
                                             strings = strings,
                                             stopPlayback = stopPlayback,
                                             onClose = {
+                                                // Closing the player leaves a SyncPlay group, as on the phone.
+                                                if (syncPlay.state.value.currentGroup != null) syncPlay.leaveGroup()
                                                 stopPlayback()
                                                 appStateHolder.popRoute()
                                             },

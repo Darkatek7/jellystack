@@ -68,7 +68,10 @@ internal data class TvPlayerMediaRowModel(
 internal data class TvPlayerMediaList(
     val title: String,
     val rows: List<TvPlayerMediaRowModel>,
-)
+) {
+    /** Rows keep their image column when any row has an image or a progress bar, which sits in that column. */
+    val showsImages: Boolean get() = rows.any { it.imageUrl != null || it.progress != null }
+}
 
 /** Chapters with their start time; the chapter at [positionMs] is marked current. */
 internal fun tvChapterRows(
@@ -141,6 +144,7 @@ internal fun TvPlayerMediaListPanel(
             itemsIndexed(list.rows, key = { _, row -> row.key }) { index, row ->
                 TvPlayerMediaRow(
                     row = row,
+                    showImage = list.showsImages,
                     onClick = { onSelect(row.key) },
                     modifier = if (index == focusIndex) Modifier.focusRequester(focusRequester) else Modifier,
                 )
@@ -152,6 +156,7 @@ internal fun TvPlayerMediaListPanel(
 @Composable
 private fun TvPlayerMediaRow(
     row: TvPlayerMediaRowModel,
+    showImage: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -178,7 +183,7 @@ private fun TvPlayerMediaRow(
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        TvPlayerMediaRowImage(row)
+        if (showImage) TvPlayerMediaRowImage(row)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(
                 row.title,

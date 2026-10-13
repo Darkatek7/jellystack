@@ -18,19 +18,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Bookmarks
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.QueryStats
+import androidx.compose.material.icons.filled.RadioButtonChecked
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.runtime.Composable
@@ -161,16 +161,15 @@ internal fun TvPlayerSelectionRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // A radio mark leads every row; a selection list has nothing to open, so the chevron column stays empty.
     TvPlayerOptionRow(
-        icon = if (selected) Icons.Default.Check else Icons.Default.ChevronRight,
+        icon = if (selected) Icons.Default.RadioButtonChecked else Icons.Default.RadioButtonUnchecked,
         title = title,
         summary = metadata,
         selected = selected,
         onClick = onClick,
         modifier = modifier,
-        trailing = {
-            if (selected) Icon(Icons.Default.Check, contentDescription = null, tint = TvPurple, modifier = Modifier.size(27.dp))
-        },
+        trailing = {},
     )
 }
 
@@ -328,6 +327,7 @@ internal fun TvPlayerOptionsPanel(
                             )
                         }
                     }
+                    val audioRows = tvAudioTrackRows(state.stream.audioTracks, strings)
                     itemsIndexed(state.stream.audioTracks, key = { _, track -> track.id }) { index, track ->
                         val selectedIndex =
                             state.stream.audioTracks
@@ -335,8 +335,8 @@ internal fun TvPlayerOptionsPanel(
                                 .takeIf { it >= 0 } ?: 0
                         val selected = index == selectedIndex
                         TvPlayerSelectionRow(
-                            title = track.title ?: track.language ?: strings.audioTrack.format(track.streamIndex),
-                            metadata = listOfNotNull(track.language, track.codec).distinct().joinToString(" · ").ifBlank { null },
+                            title = audioRows[index].title,
+                            metadata = audioRows[index].detail,
                             selected = selected,
                             onClick = { onAudioSelected(track.id) },
                             modifier = if (index == 0) Modifier.focusRequester(firstFocus) else Modifier,
@@ -354,10 +354,11 @@ internal fun TvPlayerOptionsPanel(
                             Modifier.focusRequester(firstFocus),
                         )
                     }
-                    items(state.stream.subtitleTracks, key = { it.id }) { track ->
+                    val subtitleRows = tvSubtitleTrackRows(state.stream.subtitleTracks, strings)
+                    itemsIndexed(state.stream.subtitleTracks, key = { _, track -> track.id }) { index, track ->
                         TvPlayerSelectionRow(
-                            title = track.title ?: track.language ?: strings.subtitleTrack.format(track.streamIndex),
-                            metadata = listOfNotNull(track.language, track.format.name).distinct().joinToString(" · "),
+                            title = subtitleRows[index].title,
+                            metadata = subtitleRows[index].detail,
                             selected = state.subtitleTrack?.id == track.id,
                             onClick = { onSubtitleSelected(track.id) },
                         )
@@ -563,14 +564,13 @@ internal fun TvStatsForNerdsOverlay(
 }
 
 private fun PlaybackState.Active.audioSummary(strings: TvStrings): String =
-    audioTrack
-        ?.let { listOfNotNull(it.title, it.language, it.codec).distinct().joinToString(" · ") }
-        ?.takeIf(String::isNotBlank) ?: strings.automatic
+    tvAudioButtonLabel(audioTrack, strings.locale) ?: strings.automatic
 
 private fun PlaybackState.Active.subtitleSummary(strings: TvStrings): String =
-    subtitleTrack
-        ?.let { listOfNotNull(it.title, it.language, it.format.name).distinct().joinToString(" · ") }
-        ?.takeIf(String::isNotBlank) ?: strings.off
+    subtitleTrack?.let { track ->
+        listOfNotNull(tvSubtitleButtonLabel(track, strings.locale), strings.player.forcedTrack.takeIf { track.isForced })
+            .joinToString(" · ")
+    } ?: strings.off
 
 private fun PlaybackState.Active.qualitySummary(strings: TvStrings): String =
     qualityOptions.firstOrNull { it.id == selectedQualityId }?.label?.takeIf(String::isNotBlank) ?: strings.automatic

@@ -75,6 +75,8 @@ internal data class TvPlayerOsdModel(
     val chapters: List<PlaybackChapter> = emptyList(),
     val audioLabel: String,
     val subtitleLabel: String,
+    /** The audio label without the channel layout, for a chip too narrow for [audioLabel]. */
+    val audioCompactLabel: String? = null,
     val seekBackSeconds: Int = 10,
     val seekForwardSeconds: Int = 30,
     val canShowEpisodes: Boolean = false,
@@ -128,17 +130,7 @@ internal fun TvPlayerControls(
         )
         TvPlayerTimeline(model, actions, strings, interaction, Modifier.testTag(TV_PLAYBACK_TIMELINE_TAG))
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                // Weighted, so the usually short subtitle label is measured first and the audio label yields space.
-                TvPlayerTextButton(
-                    Icons.AutoMirrored.Filled.VolumeUp,
-                    model.audioLabel,
-                    strings.audio,
-                    actions.onAudio,
-                    Modifier.weight(1f, fill = false),
-                )
-                TvPlayerTextButton(Icons.Default.Subtitles, model.subtitleLabel, strings.subtitles, actions.onSubtitles)
-            }
+            TvPlayerTrackChips(model, actions, strings, Modifier.weight(1f))
             Row(
                 Modifier.padding(horizontal = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(18.dp),
@@ -185,6 +177,32 @@ internal fun TvPlayerControls(
                 TvPlayerIconButton(Icons.Default.MoreVert, strings.more, actions.onMore)
             }
         }
+    }
+}
+
+/** Audio and subtitle chips on the left of the control row. */
+@Composable
+private fun TvPlayerTrackChips(
+    model: TvPlayerOsdModel,
+    actions: TvPlayerOsdActions,
+    strings: TvStrings,
+    modifier: Modifier = Modifier,
+) {
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        // Weighted, so the usually short subtitle label is measured first and the audio label yields space.
+        TvPlayerTextButton(
+            Icons.AutoMirrored.Filled.VolumeUp,
+            TvPlayerChipLabel(model.audioLabel, compact = model.audioCompactLabel),
+            strings.audio,
+            actions.onAudio,
+            Modifier.weight(1f, fill = false),
+        )
+        TvPlayerTextButton(
+            Icons.Default.Subtitles,
+            TvPlayerChipLabel(model.subtitleLabel),
+            strings.subtitles,
+            actions.onSubtitles,
+        )
     }
 }
 
@@ -288,17 +306,27 @@ internal fun TvPlayerTimelineBody(
     }
 }
 
-/** Pill button with an icon and a short value such as "English 5.1"; [description] names the control. */
+/** A chip value such as "English 5.1", and a shorter form ("English") for a chip too narrow for it. */
+internal data class TvPlayerChipLabel(
+    val full: String,
+    val compact: String? = null,
+)
+
+/**
+ * Pill button with an icon and a short value; [description] names the control. A value that does not fit switches
+ * to its compact form before it ellipsizes.
+ */
 @Composable
 internal fun TvPlayerTextButton(
     icon: ImageVector,
-    label: String,
+    label: TvPlayerChipLabel,
     description: String?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val shape = TvShapes.Pill
     var focused by remember { mutableStateOf(false) }
+    var compact by remember(label) { mutableStateOf(false) }
     Row(
         modifier
             .height(52.dp)
@@ -311,7 +339,7 @@ internal fun TvPlayerTextButton(
             .onFocusChanged { focused = it.isFocused }
             .semantics(mergeDescendants = true) {
                 role = Role.Button
-                contentDescription = listOfNotNull(description, label).joinToString(": ")
+                contentDescription = listOfNotNull(description, label.full).joinToString(": ")
             }.clickable(onClick = onClick)
             .focusable()
             .padding(horizontal = 14.dp),
@@ -320,12 +348,13 @@ internal fun TvPlayerTextButton(
     ) {
         Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
         Text(
-            label,
+            label.compact?.takeIf { compact } ?: label.full,
             color = Color.White,
             fontSize = TvTextSize.Body,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+            onTextLayout = { layout -> if (layout.hasVisualOverflow && label.compact != null) compact = true },
             modifier = Modifier.widthIn(max = TV_PLAYER_LABEL_MAX_WIDTH_DP.dp),
         )
     }
@@ -360,4 +389,4 @@ internal fun tvSeekForwardIcon(seconds: Int): ImageVector =
     }
 
 /** Track labels ellipsize instead of pushing into the transport buttons at large font scales. */
-private const val TV_PLAYER_LABEL_MAX_WIDTH_DP = 140
+private const val TV_PLAYER_LABEL_MAX_WIDTH_DP = 200

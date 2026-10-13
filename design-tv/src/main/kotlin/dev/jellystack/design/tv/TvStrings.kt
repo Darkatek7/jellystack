@@ -32,6 +32,8 @@ internal data class TvPlayerStrings(
     val chapterNumber: String,
     val upNext: String,
     val watchCredits: String,
+    val forcedTrack: String,
+    val defaultTrack: String,
 )
 
 /** Labels of the settings screens. */
@@ -543,6 +545,8 @@ internal data class TvStrings(
                         chapterNumber = "Chapter %d",
                         upNext = "Up next",
                         watchCredits = "Watch credits",
+                        forcedTrack = "Forced",
+                        defaultTrack = "Default",
                     ),
                 seasonNumber = "Season %d",
                 specials = "Specials",
@@ -838,6 +842,8 @@ internal data class TvStrings(
                         chapterNumber = "Kapitel %d",
                         upNext = "Als Nächstes",
                         watchCredits = "Abspann ansehen",
+                        forcedTrack = "Erzwungen",
+                        defaultTrack = "Standard",
                     ),
                 seasonNumber = "Staffel %d",
                 specials = "Spezialfolgen",

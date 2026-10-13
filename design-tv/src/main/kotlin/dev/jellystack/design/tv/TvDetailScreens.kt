@@ -853,8 +853,8 @@ internal fun TvJellyfinDetailScreen(
             badges = currentDetail.mediaFeatures().badgeLabels(strings),
             subtitle =
                 if (currentItem.type.equals("Episode", true)) {
-                    "${currentItem.seriesName.orEmpty()}  •  " +
-                        "S${currentItem.parentIndexNumber ?: 0} E${currentItem.indexNumber ?: 0}"
+                    currentItem.seriesName.orEmpty() + TV_CARD_SEPARATOR +
+                        tvEpisodeCode(currentItem.parentIndexNumber, currentItem.indexNumber)
                 } else {
                     currentDetail.genres.take(4).joinToString("  •  ")
                 },
@@ -949,9 +949,12 @@ internal fun LazyListScope.tvJellyfinDetailSections(
         when (section) {
             is TvDetailSection.Facts ->
                 item(section.id) {
-                    Row(Modifier.padding(start = 108.dp, end = 48.dp), horizontalArrangement = Arrangement.spacedBy(22.dp)) {
-                        section.values.forEach { Text(it, color = TvTextMuted, fontSize = 18.sp) }
-                    }
+                    Text(
+                        section.values.joinToString(TV_CARD_SEPARATOR),
+                        modifier = Modifier.padding(start = 108.dp, end = 48.dp),
+                        color = TvTextMuted,
+                        fontSize = 18.sp,
+                    )
                 }
             is TvDetailSection.Overview ->
                 item(section.id) {

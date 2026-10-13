@@ -1594,7 +1594,7 @@ internal fun JellyseerrSearchItem.toTvRoute(): TvRoute.SeerrDetail =
 internal fun JellyfinItem.subtitleText(): String? =
     listOfNotNull(
         productionYear?.toString(),
-        if (type.equals("Episode", true)) "S${parentIndexNumber ?: 0} E${indexNumber ?: 0}" else null,
+        if (type.equals("Episode", true)) tvEpisodeCode(parentIndexNumber, indexNumber) else null,
         tvRatingLabel(communityRating),
     ).joinToString("  •  ").ifBlank { null }
 
