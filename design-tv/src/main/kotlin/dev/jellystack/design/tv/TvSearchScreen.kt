@@ -408,7 +408,7 @@ private fun TvSearchHeader(
                     },
         )
         TvSearchSourceChips(searchState, strings, sourceFocusRequester, actions)
-        searchState.voiceError?.let { message -> TvStatusAnchor("${strings.requestFailed}: $message") }
+        searchState.voiceError?.let { failure -> TvStatusAnchor(strings.messages.voiceSearchError(failure)) }
     }
 }
 

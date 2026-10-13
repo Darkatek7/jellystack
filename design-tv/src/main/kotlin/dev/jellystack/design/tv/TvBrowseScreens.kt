@@ -1458,15 +1458,15 @@ internal fun TvDiscoverScreen(
                             key = { _, request -> request.id },
                             contentType = { _, _ -> "media-card" },
                         ) { index, request ->
-                            val item = request.toSearchItem()
+                            val item = request.toSearchItem(strings.messages::untitledRequest)
                             val targetId = tvDiscoverItemTargetId("requests", request.id.toString())
                             TvMediaCard(
-                                title = request.title ?: request.originalTitle ?: "Request ${request.id}",
+                                title = request.title ?: request.originalTitle ?: strings.messages.untitledRequest(request.id),
                                 subtitle =
                                     listOfNotNull(
                                         request.requestStatus.label(strings),
                                         request.availability.standard.label(strings),
-                                    ).joinToString(" - "),
+                                    ).joinToString("  •  "),
                                 imageUrl = tmdbImageUrl(request.backdropPath ?: request.posterPath, request.backdropPath != null),
                                 artworkFit =
                                     if (request.backdropPath == null && request.posterPath != null) {
@@ -1592,12 +1592,12 @@ internal fun JellyfinItem.subtitleText(): String? =
         tvRatingLabel(communityRating),
     ).joinToString("  •  ").ifBlank { null }
 
-internal fun JellyseerrRequestSummary.toSearchItem(): JellyseerrSearchItem? {
+internal fun JellyseerrRequestSummary.toSearchItem(untitled: (Int) -> String = { "" }): JellyseerrSearchItem? {
     val id = tmdbId ?: return null
     return JellyseerrSearchItem(
         tmdbId = id,
         mediaType = mediaType,
-        title = title ?: originalTitle ?: "Request $id",
+        title = title ?: originalTitle ?: untitled(id),
         overview = null,
         releaseYear = null,
         posterPath = posterPath,

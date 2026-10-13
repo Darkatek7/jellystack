@@ -53,6 +53,50 @@ internal data class TvSettingsStrings(
     }
 }
 
+/**
+ * Exit dialog, voice search, PIN pad, and countdown copy. The count helpers use the singular for exactly one, and
+ * [locale] is the language of these strings for names the platform localizes (track languages).
+ */
+internal data class TvMessageStrings(
+    val locale: Locale,
+    val exitAppTitle: String,
+    val exitAppMessage: String,
+    val exitApp: String,
+    private val voiceSearchUnavailable: String,
+    private val voiceSearchNoSpeech: String,
+    private val voiceSearchFailed: String,
+    private val pinDigitsEnteredFormat: String,
+    private val attemptRemainingFormat: String,
+    private val attemptsRemainingFormat: String,
+    private val playingInOneSecondFormat: String,
+    private val playingInSecondsFormat: String,
+    private val untitledRequestFormat: String,
+) {
+    fun voiceSearchError(failure: TvVoiceSearchFailure): String =
+        when (failure) {
+            TvVoiceSearchFailure.RECOGNIZER_UNAVAILABLE -> voiceSearchUnavailable
+            TvVoiceSearchFailure.NO_SPEECH -> voiceSearchNoSpeech
+            TvVoiceSearchFailure.FAILED -> voiceSearchFailed
+        }
+
+    fun pinDigitsEntered(
+        entered: Int,
+        total: Int,
+    ): String = pinDigitsEnteredFormat.format(entered, total)
+
+    fun pinAttemptsRemaining(count: Int): String {
+        val format = if (count == 1) attemptRemainingFormat else attemptsRemainingFormat
+        return format.format(count)
+    }
+
+    fun playingIn(seconds: Int): String {
+        val format = if (seconds == 1) playingInOneSecondFormat else playingInSecondsFormat
+        return format.format(seconds)
+    }
+
+    fun untitledRequest(id: Int): String = untitledRequestFormat.format(id)
+}
+
 internal data class TvStrings(
     val home: String,
     val library: String,
@@ -154,7 +198,6 @@ internal data class TvStrings(
     val seerrAccount: String,
     val email: String,
     val nextEpisode: String,
-    val playingInSeconds: String,
     val playNow: String,
     val audio: String,
     val subtitles: String,
@@ -269,7 +312,6 @@ internal data class TvStrings(
     val confirmProfilePin: String,
     val removeProfilePin: String,
     val pinMismatch: String,
-    val pinAttemptsRemaining: String,
     val allTitles: String,
     val sort: String,
     val filters: String,
@@ -289,21 +331,15 @@ internal data class TvStrings(
     val genre: String,
     val mediaType: String,
     val applyLabel: String,
+    val messages: TvMessageStrings,
     val metadata: TvMetadataStrings,
     val settingsLabels: TvSettingsStrings,
     private val itemSingular: String,
     private val itemPlural: String,
 ) {
-    val exitAppTitle: String
-        get() = if (cancel == "Abbrechen") "Jellystack beenden?" else "Exit Jellystack?"
-    val exitAppMessage: String
-        get() = if (cancel == "Abbrechen") "Möchtest du die App schließen?" else "Do you want to close the app?"
-    val exitApp: String
-        get() = if (cancel == "Abbrechen") "Beenden" else "Exit"
-
     /** Locale of these strings, for names the platform localizes (track languages); the system locale may differ. */
     val locale: Locale
-        get() = if (cancel == "Abbrechen") Locale.GERMAN else Locale.ENGLISH
+        get() = messages.locale
 
     fun itemCount(count: Long): String = "$count ${if (count == 1L) itemSingular else itemPlural}"
 
@@ -364,7 +400,7 @@ internal data class TvStrings(
                 resume = "Resume behavior",
                 playbackSpeed = "Playback speed",
                 statsForNerds = "Stats for Nerds",
-                homeSections = "Server Home Sections",
+                homeSections = "Server home sections",
                 connections = "Server connections",
                 back = "Back",
                 close = "Close",
@@ -400,7 +436,7 @@ internal data class TvStrings(
                 requestProfile = "Request profile",
                 serverDefault = "Server default",
                 sendRequest = "Send request",
-                requesting = "Requesting...",
+                requesting = "Requesting…",
                 noOverview = "No overview available.",
                 language = "Language",
                 subtitleMode = "Subtitle mode",
@@ -419,7 +455,6 @@ internal data class TvStrings(
                 seerrAccount = "Seerr account",
                 email = "Email",
                 nextEpisode = "Next episode",
-                playingInSeconds = "Playing in %d seconds",
                 playNow = "Play now",
                 audio = "Audio",
                 subtitles = "Subtitles",
@@ -552,7 +587,6 @@ internal data class TvStrings(
                 confirmProfilePin = "Confirm the new PIN",
                 removeProfilePin = "Remove PIN",
                 pinMismatch = "PINs did not match. Try again.",
-                pinAttemptsRemaining = "%d attempts remaining",
                 allTitles = "All titles",
                 sort = "Sort",
                 filters = "Filters",
@@ -561,7 +595,7 @@ internal data class TvStrings(
                 titleSort = "Title",
                 dateAddedSort = "Date added",
                 releaseYearSort = "Release year",
-                playedFilter = "Played",
+                playedFilter = "Watched",
                 unplayed = "Unplayed",
                 favoritesOnly = "Favorites only",
                 clearFilters = "Clear filters",
@@ -572,6 +606,22 @@ internal data class TvStrings(
                 genre = "Genre",
                 mediaType = "Media type",
                 applyLabel = "Apply",
+                messages =
+                    TvMessageStrings(
+                        locale = Locale.ENGLISH,
+                        exitAppTitle = "Exit Jellystack?",
+                        exitAppMessage = "Do you want to close the app?",
+                        exitApp = "Exit",
+                        voiceSearchUnavailable = "Voice search is not available on this device.",
+                        voiceSearchNoSpeech = "No speech was recognized. Try again.",
+                        voiceSearchFailed = "Voice search failed. Try again.",
+                        pinDigitsEnteredFormat = "%1\$d of %2\$d digits entered",
+                        attemptRemainingFormat = "%d attempt remaining",
+                        attemptsRemainingFormat = "%d attempts remaining",
+                        playingInOneSecondFormat = "Playing in %d second",
+                        playingInSecondsFormat = "Playing in %d seconds",
+                        untitledRequestFormat = "Request #%d",
+                    ),
                 metadata =
                     TvMetadataStrings(
                         minutesLeft = "%d min left",
@@ -679,7 +729,7 @@ internal data class TvStrings(
                 requestProfile = "Anfrageprofil",
                 serverDefault = "Serverstandard",
                 sendRequest = "Anfrage senden",
-                requesting = "Anfrage läuft...",
+                requesting = "Anfrage läuft…",
                 noOverview = "Keine Beschreibung verfügbar.",
                 language = "Sprache",
                 subtitleMode = "Untertitelmodus",
@@ -698,7 +748,6 @@ internal data class TvStrings(
                 seerrAccount = "Seerr-Konto",
                 email = "E-Mail",
                 nextEpisode = "Nächste Folge",
-                playingInSeconds = "Wiedergabe in %d Sekunden",
                 playNow = "Jetzt abspielen",
                 audio = "Audio",
                 subtitles = "Untertitel",
@@ -716,7 +765,7 @@ internal data class TvStrings(
                 playbackFailedMessage =
                     "Der Player konnte diesen Stream nicht dekodieren. " +
                         "Versuche es erneut, um eine kompatible Version von Jellyfin anzufordern.",
-                tvTagline = "Deine Jellyfin- und Seerr-Bibliothek - gemacht für den großen Bildschirm.",
+                tvTagline = "Deine Jellyfin- und Seerr-Bibliothek – gemacht für den großen Bildschirm.",
                 playback = "Wiedergabe",
                 pause = "Pause",
                 audioTrack = "Audiospur %d",
@@ -832,7 +881,6 @@ internal data class TvStrings(
                 confirmProfilePin = "Neue PIN bestätigen",
                 removeProfilePin = "PIN entfernen",
                 pinMismatch = "Die PINs stimmen nicht überein. Versuche es erneut.",
-                pinAttemptsRemaining = "Noch %d Versuche",
                 allTitles = "Alle Titel",
                 sort = "Sortieren",
                 filters = "Filter",
@@ -841,17 +889,33 @@ internal data class TvStrings(
                 titleSort = "Titel",
                 dateAddedSort = "Hinzugefügt",
                 releaseYearSort = "Erscheinungsjahr",
-                playedFilter = "Angesehen",
+                playedFilter = "Gesehen",
                 unplayed = "Ungesehen",
                 favoritesOnly = "Nur Favoriten",
                 clearFilters = "Filter zurücksetzen",
-                addToMyList = "Zu Meine Liste hinzufügen",
-                removeFromMyList = "Aus Meine Liste entfernen",
-                markPlayed = "Als angesehen markieren",
+                addToMyList = "Zu meiner Liste hinzufügen",
+                removeFromMyList = "Aus meiner Liste entfernen",
+                markPlayed = "Als gesehen markieren",
                 markUnplayed = "Als ungesehen markieren",
                 genre = "Genre",
                 mediaType = "Medientyp",
                 applyLabel = "Übernehmen",
+                messages =
+                    TvMessageStrings(
+                        locale = Locale.GERMAN,
+                        exitAppTitle = "Jellystack beenden?",
+                        exitAppMessage = "Möchtest du die App schließen?",
+                        exitApp = "Beenden",
+                        voiceSearchUnavailable = "Die Sprachsuche ist auf diesem Gerät nicht verfügbar.",
+                        voiceSearchNoSpeech = "Es wurde keine Sprache erkannt. Versuche es erneut.",
+                        voiceSearchFailed = "Die Sprachsuche ist fehlgeschlagen. Versuche es erneut.",
+                        pinDigitsEnteredFormat = "%1\$d von %2\$d Ziffern eingegeben",
+                        attemptRemainingFormat = "Noch %d Versuch",
+                        attemptsRemainingFormat = "Noch %d Versuche",
+                        playingInOneSecondFormat = "Wiedergabe in %d Sekunde",
+                        playingInSecondsFormat = "Wiedergabe in %d Sekunden",
+                        untitledRequestFormat = "Anfrage #%d",
+                    ),
                 metadata =
                     TvMetadataStrings(
                         minutesLeft = "noch %d Min.",

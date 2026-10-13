@@ -1,6 +1,7 @@
 package app.jellystack.tv
 
 import dev.jellystack.design.tv.TvVoiceSearchAvailability
+import dev.jellystack.design.tv.TvVoiceSearchFailure
 import dev.jellystack.design.tv.TvVoiceSearchResult
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -22,6 +23,6 @@ class AndroidTvVoiceSearchTest {
     fun resultMappingDistinguishesSuccessCancellationAndError() {
         assertEquals(TvVoiceSearchResult.Success("Dune"), mapVoiceSearchResult(true, listOf(" Dune ")))
         assertIs<TvVoiceSearchResult.Cancelled>(mapVoiceSearchResult(false, emptyList()))
-        assertIs<TvVoiceSearchResult.Error>(mapVoiceSearchResult(true, emptyList()))
+        assertEquals(TvVoiceSearchResult.Error(TvVoiceSearchFailure.NO_SPEECH), mapVoiceSearchResult(true, listOf(" ")))
     }
 }

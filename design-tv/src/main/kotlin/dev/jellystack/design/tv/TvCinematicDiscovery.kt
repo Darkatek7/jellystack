@@ -41,7 +41,7 @@ internal fun TvCinematicDiscoverContent(
                     add(TvCinematicRow(rowId, rail.label(strings), cards))
                 }
             }
-            val requests = requestItems.mapNotNull { it.toSearchItem() }
+            val requests = requestItems.mapNotNull { it.toSearchItem(strings.messages::untitledRequest) }
             if (requests.isNotEmpty()) {
                 val cards =
                     requests.map { item ->

@@ -7,6 +7,7 @@ import android.speech.RecognizerIntent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import dev.jellystack.design.tv.TvVoiceSearchAvailability
+import dev.jellystack.design.tv.TvVoiceSearchFailure
 import dev.jellystack.design.tv.TvVoiceSearchPort
 import dev.jellystack.design.tv.TvVoiceSearchResult
 
@@ -20,7 +21,7 @@ internal class AndroidTvVoiceSearch private constructor(
 
     companion object {
         fun create(activity: AppCompatActivity): AndroidTvVoiceSearch {
-            val intent = voiceRecognitionIntent()
+            val intent = voiceRecognitionIntent(activity.getString(R.string.tv_voice_search_prompt))
             val available = intent.resolveActivity(activity.packageManager) != null
             var pendingResult: ((TvVoiceSearchResult) -> Unit)? = null
             val launcher =
@@ -43,7 +44,7 @@ internal class AndroidTvVoiceSearch private constructor(
                         launcher.launch(intent)
                     } catch (_: ActivityNotFoundException) {
                         pendingResult = null
-                        callback(TvVoiceSearchResult.Error("No system voice recognizer is available"))
+                        callback(TvVoiceSearchResult.Error(TvVoiceSearchFailure.RECOGNIZER_UNAVAILABLE))
                     }
                 },
             )
@@ -71,11 +72,11 @@ internal fun mapVoiceSearchResult(
 ): TvVoiceSearchResult {
     if (!successful) return TvVoiceSearchResult.Cancelled
     val text = candidates.orEmpty().firstOrNull { it.isNotBlank() }?.trim()
-    return text?.let(TvVoiceSearchResult::Success) ?: TvVoiceSearchResult.Error("No speech was recognized")
+    return text?.let(TvVoiceSearchResult::Success) ?: TvVoiceSearchResult.Error(TvVoiceSearchFailure.NO_SPEECH)
 }
 
-private fun voiceRecognitionIntent(): Intent =
+private fun voiceRecognitionIntent(prompt: String): Intent =
     Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
         putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-        putExtra(RecognizerIntent.EXTRA_PROMPT, "Search Jellystack")
+        putExtra(RecognizerIntent.EXTRA_PROMPT, prompt)
     }

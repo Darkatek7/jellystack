@@ -41,7 +41,7 @@ internal data class TvSearchUiState(
     val seerr: TvSearchSourceResult<JellyseerrSearchItem> = TvSearchSourceResult(),
     val voiceAvailability: TvVoiceSearchAvailability = TvVoiceSearchAvailability.UNAVAILABLE,
     val isVoiceListening: Boolean = false,
-    val voiceError: String? = null,
+    val voiceError: TvVoiceSearchFailure? = null,
 ) {
     val showVoiceAction: Boolean
         get() = voiceAvailability == TvVoiceSearchAvailability.AVAILABLE
@@ -159,7 +159,7 @@ internal class TvSearchCoordinator(
                 mutableState.value =
                     mutableState.value.copy(
                         isVoiceListening = false,
-                        voiceError = result.message ?: "Voice search failed",
+                        voiceError = result.failure,
                     )
         }
     }

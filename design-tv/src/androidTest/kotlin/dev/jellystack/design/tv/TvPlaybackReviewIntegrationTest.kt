@@ -365,7 +365,7 @@ class TvPlaybackReviewIntegrationTest {
         composeRule.waitForIdle()
 
         composeRule.onNodeWithTag("tv-player-action:segment:outro:outro-1").assertDoesNotExist()
-        composeRule.onNodeWithContentDescription(strings.playingInSeconds.format(10), substring = true).assertIsFocused()
+        composeRule.onNodeWithContentDescription(strings.messages.playingIn(10), substring = true).assertIsFocused()
 
         composeRule.onRoot().performKeyInput { pressKey(Key.DirectionRight) }
         composeRule.waitForIdle()

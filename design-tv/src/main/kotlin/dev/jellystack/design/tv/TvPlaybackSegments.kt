@@ -209,7 +209,7 @@ private fun tvEndedUpNextActions(
     strings: TvStrings,
 ): List<TvPlaybackActionModel> {
     nextTarget ?: return emptyList()
-    val label = countdownSeconds?.let { strings.playingInSeconds.format(it) } ?: strings.player.playNextEpisode
+    val label = countdownSeconds?.let(strings.messages::playingIn) ?: strings.player.playNextEpisode
     return listOfNotNull(
         tvUpNextAction(nextTarget, label, strings),
         countdownSeconds?.let {

@@ -1635,11 +1635,11 @@ internal fun TvExitConfirmationDialog(
             Modifier.width(560.dp).background(TvSurfaceRaised, RoundedCornerShape(26.dp)).padding(28.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text(strings.exitAppTitle, color = TvText, fontSize = 28.sp)
-            Text(strings.exitAppMessage, color = TvTextMuted, fontSize = 18.sp)
+            Text(strings.messages.exitAppTitle, color = TvText, fontSize = 28.sp)
+            Text(strings.messages.exitAppMessage, color = TvTextMuted, fontSize = 18.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 TvActionButton(
-                    label = strings.exitApp,
+                    label = strings.messages.exitApp,
                     onClick = onConfirm,
                     destructive = true,
                     modifier = Modifier.width(180.dp).testTag("tv-exit-confirm"),

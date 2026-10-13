@@ -150,12 +150,12 @@ class TvUnifiedSearchCoordinatorTest {
             assertEquals(before.copy(isVoiceListening = false), coordinator.state.value)
 
             coordinator.launchVoiceSearch()
-            voice.complete(TvVoiceSearchResult.Error("recognizer failed"))
+            voice.complete(TvVoiceSearchResult.Error(TvVoiceSearchFailure.NO_SPEECH))
             val afterFailure = coordinator.state.value
             assertEquals(before.session, afterFailure.session)
             assertEquals(before.jellyfin, afterFailure.jellyfin)
             assertEquals(before.seerr, afterFailure.seerr)
-            assertEquals("recognizer failed", afterFailure.voiceError)
+            assertEquals(TvVoiceSearchFailure.NO_SPEECH, afterFailure.voiceError)
         }
 
     @Test

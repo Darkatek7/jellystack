@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Jellystack</string>
+    <string name="tv_voice_search_prompt">Jellystack durchsuchen</string>
 </resources>

@@ -143,7 +143,7 @@ class TvPlaybackSegmentIntegrationTest {
             listOf("tv-player-action:play-next:episode-2", "tv-player-action:cancel-autoplay:episode-2"),
             actions.map { it.id },
         )
-        assertEquals(strings().playingInSeconds.format(10), actions.first().label)
+        assertEquals(strings().messages.playingIn(10), actions.first().label)
 
         val cancelled =
             tvPlaybackActionModels(

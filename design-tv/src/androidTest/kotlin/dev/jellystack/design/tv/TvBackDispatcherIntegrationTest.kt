@@ -118,7 +118,7 @@ class TvBackDispatcherIntegrationTest {
         }
 
         composeRule.onNodeWithContentDescription(strings.cancel).assertIsFocused()
-        composeRule.onNodeWithContentDescription(strings.exitApp).performClick()
+        composeRule.onNodeWithContentDescription(strings.messages.exitApp).performClick()
         composeRule.runOnIdle { assertEquals(1, confirmations.intValue) }
     }
 
