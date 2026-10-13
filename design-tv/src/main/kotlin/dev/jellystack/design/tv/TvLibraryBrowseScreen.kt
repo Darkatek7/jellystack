@@ -28,6 +28,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -334,19 +335,23 @@ internal fun TvSelectedLibraryScreen(
         LaunchedEffect(route.libraryId, rememberedQuery) {
             if (state.libraryBrowseQuery != rememberedQuery) onQueryChanged(rememberedQuery)
         }
-        TvLibraryAllTitles(
-            route = route,
-            state = state,
-            strings = strings,
-            focusMemory = focusMemory,
-            collectionType = collectionType,
-            onQueryChanged = onQueryChanged,
-            onOpenItem = onOpenItem,
-            onOpenContainer = onOpenContainer,
-            onLoadMore = onLoadMore,
-            onRetry = onRetry,
-            modifier = modifier,
-        )
+        // Each folder gets its own grid. A shared grid keeps its filter chips through a folder change; the chip the
+        // system then focuses is remembered for the folder just left and replaces the card to return to.
+        key(state.browsePath) {
+            TvLibraryAllTitles(
+                route = route,
+                state = state,
+                strings = strings,
+                focusMemory = focusMemory,
+                collectionType = collectionType,
+                onQueryChanged = onQueryChanged,
+                onOpenItem = onOpenItem,
+                onOpenContainer = onOpenContainer,
+                onLoadMore = onLoadMore,
+                onRetry = onRetry,
+                modifier = modifier,
+            )
+        }
     }
 }
 
