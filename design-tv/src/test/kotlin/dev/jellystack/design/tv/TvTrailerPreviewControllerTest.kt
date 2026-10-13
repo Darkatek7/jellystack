@@ -225,25 +225,31 @@ class TvTrailerPreviewControllerTest {
     }
 
     @Test
-    fun trailerThatKeepsBufferingFailsWhileOneThatRecoversKeepsPlaying() =
+    fun trailerWhosePositionStopsFailsWhileAPausedOrMovingOneKeepsPlaying() =
         runTest {
             val stalled =
-                flow {
-                    emit(PlayerEvent.Buffering)
+                flow<Long?> {
+                    emit(0L)
+                    emit(500L)
+                    emit(1_000L)
+                    repeat(30) {
+                        delay(500L)
+                        emit(1_000L)
+                    }
+                }.stalledTrailerEvents(stallTimeoutMillis = 8_000L)
+            val healthy =
+                flow<Long?> {
+                    repeat(40) { tick ->
+                        delay(500L)
+                        emit(tick * 500L)
+                    }
+                    emit(null)
                     delay(60_000L)
-                }.trailerPreviewEvents(stallTimeoutMillis = 8_000L)
-            val recovered =
-                flow {
-                    emit(PlayerEvent.Buffering)
-                    delay(7_000L)
-                    emit(PlayerEvent.Ready)
-                    delay(60_000L)
-                    emit(PlayerEvent.Completed)
-                }.trailerPreviewEvents(stallTimeoutMillis = 8_000L)
+                }.stalledTrailerEvents(stallTimeoutMillis = 8_000L)
 
             assertEquals(TvTrailerPreviewPlayerEvent.Failed, stalled.first())
             assertEquals(8_000L, currentTime)
-            assertEquals(listOf(TvTrailerPreviewPlayerEvent.Completed), recovered.toList())
+            assertEquals(emptyList(), healthy.toList())
         }
 
     @Test

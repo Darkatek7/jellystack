@@ -4,6 +4,7 @@ import dev.jellystack.core.jellyfin.DetailTrailerSource
 import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
 import dev.jellystack.players.AndroidPlayerEngine
 import dev.jellystack.players.PlaybackController
+import dev.jellystack.players.PlaybackPhase
 import dev.jellystack.players.PlaybackRequest
 import dev.jellystack.players.PlaybackStartPolicy
 import dev.jellystack.players.PlaybackState
@@ -11,9 +12,10 @@ import dev.jellystack.players.PlayerEvent
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.transformLatest
 
@@ -24,8 +26,9 @@ internal class TvPlaybackTrailerPreviewPlayer(
 ) : TvTrailerPreviewPlayer {
     override val events: Flow<TvTrailerPreviewPlayerEvent> =
         merge(
-            engine.events.trailerPreviewEvents(),
+            engine.events.mapNotNull(PlayerEvent::toTrailerPreviewEvent),
             controller.state.filterIsInstance<PlaybackState.PlaybackError>().map { TvTrailerPreviewPlayerEvent.Failed },
+            controller.state.trailerStallEvents(),
         )
 
     override suspend fun play(source: DetailTrailerSource.Local): Boolean {
@@ -50,23 +53,26 @@ internal class TvPlaybackTrailerPreviewPlayer(
     }
 }
 
+private fun Flow<PlaybackState>.trailerStallEvents(): Flow<TvTrailerPreviewPlayerEvent> =
+    map(PlaybackState::trailerPlayingPositionMs).stalledTrailerEvents(TV_TRAILER_STALL_TIMEOUT_MS)
+
+/** Position of a trailer that should be moving: active, not paused, and not at its end; null otherwise. */
+internal fun PlaybackState.trailerPlayingPositionMs(): Long? =
+    (this as? PlaybackState.Active)?.takeIf { !it.isPaused && it.phase != PlaybackPhase.Ended }?.positionMs
+
 /**
- * The preview events of a trailer's engine events. A trailer that keeps buffering for [stallTimeoutMillis] fails,
- * so a stalled stream hands the stage back to the artwork instead of freezing on one frame with the UI hidden.
+ * Fails a trailer whose position stays put for [stallTimeoutMillis] while it should play. A stalled stream then
+ * hands the stage back to the artwork instead of freezing on one frame with the UI hidden, whether the player
+ * reports buffering or not. [this] is the playing position from [trailerPlayingPositionMs].
  */
 @OptIn(ExperimentalCoroutinesApi::class)
-internal fun Flow<PlayerEvent>.trailerPreviewEvents(
-    stallTimeoutMillis: Long = TV_TRAILER_STALL_TIMEOUT_MS,
-): Flow<TvTrailerPreviewPlayerEvent> =
-    filter { it == PlayerEvent.Buffering || it == PlayerEvent.Ready || it.toTrailerPreviewEvent() != null }
-        .transformLatest { event ->
-            if (event == PlayerEvent.Buffering) {
-                delay(stallTimeoutMillis)
-                emit(TvTrailerPreviewPlayerEvent.Failed)
-            } else {
-                event.toTrailerPreviewEvent()?.let { emit(it) }
-            }
+internal fun Flow<Long?>.stalledTrailerEvents(stallTimeoutMillis: Long): Flow<TvTrailerPreviewPlayerEvent> =
+    distinctUntilChanged().transformLatest { positionMs ->
+        if (positionMs != null) {
+            delay(stallTimeoutMillis)
+            emit(TvTrailerPreviewPlayerEvent.Failed)
         }
+    }
 
 internal fun PlayerEvent.toTrailerPreviewEvent(): TvTrailerPreviewPlayerEvent? =
     when (this) {
