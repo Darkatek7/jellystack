@@ -126,11 +126,14 @@ internal sealed interface TvHomeJellyfinDestination {
 }
 
 internal fun tvHomeJellyfinDestination(item: JellyfinItem): TvHomeJellyfinDestination =
-    if (item.type.equals("CollectionFolder", ignoreCase = true)) {
+    if (item.type.lowercase() in TV_LIBRARY_ROOT_TYPES) {
         TvHomeJellyfinDestination.Library(item.id, item.name)
     } else {
         TvHomeJellyfinDestination.Detail(item)
     }
+
+/** Item types of library roots: regular libraries, and views such as Playlists, which Jellyfin types on their own. */
+private val TV_LIBRARY_ROOT_TYPES = setOf("collectionfolder", "userview")
 
 /**
  * The title a home section card previews on the stage. Libraries open a browse screen rather than a detail page,

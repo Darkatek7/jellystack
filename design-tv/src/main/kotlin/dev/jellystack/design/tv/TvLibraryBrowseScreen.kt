@@ -56,7 +56,16 @@ import kotlinx.serialization.Serializable
 import kotlin.math.floor
 
 @Serializable
-enum class TvLibraryMode { BROWSE, ALL_TITLES }
+enum class TvLibraryMode {
+    /** Cinematic browse rows that end in an "All titles" card. */
+    BROWSE,
+
+    /** The title grid, opened from the browse rows' "All titles" card. */
+    ALL_TITLES,
+
+    /** The title grid as the library's only screen, for a library without browse rows. */
+    TITLES_ONLY,
+}
 
 internal enum class TvLibraryCardShape { PORTRAIT, LANDSCAPE }
 
@@ -122,6 +131,31 @@ internal fun buildTvLibraryBrowseRows(
         row("my-list", labels.myList, myListItems, myListItems.map(JellyfinItem::id).toSet())?.let(::add)
         addAll(serverRows)
     }
+}
+
+/**
+ * How a library opens: on its browse rows, or straight on its title grid when none of those rows would show anything
+ * (books, music, playlists), instead of a stage with a lone "All titles" card. While the home feeds or the server
+ * sections still load, rows may yet appear, so the library opens on its rows.
+ */
+internal fun tvLibraryEntryMode(
+    libraryId: String,
+    state: JellyfinHomeState,
+    homeSections: HomeSectionsState,
+    myListItems: List<JellyfinItem>,
+    labels: TvLibraryBrowseLabels,
+): TvLibraryMode {
+    val stillLoading = state.isInitialLoading || state.isHomeLoading || homeSections == HomeSectionsState.Loading
+    if (stillLoading) return TvLibraryMode.BROWSE
+    val rows =
+        buildTvLibraryBrowseRows(
+            state = state.copy(selectedLibraryId = libraryId),
+            homeSections = homeSections,
+            myListItems = myListItems,
+            labels = labels,
+            collectionType = state.libraries.firstOrNull { it.id == libraryId }?.collectionType,
+        )
+    return if (rows.isEmpty()) TvLibraryMode.TITLES_ONLY else TvLibraryMode.BROWSE
 }
 
 private fun JellyfinItem.toCinematicCard(
@@ -237,14 +271,7 @@ internal fun TvSelectedLibraryScreen(
                     state = state,
                     homeSections = homeSections,
                     myListItems = myListItems,
-                    labels =
-                        TvLibraryBrowseLabels(
-                            continueWatching = strings.continueWatching,
-                            nextUp = strings.nextUp,
-                            recentlyAdded = strings.recentlyAdded,
-                            myList = strings.myList,
-                            minutesLeft = strings.metadata.minutesLeft,
-                        ),
+                    labels = strings.libraryBrowseLabels(),
                     collectionType = collectionType,
                 ) +
                     tvLibraryAllTitlesRow(
@@ -513,6 +540,15 @@ private fun JellyfinItem.open(
     onOpenItem: (JellyfinItem) -> Unit,
     onOpenContainer: (JellyfinItem) -> Unit,
 ) = if (isBrowseContainer()) onOpenContainer(this) else onOpenItem(this)
+
+internal fun TvStrings.libraryBrowseLabels() =
+    TvLibraryBrowseLabels(
+        continueWatching = continueWatching,
+        nextUp = nextUp,
+        recentlyAdded = recentlyAdded,
+        myList = myList,
+        minutesLeft = metadata.minutesLeft,
+    )
 
 private fun TvStrings.tvLibraryQueryLabels() =
     TvLibraryQueryLabels(

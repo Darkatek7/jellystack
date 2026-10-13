@@ -1280,6 +1280,7 @@ internal fun TvSeerrDetailScreen(
     onOpenItem: (JellyseerrSearchItem) -> Unit,
     isInMyList: Boolean = false,
     onToggleMyList: (JellyseerrSearchItem, Boolean) -> Unit = { _, _ -> },
+    onRetry: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val uriHandler = LocalUriHandler.current
@@ -1314,7 +1315,9 @@ internal fun TvSeerrDetailScreen(
     val similar = detail?.enrichment?.similar.orEmpty()
     val hasRequestAction = activeRequest == null && (canRequestStandard || canRequest4k)
     val trailerUrl = detail?.trailer?.url ?: detail?.videos?.firstOrNull { it.url != null }?.url
-    val myListIsPrimary = !hasRequestAction && trailerUrl == null
+    val status = detailState.tvSeerrDetailStatus()
+    val primaryAction = tvSeerrPrimaryAction(status, canRequest = hasRequestAction, hasTrailer = trailerUrl != null)
+    val myListFocusRequester = remember(route) { FocusRequester() }
     val uiState =
         buildTvSeerrDetailUiState(
             routeKey = route.focusRouteKey(),
@@ -1361,8 +1364,20 @@ internal fun TvSeerrDetailScreen(
                     fontWeight = FontWeight.Bold,
                     maxLines = 2,
                 )
-                Text((detail?.genres.orEmpty()).take(4).joinToString("  •  "), color = TvTextMuted, fontSize = 19.sp)
+                TvSeerrDetailMetaLine(detail?.genres.orEmpty(), status, strings)
                 Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    if (primaryAction == TvSeerrPrimaryAction.RETRY) {
+                        TvActionButton(
+                            strings.retry,
+                            primary = true,
+                            onClick = {
+                                // Retry leaves while the detail reloads; My List stays, so it keeps the focus.
+                                runCatching { myListFocusRequester.requestFocus() }
+                                onRetry()
+                            },
+                            modifier = primaryActionModifier.then(actionRowModifier),
+                        )
+                    }
                     when {
                         activeRequest != null ->
                             TvActionButton(
@@ -1377,7 +1392,7 @@ internal fun TvSeerrDetailScreen(
                                 primary = true,
                                 onClick = { showRequestDialog = true },
                                 modifier =
-                                    primaryActionModifier
+                                    (if (primaryAction == TvSeerrPrimaryAction.REQUEST) primaryActionModifier else Modifier)
                                         .then(actionRowModifier)
                                         .width(TV_DETAIL_PRIMARY_ACTION_WIDTH_DP.dp),
                             )
@@ -1388,10 +1403,10 @@ internal fun TvSeerrDetailScreen(
                             strings.trailer,
                             { runCatching { uriHandler.openUri(url) } },
                             modifier =
-                                if (hasRequestAction) {
-                                    actionRowModifier
-                                } else {
+                                if (primaryAction == TvSeerrPrimaryAction.TRAILER) {
                                     primaryActionModifier.then(actionRowModifier)
+                                } else {
+                                    actionRowModifier
                                 },
                         )
                     }
@@ -1400,11 +1415,13 @@ internal fun TvSeerrDetailScreen(
                         onClick = { onToggleMyList(fallbackItem, !isInMyList) },
                         selected = isInMyList,
                         modifier =
-                            if (myListIsPrimary) {
-                                primaryActionModifier.then(actionRowModifier)
-                            } else {
-                                actionRowModifier
-                            },
+                            Modifier.focusRequester(myListFocusRequester).then(
+                                if (primaryAction == TvSeerrPrimaryAction.MY_LIST) {
+                                    primaryActionModifier.then(actionRowModifier)
+                                } else {
+                                    actionRowModifier
+                                },
+                            ),
                     )
                 }
             }

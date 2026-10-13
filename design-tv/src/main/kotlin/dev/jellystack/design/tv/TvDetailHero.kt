@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
@@ -19,6 +20,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.LocalMovies
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -162,5 +164,24 @@ internal fun TvDetailHeroActions(
     }
     if (state.trailerError) {
         Text(strings.trailerOpenFailed, color = Color(0xFFFFA59E), fontSize = 16.sp)
+    }
+}
+
+/** The line under the Seerr title: the genres once loaded, otherwise that the detail is loading or failed to load. */
+@Composable
+internal fun TvSeerrDetailMetaLine(
+    genres: List<String>,
+    status: TvSeerrDetailStatus,
+    strings: TvStrings,
+) {
+    when (status) {
+        TvSeerrDetailStatus.LOADING ->
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(Modifier.size(18.dp), color = TvPurple, strokeWidth = 2.dp)
+                Text(strings.messages.loadingDetails, color = TvTextMuted, fontSize = 19.sp)
+            }
+        TvSeerrDetailStatus.FAILED -> Text(strings.detailLoadFailed, color = Color(0xFFFFA59E), fontSize = 19.sp)
+        TvSeerrDetailStatus.READY ->
+            Text(genres.take(4).joinToString(TV_CARD_SEPARATOR), color = TvTextMuted, fontSize = 19.sp)
     }
 }

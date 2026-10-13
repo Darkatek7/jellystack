@@ -423,6 +423,7 @@ internal fun TvMediaCard(
     focusToNavigationRailOnLeft: Boolean = false,
     focusTargetId: String? = null,
     providedFocusRequester: FocusRequester? = null,
+    titleInArtwork: Boolean = false,
 ) {
     val shape = TvShapes.Card
     var focused by remember { mutableStateOf(false) }
@@ -499,9 +500,12 @@ internal fun TvMediaCard(
             artworkFit = artworkFit,
             onImageError = { imageFailed = true },
         )
-        if (tvMediaCardShowsText(format, artworkFit, hasImage = shownImageUrl != null, focused = focused)) {
+        // Library images made by the server already show the library name, so it would read twice.
+        val shownTitle = title.takeUnless { titleInArtwork && shownImageUrl != null }
+        val showsText = tvMediaCardShowsText(format, artworkFit, hasImage = shownImageUrl != null, focused = focused)
+        if (showsText && (shownTitle != null || subtitle != null)) {
             TvMediaCardText(
-                title = title,
+                title = shownTitle,
                 subtitle = subtitle,
                 large = format == TvMediaCardFormat.CAST_PORTRAIT,
                 modifier = Modifier.align(Alignment.BottomStart),
@@ -608,7 +612,7 @@ private fun TvMediaCardContent(
 /** Title and subtitle at the bottom of the artwork, over a scrim that keeps them readable on bright images. */
 @Composable
 private fun TvMediaCardText(
-    title: String,
+    title: String?,
     subtitle: String?,
     large: Boolean,
     modifier: Modifier = Modifier,
@@ -635,14 +639,16 @@ private fun TvMediaCardText(
                 ),
         verticalArrangement = Arrangement.spacedBy(if (large) 2.dp else 0.dp),
     ) {
-        Text(
-            title,
-            color = TvText,
-            maxLines = if (large) 2 else 1,
-            overflow = TextOverflow.Ellipsis,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = if (large) TvTextSize.Subtitle else TvTextSize.CardTitle,
-        )
+        title?.let {
+            Text(
+                it,
+                color = TvText,
+                maxLines = if (large) 2 else 1,
+                overflow = TextOverflow.Ellipsis,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = if (large) TvTextSize.Subtitle else TvTextSize.CardTitle,
+            )
+        }
         subtitle?.let {
             Text(
                 it,

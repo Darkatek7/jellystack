@@ -74,6 +74,7 @@ internal data class TvMessageStrings(
     private val playingInSecondsFormat: String,
     private val untitledRequestFormat: String,
     private val requestTitleFormat: String,
+    val loadingDetails: String,
 ) {
     fun voiceSearchError(failure: TvVoiceSearchFailure): String =
         when (failure) {
@@ -613,23 +614,7 @@ internal data class TvStrings(
                 genre = "Genre",
                 mediaType = "Media type",
                 applyLabel = "Apply",
-                messages =
-                    TvMessageStrings(
-                        locale = Locale.ENGLISH,
-                        exitAppTitle = "Exit Jellystack?",
-                        exitAppMessage = "Do you want to close the app?",
-                        exitApp = "Exit",
-                        voiceSearchUnavailable = "Voice search is not available on this device.",
-                        voiceSearchNoSpeech = "No speech was recognized. Try again.",
-                        voiceSearchFailed = "Voice search failed. Try again.",
-                        pinDigitsEnteredFormat = "%1\$d of %2\$d digits entered",
-                        attemptRemainingFormat = "%d attempt remaining",
-                        attemptsRemainingFormat = "%d attempts remaining",
-                        playingInOneSecondFormat = "Playing in %d second",
-                        playingInSecondsFormat = "Playing in %d seconds",
-                        untitledRequestFormat = "Request #%d",
-                        requestTitleFormat = "Request %s",
-                    ),
+                messages = englishMessageStrings,
                 metadata =
                     TvMetadataStrings(
                         minutesLeft = "%d min left",
@@ -910,23 +895,7 @@ internal data class TvStrings(
                 genre = "Genre",
                 mediaType = "Medientyp",
                 applyLabel = "Übernehmen",
-                messages =
-                    TvMessageStrings(
-                        locale = Locale.GERMAN,
-                        exitAppTitle = "Jellystack beenden?",
-                        exitAppMessage = "Möchtest du die App schließen?",
-                        exitApp = "Beenden",
-                        voiceSearchUnavailable = "Die Sprachsuche ist auf diesem Gerät nicht verfügbar.",
-                        voiceSearchNoSpeech = "Es wurde keine Sprache erkannt. Versuche es erneut.",
-                        voiceSearchFailed = "Die Sprachsuche ist fehlgeschlagen. Versuche es erneut.",
-                        pinDigitsEnteredFormat = "%1\$d von %2\$d Ziffern eingegeben",
-                        attemptRemainingFormat = "Noch %d Versuch",
-                        attemptsRemainingFormat = "Noch %d Versuche",
-                        playingInOneSecondFormat = "Wiedergabe in %d Sekunde",
-                        playingInSecondsFormat = "Wiedergabe in %d Sekunden",
-                        untitledRequestFormat = "Anfrage #%d",
-                        requestTitleFormat = "%s anfragen",
-                    ),
+                messages = germanMessageStrings,
                 metadata =
                     TvMetadataStrings(
                         minutesLeft = "noch %d Min.",
@@ -950,3 +919,41 @@ internal data class TvStrings(
             )
     }
 }
+
+private val englishMessageStrings =
+    TvMessageStrings(
+        locale = Locale.ENGLISH,
+        exitAppTitle = "Exit Jellystack?",
+        exitAppMessage = "Do you want to close the app?",
+        exitApp = "Exit",
+        voiceSearchUnavailable = "Voice search is not available on this device.",
+        voiceSearchNoSpeech = "No speech was recognized. Try again.",
+        voiceSearchFailed = "Voice search failed. Try again.",
+        pinDigitsEnteredFormat = "%1\$d of %2\$d digits entered",
+        attemptRemainingFormat = "%d attempt remaining",
+        attemptsRemainingFormat = "%d attempts remaining",
+        playingInOneSecondFormat = "Playing in %d second",
+        playingInSecondsFormat = "Playing in %d seconds",
+        untitledRequestFormat = "Request #%d",
+        requestTitleFormat = "Request %s",
+        loadingDetails = "Loading details…",
+    )
+
+private val germanMessageStrings =
+    TvMessageStrings(
+        locale = Locale.GERMAN,
+        exitAppTitle = "Jellystack beenden?",
+        exitAppMessage = "Möchtest du die App schließen?",
+        exitApp = "Beenden",
+        voiceSearchUnavailable = "Die Sprachsuche ist auf diesem Gerät nicht verfügbar.",
+        voiceSearchNoSpeech = "Es wurde keine Sprache erkannt. Versuche es erneut.",
+        voiceSearchFailed = "Die Sprachsuche ist fehlgeschlagen. Versuche es erneut.",
+        pinDigitsEnteredFormat = "%1\$d von %2\$d Ziffern eingegeben",
+        attemptRemainingFormat = "Noch %d Versuch",
+        attemptsRemainingFormat = "Noch %d Versuche",
+        playingInOneSecondFormat = "Wiedergabe in %d Sekunde",
+        playingInSecondsFormat = "Wiedergabe in %d Sekunden",
+        untitledRequestFormat = "Anfrage #%d",
+        requestTitleFormat = "%s anfragen",
+        loadingDetails = "Details werden geladen…",
+    )

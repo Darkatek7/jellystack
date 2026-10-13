@@ -21,6 +21,20 @@ class TvBackNavigationTest {
     }
 
     @Test
+    fun libraryOpenedOnItsGridStepsOutOfFoldersBeforeLeaving() {
+        assertEquals(
+            TvBackAction.POP_LIBRARY_PATH,
+            tvBackAction(
+                currentRoute = TvRoute.Library("playlists", "Playlists", TvLibraryMode.TITLES_ONLY),
+                backStackSize = 2,
+                libraryPathDepth = 1,
+                railVisible = false,
+                selectedLibraryId = "playlists",
+            ),
+        )
+    }
+
+    @Test
     fun nestedLibraryPathPopsBeforeRouteOrRail() {
         assertEquals(
             TvBackAction.POP_LIBRARY_PATH,

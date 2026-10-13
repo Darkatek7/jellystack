@@ -793,6 +793,7 @@ private fun TvLibraryRow(
                     subtitle = library.itemCount?.let(strings::itemCount),
                     imageUrl = jellyfinImageUrl(state.imageBaseUrl, state.imageAccessToken, library.id, library.primaryImageTag),
                     artworkFit = TvMediaCardArtworkFit.CONTAIN_PORTRAIT,
+                    titleInArtwork = true,
                     onClick = { onLibrary(library) },
                     onFocused = { focusMemory.remember("home", "libraries", library.id, horizontalIndex = index) },
                     modifier =
@@ -841,7 +842,9 @@ private fun TvHomeSectionRow(
                 val targetId = tvHomeCardTargetId(rowId, item.id)
                 val previewItem = item.tvStagePreviewItem()
                 val cardText = item.jellyfinItem?.tvCardText(strings)
+                val opensLibrary = item.jellyfinItem?.let(::tvHomeJellyfinDestination) is TvHomeJellyfinDestination.Library
                 TvMediaCard(
+                    titleInArtwork = opensLibrary,
                     title = cardText?.title ?: item.name,
                     subtitle =
                         cardText?.subtitle ?: listOfNotNull(
@@ -1048,6 +1051,7 @@ internal fun TvLibraryScreen(
                     subtitle = library.itemCount?.let(strings::itemCount),
                     imageUrl = jellyfinImageUrl(state.imageBaseUrl, state.imageAccessToken, library.id, library.primaryImageTag),
                     artworkFit = TvMediaCardArtworkFit.CONTAIN_PORTRAIT,
+                    titleInArtwork = true,
                     onClick = { onSelectLibrary(library.id) },
                     onFocused = { focusMemory.remember(routeKey, "libraries", library.id, index + 1, index) },
                     modifier =

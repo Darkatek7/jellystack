@@ -7,6 +7,7 @@ import dev.jellystack.core.jellyfin.HomeSectionViewMode
 import dev.jellystack.core.jellyfin.HomeSectionsState
 import dev.jellystack.core.jellyfin.JellyfinHomeState
 import dev.jellystack.core.jellyfin.JellyfinItem
+import dev.jellystack.core.jellyfin.JellyfinLibrary
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -66,6 +67,41 @@ class TvLibraryBrowsePresentationTest {
         assertEquals(listOf("continue", "recent", "my-list", "server:server"), rows.map(TvCinematicRow::id))
         assertEquals(listOf("continue"), rows[0].cards.map(TvCinematicCard::id))
         assertFalse(rows.any { it.cards.isEmpty() })
+    }
+
+    @Test
+    fun libraryOpensOnItsGridOnlyWhenNoBrowseRowWouldShowAnything() {
+        val books = JellyfinLibrary("books", "Books", "books", itemCount = 3, primaryImageTag = null)
+        val movies = JellyfinLibrary("movies", "Movies", "movies", itemCount = 3, primaryImageTag = null)
+        val state =
+            JellyfinHomeState(
+                libraries = listOf(books, movies),
+                continueWatching = listOf(item("movie", "Movie", libraryId = "movies")),
+            )
+
+        assertEquals(
+            TvLibraryMode.TITLES_ONLY,
+            tvLibraryEntryMode("books", state, HomeSectionsState.Unavailable, emptyList(), labels()),
+        )
+        assertEquals(
+            TvLibraryMode.BROWSE,
+            tvLibraryEntryMode("movies", state, HomeSectionsState.Unavailable, emptyList(), labels()),
+        )
+    }
+
+    @Test
+    fun libraryOpensOnItsRowsWhileHomeContentStillLoads() {
+        val state = JellyfinHomeState(libraries = listOf(JellyfinLibrary("books", "Books", "books", 3, null)))
+        val homeLoading = state.copy(isHomeLoading = true)
+
+        assertEquals(
+            TvLibraryMode.BROWSE,
+            tvLibraryEntryMode("books", homeLoading, HomeSectionsState.Unavailable, emptyList(), labels()),
+        )
+        assertEquals(
+            TvLibraryMode.BROWSE,
+            tvLibraryEntryMode("books", state, HomeSectionsState.Loading, emptyList(), labels()),
+        )
     }
 
     @Test

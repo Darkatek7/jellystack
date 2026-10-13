@@ -1081,6 +1081,15 @@ private fun TvAuthenticatedApp(
             )
         }
 
+    fun openLibrary(
+        libraryId: String,
+        title: String?,
+    ) {
+        val myListItems = myList.mapNotNull { it.jellyfinItem }
+        val mode = tvLibraryEntryMode(libraryId, homeState, homeSections, myListItems, strings.libraryBrowseLabels())
+        push(TvRoute.Library(libraryId, title, mode))
+    }
+
     fun openJellyfinDetail(item: JellyfinItem) {
         appStateHolder.rememberDetailSource(item)
         push(TvRoute.JellyfinDetail(item.id))
@@ -1095,14 +1104,12 @@ private fun TvAuthenticatedApp(
         push(tvConnectionsSettingsRoute())
     }
 
+    // The Seerr detail route loads its own detail, so My List entries and a restored back stack get one too.
     fun openSeerr(item: JellyseerrSearchItem) {
-        recommendationsCoordinator.loadDetail(item)
         push(item.toTvRoute())
     }
 
     fun openSeerr(route: TvRoute.SeerrDetail) {
-        val item = route.toSearchItem()
-        recommendationsCoordinator.loadDetail(item)
         push(route)
     }
 
@@ -1402,8 +1409,8 @@ private fun TvAuthenticatedApp(
                                                 trailerPreviewCoordinator.clearFocus()
                                                 openJellyfinDetail(it)
                                             },
-                                            onHomeLibrary = { libraryId, title -> push(TvRoute.Library(libraryId, title)) },
-                                            onLibrary = { push(TvRoute.Library(it.id, it.name)) },
+                                            onHomeLibrary = ::openLibrary,
+                                            onLibrary = { openLibrary(it.id, it.name) },
                                             onSeerrItem = ::openSeerr,
                                             myList = myList,
                                             onMyListEntry = { entry ->
@@ -1430,7 +1437,7 @@ private fun TvAuthenticatedApp(
                                             onSelectLibrary = { id ->
                                                 val library = homeState.libraries.firstOrNull { it.id == id }
                                                 if (route.libraryId == null) {
-                                                    push(TvRoute.Library(id, library?.name))
+                                                    openLibrary(id, library?.name)
                                                 } else {
                                                     browseCoordinator.selectLibrary(id)
                                                 }
@@ -1530,6 +1537,7 @@ private fun TvAuthenticatedApp(
                                     is TvRoute.SeerrDetail -> {
                                         val key = route.mediaType to route.tmdbId
                                         val routeItem = route.toSearchItem()
+                                        LaunchedEffect(key) { recommendationsCoordinator.loadDetail(routeItem) }
                                         TvSeerrDetailScreen(
                                             route = route,
                                             detailState = details[key],
@@ -1547,6 +1555,7 @@ private fun TvAuthenticatedApp(
                                                     }
                                                 }
                                             },
+                                            onRetry = { recommendationsCoordinator.reloadDetail(routeItem) },
                                         )
                                     }
                                     TvRoute.Player ->
