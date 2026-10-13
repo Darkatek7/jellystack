@@ -1,5 +1,15 @@
 # Release Notes
 
+## 0.17.2 (TV)
+
+- Fix a crash when the app is opened again right after exiting it.
+- Open books, music, playlists, and collections straight on their titles, and step back out of folders to the card you came from.
+- Open the Playlists tile on Home as a library instead of a detail page.
+- Load Seerr details from My List and after the app restarts, with a loading line and Retry when a load fails.
+- Start dialogs on their default button, close the keyboard in Search with Back, and open the menu from Search again.
+- Pause and resume a SyncPlay group from the TV, and read audio and subtitle tracks by language without codec clutter.
+- Fix dark boxes inside focused buttons, library images taking over the screen, black frames before trailers, stalled trailers, and German wording.
+
 ## 0.17.1 (TV)
 
 - Add another profile without typing the Jellyfin server address again.
