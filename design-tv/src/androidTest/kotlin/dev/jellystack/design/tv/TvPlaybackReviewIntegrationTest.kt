@@ -321,6 +321,13 @@ class TvPlaybackReviewIntegrationTest {
                 requestSyncSeek = { events += "sync-seek:$it" },
                 requestLocalSeek = { events += "local-seek:$it" },
                 requestSyncNext = { events += "sync-next" },
+                pauseCommands =
+                    TvPlaybackPauseCommands(
+                        requestSyncPause = { events += "sync-pause" },
+                        requestSyncUnpause = { events += "sync-unpause" },
+                        pauseLocal = { events += "local-pause" },
+                        resumeLocal = { events += "local-resume" },
+                    ),
             )
         composeRule.setContent {
             val scope = rememberCoroutineScope()
@@ -365,7 +372,7 @@ class TvPlaybackReviewIntegrationTest {
         composeRule.waitForIdle()
 
         composeRule.onNodeWithTag("tv-player-action:segment:outro:outro-1").assertDoesNotExist()
-        composeRule.onNodeWithContentDescription(strings.playingInSeconds.format(10), substring = true).assertIsFocused()
+        composeRule.onNodeWithContentDescription(strings.messages.playingIn(10), substring = true).assertIsFocused()
 
         composeRule.onRoot().performKeyInput { pressKey(Key.DirectionRight) }
         composeRule.waitForIdle()

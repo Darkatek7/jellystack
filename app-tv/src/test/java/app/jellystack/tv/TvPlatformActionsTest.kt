@@ -51,6 +51,27 @@ class TvPlatformActionsTest {
         assertEquals(listOf("trailer", "bridge", "playback"), actions.releases)
     }
 
+    @Test
+    fun finishingStopReleasesTheMediaSessionBridgeOnceBeforeDestroy() {
+        val actions = RecordingPlatformActions()
+        val coordinator = TvPlatformActionCoordinator(actions)
+
+        coordinator.onStop(isChangingConfigurations = false, isFinishing = true)
+        assertEquals(listOf("bridge"), actions.releases)
+
+        coordinator.onDestroy()
+        assertEquals(listOf("bridge", "trailer", "playback"), actions.releases)
+    }
+
+    @Test
+    fun backgroundStopKeepsTheBridgeForTheNextStart() {
+        val actions = RecordingPlatformActions()
+
+        TvPlatformActionCoordinator(actions).onStop(isChangingConfigurations = false, isFinishing = false)
+
+        assertEquals(emptyList(), actions.releases)
+    }
+
     private class RecordingPlatformActions(
         private val mediaKeyHandled: Boolean = false,
     ) : TvPlatformActions<String> {

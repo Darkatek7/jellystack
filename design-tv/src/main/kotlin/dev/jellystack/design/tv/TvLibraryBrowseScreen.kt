@@ -28,6 +28,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -56,7 +57,16 @@ import kotlinx.serialization.Serializable
 import kotlin.math.floor
 
 @Serializable
-enum class TvLibraryMode { BROWSE, ALL_TITLES }
+enum class TvLibraryMode {
+    /** Cinematic browse rows that end in an "All titles" card. */
+    BROWSE,
+
+    /** The title grid, opened from the browse rows' "All titles" card. */
+    ALL_TITLES,
+
+    /** The title grid as the library's only screen, for a library without browse rows. */
+    TITLES_ONLY,
+}
 
 internal enum class TvLibraryCardShape { PORTRAIT, LANDSCAPE }
 
@@ -124,6 +134,31 @@ internal fun buildTvLibraryBrowseRows(
     }
 }
 
+/**
+ * How a library opens: on its browse rows, or straight on its title grid when none of those rows would show anything
+ * (books, music, playlists), instead of a stage with a lone "All titles" card. While the home feeds or the server
+ * sections still load, rows may yet appear, so the library opens on its rows.
+ */
+internal fun tvLibraryEntryMode(
+    libraryId: String,
+    state: JellyfinHomeState,
+    homeSections: HomeSectionsState,
+    myListItems: List<JellyfinItem>,
+    labels: TvLibraryBrowseLabels,
+): TvLibraryMode {
+    val stillLoading = state.isInitialLoading || state.isHomeLoading || homeSections == HomeSectionsState.Loading
+    if (stillLoading) return TvLibraryMode.BROWSE
+    val rows =
+        buildTvLibraryBrowseRows(
+            state = state.copy(selectedLibraryId = libraryId),
+            homeSections = homeSections,
+            myListItems = myListItems,
+            labels = labels,
+            collectionType = state.libraries.firstOrNull { it.id == libraryId }?.collectionType,
+        )
+    return if (rows.isEmpty()) TvLibraryMode.TITLES_ONLY else TvLibraryMode.BROWSE
+}
+
 private fun JellyfinItem.toCinematicCard(
     state: JellyfinHomeState,
     selectedIds: Set<String>,
@@ -170,16 +205,8 @@ internal fun tvLibraryAllTitlesRow(
                         library?.let {
                             jellyfinImageUrl(state.imageBaseUrl, state.imageAccessToken, it.id, it.primaryImageTag)
                         },
-                    backdropUrl =
-                        library?.let {
-                            jellyfinImageUrl(
-                                baseUrl = state.imageBaseUrl,
-                                token = state.imageAccessToken,
-                                itemId = it.id,
-                                tag = it.primaryImageTag,
-                                maxWidth = TvArtworkSize.HERO.maxWidth,
-                            )
-                        },
+                    // The library image usually shows the library name; upscaled to the stage it reads as noise.
+                    keepsBackdrop = true,
                 ),
             ),
     )
@@ -245,14 +272,7 @@ internal fun TvSelectedLibraryScreen(
                     state = state,
                     homeSections = homeSections,
                     myListItems = myListItems,
-                    labels =
-                        TvLibraryBrowseLabels(
-                            continueWatching = strings.continueWatching,
-                            nextUp = strings.nextUp,
-                            recentlyAdded = strings.recentlyAdded,
-                            myList = strings.myList,
-                            minutesLeft = strings.metadata.minutesLeft,
-                        ),
+                    labels = strings.libraryBrowseLabels(),
                     collectionType = collectionType,
                 ) +
                     tvLibraryAllTitlesRow(
@@ -315,19 +335,23 @@ internal fun TvSelectedLibraryScreen(
         LaunchedEffect(route.libraryId, rememberedQuery) {
             if (state.libraryBrowseQuery != rememberedQuery) onQueryChanged(rememberedQuery)
         }
-        TvLibraryAllTitles(
-            route = route,
-            state = state,
-            strings = strings,
-            focusMemory = focusMemory,
-            collectionType = collectionType,
-            onQueryChanged = onQueryChanged,
-            onOpenItem = onOpenItem,
-            onOpenContainer = onOpenContainer,
-            onLoadMore = onLoadMore,
-            onRetry = onRetry,
-            modifier = modifier,
-        )
+        // Each folder gets its own grid. A shared grid keeps its filter chips through a folder change; the chip the
+        // system then focuses is remembered for the folder just left and replaces the card to return to.
+        key(state.browsePath) {
+            TvLibraryAllTitles(
+                route = route,
+                state = state,
+                strings = strings,
+                focusMemory = focusMemory,
+                collectionType = collectionType,
+                onQueryChanged = onQueryChanged,
+                onOpenItem = onOpenItem,
+                onOpenContainer = onOpenContainer,
+                onLoadMore = onLoadMore,
+                onRetry = onRetry,
+                modifier = modifier,
+            )
+        }
     }
 }
 
@@ -521,6 +545,15 @@ private fun JellyfinItem.open(
     onOpenItem: (JellyfinItem) -> Unit,
     onOpenContainer: (JellyfinItem) -> Unit,
 ) = if (isBrowseContainer()) onOpenContainer(this) else onOpenItem(this)
+
+internal fun TvStrings.libraryBrowseLabels() =
+    TvLibraryBrowseLabels(
+        continueWatching = continueWatching,
+        nextUp = nextUp,
+        recentlyAdded = recentlyAdded,
+        myList = myList,
+        minutesLeft = metadata.minutesLeft,
+    )
 
 private fun TvStrings.tvLibraryQueryLabels() =
     TvLibraryQueryLabels(

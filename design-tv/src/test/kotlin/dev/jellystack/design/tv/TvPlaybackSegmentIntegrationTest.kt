@@ -1,5 +1,6 @@
 package dev.jellystack.design.tv
 
+import android.view.KeyEvent
 import dev.jellystack.core.preferences.AppLanguage
 import dev.jellystack.core.preferences.AppSettings
 import dev.jellystack.core.preferences.SegmentSkipMode
@@ -14,6 +15,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertNull
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -143,7 +145,7 @@ class TvPlaybackSegmentIntegrationTest {
             listOf("tv-player-action:play-next:episode-2", "tv-player-action:cancel-autoplay:episode-2"),
             actions.map { it.id },
         )
-        assertEquals(strings().playingInSeconds.format(10), actions.first().label)
+        assertEquals(strings().messages.playingIn(10), actions.first().label)
 
         val cancelled =
             tvPlaybackActionModels(
@@ -290,6 +292,35 @@ class TvPlaybackSegmentIntegrationTest {
 
             assertEquals(listOf("sync", "local"), events)
         }
+
+    @Test
+    fun pauseResumeAndMediaKeysFollowTheSyncPlayGroupOnlyWhileOneIsActive() {
+        var syncPlayActive = true
+        val events = mutableListOf<String>()
+        val router =
+            TvPlaybackCommandRouter(
+                isSyncPlayActive = { syncPlayActive },
+                requestSyncSeek = {},
+                requestLocalSeek = {},
+                requestSyncNext = {},
+                pauseCommands =
+                    TvPlaybackPauseCommands(
+                        requestSyncPause = { events += "sync-pause" },
+                        requestSyncUnpause = { events += "sync-unpause" },
+                        pauseLocal = { events += "local-pause" },
+                        resumeLocal = { events += "local-resume" },
+                    ),
+            )
+
+        tvMediaKeyPausedTarget(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, isPaused = false)?.let(router::setPaused)
+        tvMediaKeyPausedTarget(KeyEvent.KEYCODE_MEDIA_PLAY, isPaused = true)?.let(router::setPaused)
+        syncPlayActive = false
+        tvMediaKeyPausedTarget(KeyEvent.KEYCODE_MEDIA_PAUSE, isPaused = false)?.let(router::setPaused)
+        tvMediaKeyPausedTarget(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, isPaused = true)?.let(router::setPaused)
+
+        assertEquals(listOf("sync-pause", "sync-unpause", "local-pause", "local-resume"), events)
+        assertNull(tvMediaKeyPausedTarget(KeyEvent.KEYCODE_DPAD_CENTER, isPaused = false))
+    }
 
     @Test
     fun allFivePlaybackSegmentSettingsDispatchTheirOwnMode() {

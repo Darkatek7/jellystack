@@ -1032,6 +1032,13 @@ private fun TvAuthenticatedApp(
                 requestSyncSeek = syncPlay::requestSeek,
                 requestLocalSeek = playbackController::seekTo,
                 requestSyncNext = syncPlay::requestNext,
+                pauseCommands =
+                    TvPlaybackPauseCommands(
+                        requestSyncPause = syncPlay::requestPause,
+                        requestSyncUnpause = syncPlay::requestUnpause,
+                        pauseLocal = playbackController::pause,
+                        resumeLocal = playbackController::resume,
+                    ),
             )
         }
     val playbackCoordinators =
@@ -1074,6 +1081,15 @@ private fun TvAuthenticatedApp(
             )
         }
 
+    fun openLibrary(
+        libraryId: String,
+        title: String?,
+    ) {
+        val myListItems = myList.mapNotNull { it.jellyfinItem }
+        val mode = tvLibraryEntryMode(libraryId, homeState, homeSections, myListItems, strings.libraryBrowseLabels())
+        push(TvRoute.Library(libraryId, title, mode))
+    }
+
     fun openJellyfinDetail(item: JellyfinItem) {
         appStateHolder.rememberDetailSource(item)
         push(TvRoute.JellyfinDetail(item.id))
@@ -1088,14 +1104,12 @@ private fun TvAuthenticatedApp(
         push(tvConnectionsSettingsRoute())
     }
 
+    // The Seerr detail route loads its own detail, so My List entries and a restored back stack get one too.
     fun openSeerr(item: JellyseerrSearchItem) {
-        recommendationsCoordinator.loadDetail(item)
         push(item.toTvRoute())
     }
 
     fun openSeerr(route: TvRoute.SeerrDetail) {
-        val item = route.toSearchItem()
-        recommendationsCoordinator.loadDetail(item)
         push(route)
     }
 
@@ -1395,8 +1409,8 @@ private fun TvAuthenticatedApp(
                                                 trailerPreviewCoordinator.clearFocus()
                                                 openJellyfinDetail(it)
                                             },
-                                            onHomeLibrary = { libraryId, title -> push(TvRoute.Library(libraryId, title)) },
-                                            onLibrary = { push(TvRoute.Library(it.id, it.name)) },
+                                            onHomeLibrary = ::openLibrary,
+                                            onLibrary = { openLibrary(it.id, it.name) },
                                             onSeerrItem = ::openSeerr,
                                             myList = myList,
                                             onMyListEntry = { entry ->
@@ -1423,7 +1437,7 @@ private fun TvAuthenticatedApp(
                                             onSelectLibrary = { id ->
                                                 val library = homeState.libraries.firstOrNull { it.id == id }
                                                 if (route.libraryId == null) {
-                                                    push(TvRoute.Library(id, library?.name))
+                                                    openLibrary(id, library?.name)
                                                 } else {
                                                     browseCoordinator.selectLibrary(id)
                                                 }
@@ -1523,6 +1537,11 @@ private fun TvAuthenticatedApp(
                                     is TvRoute.SeerrDetail -> {
                                         val key = route.mediaType to route.tmdbId
                                         val routeItem = route.toSearchItem()
+                                        // Ready means Seerr's server is known; a load before that ends without a result.
+                                        val seerrReady = recommendations is JellyseerrRecommendationsState.Ready
+                                        LaunchedEffect(key, seerrReady) {
+                                            if (seerrReady) recommendationsCoordinator.loadDetail(routeItem)
+                                        }
                                         TvSeerrDetailScreen(
                                             route = route,
                                             detailState = details[key],
@@ -1540,6 +1559,7 @@ private fun TvAuthenticatedApp(
                                                     }
                                                 }
                                             },
+                                            onRetry = { recommendationsCoordinator.reloadDetail(routeItem) },
                                         )
                                     }
                                     TvRoute.Player ->
@@ -1560,6 +1580,7 @@ private fun TvAuthenticatedApp(
                                             imageBaseUrl = homeState.imageBaseUrl,
                                             imageAccessToken = homeState.imageAccessToken,
                                             onSeekTo = playbackCommandRouter::seekTo,
+                                            onSetPaused = playbackCommandRouter::setPaused,
                                             loadEpisodes = browseRepository::latestEpisodesForSeries,
                                             onPlayEpisode = playbackLauncher::play,
                                             onSkipSegment = segmentCoordinator::skip,
@@ -1568,6 +1589,8 @@ private fun TvAuthenticatedApp(
                                             strings = strings,
                                             stopPlayback = stopPlayback,
                                             onClose = {
+                                                // Closing the player leaves a SyncPlay group, as on the phone.
+                                                if (syncPlay.state.value.currentGroup != null) syncPlay.leaveGroup()
                                                 stopPlayback()
                                                 appStateHolder.popRoute()
                                             },
@@ -1625,21 +1648,17 @@ internal fun TvExitConfirmationDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val cancelFocusRequester = remember { FocusRequester() }
-    LaunchedEffect(Unit) {
-        withFrameNanos { }
-        runCatching { cancelFocusRequester.requestFocus() }
-    }
+    val cancelFocusRequester = rememberTvDialogInitialFocus()
     Dialog(onDismissRequest = onDismiss) {
         Column(
             Modifier.width(560.dp).background(TvSurfaceRaised, RoundedCornerShape(26.dp)).padding(28.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text(strings.exitAppTitle, color = TvText, fontSize = 28.sp)
-            Text(strings.exitAppMessage, color = TvTextMuted, fontSize = 18.sp)
+            Text(strings.messages.exitAppTitle, color = TvText, fontSize = 28.sp)
+            Text(strings.messages.exitAppMessage, color = TvTextMuted, fontSize = 18.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 TvActionButton(
-                    label = strings.exitApp,
+                    label = strings.messages.exitApp,
                     onClick = onConfirm,
                     destructive = true,
                     modifier = Modifier.width(180.dp).testTag("tv-exit-confirm"),

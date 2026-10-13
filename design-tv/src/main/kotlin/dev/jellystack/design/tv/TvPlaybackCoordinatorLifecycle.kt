@@ -161,7 +161,7 @@ private suspend fun TvPlaybackCoordinatorSources.resolveNextEpisode(
     return PlaybackContinuationTarget(
         mediaId = next.id,
         title = next.episodeTitle ?: next.name,
-        subtitle = "S${next.parentIndexNumber ?: 0} E${next.indexNumber ?: 0}",
+        subtitle = tvEpisodeCode(next.parentIndexNumber, next.indexNumber),
         imageUrl = jellyfinImageUrl(images.baseUrl, images.accessToken, next.id, next.primaryImageTag),
     ) {
         router.playNext {

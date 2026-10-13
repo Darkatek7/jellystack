@@ -114,6 +114,7 @@ fun coreModule(): Module =
             HomeSectionsRepository(
                 environmentProvider = get(),
                 apiFactory = get(homeSectionsApiFactoryQualifier),
+                localeProvider = get(),
             )
         }
         single<JellyfinSessionApiFactory>(jellyfinSessionApiFactoryQualifier) {

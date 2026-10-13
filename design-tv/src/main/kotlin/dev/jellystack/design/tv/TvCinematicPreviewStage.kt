@@ -16,6 +16,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
@@ -27,14 +30,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 import dev.jellystack.players.AndroidPlayerEngine
+import kotlinx.coroutines.flow.MutableStateFlow
 
 /** Browse rows start where the home rows start, so cards never cover the stage text. */
 internal val TV_CINEMATIC_ROWS_TOP: Dp = TvLayoutTokens.SafeInsets.vertical + TV_HOME_HERO_HEIGHT_DP.dp + 12.dp
 internal val TV_CINEMATIC_STAGE_HEIGHT: Dp = TV_CINEMATIC_ROWS_TOP
 
 /**
- * The focused card's artwork behind the whole screen, as on the home screen; a playing trailer replaces it.
- * The scrims only keep the text readable, so they fade with [uiAlpha] while the trailer has the screen.
+ * The focused card's artwork behind the whole screen, as on the home screen; a playing trailer replaces it once it
+ * shows a frame. The scrims only keep the text readable, so they fade with [uiAlpha] while the trailer has the screen.
  */
 @Composable
 internal fun TvCinematicBackdropLayer(
@@ -42,10 +46,13 @@ internal fun TvCinematicBackdropLayer(
     trailerEngine: AndroidPlayerEngine?,
     uiAlpha: State<Float>,
 ) {
+    val trailerFrames = remember(trailerEngine) { trailerEngine?.firstFrameRendered ?: MutableStateFlow(false) }
+    val trailerFrameShown by trailerFrames.collectAsState()
     Box(Modifier.fillMaxSize()) {
         if (trailerEngine != null) {
             TvTrailerPreviewSurface(trailerEngine, Modifier.fillMaxSize().testTag("cinematic-preview-player-surface"))
-        } else {
+        }
+        TvTrailerArtworkCover(covering = trailerEngine == null || !trailerFrameShown) {
             val transitionMillis = if (LocalTvFocusAppearance.current.reducedMotion) 0 else backdrop.transitionMillis
             AnimatedContent(
                 targetState = backdrop.url,

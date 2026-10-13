@@ -44,6 +44,8 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onPlaced
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.toggleableState
@@ -86,11 +88,10 @@ internal fun TvSegmentSkipSettings(
         if (showTitle) TvSectionTitle(strings.segmentSkipping)
         Text(strings.serverSegmentExplanation, color = TvTextMuted, fontSize = 17.sp)
         TvSettingsGrid {
-            models.forEachIndexed { index, model ->
+            models.forEach { model ->
                 TvSettingTile(
                     title = model.title,
                     value = model.mode.label(strings),
-                    focusToNavigationRailOnLeft = index == 0 || index == 3,
                     focusTargetId = tvSettingsSegmentControlTargetId(model.type),
                 ) {
                     choiceDialog =
@@ -188,7 +189,6 @@ private val LocalTvSettingsTileWidth = staticCompositionLocalOf { 260.dp }
 internal fun TvSettingTile(
     title: String,
     value: String,
-    focusToNavigationRailOnLeft: Boolean = false,
     screenEntry: Boolean = false,
     enabled: Boolean = true,
     focusTargetId: String,
@@ -196,21 +196,25 @@ internal fun TvSettingTile(
     checked: Boolean? = null,
     onClick: () -> Unit,
 ) {
+    // Left from the grid's first column opens the rail. The column comes from the measured placement, so it stays
+    // right for every column count and for tiles that a page only shows conditionally.
+    var inFirstColumn by remember { mutableStateOf(false) }
     Column(
         modifier
+            .onPlaced { coordinates -> inFirstColumn = coordinates.positionInParent().x < 1f }
             .tvScreenEntryFocus(screenEntry, focusTargetId)
             .width(LocalTvSettingsTileWidth.current)
             .height(112.dp)
             .graphicsLayer { alpha = if (enabled) 1f else 0.46f }
-            .background(TvSurface, RoundedCornerShape(20.dp))
             .semantics {
                 checked?.let { toggleableState = if (it) ToggleableState.On else ToggleableState.Off }
             }.tvFocusable(
                 onClick = onClick,
                 enabled = enabled,
                 shape = RoundedCornerShape(20.dp),
-                focusToNavigationRailOnLeft = focusToNavigationRailOnLeft,
+                focusToNavigationRailOnLeft = inFirstColumn,
                 focusTargetId = focusTargetId,
+                fill = TvSurface,
             ).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {

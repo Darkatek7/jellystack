@@ -80,6 +80,29 @@ class TvBackdropControllerTest {
             assertEquals(1f, tvCinematicMotion(reducedMotion = true, highContrastFocus = false).focusScale)
         }
 
+    @Test
+    fun cardThatKeepsTheBackdropLeavesTheStageInPlace() =
+        runTest {
+            val loads = mutableListOf<String>()
+            val controller =
+                TvBackdropController(
+                    scope = this,
+                    imageLoader =
+                        TvBackdropImageLoader { url ->
+                            loads += url
+                            true
+                        },
+                )
+
+            controller.focus(card("a"))
+            advanceUntilIdle()
+            controller.focus(card("library").copy(keepsBackdrop = true))
+            advanceUntilIdle()
+
+            assertEquals(listOf("backdrop-a"), loads)
+            assertEquals("backdrop-a", controller.state.value.url)
+        }
+
     private fun card(id: String) =
         TvCinematicCard(
             id = id,

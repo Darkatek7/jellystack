@@ -13,8 +13,15 @@ sealed interface TvVoiceSearchResult {
     data object Cancelled : TvVoiceSearchResult
 
     data class Error(
-        val message: String? = null,
+        val failure: TvVoiceSearchFailure = TvVoiceSearchFailure.FAILED,
     ) : TvVoiceSearchResult
+}
+
+/** Why voice search ended without a query; the UI words it in the app language. */
+enum class TvVoiceSearchFailure {
+    RECOGNIZER_UNAVAILABLE,
+    NO_SPEECH,
+    FAILED,
 }
 
 interface TvVoiceSearchPort {

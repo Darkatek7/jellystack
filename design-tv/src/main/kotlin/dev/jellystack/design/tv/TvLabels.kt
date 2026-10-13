@@ -7,6 +7,7 @@ import dev.jellystack.core.jellyfin.JellyfinMediaFeatures
 import dev.jellystack.core.jellyseerr.JellyseerrMediaStatus
 import dev.jellystack.core.jellyseerr.JellyseerrRecommendationRail
 import dev.jellystack.core.jellyseerr.JellyseerrRequestStatus
+import dev.jellystack.core.server.ServerType
 import dev.jellystack.players.PlaybackMode
 
 // Product and service names are the same in every language, so they are constants rather than strings.
@@ -15,6 +16,14 @@ internal const val TV_BRAND_JELLYFIN = "Jellyfin"
 internal const val TV_BRAND_SEERR = "Seerr"
 internal const val TV_BRAND_TMDB = "TMDB"
 internal const val TV_BRAND_IMDB = "IMDb"
+
+internal fun ServerType.tvBrandLabel(): String =
+    when (this) {
+        ServerType.JELLYFIN -> TV_BRAND_JELLYFIN
+        ServerType.JELLYSEERR -> TV_BRAND_SEERR
+        ServerType.SONARR -> "Sonarr"
+        ServerType.RADARR -> "Radarr"
+    }
 
 // The label printed on the remote's centre key.
 internal const val TV_KEY_OK = "OK"

@@ -27,7 +27,7 @@ internal fun JellyfinItem.tvCardText(minutesLeft: String): TvMediaCardText {
             title = series ?: episodeName,
             subtitle =
                 listOfNotNull(
-                    "S${parentIndexNumber ?: 0} E${indexNumber ?: 0}",
+                    tvEpisodeCode(parentIndexNumber, indexNumber),
                     timeLeft ?: episodeName.takeIf { series != null },
                 ).joinToString(TV_CARD_SEPARATOR),
             progress = progress?.fraction,
@@ -60,11 +60,25 @@ internal fun JellyfinItem.tvEpisodeCardText(strings: TvStrings): TvMediaCardText
     )
 }
 
+/** "S1 E2": the one format for season and episode numbers across the TV app. */
+internal fun tvEpisodeCode(
+    season: Int?,
+    episode: Int?,
+): String = "S${season ?: 0} E${episode ?: 0}"
+
 /** The line under a stage title: year, community rating, and age rating. */
 internal fun JellyfinItem.tvStageMetadata(): String? =
-    listOfNotNull(productionYear?.toString(), tvRatingLabel(communityRating), officialRating)
+    listOfNotNull(productionYear?.toString(), tvRatingLabel(communityRating), tvVisibleOfficialRating(officialRating))
         .joinToString(TV_CARD_SEPARATOR)
         .ifBlank { null }
+
+/** The age rating worth showing; servers report "0" for titles without one. */
+internal fun tvVisibleOfficialRating(rating: String?): String? {
+    val trimmed = rating?.trim().orEmpty()
+    if (trimmed.isEmpty()) return null
+    val numericRating = trimmed.toDoubleOrNull()
+    return trimmed.takeIf { numericRating == null || numericRating > 0.0 }
+}
 
 /** The title logo of [item], or of its series for an episode; null when the server has none. */
 internal fun tvJellyfinLogoUrl(
@@ -76,5 +90,5 @@ internal fun tvJellyfinLogoUrl(
     return jellyfinImageUrl(baseUrl, token, item.seriesId ?: item.id, logoTag, "Logo", TvArtworkSize.LOGO.maxWidth)
 }
 
-private const val TV_CARD_SEPARATOR = "  •  "
+internal const val TV_CARD_SEPARATOR = "  •  "
 private const val TV_CARD_TICKS_PER_MINUTE = 600_000_000L

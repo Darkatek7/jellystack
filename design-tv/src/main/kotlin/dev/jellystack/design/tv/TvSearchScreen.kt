@@ -26,6 +26,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -33,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
@@ -104,9 +106,8 @@ internal fun TvSearchScreen(
     actions: TvSearchActions,
 ) {
     val sessionState = searchState.session
-    val queryFocusRequester = remember { FocusRequester() }
     val sourceFocusRequester = remember { FocusRequester() }
-    val keyboardController = LocalSoftwareKeyboardController.current
+    val queryFocus = rememberTvSearchEditing(sessionState.mode, sourceFocusRequester, actions)
     var retryFocusRequest by remember { mutableStateOf<TvRetryFocusRequest?>(null) }
     var backdropUrl by remember { mutableStateOf<String?>(null) }
     val presentation = tvSearchPresentation(searchState)
@@ -120,24 +121,6 @@ internal fun TvSearchScreen(
         fallbackTargetIds = setOf(TV_SEARCH_QUERY_TARGET),
     ) { targetId -> locations[targetId]?.let { materializeTvLazyTarget(listState, rowStates, it) } ?: false }
     TvRetryFocusRecovery(retryFocusRequest)
-    BackHandler(enabled = sessionState.mode == TvSearchMode.EDIT) {
-        keyboardController?.hide()
-        actions.onEnterBrowseMode()
-    }
-    LaunchedEffect(sessionState.mode) {
-        // Waiting for placement keeps a fresh Search route from losing its first focus request.
-        withFrameNanos { }
-        when (sessionState.mode) {
-            TvSearchMode.EDIT -> {
-                queryFocusRequester.requestFocus()
-                keyboardController?.show()
-            }
-            TvSearchMode.BROWSE -> {
-                keyboardController?.hide()
-                sourceFocusRequester.requestFocus()
-            }
-        }
-    }
     val results =
         TvSearchResultsContext(
             presentation = presentation,
@@ -149,7 +132,7 @@ internal fun TvSearchScreen(
     Box(Modifier.fillMaxSize()) {
         TvSearchBackdrop(backdropUrl)
         Column(Modifier.fillMaxSize()) {
-            TvSearchHeader(searchState, strings, queryFocusRequester, sourceFocusRequester, actions)
+            TvSearchHeader(searchState, strings, queryFocus, sourceFocusRequester, actions)
             TvSearchResults(
                 context = results,
                 lists = TvSearchListStates(listState, rowStates),
@@ -166,6 +149,73 @@ internal fun TvSearchScreen(
             )
         }
     }
+}
+
+/** The query field's focus handle; a lost focus while editing ends editing (see [TvSearchQueryFocusTracker]). */
+private class TvSearchQueryFocus(
+    val requester: FocusRequester,
+    private val currentMode: () -> TvSearchMode,
+    private val endEditing: () -> Unit,
+) {
+    private val tracker = TvSearchQueryFocusTracker()
+
+    /** False after Left handed focus to the rail, so entering browse mode leaves it there. */
+    var browseFocusesSources = true
+
+    fun onLeavingForRail() = tracker.onLeavingForRail()
+
+    fun onFocusChanged(focused: Boolean) {
+        val exit = tracker.onFocusChanged(focused, currentMode()) ?: return
+        browseFocusesSources = exit == TvSearchEditExit.FOCUS_SOURCES
+        endEditing()
+    }
+}
+
+/**
+ * Text editing lifecycle: Back or a lost query focus ends editing, and each mode moves focus to its control (the
+ * query with the keyboard while editing, the source chips while browsing).
+ */
+@Composable
+private fun rememberTvSearchEditing(
+    mode: TvSearchMode,
+    sourceFocusRequester: FocusRequester,
+    actions: TvSearchActions,
+): TvSearchQueryFocus {
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val currentKeyboardController by rememberUpdatedState(keyboardController)
+    val currentActions by rememberUpdatedState(actions)
+    val currentMode by rememberUpdatedState(mode)
+    val queryFocus =
+        remember {
+            TvSearchQueryFocus(
+                requester = FocusRequester(),
+                currentMode = { currentMode },
+                endEditing = {
+                    currentKeyboardController?.hide()
+                    currentActions.onEnterBrowseMode()
+                },
+            )
+        }
+    BackHandler(enabled = mode == TvSearchMode.EDIT) {
+        keyboardController?.hide()
+        actions.onEnterBrowseMode()
+    }
+    LaunchedEffect(mode) {
+        // Waiting for placement keeps a fresh Search route from losing its first focus request.
+        withFrameNanos { }
+        when (mode) {
+            TvSearchMode.EDIT -> {
+                queryFocus.requester.requestFocus()
+                keyboardController?.show()
+            }
+            TvSearchMode.BROWSE -> {
+                keyboardController?.hide()
+                if (queryFocus.browseFocusesSources) sourceFocusRequester.requestFocus()
+                queryFocus.browseFocusesSources = true
+            }
+        }
+    }
+    return queryFocus
 }
 
 private class TvSearchResultsContext(
@@ -310,7 +360,7 @@ private fun tvSearchFocusLocations(
 private fun TvSearchHeader(
     searchState: TvSearchUiState,
     strings: TvStrings,
-    queryFocusRequester: FocusRequester,
+    queryFocus: TvSearchQueryFocus,
     sourceFocusRequester: FocusRequester,
     actions: TvSearchActions,
 ) {
@@ -333,17 +383,23 @@ private fun TvSearchHeader(
             modifier =
                 Modifier
                     .tvScreenEntryFocus(focusTargetId = TV_SEARCH_QUERY_TARGET)
-                    .tvFocusTarget(queryFocusRequester, focusTargetId = TV_SEARCH_QUERY_TARGET)
-                    .focusRequester(queryFocusRequester)
+                    .tvFocusTarget(queryFocus.requester, focusTargetId = TV_SEARCH_QUERY_TARGET)
+                    .focusRequester(queryFocus.requester)
+                    .onFocusChanged { state -> queryFocus.onFocusChanged(state.isFocused) }
                     .fillMaxWidth(0.6f)
                     .height(60.dp)
                     .testTag("tv-search-query")
                     .onPreviewKeyEvent { event ->
+                        val keyDown = event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN
                         val opensEditing =
                             sessionState.mode == TvSearchMode.BROWSE &&
-                                event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
+                                keyDown &&
                                 event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_CENTER
                         if (opensEditing) actions.onEnterEditMode()
+                        // The rail handler below consumes Left; remember it so ending the edit keeps rail focus.
+                        if (keyDown && event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+                            queryFocus.onLeavingForRail()
+                        }
                         opensEditing
                     }.tvReturnToNavigationRailOnLeft()
                     .focusProperties {
@@ -352,7 +408,7 @@ private fun TvSearchHeader(
                     },
         )
         TvSearchSourceChips(searchState, strings, sourceFocusRequester, actions)
-        searchState.voiceError?.let { message -> TvStatusAnchor("${strings.requestFailed}: $message") }
+        searchState.voiceError?.let { failure -> TvStatusAnchor(strings.messages.voiceSearchError(failure)) }
     }
 }
 

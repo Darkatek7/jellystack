@@ -1,5 +1,6 @@
 package dev.jellystack.design.tv
 
+import android.view.KeyEvent
 import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
 import dev.jellystack.core.preferences.AppSettings
 import dev.jellystack.core.preferences.SegmentSkipMode
@@ -209,7 +210,7 @@ private fun tvEndedUpNextActions(
     strings: TvStrings,
 ): List<TvPlaybackActionModel> {
     nextTarget ?: return emptyList()
-    val label = countdownSeconds?.let { strings.playingInSeconds.format(it) } ?: strings.player.playNextEpisode
+    val label = countdownSeconds?.let(strings.messages::playingIn) ?: strings.player.playNextEpisode
     return listOfNotNull(
         tvUpNextAction(nextTarget, label, strings),
         countdownSeconds?.let {
@@ -253,12 +254,32 @@ internal suspend fun routeTvPlayNext(
     if (syncPlayActive) requestSyncNext() else requestLocalNext()
 }
 
+/** Pause and resume, for the SyncPlay group and for this player alone. */
+internal class TvPlaybackPauseCommands(
+    val requestSyncPause: () -> Unit,
+    val requestSyncUnpause: () -> Unit,
+    val pauseLocal: () -> Unit,
+    val resumeLocal: () -> Unit,
+)
+
 internal class TvPlaybackCommandRouter(
     private val isSyncPlayActive: () -> Boolean,
     private val requestSyncSeek: (Long) -> Unit,
     private val requestLocalSeek: (Long) -> Unit,
     private val requestSyncNext: () -> Unit,
+    private val pauseCommands: TvPlaybackPauseCommands,
 ) {
+    /** Pauses or resumes the whole group while SyncPlay is active, so every member stays in step. */
+    fun setPaused(paused: Boolean) {
+        val syncPlayActive = isSyncPlayActive()
+        when {
+            syncPlayActive && paused -> pauseCommands.requestSyncPause()
+            syncPlayActive -> pauseCommands.requestSyncUnpause()
+            paused -> pauseCommands.pauseLocal()
+            else -> pauseCommands.resumeLocal()
+        }
+    }
+
     fun seekTo(positionMs: Long) {
         routeTvSegmentSeek(
             positionMs = positionMs,
@@ -276,6 +297,18 @@ internal class TvPlaybackCommandRouter(
         )
     }
 }
+
+/** The paused state a remote media key asks for; null for every other key. */
+internal fun tvMediaKeyPausedTarget(
+    keyCode: Int,
+    isPaused: Boolean,
+): Boolean? =
+    when (keyCode) {
+        KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> !isPaused
+        KeyEvent.KEYCODE_MEDIA_PLAY -> false
+        KeyEvent.KEYCODE_MEDIA_PAUSE -> true
+        else -> null
+    }
 
 internal fun AppSettings.segmentSkipMode(type: PlaybackSegmentType): SegmentSkipMode =
     when (type) {

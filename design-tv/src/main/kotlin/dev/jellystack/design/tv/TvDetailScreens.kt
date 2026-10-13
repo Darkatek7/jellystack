@@ -129,13 +129,6 @@ internal fun tvJellyfinHeroTitlePresentation(
         textColor = TvText,
     )
 
-internal fun tvVisibleOfficialRating(rating: String?): String? {
-    val trimmed = rating?.trim().orEmpty()
-    if (trimmed.isEmpty()) return null
-    val numericRating = trimmed.toDoubleOrNull()
-    return trimmed.takeIf { numericRating == null || numericRating > 0.0 }
-}
-
 internal data class TvSeasonGroup(
     val seasonNumber: Int?,
     val episodes: List<JellyfinItem>,
@@ -860,8 +853,8 @@ internal fun TvJellyfinDetailScreen(
             badges = currentDetail.mediaFeatures().badgeLabels(strings),
             subtitle =
                 if (currentItem.type.equals("Episode", true)) {
-                    "${currentItem.seriesName.orEmpty()}  •  " +
-                        "S${currentItem.parentIndexNumber ?: 0} E${currentItem.indexNumber ?: 0}"
+                    currentItem.seriesName.orEmpty() + TV_CARD_SEPARATOR +
+                        tvEpisodeCode(currentItem.parentIndexNumber, currentItem.indexNumber)
                 } else {
                     currentDetail.genres.take(4).joinToString("  •  ")
                 },
@@ -956,9 +949,12 @@ internal fun LazyListScope.tvJellyfinDetailSections(
         when (section) {
             is TvDetailSection.Facts ->
                 item(section.id) {
-                    Row(Modifier.padding(start = 108.dp, end = 48.dp), horizontalArrangement = Arrangement.spacedBy(22.dp)) {
-                        section.values.forEach { Text(it, color = TvTextMuted, fontSize = 18.sp) }
-                    }
+                    Text(
+                        section.values.joinToString(TV_CARD_SEPARATOR),
+                        modifier = Modifier.padding(start = 108.dp, end = 48.dp),
+                        color = TvTextMuted,
+                        fontSize = 18.sp,
+                    )
                 }
             is TvDetailSection.Overview ->
                 item(section.id) {
@@ -1284,6 +1280,7 @@ internal fun TvSeerrDetailScreen(
     onOpenItem: (JellyseerrSearchItem) -> Unit,
     isInMyList: Boolean = false,
     onToggleMyList: (JellyseerrSearchItem, Boolean) -> Unit = { _, _ -> },
+    onRetry: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val uriHandler = LocalUriHandler.current
@@ -1318,7 +1315,9 @@ internal fun TvSeerrDetailScreen(
     val similar = detail?.enrichment?.similar.orEmpty()
     val hasRequestAction = activeRequest == null && (canRequestStandard || canRequest4k)
     val trailerUrl = detail?.trailer?.url ?: detail?.videos?.firstOrNull { it.url != null }?.url
-    val myListIsPrimary = !hasRequestAction && trailerUrl == null
+    val status = detailState.tvSeerrDetailStatus()
+    val primaryAction = tvSeerrPrimaryAction(status, canRequest = hasRequestAction, hasTrailer = trailerUrl != null)
+    val myListFocusRequester = remember(route) { FocusRequester() }
     val uiState =
         buildTvSeerrDetailUiState(
             routeKey = route.focusRouteKey(),
@@ -1365,8 +1364,20 @@ internal fun TvSeerrDetailScreen(
                     fontWeight = FontWeight.Bold,
                     maxLines = 2,
                 )
-                Text((detail?.genres.orEmpty()).take(4).joinToString("  •  "), color = TvTextMuted, fontSize = 19.sp)
+                TvSeerrDetailMetaLine(detail?.genres.orEmpty(), status, strings)
                 Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    if (primaryAction == TvSeerrPrimaryAction.RETRY) {
+                        TvActionButton(
+                            strings.retry,
+                            primary = true,
+                            onClick = {
+                                // Retry leaves while the detail reloads; My List stays, so it keeps the focus.
+                                runCatching { myListFocusRequester.requestFocus() }
+                                onRetry()
+                            },
+                            modifier = primaryActionModifier.then(actionRowModifier),
+                        )
+                    }
                     when {
                         activeRequest != null ->
                             TvActionButton(
@@ -1381,7 +1392,7 @@ internal fun TvSeerrDetailScreen(
                                 primary = true,
                                 onClick = { showRequestDialog = true },
                                 modifier =
-                                    primaryActionModifier
+                                    (if (primaryAction == TvSeerrPrimaryAction.REQUEST) primaryActionModifier else Modifier)
                                         .then(actionRowModifier)
                                         .width(TV_DETAIL_PRIMARY_ACTION_WIDTH_DP.dp),
                             )
@@ -1392,10 +1403,10 @@ internal fun TvSeerrDetailScreen(
                             strings.trailer,
                             { runCatching { uriHandler.openUri(url) } },
                             modifier =
-                                if (hasRequestAction) {
-                                    actionRowModifier
-                                } else {
+                                if (primaryAction == TvSeerrPrimaryAction.TRAILER) {
                                     primaryActionModifier.then(actionRowModifier)
+                                } else {
+                                    actionRowModifier
                                 },
                         )
                     }
@@ -1404,11 +1415,13 @@ internal fun TvSeerrDetailScreen(
                         onClick = { onToggleMyList(fallbackItem, !isInMyList) },
                         selected = isInMyList,
                         modifier =
-                            if (myListIsPrimary) {
-                                primaryActionModifier.then(actionRowModifier)
-                            } else {
-                                actionRowModifier
-                            },
+                            Modifier.focusRequester(myListFocusRequester).then(
+                                if (primaryAction == TvSeerrPrimaryAction.MY_LIST) {
+                                    primaryActionModifier.then(actionRowModifier)
+                                } else {
+                                    actionRowModifier
+                                },
+                            ),
                     )
                 }
             }
@@ -1478,6 +1491,11 @@ private fun TvRequestDialog(
             }.filter { it.is4k == (variant == JellyseerrRequestVariant.FOUR_K) }
         }
     LaunchedEffect(variant) { profile = JellyseerrRequestProfileSelection.ServerDefault }
+    // The first choice gets focus; without choices the send action does.
+    val firstFocus = rememberTvDialogInitialFocus()
+    val showVersions = canStandard && can4k
+    val showSeasons = mediaType == JellyseerrMediaType.TV && seasons.isNotEmpty()
+    val showProfiles = capabilities.canUseAdvancedRequests && profiles.isNotEmpty()
 
     Dialog(onDismissRequest = onDismiss) {
         Column(
@@ -1490,7 +1508,7 @@ private fun TvRequestDialog(
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             Text(
-                "${strings.request} $title",
+                strings.messages.requestTitle(title),
                 color = TvText,
                 fontSize = 28.sp,
                 lineHeight = 31.sp,
@@ -1498,7 +1516,7 @@ private fun TvRequestDialog(
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (canStandard && can4k) {
+            if (showVersions) {
                 TvSectionTitle(strings.version)
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     TvActionButton(
@@ -1506,6 +1524,7 @@ private fun TvRequestDialog(
                         { variant = JellyseerrRequestVariant.STANDARD },
                         primary = variant == JellyseerrRequestVariant.STANDARD,
                         selected = variant == JellyseerrRequestVariant.STANDARD,
+                        focusRequester = firstFocus,
                     )
                     TvActionButton(
                         "4K",
@@ -1515,7 +1534,7 @@ private fun TvRequestDialog(
                     )
                 }
             }
-            if (mediaType == JellyseerrMediaType.TV && seasons.isNotEmpty()) {
+            if (showSeasons) {
                 TvSectionTitle(strings.seasons)
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -1529,6 +1548,7 @@ private fun TvRequestDialog(
                             { allSeasons = true },
                             primary = allSeasons,
                             selected = allSeasons,
+                            focusRequester = firstFocus.takeIf { !showVersions },
                         )
                     }
                     items(seasons) { season ->
@@ -1550,7 +1570,7 @@ private fun TvRequestDialog(
                     }
                 }
             }
-            if (capabilities.canUseAdvancedRequests && profiles.isNotEmpty()) {
+            if (showProfiles) {
                 TvSectionTitle(strings.requestProfile)
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -1564,6 +1584,7 @@ private fun TvRequestDialog(
                             { profile = JellyseerrRequestProfileSelection.ServerDefault },
                             primary = profile is JellyseerrRequestProfileSelection.ServerDefault,
                             selected = profile is JellyseerrRequestProfileSelection.ServerDefault,
+                            focusRequester = firstFocus.takeIf { !showVersions && !showSeasons },
                         )
                     }
                     items(profiles, key = { "${it.serviceId}:${it.languageProfileId}:${it.profileId}" }) { option ->
@@ -1583,6 +1604,7 @@ private fun TvRequestDialog(
                 TvActionButton(
                     if (requestsState.isPerformingAction) strings.requesting else strings.sendRequest,
                     modifier = Modifier.width(230.dp),
+                    focusRequester = firstFocus.takeIf { !showVersions && !showSeasons && !showProfiles },
                     primary = true,
                     enabled =
                         !requestsState.isPerformingAction &&

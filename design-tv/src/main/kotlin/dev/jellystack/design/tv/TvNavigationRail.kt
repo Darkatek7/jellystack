@@ -30,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.semantics.contentDescription
@@ -104,6 +105,12 @@ private const val TV_RAIL_SLIDE_MS = 180
 
 private val TV_RAIL_ITEM_SHAPE = RoundedCornerShape(18.dp)
 
+private val TV_RAIL_PANEL_COLOR = Color(0xE60B0C14)
+
+// Opaque so the focused current section keeps its focus shadow; the panel underneath is nearly opaque as well.
+private val TV_RAIL_SELECTED_FILL =
+    TvPurpleStrong.copy(alpha = 0.48f).compositeOver(TV_RAIL_PANEL_COLOR.copy(alpha = 1f))
+
 private val TV_RAIL_ITEM_WIDTH = TvLayoutTokens.ExpandedRailWidth - 20.dp
 
 /** The open rail over a scrim that fades into the content. */
@@ -120,7 +127,7 @@ private fun TvNavigationRailPanel(content: @Composable () -> Unit) {
                 Modifier
                     .width(TvLayoutTokens.ExpandedRailWidth)
                     .fillMaxHeight()
-                    .background(Color(0xE60B0C14))
+                    .background(TV_RAIL_PANEL_COLOR)
                     .padding(horizontal = 10.dp, vertical = TvLayoutTokens.SafeInsets.vertical),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
@@ -145,6 +152,7 @@ private fun TvNavigationRailProfile(
                 enabled = tvNavigationRailItemsFocusable(expanded),
                 shape = TV_RAIL_ITEM_SHAPE,
                 focusTargetId = TV_PROFILE_AVATAR_TARGET.takeIf { expanded },
+                fill = Color.Transparent,
             ).padding(horizontal = 14.dp, vertical = 15.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -176,8 +184,7 @@ private fun TvNavigationRailItem(
                 } else {
                     false
                 }
-            }.background(if (isSelected) TvPurpleStrong.copy(alpha = 0.48f) else Color.Transparent, TV_RAIL_ITEM_SHAPE)
-            .semantics(mergeDescendants = true) {
+            }.semantics(mergeDescendants = true) {
                 contentDescription = entry.label
                 this.selected = isSelected
             }.tvFocusable(
@@ -185,6 +192,7 @@ private fun TvNavigationRailItem(
                 enabled = tvNavigationRailItemsFocusable(expanded),
                 shape = TV_RAIL_ITEM_SHAPE,
                 focusTargetId = tvRailTargetId(entry.route).takeIf { expanded },
+                fill = if (isSelected) TV_RAIL_SELECTED_FILL else Color.Transparent,
             ).padding(horizontal = 14.dp, vertical = 15.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),

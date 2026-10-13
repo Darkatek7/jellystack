@@ -19,6 +19,16 @@ class TvHomeDetailNavigationTest {
     }
 
     @Test
+    fun homePlaylistsLibraryOpensLibraryInsteadOfDetail() {
+        val playlists = item(id = "playlists", name = "Playlists", type = "UserView")
+
+        assertEquals(
+            TvHomeJellyfinDestination.Library(libraryId = "playlists", title = "Playlists"),
+            tvHomeJellyfinDestination(playlists),
+        )
+    }
+
+    @Test
     fun homeMediaDetailKeepsOriginalItemWhenBrowseCacheMisses() =
         runTest {
             val homeItem = item(id = "movie-1", name = "Movie", type = "Movie")

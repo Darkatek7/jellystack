@@ -22,7 +22,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -146,7 +145,6 @@ private fun TvProfileTile(
             Modifier
                 .size(112.dp)
                 .clip(CircleShape)
-                .background(profileAvatarColor(profile.id))
                 .profileAvatarFocusRing(focused)
                 .semantics(mergeDescendants = true) {
                     contentDescription =
@@ -158,6 +156,7 @@ private fun TvProfileTile(
                     providedFocusRequester = focusRequester,
                     onFocusChanged = { focused = it },
                     focusIndication = TvFocusIndication.NO_RING,
+                    fill = profileAvatarColor(profile.id),
                 ).testTag("$tagPrefix:${profile.id}:tile"),
             contentAlignment = Alignment.Center,
         ) {
@@ -301,7 +300,6 @@ private fun TvAddProfileTile(
             Modifier
                 .size(112.dp)
                 .clip(CircleShape)
-                .background(TvSurface)
                 .profileAvatarFocusRing(focused)
                 .semantics(mergeDescendants = true) { contentDescription = label }
                 .tvFocusable(
@@ -310,6 +308,7 @@ private fun TvAddProfileTile(
                     focusTargetId = "profile:add",
                     onFocusChanged = { focused = it },
                     focusIndication = TvFocusIndication.NO_RING,
+                    fill = TvSurface,
                 ).testTag("profile:add:tile"),
             contentAlignment = Alignment.Center,
         ) {
@@ -383,18 +382,23 @@ internal fun TvProfilePinScreen(
             if (locked) {
                 strings.profileLocked
             } else {
-                "●".repeat(pin.length) + "○".repeat((4 - pin.length).coerceAtLeast(0))
+                "●".repeat(pin.length) + "○".repeat((TV_PIN_LENGTH - pin.length).coerceAtLeast(0))
             },
             color = if (locked) Color(0xFFFFB4AB) else TvText,
             fontSize = 28.sp,
             modifier =
                 Modifier.semantics {
-                    contentDescription = if (locked) strings.profileLocked else "${pin.length} of 4 digits entered"
+                    contentDescription =
+                        if (locked) {
+                            strings.profileLocked
+                        } else {
+                            strings.messages.pinDigitsEntered(pin.length, TV_PIN_LENGTH)
+                        }
                     liveRegion = LiveRegionMode.Polite
                 },
         )
         if (remainingAttempts != null && !locked) {
-            Text(strings.pinAttemptsRemaining.format(remainingAttempts), color = TvTextMuted, fontSize = 17.sp)
+            Text(strings.messages.pinAttemptsRemaining(remainingAttempts), color = TvTextMuted, fontSize = 17.sp)
         }
         if (!locked) {
             listOf("123", "456", "789", "0").forEach { rowDigits ->
@@ -404,7 +408,7 @@ internal fun TvProfilePinScreen(
                             label = digit.toString(),
                             onClick = { onDigit(digit) },
                             modifier = Modifier.width(74.dp),
-                            enabled = pin.length < 4,
+                            enabled = pin.length < TV_PIN_LENGTH,
                             focusTargetId = "profile:pin:$digit",
                             focusRequester = firstDigitFocus.takeIf { digit == '1' },
                         )
@@ -414,7 +418,7 @@ internal fun TvProfilePinScreen(
             // Cancel shares the row with delete and continue so the whole pad fits on a 1080p screen.
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 TvActionButton(strings.back, onDelete, enabled = pin.isNotEmpty())
-                TvActionButton(strings.continueLabel, onSubmit, primary = true, enabled = pin.length == 4)
+                TvActionButton(strings.continueLabel, onSubmit, primary = true, enabled = pin.length == TV_PIN_LENGTH)
                 TvActionButton(strings.cancel, onCancel)
             }
         }
@@ -443,35 +447,13 @@ internal fun TvProfileStatusScreen(
 }
 
 @Composable
-internal fun TvProfileReconnectScreen(
-    profile: HouseholdProfile,
-    strings: TvStrings,
-    onReconnect: () -> Unit,
-    onCancel: () -> Unit,
-) {
-    Column(
-        Modifier.fillMaxSize().background(TvBackground),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterVertically),
-    ) {
-        Text(profile.displayName, color = TvText, fontSize = 34.sp, fontWeight = FontWeight.Bold)
-        TvActionButton(
-            strings.reconnectProfile,
-            onReconnect,
-            leading = { Icon(Icons.Default.Refresh, null) },
-            primary = true,
-        )
-        TvActionButton(strings.cancel, onCancel)
-    }
-}
-
-@Composable
 internal fun TvRemoveProfileDialog(
     profile: HouseholdProfile,
     strings: TvStrings,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val cancelFocus = rememberTvDialogInitialFocus()
     Dialog(onDismissRequest = onDismiss) {
         Column(
             Modifier
@@ -488,12 +470,14 @@ internal fun TvRemoveProfileDialog(
             )
             Text(strings.removeProfileMessage, color = TvTextMuted, fontSize = 18.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                TvActionButton(strings.cancel, onDismiss)
+                TvActionButton(strings.cancel, onDismiss, focusRequester = cancelFocus)
                 TvActionButton(strings.removeProfile, onConfirm, destructive = true)
             }
         }
     }
 }
+
+private const val TV_PIN_LENGTH = 4
 
 private fun profileAvatarColor(seed: String): Color {
     val palette = listOf(0xFF7C4DFF, 0xFF00897B, 0xFF1565C0, 0xFFC62828, 0xFF6A1B9A)

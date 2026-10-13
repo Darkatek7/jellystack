@@ -66,7 +66,7 @@ internal fun TvRoute.focusRouteKey(libraryPath: List<String> = emptyList()): Str
                         append("/path:")
                         append(libraryPath.joinToString("/"))
                     }
-                    if (mode == TvLibraryMode.ALL_TITLES) append(":all-titles")
+                    if (mode != TvLibraryMode.BROWSE) append(":all-titles")
                 }
             }
         TvRoute.Search -> "search"
@@ -158,7 +158,8 @@ internal fun tvBackAction(
     when {
         currentRoute is TvRoute.Library &&
             currentRoute.libraryId != null &&
-            currentRoute.mode == TvLibraryMode.BROWSE &&
+            // The grid above the browse rows returns to them first; they then step out of the folders.
+            currentRoute.mode != TvLibraryMode.ALL_TITLES &&
             currentRoute.libraryId == selectedLibraryId &&
             libraryPathDepth > 0 -> TvBackAction.POP_LIBRARY_PATH
         backStackSize > 1 -> TvBackAction.POP_ROUTE

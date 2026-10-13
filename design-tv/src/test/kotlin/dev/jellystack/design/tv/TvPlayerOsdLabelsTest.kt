@@ -41,6 +41,29 @@ class TvPlayerOsdLabelsTest {
         assertEquals("Englisch", tvSubtitleButtonLabel(subtitle("en"), german))
     }
 
+    @Test
+    fun trackRowsUseTheChipLabelAndKeepRepeatedTracksApart() {
+        val strings = TvStrings.current(AppLanguage.GERMAN)
+        val audioTracks =
+            listOf(
+                audio("de").copy(id = "main", title = "Stereo - German - AC3 - Default", codec = "ac3", channels = 2),
+                audio("de").copy(id = "commentary", title = "Commentary", isDefault = false, channels = 2),
+                audio("ja").copy(id = "japanese", title = "Japanese", isDefault = false, channels = 6),
+            )
+        val forced =
+            subtitle("de").copy(id = "forced", title = "Forced - German", format = SubtitleFormat.ASS, isForced = true)
+
+        val audio = tvAudioTrackRows(audioTracks, strings)
+        val subtitles = tvSubtitleTrackRows(listOf(forced, subtitle("en")), strings)
+
+        assertEquals(audioTracks.map { tvAudioButtonLabel(it, strings.locale) }, audio.map { it.title })
+        assertEquals("AC3 · ${strings.player.defaultTrack} · Stereo - German - AC3 - Default", audio[0].detail)
+        assertEquals("AAC · Commentary", audio[1].detail)
+        assertEquals("AAC", audio[2].detail)
+        assertEquals(tvSubtitleButtonLabel(forced, strings.locale), subtitles[0].title)
+        assertEquals("${strings.player.forcedTrack} · ASS", subtitles[0].detail)
+    }
+
     private fun audio(language: String) =
         AudioTrack(id = "a", language = language, title = null, codec = "aac", isDefault = true, streamIndex = 1)
 

@@ -8,8 +8,13 @@ import dev.jellystack.players.PlayerEvent
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -218,6 +223,34 @@ class TvTrailerPreviewControllerTest {
         )
         assertNull(PlayerEvent.Ready.toTrailerPreviewEvent())
     }
+
+    @Test
+    fun trailerWhosePositionStopsFailsWhileAPausedOrMovingOneKeepsPlaying() =
+        runTest {
+            val stalled =
+                flow<Long?> {
+                    emit(0L)
+                    emit(500L)
+                    emit(1_000L)
+                    repeat(30) {
+                        delay(500L)
+                        emit(1_000L)
+                    }
+                }.stalledTrailerEvents(stallTimeoutMillis = 8_000L)
+            val healthy =
+                flow<Long?> {
+                    repeat(40) { tick ->
+                        delay(500L)
+                        emit(tick * 500L)
+                    }
+                    emit(null)
+                    delay(60_000L)
+                }.stalledTrailerEvents(stallTimeoutMillis = 8_000L)
+
+            assertEquals(TvTrailerPreviewPlayerEvent.Failed, stalled.first())
+            assertEquals(8_000L, currentTime)
+            assertEquals(emptyList(), healthy.toList())
+        }
 
     @Test
     fun stableFocusStartsExactlyAtOnePointFiveSeconds() =

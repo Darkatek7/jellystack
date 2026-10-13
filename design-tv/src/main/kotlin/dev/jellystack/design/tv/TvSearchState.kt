@@ -41,7 +41,7 @@ internal data class TvSearchUiState(
     val seerr: TvSearchSourceResult<JellyseerrSearchItem> = TvSearchSourceResult(),
     val voiceAvailability: TvVoiceSearchAvailability = TvVoiceSearchAvailability.UNAVAILABLE,
     val isVoiceListening: Boolean = false,
-    val voiceError: String? = null,
+    val voiceError: TvVoiceSearchFailure? = null,
 ) {
     val showVoiceAction: Boolean
         get() = voiceAvailability == TvVoiceSearchAvailability.AVAILABLE
@@ -73,7 +73,11 @@ internal class TvSearchCoordinator(
     private val voiceSearch: TvVoiceSearchPort = UnsupportedTvVoiceSearch,
     private val sources: TvSearchSources,
 ) {
-    private val normalizedInitialSession = initialSession.copy(query = initialSession.query.trim())
+    private val normalizedInitialSession =
+        initialSession.query.trim().let { query ->
+            // A restored query reopens its results; the keyboard only opens again when the user asks for it.
+            initialSession.copy(query = query, mode = if (query.isEmpty()) initialSession.mode else TvSearchMode.BROWSE)
+        }
     private val mutableState =
         MutableStateFlow(
             TvSearchUiState(
@@ -155,7 +159,7 @@ internal class TvSearchCoordinator(
                 mutableState.value =
                     mutableState.value.copy(
                         isVoiceListening = false,
-                        voiceError = result.message ?: "Voice search failed",
+                        voiceError = result.failure,
                     )
         }
     }

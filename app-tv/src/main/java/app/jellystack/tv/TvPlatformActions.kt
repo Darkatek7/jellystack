@@ -23,6 +23,7 @@ internal class TvPlatformActionCoordinator<E>(
     private val actions: TvPlatformActions<E>,
 ) {
     private var playbackWasActive = false
+    private var bridgeReleased = false
 
     fun onPlaybackActivityChanged(active: Boolean) {
         actions.setKeepScreenOn(active)
@@ -35,14 +36,26 @@ internal class TvPlatformActionCoordinator<E>(
         playbackVisible: Boolean,
     ): Boolean = playbackVisible && actions.handleMediaKey(event)
 
-    fun onStop(isChangingConfigurations: Boolean) {
+    fun onStop(
+        isChangingConfigurations: Boolean,
+        isFinishing: Boolean = false,
+    ) {
         actions.stopTrailer()
         if (!isChangingConfigurations) actions.stopPlayback()
+        // A finishing activity may outlive the next launch's onCreate; freeing the media session here keeps
+        // the relaunched activity from colliding with a session that onDestroy has not released yet.
+        if (isFinishing) releaseBridgeOnce()
     }
 
     fun onDestroy() {
         actions.releaseTrailer()
-        actions.releaseBridge()
+        releaseBridgeOnce()
         actions.releasePlayback()
+    }
+
+    private fun releaseBridgeOnce() {
+        if (bridgeReleased) return
+        bridgeReleased = true
+        actions.releaseBridge()
     }
 }

@@ -27,7 +27,7 @@ internal class TvBackdropController(
 
     fun focus(card: TvCinematicCard) {
         focusJob?.cancel()
-        val requestedUrl = card.backdropUrl ?: card.artworkUrl ?: return
+        val requestedUrl = card.stageUrl ?: return
         if (requestedUrl == mutableState.value.url) return
         focusJob =
             scope.launch {
@@ -51,3 +51,7 @@ internal class TvBackdropController(
         focusJob = null
     }
 }
+
+/** The image a focused card puts on the stage; null keeps the current backdrop. */
+private val TvCinematicCard.stageUrl: String?
+    get() = if (keepsBackdrop) null else backdropUrl ?: artworkUrl

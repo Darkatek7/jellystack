@@ -90,6 +90,7 @@ internal fun TvPlaybackScreen(
     imageBaseUrl: String? = null,
     imageAccessToken: String? = null,
     onSeekTo: (Long) -> Unit = controller::seekTo,
+    onSetPaused: (Boolean) -> Unit = { paused -> if (paused) controller.pause() else controller.resume() },
     loadEpisodes: (suspend (seriesId: String) -> List<JellyfinItem>)? = null,
     onPlayEpisode: (JellyfinItem) -> Unit = {},
     onSkipSegment: (PlaybackSegmentAction) -> Unit,
@@ -267,6 +268,13 @@ internal fun TvPlaybackScreen(
                         hiddenScrubGeneration += 1
                         return@onPreviewKeyEvent true
                     }
+                    // Media keys are handled here instead of by the media session, so a SyncPlay group pauses together.
+                    val mediaKeyPaused = active?.let { tvMediaKeyPausedTarget(event.nativeKeyEvent.keyCode, it.isPaused) }
+                    if (mediaKeyPaused != null) {
+                        val firstPress = event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN && event.nativeKeyEvent.repeatCount == 0
+                        if (firstPress) onSetPaused(mediaKeyPaused)
+                        return@onPreviewKeyEvent true
+                    }
                     if (event.nativeKeyEvent.action != KeyEvent.ACTION_DOWN) return@onPreviewKeyEvent false
                     interactionGeneration += 1
                     when (event.nativeKeyEvent.keyCode) {
@@ -294,10 +302,10 @@ internal fun TvPlaybackScreen(
                                     when (tvHiddenControlsCenterAction(active.isPaused, standaloneActions.isNotEmpty())) {
                                         TvHiddenControlsCenterAction.ACTIVATE_PROMPT -> activatePlaybackAction(standaloneActions.first())
                                         TvHiddenControlsCenterAction.PAUSE_AND_SHOW_CONTROLS -> {
-                                            controller.pause()
+                                            onSetPaused(true)
                                             controlsVisible = true
                                         }
-                                        TvHiddenControlsCenterAction.RESUME -> controller.resume()
+                                        TvHiddenControlsCenterAction.RESUME -> onSetPaused(false)
                                     }
                                 }
                                 true
@@ -375,7 +383,7 @@ internal fun TvPlaybackScreen(
                 actions =
                     TvPlayerOsdActions(
                         onSeekTo = onSeekTo,
-                        onTogglePlayPause = { if (active.isPaused) controller.resume() else controller.pause() },
+                        onTogglePlayPause = { onSetPaused(!active.isPaused) },
                         onAudio = { navigation = TvPlayerPanelNavigation.closed().openQuick(TvPlayerPanel.AUDIO) },
                         onSubtitles = { navigation = TvPlayerPanelNavigation.closed().openQuick(TvPlayerPanel.SUBTITLES) },
                         onMore = { navigation = navigation.openMore() },
@@ -644,7 +652,7 @@ private fun dev.jellystack.players.PlaybackMetadata?.playerSecondaryTitle(): Str
             if (metadata.seasonNumber != null &&
                 metadata.episodeNumber != null
             ) {
-                "S${metadata.seasonNumber} · E${metadata.episodeNumber}"
+                tvEpisodeCode(metadata.seasonNumber, metadata.episodeNumber)
             } else {
                 null
             }
