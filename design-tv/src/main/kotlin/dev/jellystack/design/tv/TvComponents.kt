@@ -57,6 +57,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.isSpecified
+import androidx.compose.ui.graphics.isUnspecified
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
@@ -103,6 +105,11 @@ internal enum class TvFocusIndication {
 
 private var SemanticsPropertyReceiver.tvDestructiveAction by TvDestructiveActionKey
 
+/**
+ * Makes an element focusable with the TV focus decoration. [fill] is the element's background: it is drawn inside the
+ * focus layer so it scales with focus. Elements without an opaque background of their own (drawn after this modifier)
+ * pass their fill here, a transparent one included, so the focus shadow cannot show through them.
+ */
 @Composable
 internal fun Modifier.tvFocusable(
     onClick: (() -> Unit)?,
@@ -115,6 +122,7 @@ internal fun Modifier.tvFocusable(
     focusTargetId: String? = null,
     providedFocusRequester: FocusRequester? = null,
     focusIndication: TvFocusIndication = TvFocusIndication.FULL,
+    fill: Color = Color.Unspecified,
 ): Modifier {
     val rememberedFocusRequester = remember { FocusRequester() }
     val restorationRequester = providedFocusRequester ?: rememberedFocusRequester
@@ -182,6 +190,7 @@ internal fun Modifier.tvFocusable(
                     onFocusChanged?.invoke(focused)
                 },
                 focusIndication = focusIndication,
+                fill = fill,
             ).tvReturnToNavigationRailOnLeft(focusToNavigationRailOnLeft)
             .onGloballyPositioned { coordinates ->
                 horizontalCenter = coordinates.boundsInRoot().center.x
@@ -197,6 +206,7 @@ private fun Modifier.tvFocusDecoration(
     onFocused: (() -> Unit)?,
     onFocusChanged: ((Boolean) -> Unit)?,
     focusIndication: TvFocusIndication,
+    fill: Color,
 ): Modifier {
     var focused by remember { mutableStateOf(false) }
     val focusAppearance = LocalTvFocusAppearance.current
@@ -218,11 +228,13 @@ private fun Modifier.tvFocusDecoration(
         }.graphicsLayer {
             scaleX = animatedScale
             scaleY = animatedScale
-            shadowElevation = if (focused && focusIndication != TvFocusIndication.NONE) 12.dp.toPx() else 0f
+            shadowElevation =
+                if (focused && focusIndication != TvFocusIndication.NONE && tvFocusFillCastsShadow(fill)) 12.dp.toPx() else 0f
             this.shape = shape
             ambientShadowColor = Color.Black
             spotShadowColor = TvPurpleStrong
         }.drawBehind {
+            if (fill.isSpecified) drawOutline(shape.createOutline(size, layoutDirection, this), fill)
             if (focused && focusIndication != TvFocusIndication.NONE) {
                 drawOutline(shape.createOutline(size, layoutDirection, this), Color.Black.copy(alpha = 0.24f))
             }
@@ -240,6 +252,12 @@ private fun Modifier.tvFocusDecoration(
             }
         }.clip(shape)
 }
+
+/**
+ * The focus shadow is drawn underneath the whole element, so it shows through a translucent fill as a dark inner
+ * rectangle. Elements without a fill draw their own opaque content inside the focus layer and keep the shadow.
+ */
+private fun tvFocusFillCastsShadow(fill: Color): Boolean = fill.isUnspecified || fill.alpha >= 1f
 
 @Composable
 internal fun TvActionButton(
@@ -365,12 +383,15 @@ internal fun TvCompactActionButton(
             modifier
                 .width(TV_DETAIL_COMPACT_ACTION_WIDTH_DP.dp)
                 .height(TV_DETAIL_COMPACT_ACTION_HEIGHT_DP.dp)
-                .background(if (selected) TvPurpleStrong.copy(alpha = 0.42f) else Color.Black.copy(alpha = 0.52f), shape)
                 .semantics(mergeDescendants = true) {
                     contentDescription = label
                     this.selected = selected
-                }.tvFocusable(onClick = onClick, shape = shape, scale = 1.06f)
-                .padding(horizontal = 10.dp, vertical = 8.dp),
+                }.tvFocusable(
+                    onClick = onClick,
+                    shape = shape,
+                    scale = 1.06f,
+                    fill = if (selected) TvPurpleStrong.copy(alpha = 0.42f) else Color.Black.copy(alpha = 0.52f),
+                ).padding(horizontal = 10.dp, vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterVertically),
     ) {

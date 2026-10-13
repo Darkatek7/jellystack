@@ -57,13 +57,14 @@ typealias HomeSectionsApiFactory = (JellyfinEnvironment) -> HomeSectionsApi
 class HomeSectionsRepository(
     private val environmentProvider: JellyfinEnvironmentProvider,
     private val apiFactory: HomeSectionsApiFactory,
+    private val localeProvider: JellystackLocaleProvider = JellystackLocaleProvider { null },
 ) {
     private val mutableState = MutableStateFlow<HomeSectionsState>(HomeSectionsState.Unavailable)
     val state: StateFlow<HomeSectionsState> = mutableState.asStateFlow()
     private var generation = 0L
 
     /** Creates an account-owned state session without sharing the singleton's last private result. */
-    fun isolatedSession(): HomeSectionsRepository = HomeSectionsRepository(environmentProvider, apiFactory)
+    fun isolatedSession(): HomeSectionsRepository = HomeSectionsRepository(environmentProvider, apiFactory, localeProvider)
 
     /** Invalidates in-flight work before an authenticated account generation is discarded. */
     fun close() {
@@ -74,12 +75,15 @@ class HomeSectionsRepository(
     /**
      * Loads the server's home sections. A [silent] refresh keeps the shown sections while it loads and
      * whenever a section or the whole request fails, so watched state can be refreshed without flicker.
+     * Without an explicit [language] (the app follows the system language) the section titles use the
+     * device locale instead of the server's default.
      */
     suspend fun refresh(
         enabledByUser: Boolean,
         language: String?,
         silent: Boolean = false,
     ) {
+        val sectionLanguage = language?.takeIf(String::isNotBlank) ?: localeProvider.languageTag()
         generation += 1L
         val refreshGeneration = generation
 
@@ -106,7 +110,7 @@ class HomeSectionsRepository(
                 if (isCurrent(environment)) mutableState.value = HomeSectionsState.Unavailable
                 return
             }
-            val descriptors = loadAllDescriptors(api, environment.userId, language, meta.paginationEnabled, meta.numResultsPerPage)
+            val descriptors = loadAllDescriptors(api, environment.userId, sectionLanguage, meta.paginationEnabled, meta.numResultsPerPage)
             if (!isCurrent(environment)) return
             val sections =
                 supervisorScope {
@@ -119,7 +123,7 @@ class HomeSectionsRepository(
                                 runCatching {
                                     val items =
                                         api
-                                            .sectionItems(type, environment.userId, descriptor.additionalData, language)
+                                            .sectionItems(type, environment.userId, descriptor.additionalData, sectionLanguage)
                                             .items
                                             .take(descriptor.limit.coerceAtLeast(1) * 40)
                                             .mapNotNull { it.toDomain(environment.baseUrl) }

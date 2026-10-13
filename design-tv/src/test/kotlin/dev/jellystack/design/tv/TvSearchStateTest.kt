@@ -3,6 +3,7 @@ package dev.jellystack.design.tv
 import dev.jellystack.core.jellyseerr.JellyseerrRecommendationRail
 import dev.jellystack.core.jellyseerr.JellyseerrRecommendationRailState
 import dev.jellystack.core.jellyseerr.JellyseerrRecommendationsState
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -29,6 +30,60 @@ class TvSearchStateTest {
             assertEquals(TvSearchSource.SEERR, coordinator.state.value.session.source)
             assertEquals(TvSearchMode.BROWSE, coordinator.state.value.session.mode)
         }
+
+    @Test
+    fun restoredQueryBrowsesResultsInsteadOfReopeningTheKeyboard() =
+        runTest {
+            val sources = TvSearchSources(jellyfin = { emptyList() }, seerr = { emptyList() })
+            val restored =
+                TvSearchCoordinator(
+                    scope = this,
+                    debounceMillis = 0L,
+                    initialSession = TvSearchSessionState(query = " dune ", mode = TvSearchMode.EDIT),
+                    sources = sources,
+                )
+            val fresh =
+                TvSearchCoordinator(
+                    scope = this,
+                    debounceMillis = 0L,
+                    initialSession = TvSearchSessionState(query = "  ", mode = TvSearchMode.EDIT),
+                    sources = sources,
+                )
+
+            assertEquals("dune", restored.session.value.query)
+            assertEquals(TvSearchMode.BROWSE, restored.session.value.mode)
+            assertEquals(TvSearchMode.EDIT, fresh.session.value.mode)
+            advanceUntilIdle()
+        }
+
+    @Test
+    fun queryFocusLossWhileEditingEndsEditingOnTheSourceChips() {
+        val tracker = TvSearchQueryFocusTracker()
+
+        assertEquals(null, tracker.onFocusChanged(focused = false, mode = TvSearchMode.EDIT))
+        assertEquals(null, tracker.onFocusChanged(focused = true, mode = TvSearchMode.EDIT))
+        assertEquals(TvSearchEditExit.FOCUS_SOURCES, tracker.onFocusChanged(focused = false, mode = TvSearchMode.EDIT))
+    }
+
+    @Test
+    fun leftTowardsTheRailEndsEditingWithoutTakingFocusBack() {
+        val tracker = TvSearchQueryFocusTracker()
+        tracker.onFocusChanged(focused = true, mode = TvSearchMode.EDIT)
+
+        tracker.onLeavingForRail()
+
+        assertEquals(TvSearchEditExit.KEEP_FOCUS, tracker.onFocusChanged(focused = false, mode = TvSearchMode.EDIT))
+        tracker.onFocusChanged(focused = true, mode = TvSearchMode.EDIT)
+        assertEquals(TvSearchEditExit.FOCUS_SOURCES, tracker.onFocusChanged(focused = false, mode = TvSearchMode.EDIT))
+    }
+
+    @Test
+    fun queryFocusLossWhileBrowsingKeepsBrowsing() {
+        val tracker = TvSearchQueryFocusTracker()
+        tracker.onFocusChanged(focused = true, mode = TvSearchMode.BROWSE)
+
+        assertEquals(null, tracker.onFocusChanged(focused = false, mode = TvSearchMode.BROWSE))
+    }
 
     @Test
     fun discoverDistinguishesMissingLoadingFailureAndContent() {

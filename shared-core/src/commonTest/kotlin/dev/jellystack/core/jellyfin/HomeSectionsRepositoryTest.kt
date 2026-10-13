@@ -7,6 +7,7 @@ import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.Url
 import io.ktor.http.headersOf
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
@@ -253,9 +254,40 @@ class HomeSectionsRepositoryTest {
             assertEquals("series-backdrop", episode.seriesBackdropImageTag)
         }
 
-    private fun repository(responseFor: suspend (String) -> String): HomeSectionsRepository {
+    @Test
+    fun systemLanguageRequestsSectionsInTheDeviceLocaleAndAnExplicitLanguageWins() =
+        runTest {
+            val languages = mutableListOf<String?>()
+            val repository =
+                repository(
+                    localeProvider = { "de-AT" },
+                    onRequest = { url -> if (url.encodedPath.contains("/HomeScreen/Section")) languages += url.parameters["language"] },
+                ) { path ->
+                    when {
+                        path.endsWith("/HomeScreen/Meta") -> """{"Enabled":true,"PaginationEnabled":false}"""
+                        path.endsWith("/HomeScreen/Ready") -> ""
+                        path.endsWith("/HomeScreen/Sections") ->
+                            """{"Items":[{"Section":"ContinueWatching","DisplayText":"Weiterschauen"}]}"""
+                        path.endsWith("/HomeScreen/Section/ContinueWatching") ->
+                            """{"Items":[{"Id":"movie-1","Name":"Movie","Type":"Movie"}]}"""
+                        else -> error("Unexpected path $path")
+                    }
+                }
+
+            repository.refresh(enabledByUser = true, language = null)
+            repository.refresh(enabledByUser = true, language = "en")
+
+            assertEquals(listOf<String?>("de-AT", "de-AT", "en", "en"), languages)
+        }
+
+    private fun repository(
+        localeProvider: JellystackLocaleProvider = JellystackLocaleProvider { null },
+        onRequest: (Url) -> Unit = {},
+        responseFor: suspend (String) -> String,
+    ): HomeSectionsRepository {
         val engine =
             MockEngine { request ->
+                onRequest(request.url)
                 respond(
                     content = responseFor(request.url.encodedPath),
                     status = HttpStatusCode.OK,
@@ -275,6 +307,7 @@ class HomeSectionsRepositoryTest {
         return HomeSectionsRepository(
             environmentProvider = JellyfinEnvironmentProvider { environment },
             apiFactory = { HomeSectionsApi(client, it.baseUrl, it.accessToken, it.deviceId) },
+            localeProvider = localeProvider,
         )
     }
 }

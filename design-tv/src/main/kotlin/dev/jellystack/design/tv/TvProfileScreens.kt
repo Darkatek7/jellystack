@@ -146,7 +146,6 @@ private fun TvProfileTile(
             Modifier
                 .size(112.dp)
                 .clip(CircleShape)
-                .background(profileAvatarColor(profile.id))
                 .profileAvatarFocusRing(focused)
                 .semantics(mergeDescendants = true) {
                     contentDescription =
@@ -158,6 +157,7 @@ private fun TvProfileTile(
                     providedFocusRequester = focusRequester,
                     onFocusChanged = { focused = it },
                     focusIndication = TvFocusIndication.NO_RING,
+                    fill = profileAvatarColor(profile.id),
                 ).testTag("$tagPrefix:${profile.id}:tile"),
             contentAlignment = Alignment.Center,
         ) {
@@ -301,7 +301,6 @@ private fun TvAddProfileTile(
             Modifier
                 .size(112.dp)
                 .clip(CircleShape)
-                .background(TvSurface)
                 .profileAvatarFocusRing(focused)
                 .semantics(mergeDescendants = true) { contentDescription = label }
                 .tvFocusable(
@@ -310,6 +309,7 @@ private fun TvAddProfileTile(
                     focusTargetId = "profile:add",
                     onFocusChanged = { focused = it },
                     focusIndication = TvFocusIndication.NO_RING,
+                    fill = TvSurface,
                 ).testTag("profile:add:tile"),
             contentAlignment = Alignment.Center,
         ) {

@@ -8,6 +8,7 @@ import android.view.KeyEvent
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaSession
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * TV-facing MediaSession and hardware-key bridge.
@@ -26,7 +27,15 @@ class AndroidPlaybackSessionBridge(
     private val appContext = context.applicationContext
     private val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private val stopped = AtomicBoolean(false)
-    private val mediaSession = MediaSession.Builder(appContext, engine.media3Player()).build()
+    private val released = AtomicBoolean(false)
+
+    // Media3 requires session ids to be unique per process. A relaunch can create the next activity's
+    // bridge before the finishing activity has released its own session, so each bridge owns its id.
+    private val mediaSession =
+        MediaSession
+            .Builder(appContext, engine.media3Player())
+            .setId("jellystack-playback-${sessionIds.incrementAndGet()}")
+            .build()
     private val audioDeviceCallback =
         object : AudioDeviceCallback() {
             override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) {
@@ -88,10 +97,16 @@ class AndroidPlaybackSessionBridge(
         stopped.set(false)
     }
 
+    /** Releases the session and device callback; repeated calls are ignored. */
     fun release() {
+        if (!released.compareAndSet(false, true)) return
         stopPlayback()
         runCatching { audioManager.unregisterAudioDeviceCallback(audioDeviceCallback) }
         mediaSession.release()
+    }
+
+    private companion object {
+        val sessionIds = AtomicInteger()
     }
 }
 

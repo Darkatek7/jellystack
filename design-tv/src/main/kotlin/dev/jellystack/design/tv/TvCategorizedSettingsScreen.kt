@@ -344,7 +344,6 @@ internal fun TvSettingsLandingScreen(
                     TvSettingTile(
                         title = category.title(strings),
                         value = category.description(strings),
-                        focusToNavigationRailOnLeft = index % 3 == 0,
                         screenEntry = index == 0,
                         focusTargetId = tvSettingsCategoryTargetId(category),
                         onClick = { onOpenCategory(category) },
@@ -399,7 +398,6 @@ private fun TvAppearanceSettings(
         TvSettingTile(
             strings.language,
             settings.appLanguage.label(strings),
-            focusToNavigationRailOnLeft = true,
             screenEntry = true,
             focusTargetId = tvSettingsControlTargetId("language"),
         ) {
@@ -434,7 +432,6 @@ internal fun TvPlaybackSettings(
         TvSettingTile(
             strings.quality,
             settings.wifiStreamingQuality.label(strings),
-            focusToNavigationRailOnLeft = true,
             screenEntry = true,
             focusTargetId = tvSettingsControlTargetId("quality"),
         ) {
@@ -486,7 +483,6 @@ internal fun TvPlaybackSettings(
         TvSettingTile(
             strings.seekBack,
             "${settings.seekBackSeconds}s",
-            focusToNavigationRailOnLeft = true,
             focusTargetId = tvSettingsControlTargetId("seek-back"),
         ) {
             showChoices(
@@ -529,7 +525,6 @@ internal fun TvPlaybackSettings(
         TvSettingTile(
             strings.statsForNerds,
             if (settings.statsForNerdsEnabled) strings.on else strings.off,
-            focusToNavigationRailOnLeft = true,
             focusTargetId = tvSettingsControlTargetId("stats"),
             checked = settings.statsForNerdsEnabled,
         ) {
@@ -584,7 +579,6 @@ private fun TvAudioSubtitleSettings(
         TvSettingTile(
             strings.audioLanguage,
             settings.preferredAudioLanguage ?: strings.serverDefault,
-            focusToNavigationRailOnLeft = true,
             screenEntry = true,
             focusTargetId = tvSettingsControlTargetId("audio-language"),
         ) {
@@ -636,7 +630,6 @@ private fun TvAudioSubtitleSettings(
         TvSettingTile(
             strings.subtitleSize,
             settings.subtitleTextSize.label(strings),
-            focusToNavigationRailOnLeft = true,
             focusTargetId = tvSettingsControlTargetId("subtitle-size"),
         ) {
             showChoices(
@@ -687,7 +680,7 @@ private fun TvConnectionsSettings(
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(server.name, color = TvText, fontSize = 21.sp, fontWeight = FontWeight.SemiBold)
-                        Text("${server.type.name.label()}  •  ${strings.connected}", color = TvTextMuted)
+                        Text("${server.type.tvBrandLabel()}  •  ${strings.connected}", color = TvTextMuted)
                     }
                     TvActionButton(
                         strings.remove,

@@ -73,7 +73,11 @@ internal class TvSearchCoordinator(
     private val voiceSearch: TvVoiceSearchPort = UnsupportedTvVoiceSearch,
     private val sources: TvSearchSources,
 ) {
-    private val normalizedInitialSession = initialSession.copy(query = initialSession.query.trim())
+    private val normalizedInitialSession =
+        initialSession.query.trim().let { query ->
+            // A restored query reopens its results; the keyboard only opens again when the user asks for it.
+            initialSession.copy(query = query, mode = if (query.isEmpty()) initialSession.mode else TvSearchMode.BROWSE)
+        }
     private val mutableState =
         MutableStateFlow(
             TvSearchUiState(

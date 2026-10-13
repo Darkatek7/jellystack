@@ -176,7 +176,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onStop() {
-        platformActions.onStop(isChangingConfigurations)
+        platformActions.onStop(isChangingConfigurations, isFinishing)
         super.onStop()
     }
 
