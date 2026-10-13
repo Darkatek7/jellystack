@@ -1537,7 +1537,11 @@ private fun TvAuthenticatedApp(
                                     is TvRoute.SeerrDetail -> {
                                         val key = route.mediaType to route.tmdbId
                                         val routeItem = route.toSearchItem()
-                                        LaunchedEffect(key) { recommendationsCoordinator.loadDetail(routeItem) }
+                                        // Ready means Seerr's server is known; a load before that ends without a result.
+                                        val seerrReady = recommendations is JellyseerrRecommendationsState.Ready
+                                        LaunchedEffect(key, seerrReady) {
+                                            if (seerrReady) recommendationsCoordinator.loadDetail(routeItem)
+                                        }
                                         TvSeerrDetailScreen(
                                             route = route,
                                             detailState = details[key],
