@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,7 +60,7 @@ internal fun GoldenHomeHero(
             state = TvTrailerPreviewState.Idle,
             soundEnabled = false,
             progress = remember { mutableFloatStateOf(0f) },
-            surface = {},
+            video = TvTrailerVideo(surface = {}, firstFrameShown = remember { mutableStateOf(false) }),
             homeUiAlpha = remember { mutableFloatStateOf(1f) },
         )
     Box(modifier.fillMaxSize().background(TvBackground)) {

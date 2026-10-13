@@ -155,6 +155,7 @@ internal fun TvCinematicBrowse(
                     Modifier
                         .fillMaxSize()
                         .padding(top = TV_CINEMATIC_ROWS_TOP)
+                        .tvFadeRowsCutAtTop(columnState)
                         // The rows stay composed so the focused card keeps its focus while the trailer has the screen.
                         .graphicsLayer { alpha = uiAlpha.value },
                 contentPadding = TvHomeRowsPadding,

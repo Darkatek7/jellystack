@@ -69,7 +69,10 @@ class AndroidPlayerEngine(
     private var subtitleBottomPaddingFraction: Float = SubtitleView.DEFAULT_BOTTOM_PADDING_FRACTION
     private var sessionMetadata: PlaybackMetadata? = null
     private var sessionArtworkUrl: String? = null
-    private var firstFrameRendered = false
+    private val firstFrameState = MutableStateFlow(false)
+
+    /** Whether the current source has shown a video frame; false again after [prepare] and [stop]. */
+    val firstFrameRendered: StateFlow<Boolean> = firstFrameState.asStateFlow()
     private var firstFrameWatchdog: Job? = null
     private var expectsAudioOutput = false
     private var audioOutputUnavailableReported = false
@@ -113,7 +116,7 @@ class AndroidPlayerEngine(
                         }
 
                         override fun onRenderedFirstFrame() {
-                            firstFrameRendered = true
+                            firstFrameState.value = true
                             firstFrameWatchdog?.cancel()
                         }
 
@@ -290,7 +293,7 @@ class AndroidPlayerEngine(
     ) {
         firstFrameWatchdog?.cancel()
         audioOutputWatchdog?.cancel()
-        firstFrameRendered = false
+        firstFrameState.value = false
         expectsAudioOutput = audioTrack != null || source.audioStreamIndex != null
         audioOutputUnavailableReported = false
         pendingAudioTrack = audioTrack
@@ -379,6 +382,7 @@ class AndroidPlayerEngine(
         firstFrameWatchdog?.cancel()
         audioOutputWatchdog?.cancel()
         expectsAudioOutput = false
+        firstFrameState.value = false
         sessionMetadata = null
         sessionArtworkUrl = null
         exoPlayer.stop()
@@ -448,12 +452,12 @@ class AndroidPlayerEngine(
     internal fun media3Player(): Player = exoPlayer
 
     private fun scheduleFirstFrameWatchdog() {
-        if (firstFrameRendered || !exoPlayer.playWhenReady || exoPlayer.videoFormat == null) return
+        if (firstFrameState.value || !exoPlayer.playWhenReady || exoPlayer.videoFormat == null) return
         firstFrameWatchdog?.cancel()
         firstFrameWatchdog =
             scope.launch {
                 delay(FIRST_FRAME_TIMEOUT_MS)
-                if (!firstFrameRendered && exoPlayer.playWhenReady && exoPlayer.videoFormat != null) {
+                if (!firstFrameState.value && exoPlayer.playWhenReady && exoPlayer.videoFormat != null) {
                     eventFlow.emit(PlayerEvent.VideoOutputStalled)
                 }
             }

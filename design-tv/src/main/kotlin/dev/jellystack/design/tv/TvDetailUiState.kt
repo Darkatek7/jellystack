@@ -140,6 +140,16 @@ internal fun TvDetailUiState.resolve(anchor: TvFocusAnchor): TvResolvedFocusAnch
     return itemIndex.takeIf { it >= 0 }?.let { TvResolvedFocusAnchor(sectionIndex, it) }
 }
 
+/** Blank text counts as missing, so the section shows its fallback text instead of an empty header. */
+private fun tvOverviewSection(
+    overview: String?,
+    tagline: String?,
+): TvDetailSection.Overview =
+    TvDetailSection.Overview(
+        text = overview?.takeIf(String::isNotBlank),
+        tagline = tagline?.takeIf(String::isNotBlank),
+    )
+
 internal fun buildTvJellyfinDetailUiState(
     routeKey: String,
     facts: List<String>,
@@ -159,7 +169,7 @@ internal fun buildTvJellyfinDetailUiState(
         sections =
             buildList {
                 add(TvDetailSection.Facts(facts.toList()))
-                add(TvDetailSection.Overview(overview, tagline))
+                add(tvOverviewSection(overview, tagline))
                 if (episodeSnapshot.isNotEmpty() && seasonGroups.size > 1) {
                     add(
                         TvDetailSection.Seasons(
@@ -187,7 +197,7 @@ internal fun buildTvSeerrDetailUiState(
         routeKey = routeKey,
         sections =
             buildList {
-                add(TvDetailSection.Overview(overview, tagline))
+                add(tvOverviewSection(overview, tagline))
                 ratings?.let { add(TvDetailSection.Ratings(it)) }
                 val castSnapshot = cast.distinctBy(JellyseerrPerson::id).take(16)
                 val similarSnapshot = similar.distinctBy { "${it.mediaType.name.lowercase()}:${it.tmdbId}" }

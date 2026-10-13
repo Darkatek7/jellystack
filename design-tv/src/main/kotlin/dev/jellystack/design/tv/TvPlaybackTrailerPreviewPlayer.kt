@@ -8,11 +8,14 @@ import dev.jellystack.players.PlaybackRequest
 import dev.jellystack.players.PlaybackStartPolicy
 import dev.jellystack.players.PlaybackState
 import dev.jellystack.players.PlayerEvent
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.transformLatest
 
 internal class TvPlaybackTrailerPreviewPlayer(
     private val controller: PlaybackController,
@@ -21,7 +24,7 @@ internal class TvPlaybackTrailerPreviewPlayer(
 ) : TvTrailerPreviewPlayer {
     override val events: Flow<TvTrailerPreviewPlayerEvent> =
         merge(
-            engine.events.mapNotNull(PlayerEvent::toTrailerPreviewEvent),
+            engine.events.trailerPreviewEvents(),
             controller.state.filterIsInstance<PlaybackState.PlaybackError>().map { TvTrailerPreviewPlayerEvent.Failed },
         )
 
@@ -47,6 +50,24 @@ internal class TvPlaybackTrailerPreviewPlayer(
     }
 }
 
+/**
+ * The preview events of a trailer's engine events. A trailer that keeps buffering for [stallTimeoutMillis] fails,
+ * so a stalled stream hands the stage back to the artwork instead of freezing on one frame with the UI hidden.
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+internal fun Flow<PlayerEvent>.trailerPreviewEvents(
+    stallTimeoutMillis: Long = TV_TRAILER_STALL_TIMEOUT_MS,
+): Flow<TvTrailerPreviewPlayerEvent> =
+    filter { it == PlayerEvent.Buffering || it == PlayerEvent.Ready || it.toTrailerPreviewEvent() != null }
+        .transformLatest { event ->
+            if (event == PlayerEvent.Buffering) {
+                delay(stallTimeoutMillis)
+                emit(TvTrailerPreviewPlayerEvent.Failed)
+            } else {
+                event.toTrailerPreviewEvent()?.let { emit(it) }
+            }
+        }
+
 internal fun PlayerEvent.toTrailerPreviewEvent(): TvTrailerPreviewPlayerEvent? =
     when (this) {
         PlayerEvent.Completed -> TvTrailerPreviewPlayerEvent.Completed
@@ -57,3 +78,5 @@ internal fun PlayerEvent.toTrailerPreviewEvent(): TvTrailerPreviewPlayerEvent? =
 
 internal fun PlaybackState.toTrailerPreviewEvent(): TvTrailerPreviewPlayerEvent? =
     if (this is PlaybackState.PlaybackError) TvTrailerPreviewPlayerEvent.Failed else null
+
+private const val TV_TRAILER_STALL_TIMEOUT_MS = 8_000L

@@ -71,6 +71,7 @@ internal data class TvMessageStrings(
     private val playingInOneSecondFormat: String,
     private val playingInSecondsFormat: String,
     private val untitledRequestFormat: String,
+    private val requestTitleFormat: String,
 ) {
     fun voiceSearchError(failure: TvVoiceSearchFailure): String =
         when (failure) {
@@ -95,6 +96,8 @@ internal data class TvMessageStrings(
     }
 
     fun untitledRequest(id: Int): String = untitledRequestFormat.format(id)
+
+    fun requestTitle(title: String): String = requestTitleFormat.format(title)
 }
 
 internal data class TvStrings(
@@ -621,6 +624,7 @@ internal data class TvStrings(
                         playingInOneSecondFormat = "Playing in %d second",
                         playingInSecondsFormat = "Playing in %d seconds",
                         untitledRequestFormat = "Request #%d",
+                        requestTitleFormat = "Request %s",
                     ),
                 metadata =
                     TvMetadataStrings(
@@ -915,6 +919,7 @@ internal data class TvStrings(
                         playingInOneSecondFormat = "Wiedergabe in %d Sekunde",
                         playingInSecondsFormat = "Wiedergabe in %d Sekunden",
                         untitledRequestFormat = "Anfrage #%d",
+                        requestTitleFormat = "%s anfragen",
                     ),
                 metadata =
                     TvMetadataStrings(

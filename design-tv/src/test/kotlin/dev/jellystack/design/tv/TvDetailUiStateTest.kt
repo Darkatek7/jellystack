@@ -74,6 +74,23 @@ class TvDetailUiStateTest {
     }
 
     @Test
+    fun blankOverviewAndTaglineCountAsMissing() {
+        val seerr =
+            buildTvSeerrDetailUiState(
+                routeKey = "tv:7",
+                overview = "  ",
+                tagline = "",
+                ratings = null,
+                cast = emptyList(),
+                similar = emptyList(),
+            )
+        val overview = seerr.section("overview") as TvDetailSection.Overview
+
+        assertNull(overview.text)
+        assertNull(overview.tagline)
+    }
+
+    @Test
     fun seerrAnchorResolvesBySectionAndItemIdsAcrossAppearAndReorder() {
         val anchor = TvFocusAnchor("cast", "person-2", TvFocusDestination.SECTION_ITEM)
         val initial =

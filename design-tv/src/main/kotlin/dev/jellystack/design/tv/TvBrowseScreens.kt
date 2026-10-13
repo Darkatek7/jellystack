@@ -40,6 +40,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -364,7 +365,11 @@ internal fun TvHomeScreen(
             state = trailerPreviewState,
             soundEnabled = previewSoundEnabled,
             progress = previewProgress,
-            surface = { surfaceModifier -> TvTrailerPreviewSurface(trailerPreviewEngine, surfaceModifier) },
+            video =
+                TvTrailerVideo(
+                    surface = { surfaceModifier -> TvTrailerPreviewSurface(trailerPreviewEngine, surfaceModifier) },
+                    firstFrameShown = trailerPreviewEngine.firstFrameRendered.collectAsState(),
+                ),
             homeUiAlpha = homeUiAlpha,
         )
     Box(
@@ -427,6 +432,7 @@ internal fun TvHomeScreen(
                     Modifier
                         .fillMaxSize()
                         .padding(top = TV_CINEMATIC_ROWS_TOP)
+                        .tvFadeRowsCutAtTop(homeListState)
                         .onFocusChanged { rowsHaveFocus = it.hasFocus }
                         // The rows stay composed so the focused card keeps its focus while the trailer has the screen.
                         .graphicsLayer { alpha = homeUiAlpha.value },

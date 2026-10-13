@@ -62,9 +62,17 @@ internal fun JellyfinItem.tvEpisodeCardText(strings: TvStrings): TvMediaCardText
 
 /** The line under a stage title: year, community rating, and age rating. */
 internal fun JellyfinItem.tvStageMetadata(): String? =
-    listOfNotNull(productionYear?.toString(), tvRatingLabel(communityRating), officialRating)
+    listOfNotNull(productionYear?.toString(), tvRatingLabel(communityRating), tvVisibleOfficialRating(officialRating))
         .joinToString(TV_CARD_SEPARATOR)
         .ifBlank { null }
+
+/** The age rating worth showing; servers report "0" for titles without one. */
+internal fun tvVisibleOfficialRating(rating: String?): String? {
+    val trimmed = rating?.trim().orEmpty()
+    if (trimmed.isEmpty()) return null
+    val numericRating = trimmed.toDoubleOrNull()
+    return trimmed.takeIf { numericRating == null || numericRating > 0.0 }
+}
 
 /** The title logo of [item], or of its series for an episode; null when the server has none. */
 internal fun tvJellyfinLogoUrl(

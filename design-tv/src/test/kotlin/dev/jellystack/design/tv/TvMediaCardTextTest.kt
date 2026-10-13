@@ -62,6 +62,14 @@ class TvMediaCardTextTest {
         assertNull(item("Episode", "Special").tvEpisodeCardText(strings).subtitle)
     }
 
+    @Test
+    fun stageMetadataLeavesOutAnAgeRatingOfZero() {
+        val movie = item("Movie", "Camp").copy(productionYear = 2026, communityRating = 6.4)
+
+        assertEquals("2026  •  ${tvRatingLabel(6.4)}", movie.copy(officialRating = "0").tvStageMetadata())
+        assertEquals("2026  •  ${tvRatingLabel(6.4)}  •  12", movie.copy(officialRating = "12").tvStageMetadata())
+    }
+
     private fun episode(
         name: String,
         season: Int,

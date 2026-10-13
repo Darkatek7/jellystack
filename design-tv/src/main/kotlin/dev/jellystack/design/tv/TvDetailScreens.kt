@@ -129,13 +129,6 @@ internal fun tvJellyfinHeroTitlePresentation(
         textColor = TvText,
     )
 
-internal fun tvVisibleOfficialRating(rating: String?): String? {
-    val trimmed = rating?.trim().orEmpty()
-    if (trimmed.isEmpty()) return null
-    val numericRating = trimmed.toDoubleOrNull()
-    return trimmed.takeIf { numericRating == null || numericRating > 0.0 }
-}
-
 internal data class TvSeasonGroup(
     val seasonNumber: Int?,
     val episodes: List<JellyfinItem>,
@@ -1495,7 +1488,7 @@ private fun TvRequestDialog(
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             Text(
-                "${strings.request} $title",
+                strings.messages.requestTitle(title),
                 color = TvText,
                 fontSize = 28.sp,
                 lineHeight = 31.sp,

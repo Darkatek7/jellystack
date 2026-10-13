@@ -4,6 +4,10 @@ package dev.jellystack.design.tv
 
 import android.text.format.DateFormat
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -28,7 +32,8 @@ import java.util.Date
 
 /**
  * The spotlight's artwork behind the whole home screen, under the rail and the rows. A playing trailer
- * replaces the artwork; [image] draws a still backdrop URL, so screenshot fixtures can supply their own.
+ * replaces the artwork once it shows a frame; [image] draws a still backdrop URL, so screenshot fixtures can
+ * supply their own.
  */
 @Composable
 internal fun TvHomeBackdrop(
@@ -40,10 +45,12 @@ internal fun TvHomeBackdrop(
     val item = model.stageItem
     val fadeMs = tvHomeHeroFadeMillis()
     Box(modifier.fillMaxSize()) {
+        val trailerShown = trailer.state.showsTvHomeStagePreview(item.id, model.stagePresentationId)
         // The only trailer surface on the screen; it sits outside the crossfade so one engine never gets two.
-        if (trailer.state.showsTvHomeStagePreview(item.id, model.stagePresentationId)) {
-            trailer.surface(Modifier.fillMaxSize().testTag("tv-home-hero-preview-surface"))
-        } else {
+        if (trailerShown) {
+            trailer.video.surface(Modifier.fillMaxSize().testTag("tv-home-hero-preview-surface"))
+        }
+        TvTrailerArtworkCover(covering = !trailerShown || !trailer.video.firstFrameShown.value) {
             AnimatedContent(
                 targetState = item,
                 contentKey = { it.id },
@@ -58,6 +65,26 @@ internal fun TvHomeBackdrop(
         Box(Modifier.fillMaxSize().graphicsLayer { alpha = trailer.homeUiAlpha.value }) {
             TvHomeBackdropScrims()
         }
+    }
+}
+
+/**
+ * Keeps the artwork over a starting trailer until the trailer shows its first frame, so the stage never turns
+ * black while the trailer loads. The artwork returns at once when the trailer stops.
+ */
+@Composable
+internal fun TvTrailerArtworkCover(
+    covering: Boolean,
+    content: @Composable () -> Unit,
+) {
+    AnimatedVisibility(
+        visible = covering,
+        modifier = Modifier.fillMaxSize(),
+        enter = EnterTransition.None,
+        exit = fadeOut(tween(tvHomeHeroFadeMillis())),
+        label = "tv-trailer-artwork-cover",
+    ) {
+        content()
     }
 }
 

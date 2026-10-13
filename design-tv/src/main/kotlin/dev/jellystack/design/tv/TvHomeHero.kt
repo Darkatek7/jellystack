@@ -58,15 +58,21 @@ internal data class TvHomeHeroModel(
 )
 
 /**
- * The spotlight trailer: its state, whether its sound is on, its progress, and the surface that shows it.
+ * The spotlight trailer: its state, whether its sound is on, its progress, and the [video] that shows it.
  * [homeUiAlpha] is how much of the home UI shows over it, from [rememberTvHomeUiAlpha].
  */
 internal class TvHomeHeroTrailer(
     val state: TvTrailerPreviewState,
     val soundEnabled: Boolean,
     val progress: State<Float>,
-    val surface: @Composable (Modifier) -> Unit,
+    val video: TvTrailerVideo,
     val homeUiAlpha: State<Float>,
+)
+
+/** The surface a trailer plays on, and whether it shows a frame yet; the artwork covers it until then. */
+internal class TvTrailerVideo(
+    val surface: @Composable (Modifier) -> Unit,
+    val firstFrameShown: State<Boolean>,
 )
 
 /** OK opens [onDetails], the remote's Play key calls [onPlay], Left and Right call [onCarouselMove]. */
