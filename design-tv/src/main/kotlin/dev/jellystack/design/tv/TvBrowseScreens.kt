@@ -833,7 +833,7 @@ private fun TvHomeSectionRow(
                 contentType = { _, _ -> "media-card" },
             ) { index, item ->
                 val targetId = tvHomeCardTargetId(rowId, item.id)
-                val previewItem = item.jellyfinItem?.takeIf { item.action == HomeSectionAction.JELLYFIN }
+                val previewItem = item.tvStagePreviewItem()
                 val cardText = item.jellyfinItem?.tvCardText(strings)
                 TvMediaCard(
                     title = cardText?.title ?: item.name,

@@ -453,6 +453,7 @@ internal fun TvRemoveProfileDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val cancelFocus = rememberTvDialogInitialFocus()
     Dialog(onDismissRequest = onDismiss) {
         Column(
             Modifier
@@ -469,7 +470,7 @@ internal fun TvRemoveProfileDialog(
             )
             Text(strings.removeProfileMessage, color = TvTextMuted, fontSize = 18.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                TvActionButton(strings.cancel, onDismiss)
+                TvActionButton(strings.cancel, onDismiss, focusRequester = cancelFocus)
                 TvActionButton(strings.removeProfile, onConfirm, destructive = true)
             }
         }

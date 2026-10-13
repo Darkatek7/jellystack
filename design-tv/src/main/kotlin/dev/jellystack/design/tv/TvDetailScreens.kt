@@ -1478,6 +1478,11 @@ private fun TvRequestDialog(
             }.filter { it.is4k == (variant == JellyseerrRequestVariant.FOUR_K) }
         }
     LaunchedEffect(variant) { profile = JellyseerrRequestProfileSelection.ServerDefault }
+    // The first choice gets focus; without choices the send action does.
+    val firstFocus = rememberTvDialogInitialFocus()
+    val showVersions = canStandard && can4k
+    val showSeasons = mediaType == JellyseerrMediaType.TV && seasons.isNotEmpty()
+    val showProfiles = capabilities.canUseAdvancedRequests && profiles.isNotEmpty()
 
     Dialog(onDismissRequest = onDismiss) {
         Column(
@@ -1498,7 +1503,7 @@ private fun TvRequestDialog(
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (canStandard && can4k) {
+            if (showVersions) {
                 TvSectionTitle(strings.version)
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     TvActionButton(
@@ -1506,6 +1511,7 @@ private fun TvRequestDialog(
                         { variant = JellyseerrRequestVariant.STANDARD },
                         primary = variant == JellyseerrRequestVariant.STANDARD,
                         selected = variant == JellyseerrRequestVariant.STANDARD,
+                        focusRequester = firstFocus,
                     )
                     TvActionButton(
                         "4K",
@@ -1515,7 +1521,7 @@ private fun TvRequestDialog(
                     )
                 }
             }
-            if (mediaType == JellyseerrMediaType.TV && seasons.isNotEmpty()) {
+            if (showSeasons) {
                 TvSectionTitle(strings.seasons)
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -1529,6 +1535,7 @@ private fun TvRequestDialog(
                             { allSeasons = true },
                             primary = allSeasons,
                             selected = allSeasons,
+                            focusRequester = firstFocus.takeIf { !showVersions },
                         )
                     }
                     items(seasons) { season ->
@@ -1550,7 +1557,7 @@ private fun TvRequestDialog(
                     }
                 }
             }
-            if (capabilities.canUseAdvancedRequests && profiles.isNotEmpty()) {
+            if (showProfiles) {
                 TvSectionTitle(strings.requestProfile)
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -1564,6 +1571,7 @@ private fun TvRequestDialog(
                             { profile = JellyseerrRequestProfileSelection.ServerDefault },
                             primary = profile is JellyseerrRequestProfileSelection.ServerDefault,
                             selected = profile is JellyseerrRequestProfileSelection.ServerDefault,
+                            focusRequester = firstFocus.takeIf { !showVersions && !showSeasons },
                         )
                     }
                     items(profiles, key = { "${it.serviceId}:${it.languageProfileId}:${it.profileId}" }) { option ->
@@ -1583,6 +1591,7 @@ private fun TvRequestDialog(
                 TvActionButton(
                     if (requestsState.isPerformingAction) strings.requesting else strings.sendRequest,
                     modifier = Modifier.width(230.dp),
+                    focusRequester = firstFocus.takeIf { !showVersions && !showSeasons && !showProfiles },
                     primary = true,
                     enabled =
                         !requestsState.isPerformingAction &&

@@ -31,6 +31,8 @@ internal data class TvCinematicCard(
     val resumeFraction: Float? = null,
     val logoUrl: String? = null,
     val metadata: String? = null,
+    /** Focusing the card leaves the current backdrop in place, for cards without title artwork of their own. */
+    val keepsBackdrop: Boolean = false,
 ) {
     init {
         require(id.isNotBlank()) { "A cinematic card requires a stable ID" }

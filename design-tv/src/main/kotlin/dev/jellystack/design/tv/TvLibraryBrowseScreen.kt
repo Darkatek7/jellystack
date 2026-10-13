@@ -170,16 +170,8 @@ internal fun tvLibraryAllTitlesRow(
                         library?.let {
                             jellyfinImageUrl(state.imageBaseUrl, state.imageAccessToken, it.id, it.primaryImageTag)
                         },
-                    backdropUrl =
-                        library?.let {
-                            jellyfinImageUrl(
-                                baseUrl = state.imageBaseUrl,
-                                token = state.imageAccessToken,
-                                itemId = it.id,
-                                tag = it.primaryImageTag,
-                                maxWidth = TvArtworkSize.HERO.maxWidth,
-                            )
-                        },
+                    // The library image usually shows the library name; upscaled to the stage it reads as noise.
+                    keepsBackdrop = true,
                 ),
             ),
     )

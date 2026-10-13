@@ -1625,11 +1625,7 @@ internal fun TvExitConfirmationDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val cancelFocusRequester = remember { FocusRequester() }
-    LaunchedEffect(Unit) {
-        withFrameNanos { }
-        runCatching { cancelFocusRequester.requestFocus() }
-    }
+    val cancelFocusRequester = rememberTvDialogInitialFocus()
     Dialog(onDismissRequest = onDismiss) {
         Column(
             Modifier.width(560.dp).background(TvSurfaceRaised, RoundedCornerShape(26.dp)).padding(28.dp),

@@ -25,6 +25,7 @@ internal fun TvResumeAskDialog(
     strings: TvStrings,
     onAnswer: (PlaybackStartPolicy?) -> Unit,
 ) {
+    val resumeFocus = rememberTvDialogInitialFocus()
     Dialog(onDismissRequest = { onAnswer(null) }) {
         Column(
             Modifier
@@ -50,6 +51,7 @@ internal fun TvResumeAskDialog(
                     strings.continueLabel,
                     primary = true,
                     modifier = Modifier.width(230.dp),
+                    focusRequester = resumeFocus,
                     onClick = { onAnswer(PlaybackStartPolicy.RESUME) },
                 )
                 TvActionButton(

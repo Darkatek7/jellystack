@@ -3,6 +3,7 @@
 package dev.jellystack.design.tv
 
 import dev.jellystack.core.jellyfin.HomeSectionAction
+import dev.jellystack.core.jellyfin.HomeSectionItem
 import dev.jellystack.core.jellyfin.HomeSectionsState
 import dev.jellystack.core.jellyfin.JellyfinHomeState
 import dev.jellystack.core.jellyfin.JellyfinItem
@@ -129,6 +130,15 @@ internal fun tvHomeJellyfinDestination(item: JellyfinItem): TvHomeJellyfinDestin
         TvHomeJellyfinDestination.Library(item.id, item.name)
     } else {
         TvHomeJellyfinDestination.Detail(item)
+    }
+
+/**
+ * The title a home section card previews on the stage. Libraries open a browse screen rather than a detail page,
+ * and their server-generated artwork (often the library name on a plain image) would fill the whole stage.
+ */
+internal fun HomeSectionItem.tvStagePreviewItem(): JellyfinItem? =
+    jellyfinItem?.takeIf { item ->
+        action == HomeSectionAction.JELLYFIN && tvHomeJellyfinDestination(item) is TvHomeJellyfinDestination.Detail
     }
 
 /** The spotlight pages through at most this many titles, so its page dots stay one short row. */

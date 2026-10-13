@@ -21,6 +21,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -193,6 +194,7 @@ private fun TvLibraryGenreDialog(
     onApply: (Set<String>) -> Unit,
 ) {
     var value by remember(initialGenres) { mutableStateOf(initialGenres.joinToString(", ")) }
+    val inputFocus = rememberTvDialogInitialFocus()
     Dialog(onDismissRequest = onDismiss) {
         Column(
             modifier =
@@ -208,7 +210,7 @@ private fun TvLibraryGenreDialog(
                 onValueChange = { value = it },
                 singleLine = true,
                 colors = tvOutlinedTextFieldColors(),
-                modifier = Modifier.fillMaxWidth().testTag("tv-library-genre-input"),
+                modifier = Modifier.fillMaxWidth().focusRequester(inputFocus).testTag("tv-library-genre-input"),
             )
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 TvActionButton(

@@ -137,6 +137,16 @@ class TvHomePresentationTest {
             imageAccessToken = "token",
         )
 
+    @Test
+    fun libraryCardsDoNotPreviewOnTheStage() {
+        val movie = item("movie")
+        val library = item("library").copy(type = "CollectionFolder")
+
+        assertEquals(movie, sectionOf(movie, HomeSectionAction.JELLYFIN).items.single().tvStagePreviewItem())
+        assertEquals(null, sectionOf(library, HomeSectionAction.JELLYFIN).items.single().tvStagePreviewItem())
+        assertEquals(null, sectionOf(movie, HomeSectionAction.SEERR).items.single().tvStagePreviewItem())
+    }
+
     private fun sectionOf(
         item: JellyfinItem,
         action: HomeSectionAction,
