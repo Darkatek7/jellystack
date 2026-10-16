@@ -164,6 +164,10 @@ enum class SubtitleFormat {
     UNKNOWN,
 }
 
+/** Bitmap subtitles cannot be converted to text by Jellyfin; they are burned in or rendered from the container. */
+internal val SubtitleFormat.isImageBased: Boolean
+    get() = this == SubtitleFormat.PGS || this == SubtitleFormat.SUP
+
 data class SubtitleTrack(
     val id: String,
     val language: String?,
@@ -376,8 +380,8 @@ internal fun JellyfinMediaStream.toSubtitleTrack(): SubtitleTrack? {
         when (codec?.lowercase()) {
             "srt", "subrip" -> SubtitleFormat.SRT
             "webvtt", "vtt" -> SubtitleFormat.VTT
-            "pgs" -> SubtitleFormat.PGS
-            "sup" -> SubtitleFormat.SUP
+            "pgs", "pgssub", "hdmv_pgs_subtitle" -> SubtitleFormat.PGS
+            "sup", "dvdsub", "dvd_subtitle", "dvbsub", "dvb_subtitle", "xsub", "vobsub" -> SubtitleFormat.SUP
             "ass" -> SubtitleFormat.ASS
             "ssa" -> SubtitleFormat.SSA
             else -> SubtitleFormat.UNKNOWN

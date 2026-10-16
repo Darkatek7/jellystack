@@ -456,6 +456,9 @@ class JellyfinPlaybackSourceResolver(
         environment: JellyfinEnvironment,
     ): List<ResolvedSubtitle> =
         selection.subtitleTracks.mapNotNull { track ->
+            // Jellyfin cannot convert bitmap subtitles to text. They are rendered from the container
+            // on direct play or burned in by the server on a transcode, never sideloaded.
+            if (track.format.isImageBased) return@mapNotNull null
             val streamIndex = track.streamIndex ?: return@mapNotNull null
             val format = subtitleFormat(track.format)
             val path = "$baseUrl/Videos/${request.mediaId}/$mediaSourceId/Subtitles/$streamIndex/stream.${format.extension}"

@@ -12,21 +12,23 @@ import androidx.media3.common.C
 import androidx.media3.common.C.COLOR_TRANSFER_HLG
 import androidx.media3.common.C.COLOR_TRANSFER_ST2084
 import androidx.media3.common.MediaItem
-import androidx.media3.common.MediaItem.SubtitleConfiguration
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
+import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
+import dev.jellystack.core.logging.JellystackLog
 import dev.jellystack.core.preferences.SubtitleBackground
 import dev.jellystack.core.preferences.SubtitleTextSize
 import kotlinx.coroutines.CoroutineScope
@@ -61,6 +63,9 @@ class AndroidPlayerEngine(
     private val appContext = context.applicationContext
     private var pendingAudioTrack: AudioTrack? = null
     private var pendingAudioSelectionConfirmationId: String? = null
+
+    /** Stream index of the one audio rendition Jellyfin muxed into the current HLS source, if any. */
+    private var serverSelectedAudioStreamIndex: Int? = null
     private var pendingSubtitleTrack: SubtitleTrack? = null
     private var pendingSubtitleSelectionConfirmationId: String? = null
     private var videoSurface: PlayerView? = null
@@ -80,7 +85,7 @@ class AndroidPlayerEngine(
 
     private val exoPlayer =
         ExoPlayer
-            .Builder(context)
+            .Builder(context, JellystackRenderersFactory(context))
             .build()
             .apply {
                 if (preferHighestSupportedBitrate) {
@@ -110,6 +115,11 @@ class AndroidPlayerEngine(
                         }
 
                         override fun onPlayerError(error: PlaybackException) {
+                            // Only the error code and exception types: messages can carry server URLs.
+                            JellystackLog.e(
+                                "Player error ${error.errorCodeName} cause=${error.cause?.javaClass?.simpleName} " +
+                                    "root=${error.cause?.cause?.javaClass?.simpleName}",
+                            )
                             firstFrameWatchdog?.cancel()
                             audioOutputWatchdog?.cancel()
                             scope.launch { eventFlow.emit(PlayerEvent.Error(error)) }
@@ -298,6 +308,7 @@ class AndroidPlayerEngine(
         audioOutputUnavailableReported = false
         pendingAudioTrack = audioTrack
         pendingSubtitleTrack = subtitleTrack
+        serverSelectedAudioStreamIndex = source.audioStreamIndex.takeIf { source.mode == PlaybackMode.HLS }
         withContext(Dispatchers.Main) {
             val mediaItem =
                 MediaItem
@@ -315,50 +326,31 @@ class AndroidPlayerEngine(
                         sessionMetadata?.let { metadata ->
                             setMediaMetadata(sessionMedia3Metadata(metadata, sessionArtworkUrl))
                         }
-                        if (source.subtitles.isNotEmpty()) {
-                            val configurations =
-                                source.subtitles.map { subtitle ->
-                                    SubtitleConfiguration
-                                        .Builder(Uri.parse(subtitle.url))
-                                        .setMimeType(subtitle.mimeType)
-                                        .setLanguage(subtitle.language)
-                                        .setLabel(subtitle.label ?: subtitle.language ?: subtitle.trackId)
-                                        .setRoleFlags(
-                                            if (subtitle.isForced) {
-                                                C.ROLE_FLAG_CAPTION or C.ROLE_FLAG_SUBTITLE
-                                            } else {
-                                                C.ROLE_FLAG_SUBTITLE
-                                            },
-                                        ).setId(subtitle.trackId)
-                                        .build()
-                                }
-                            setSubtitleConfigurations(configurations)
-                        }
                     }.build()
 
-            val mediaSource =
+            val dataSourceFactory: DataSource.Factory =
                 when (source.mode) {
-                    PlaybackMode.DIRECT ->
-                        ProgressiveMediaSource
-                            .Factory(
-                                DefaultHttpDataSource
-                                    .Factory()
-                                    .setDefaultRequestProperties(source.headers),
-                            ).createMediaSource(mediaItem)
+                    PlaybackMode.DIRECT,
+                    PlaybackMode.HLS,
+                    ->
+                        DefaultHttpDataSource
+                            .Factory()
+                            .setDefaultRequestProperties(source.headers)
 
-                    PlaybackMode.HLS ->
-                        HlsMediaSource
-                            .Factory(
-                                DefaultHttpDataSource
-                                    .Factory()
-                                    .setDefaultRequestProperties(source.headers),
-                            ).createMediaSource(mediaItem)
-
-                    PlaybackMode.LOCAL ->
-                        ProgressiveMediaSource
-                            .Factory(DefaultDataSource.Factory(appContext))
-                            .createMediaSource(mediaItem)
+                    PlaybackMode.LOCAL -> DefaultDataSource.Factory(appContext)
                 }
+            val mediaSourceFactory: MediaSource.Factory =
+                when (source.mode) {
+                    PlaybackMode.DIRECT,
+                    PlaybackMode.LOCAL,
+                    -> ProgressiveMediaSource.Factory(dataSourceFactory)
+
+                    PlaybackMode.HLS -> HlsMediaSource.Factory(dataSourceFactory)
+                }
+            val mediaSource =
+                mediaSourceFactory
+                    .createMediaSource(mediaItem)
+                    .mergedWithSideloadedSubtitles(source.subtitles.map(ResolvedSubtitle::toSubtitleConfiguration), dataSourceFactory)
 
             exoPlayer.stop()
             exoPlayer.setMediaSource(mediaSource)
@@ -600,11 +592,8 @@ class AndroidPlayerEngine(
         val matched =
             candidates.firstOrNull { candidate ->
                 val id = candidate.formatId
-                id?.equals(track.id, ignoreCase = true) == true ||
-                    (
-                        track.streamIndex != null &&
-                            id?.equals(track.streamIndex.toString(), ignoreCase = true) == true
-                    )
+                formatIdMatches(id, track.id) ||
+                    (track.streamIndex != null && formatIdMatches(id, track.streamIndex.toString()))
             } ?: track.audioIndex?.let(candidates::getOrNull)
                 ?: candidates.firstOrNull { candidate ->
                     candidate.languageMatches(track.language) &&
@@ -613,6 +602,11 @@ class AndroidPlayerEngine(
                 } ?: candidates
                 .filter { it.languageMatches(track.language) }
                 .singleOrNull()
+                // The server transcoded exactly the requested stream into the HLS source, so its only audio
+                // rendition is the track even though it carries none of the original stream's metadata.
+                ?: candidates.singleOrNull()?.takeIf {
+                    track.streamIndex != null && track.streamIndex == serverSelectedAudioStreamIndex
+                }
         return matched?.let {
             TrackSelectionOverride(it.group.mediaTrackGroup, it.trackIndex)
         }
@@ -659,19 +653,18 @@ class AndroidPlayerEngine(
                         .filter(group::isTrackSupported)
                         .map { index -> SubtitleCandidate(group, index) }
                 }.toList()
+        // Sideloaded subtitles carry the app track id; embedded container tracks use container-specific
+        // ids that can collide with it, so prefer the sideloaded ones when both exist.
+        val sideloadedCandidates = candidates.filter { candidate -> (mergedSourceIndex(candidate.formatId) ?: 0) > 0 }
         val matched =
-            candidates.firstOrNull { candidate ->
-                candidate.formatId?.equals(track.id, ignoreCase = true) == true ||
-                    (
-                        track.streamIndex != null &&
-                            candidate.formatId?.equals(track.streamIndex.toString(), ignoreCase = true) == true
-                    )
-            } ?: candidates.firstOrNull { candidate ->
-                candidate.languageMatches(track.language) &&
-                    candidate.labelMatches(track.title) &&
-                    candidate.formatMatches(track.format) &&
-                    candidate.forcedMatches(track.isForced)
-            } ?: candidates
+            sideloadedCandidates.firstOrNull { candidate -> candidate.matchesTrackId(track) }
+                ?: candidates.firstOrNull { candidate -> candidate.matchesTrackId(track) }
+                ?: candidates.firstOrNull { candidate ->
+                    candidate.languageMatches(track.language) &&
+                        candidate.labelMatches(track.title) &&
+                        candidate.formatMatches(track.format) &&
+                        candidate.forcedMatches(track.isForced)
+                } ?: candidates
                 .filter { it.languageMatches(track.language) }
                 .singleOrNull()
         return matched?.let { TrackSelectionOverride(it.group.mediaTrackGroup, it.trackIndex) }
@@ -686,6 +679,10 @@ class AndroidPlayerEngine(
 
         val formatId: String?
             get() = format.id
+
+        fun matchesTrackId(track: SubtitleTrack): Boolean =
+            formatIdMatches(formatId, track.id) ||
+                (track.streamIndex != null && formatIdMatches(formatId, track.streamIndex.toString()))
 
         fun languageMatches(language: String?): Boolean = language != null && format.language?.equals(language, ignoreCase = true) == true
 
