@@ -50,7 +50,9 @@ import dev.jellystack.core.server.JellyfinQuickConnectError
 import dev.jellystack.core.server.JellyfinQuickConnectInput
 import dev.jellystack.core.server.JellyfinQuickConnectState
 import dev.jellystack.core.server.JellyfinSignInMethod
+import dev.jellystack.core.server.ManagedServer
 import dev.jellystack.core.server.ServerConnectionCoordinator
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
@@ -61,10 +63,11 @@ internal fun TvConnectionScreen(
     quickConnectCoordinator: JellyfinQuickConnectCoordinator,
     appVersion: String,
     strings: TvStrings,
-    onConnected: () -> Unit,
+    onConnected: (ManagedServer) -> Unit,
     modifier: Modifier = Modifier,
     onDismiss: (() -> Unit)? = null,
     existingServerId: String? = null,
+    refreshExistingAccount: Boolean = false,
     initialDisplayName: String = "Jellyfin",
     initialBaseUrl: String = "",
 ) {
@@ -105,11 +108,12 @@ internal fun TvConnectionScreen(
                             serverId = existingServerId,
                             appVersion = appVersion,
                             deviceName = "Jellystack TV",
+                            refreshExistingAccount = refreshExistingAccount,
                         ),
                     ).collect { next ->
                         state = next
                         when (next) {
-                            is JellyfinQuickConnectState.Connected -> onConnected()
+                            is JellyfinQuickConnectState.Connected -> onConnected(next.server)
                             is JellyfinQuickConnectState.Failed ->
                                 error =
                                     when (next.error) {
@@ -269,19 +273,19 @@ internal fun TvConnectionScreen(
                                     connectJob?.cancel()
                                     connectJob =
                                         scope.launch {
-                                            runCatching {
-                                                coordinator.connectJellyfin(
+                                            val connected =
+                                                coordinator.signInWithPassword(
                                                     JellyfinConnectionInput(
                                                         displayName,
                                                         baseUrl,
                                                         username,
                                                         password,
                                                         serverId = existingServerId,
+                                                        refreshExistingAccount = refreshExistingAccount,
                                                     ),
-                                                )
-                                            }.onSuccess { onConnected() }
-                                                .onFailure { error = it.message ?: strings.jellyfinConnectionFailed }
+                                                ) { message -> error = message ?: strings.jellyfinConnectionFailed }
                                             password = ""
+                                            connected?.let(onConnected)
                                         }
                                 }
                             },
@@ -353,6 +357,26 @@ private fun TvTextField(
         modifier = modifier.fillMaxWidth().heightIn(min = height),
     )
 }
+
+/** Signs in with a password; reports the server's message (or null) through [onFailure] and returns null on failure. */
+private suspend fun ServerConnectionCoordinator.signInWithPassword(
+    input: JellyfinConnectionInput,
+    onFailure: (String?) -> Unit,
+): ManagedServer? =
+    try {
+        connectJellyfin(input)
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (failure: IllegalStateException) {
+        onFailure(failure.message)
+        null
+    } catch (failure: IllegalArgumentException) {
+        onFailure(failure.message)
+        null
+    } catch (_: Throwable) {
+        onFailure(null)
+        null
+    }
 
 internal data class TvConnectionFormLayout(
     val screenVerticalPadding: Dp,

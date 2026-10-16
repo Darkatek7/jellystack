@@ -74,6 +74,63 @@ class JellyfinQuickConnectCoordinatorTest {
         }
 
     @Test
+    fun alreadyStoredAccountFailsUnlessRefreshingIsRequested() =
+        runTest {
+            val fixture = repositoryFixture()
+            val stored =
+                fixture.repository.registerAuthenticatedJellyfin(
+                    AuthenticatedJellyfinRegistration(
+                        name = "Media",
+                        baseUrl = "https://media.example",
+                        credentials =
+                            StoredCredential.Jellyfin(
+                                username = "Alice",
+                                deviceId = "old-device",
+                                accessToken = "old-token",
+                                userId = "user-id",
+                            ),
+                    ),
+                )
+
+            val rejected = approvedConnect(fixture, refreshExistingAccount = false)
+            assertEquals(
+                JellyfinQuickConnectError.AUTHENTICATION_FAILED,
+                assertIs<JellyfinQuickConnectState.Failed>(rejected.last()).error,
+            )
+            assertEquals(
+                "old-token",
+                (fixture.repository.findServer(stored.id)?.credentials as StoredCredential.Jellyfin).accessToken,
+            )
+
+            val refreshed = assertIs<JellyfinQuickConnectState.Connected>(approvedConnect(fixture, refreshExistingAccount = true).last())
+            assertEquals(stored.id, refreshed.server.id)
+            assertEquals(1, fixture.repository.currentServers().size)
+            assertEquals(
+                "dummy-access-token",
+                (fixture.repository.findServer(stored.id)?.credentials as StoredCredential.Jellyfin).accessToken,
+            )
+        }
+
+    private suspend fun approvedConnect(
+        fixture: RepositoryFixture,
+        refreshExistingAccount: Boolean,
+    ): List<JellyfinQuickConnectState> {
+        val remote =
+            FakeQuickConnectRemote(
+                pollResults =
+                    ArrayDeque(
+                        listOf(JellyfinQuickConnectSessionDto(authenticated = true, secret = SECRET, code = CODE).asSuccess()),
+                    ),
+            )
+        return JellyfinQuickConnectCoordinator(
+            serverRepository = fixture.repository,
+            remoteFactory = JellyfinQuickConnectRemoteFactory { _, _ -> remote },
+            clock = FixedZeroClock,
+            idGenerator = { "generated-id" },
+        ).connect(input().copy(refreshExistingAccount = refreshExistingAccount)).toList()
+    }
+
+    @Test
     fun pollsEveryFiveSecondsAndStopsAfterThreeTransportErrors() =
         runTest {
             val remote =

@@ -13,6 +13,11 @@ data class JellyfinConnectionInput(
     val username: String,
     val password: String,
     val serverId: String? = null,
+    /**
+     * When the same Jellyfin account is already stored, refresh that record instead of failing with
+     * [DuplicateServerException]. Used when a household member signs in again, e.g. after their profile was removed.
+     */
+    val refreshExistingAccount: Boolean = false,
 )
 
 data class SeerrServerInput(
@@ -59,8 +64,8 @@ class ServerConnectionCoordinator(
     private val serverRepository: ServerRepository,
     private val jellyseerrAuthenticator: JellyseerrAuthenticator,
 ) {
-    suspend fun connectJellyfin(input: JellyfinConnectionInput): ManagedServer =
-        serverRepository.register(
+    suspend fun connectJellyfin(input: JellyfinConnectionInput): ManagedServer {
+        val registration =
             ServerRegistration(
                 id = input.serverId,
                 type = ServerType.JELLYFIN,
@@ -71,8 +76,14 @@ class ServerConnectionCoordinator(
                         username = input.username.trim(),
                         password = input.password,
                     ),
-            ),
-        )
+            )
+        return try {
+            serverRepository.register(registration)
+        } catch (duplicate: DuplicateServerException) {
+            if (!input.refreshExistingAccount) throw duplicate
+            serverRepository.register(registration.copy(id = duplicate.existingId))
+        }
+    }
 
     suspend fun connectSeerrAutomatically(input: SeerrServerInput): SeerrConnectionResult {
         val jellyfin =
@@ -81,6 +92,14 @@ class ServerConnectionCoordinator(
                     reason = "Connect Jellyfin first or enter Seerr credentials.",
                     suggestedUsername = null,
                 )
+        return connectSeerrAutomatically(input, jellyfin)
+    }
+
+    /** Signs in to Seerr as the account behind [jellyfin] rather than the active Jellyfin server. */
+    suspend fun connectSeerrAutomatically(
+        input: SeerrServerInput,
+        jellyfin: ManagedServer,
+    ): SeerrConnectionResult {
         val credential = jellyfin.credentials as? StoredCredential.Jellyfin
         val password = serverRepository.jellyfinPassword(jellyfin.id)?.reveal()
         if (credential == null) {

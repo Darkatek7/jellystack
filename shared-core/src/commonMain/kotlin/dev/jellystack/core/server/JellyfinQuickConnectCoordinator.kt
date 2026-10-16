@@ -28,6 +28,8 @@ data class JellyfinQuickConnectInput(
     val serverId: String? = null,
     val appVersion: String,
     val deviceName: String = "Jellystack",
+    /** Refresh the stored record when this Jellyfin account is already known instead of failing. */
+    val refreshExistingAccount: Boolean = false,
 )
 
 data class JellyfinQuickConnectSession(
@@ -219,25 +221,25 @@ class JellyfinQuickConnectCoordinator(
                         emit(JellyfinQuickConnectState.Failed(JellyfinQuickConnectError.INVALID_RESPONSE))
                         return@flow
                     }
+                    val registration =
+                        AuthenticatedJellyfinRegistration(
+                            id = input.serverId,
+                            name = input.name.trim().ifBlank { defaultName(normalizedUrl) },
+                            baseUrl = normalizedUrl,
+                            credentials =
+                                StoredCredential.Jellyfin(
+                                    username =
+                                        authentication.user.name
+                                            ?.takeIf { it.isNotBlank() }
+                                            ?: authentication.user.id,
+                                    deviceId = deviceId,
+                                    accessToken = authentication.accessToken,
+                                    userId = authentication.user.id,
+                                ),
+                        )
                     val server =
                         try {
-                            serverRepository.registerAuthenticatedJellyfin(
-                                AuthenticatedJellyfinRegistration(
-                                    id = input.serverId,
-                                    name = input.name.trim().ifBlank { defaultName(normalizedUrl) },
-                                    baseUrl = normalizedUrl,
-                                    credentials =
-                                        StoredCredential.Jellyfin(
-                                            username =
-                                                authentication.user.name
-                                                    ?.takeIf { it.isNotBlank() }
-                                                    ?: authentication.user.id,
-                                            deviceId = deviceId,
-                                            accessToken = authentication.accessToken,
-                                            userId = authentication.user.id,
-                                        ),
-                                ),
-                            )
+                            registerRefreshingWhenAllowed(registration, input.refreshExistingAccount)
                         } catch (error: CancellationException) {
                             throw error
                         } catch (_: Throwable) {
@@ -256,6 +258,17 @@ class JellyfinQuickConnectCoordinator(
             } finally {
                 remote.close()
             }
+        }
+
+    private suspend fun registerRefreshingWhenAllowed(
+        registration: AuthenticatedJellyfinRegistration,
+        refreshExistingAccount: Boolean,
+    ): ManagedServer =
+        try {
+            serverRepository.registerAuthenticatedJellyfin(registration)
+        } catch (duplicate: DuplicateServerException) {
+            if (!refreshExistingAccount) throw duplicate
+            serverRepository.registerAuthenticatedJellyfin(registration.copy(id = duplicate.existingId))
         }
 
     private fun Throwable.toQuickConnectError(authentication: Boolean = false): JellyfinQuickConnectError =
