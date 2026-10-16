@@ -1718,6 +1718,46 @@ class PlaybackControllerTest {
         }
 
     @Test
+    fun subtitleSwitchKeepsCompatibilityAudioAfterSilentAudioFallback() =
+        runTest {
+            val controllerScope = TestScope(UnconfinedTestDispatcher(testScheduler))
+            val engine = RecordingPlayerEngine()
+            val resolver = RecordingSubtitleSwitchResolver()
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = resolver,
+                    playerEngine = engine,
+                    playbackPreferencesProvider = PlaybackPreferencesProvider { AppSettings(subtitleMode = SubtitleMode.OFF) },
+                    scope = controllerScope,
+                )
+
+            try {
+                controller.play(
+                    PlaybackRequest.from(sampleItem(), sampleDetail(includeVtt = true)),
+                    testEnvironment(),
+                )
+                assertFalse(resolver.requests.single().forceAudioTranscoding)
+                engine.emitEvent(PlayerEvent.AudioOutputUnavailable)
+                controllerScope.advanceUntilIdle()
+                assertTrue(resolver.requests.last().forceAudioTranscoding)
+
+                controller.selectSubtitle("3")
+                controllerScope.advanceUntilIdle()
+
+                assertEquals(3, resolver.requests.size)
+                assertEquals(3, resolver.requests.last().subtitleStreamIndex)
+                assertTrue(resolver.requests.last().forceAudioTranscoding)
+
+                controller.retry()
+                controllerScope.advanceUntilIdle()
+
+                assertFalse(resolver.requests.last().forceAudioTranscoding)
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
     fun selectingSubtitleOnHlsReResolvesTheSourceAndPreservesPlaybackState() =
         runTest {
             val controllerScope = TestScope(UnconfinedTestDispatcher(testScheduler))
