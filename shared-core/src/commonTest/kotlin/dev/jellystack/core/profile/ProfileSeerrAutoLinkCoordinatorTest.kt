@@ -59,6 +59,27 @@ class ProfileSeerrAutoLinkCoordinatorTest {
         }
 
     @Test
+    fun seerrSignInWithoutAUserIdNeverOverwritesAStoredRecord() =
+        runTest {
+            val fixture = fixture(reportsSeerrUserId = false)
+            val anonymous =
+                fixture.servers.register(
+                    ServerRegistration(
+                        type = ServerType.JELLYSEERR,
+                        name = "Requests",
+                        baseUrl = "https://requests.example",
+                        credentials = CredentialInput.ApiKey(apiKey = "other-key", userId = null, sessionCookie = null),
+                    ),
+                )
+            val bob = fixture.registerJellyfin("bob")
+
+            val profile = fixture.coordinator.openOrCreateProfile(bob, APP_VERSION)
+
+            assertNull(fixture.profiles.binding(profile.id)?.seerrConnectionId)
+            assertEquals("other-key", (fixture.servers.findServer(anonymous.id)?.credentials as StoredCredential.ApiKey).apiKey)
+        }
+
+    @Test
     fun failedSeerrSignInStillCreatesTheProfileUnlinked() =
         runTest {
             val fixture = fixture(authenticationFailure = IllegalStateException("seerr offline"))
@@ -133,6 +154,7 @@ class ProfileSeerrAutoLinkCoordinatorTest {
     private fun fixture(
         seerrUserIds: Map<String, String> = mapOf("alice" to "1", "bob" to "2"),
         authenticationFailure: Throwable? = null,
+        reportsSeerrUserId: Boolean = true,
     ): Fixture {
         var serverIds = 0
         var profileIds = 0
@@ -171,7 +193,7 @@ class ProfileSeerrAutoLinkCoordinatorTest {
                 clock = FixedProfileClock,
                 idGenerator = { "profile-${profileIds++}" },
             )
-        val authenticator = ScriptedAuthenticator(seerrUserIds, authenticationFailure)
+        val authenticator = ScriptedAuthenticator(seerrUserIds, authenticationFailure, reportsSeerrUserId)
         return Fixture(
             servers = servers,
             profiles = profiles,
@@ -197,6 +219,7 @@ class ProfileSeerrAutoLinkCoordinatorTest {
     private class ScriptedAuthenticator(
         private val seerrUserIds: Map<String, String>,
         private val failure: Throwable?,
+        private val reportsUserId: Boolean,
     ) : JellyseerrAuthenticator() {
         val usernames = mutableListOf<String>()
 
@@ -206,7 +229,7 @@ class ProfileSeerrAutoLinkCoordinatorTest {
             failure?.let { throw it }
             return JellyseerrAuthenticationResult(
                 apiKey = "$username-key",
-                userId = seerrUserIds.getValue(username).toInt(),
+                userId = seerrUserIds.getValue(username).toInt().takeIf { reportsUserId },
                 sessionCookie = null,
                 hasValidatedSession = true,
             )

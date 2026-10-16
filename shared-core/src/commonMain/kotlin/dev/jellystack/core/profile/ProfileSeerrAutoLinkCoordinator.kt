@@ -65,6 +65,7 @@ class ProfileSeerrAutoLinkCoordinator(
                         appVersion = appVersion,
                     ),
                     jellyfin,
+                    refreshOnlyKnownUser = true,
                 )
             } catch (error: CancellationException) {
                 throw error

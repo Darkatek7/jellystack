@@ -95,10 +95,15 @@ class ServerConnectionCoordinator(
         return connectSeerrAutomatically(input, jellyfin)
     }
 
-    /** Signs in to Seerr as the account behind [jellyfin] rather than the active Jellyfin server. */
+    /**
+     * Signs in to Seerr as the account behind [jellyfin] rather than the active Jellyfin server.
+     * With [refreshOnlyKnownUser] an already stored record is refreshed only when Seerr reported the user id, so an
+     * unattended sign-in can never overwrite another account's record.
+     */
     suspend fun connectSeerrAutomatically(
         input: SeerrServerInput,
         jellyfin: ManagedServer,
+        refreshOnlyKnownUser: Boolean = false,
     ): SeerrConnectionResult {
         val credential = jellyfin.credentials as? StoredCredential.Jellyfin
         val password = serverRepository.jellyfinPassword(jellyfin.id)?.reveal()
@@ -122,7 +127,7 @@ class ServerConnectionCoordinator(
                 } else {
                     authenticateSeerrWithConnectedJellyfin(input, jellyfin, credential)
                 }
-            SeerrConnectionResult.Connected(registerSeerr(input, auth))
+            SeerrConnectionResult.Connected(registerSeerr(input, auth, refreshOnlyKnownUser))
         } catch (error: JellyseerrAuthenticationException) {
             SeerrConnectionResult.CredentialsRequired(
                 reason = error.message ?: "Jellyfin-linked Seerr login failed.",
@@ -209,6 +214,7 @@ class ServerConnectionCoordinator(
     private suspend fun registerSeerr(
         input: SeerrServerInput,
         auth: JellyseerrAuthenticationResult,
+        refreshOnlyKnownUser: Boolean = false,
     ): ManagedServer {
         val registration =
             ServerRegistration(
@@ -226,6 +232,7 @@ class ServerConnectionCoordinator(
         return try {
             serverRepository.register(registration)
         } catch (duplicate: DuplicateServerException) {
+            if (refreshOnlyKnownUser && auth.userId == null) throw duplicate
             // The same Seerr account is already stored (e.g. by another profile): refresh that record.
             serverRepository.register(registration.copy(id = duplicate.existingId))
         }
