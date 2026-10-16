@@ -979,8 +979,9 @@ internal fun LazyListScope.tvJellyfinDetailSections(
                         TvSectionTitle(strings.seasons)
                         LazyRow(
                             state = focusModifiers.horizontalListState,
+                            modifier = Modifier.tvRowBleed(start = 108.dp, end = 48.dp),
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                            contentPadding = PaddingValues(start = 116.dp, end = 56.dp, top = 6.dp, bottom = 6.dp),
                         ) {
                             itemsIndexed(section.groups, key = {
                                     _,
@@ -1025,7 +1026,9 @@ internal fun LazyListScope.tvJellyfinDetailSections(
                         TvSectionTitle(strings.cast)
                         LazyRow(
                             state = focusModifiers.horizontalListState,
+                            modifier = Modifier.tvRowBleed(start = 108.dp, end = 48.dp),
                             horizontalArrangement = Arrangement.spacedBy(18.dp),
+                            contentPadding = tvBleedRowPadding(0.dp, start = 108.dp, end = 48.dp),
                         ) {
                             items(people, key = TvDetailCastItem.Jellyfin::id, contentType = { "cast-card" }) { castItem ->
                                 val person = castItem.person
@@ -1111,7 +1114,9 @@ private fun TvKeyedDetailItemRow(
         TvSectionTitle(title)
         LazyRow(
             state = focusModifiers.horizontalListState,
+            modifier = Modifier.tvRowBleed(start = 108.dp, end = 48.dp),
             horizontalArrangement = Arrangement.spacedBy(18.dp),
+            contentPadding = tvBleedRowPadding(0.dp, start = 108.dp, end = 48.dp),
         ) {
             items(keyedItems, key = TvKeyedJellyfinDetailItem::id, contentType = { "media-card" }) { keyedItem ->
                 val item = keyedItem.item
@@ -1207,7 +1212,9 @@ internal fun LazyListScope.tvSeerrDetailSections(
                         TvSectionTitle(strings.cast)
                         LazyRow(
                             state = focusModifiers.horizontalListState,
+                            modifier = Modifier.tvRowBleed(start = 58.dp, end = 58.dp),
                             horizontalArrangement = Arrangement.spacedBy(18.dp),
+                            contentPadding = tvBleedRowPadding(0.dp, start = 58.dp, end = 58.dp),
                         ) {
                             items(people, key = TvDetailCastItem.Seerr::id, contentType = { "cast-card" }) { castItem ->
                                 val person = castItem.person
@@ -1238,7 +1245,9 @@ internal fun LazyListScope.tvSeerrDetailSections(
                         TvSectionTitle(strings.similar)
                         LazyRow(
                             state = focusModifiers.horizontalListState,
+                            modifier = Modifier.tvRowBleed(start = 58.dp, end = 58.dp),
                             horizontalArrangement = Arrangement.spacedBy(18.dp),
+                            contentPadding = tvBleedRowPadding(0.dp, start = 58.dp, end = 58.dp),
                         ) {
                             items(items, key = TvDetailSimilarItem.Seerr::id, contentType = { "media-card" }) { similarItem ->
                                 val item = similarItem.item

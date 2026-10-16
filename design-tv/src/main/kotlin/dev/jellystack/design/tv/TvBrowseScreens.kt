@@ -606,10 +606,9 @@ private fun TvMyListRow(
         TvSectionTitle(strings.myList)
         LazyRow(
             state = listState,
+            modifier = Modifier.tvRowBleed(),
             horizontalArrangement = Arrangement.spacedBy(18.dp),
-            contentPadding =
-                androidx.compose.foundation.layout
-                    .PaddingValues(6.dp),
+            contentPadding = tvBleedRowPadding(6.dp),
         ) {
             itemsIndexed(entries, key = { _, entry -> entry.identity.tvMyListKey() }) { index, entry ->
                 val item = entry.jellyfinItem
@@ -704,16 +703,16 @@ internal fun TvJellyfinRow(
     focusTargetId: (String) -> String,
     screenEntry: Boolean = false,
     edgePadding: Dp = 6.dp,
+    bleedStart: Dp = TvLayoutTokens.ContentStart,
     onVerticalMove: (JellyfinItem, TvHomeVerticalDirection) -> Unit = { _, _ -> },
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         TvSectionTitle(title)
         LazyRow(
             state = listState,
+            modifier = Modifier.tvRowBleed(start = bleedStart),
             horizontalArrangement = Arrangement.spacedBy(18.dp),
-            contentPadding =
-                androidx.compose.foundation.layout
-                    .PaddingValues(edgePadding),
+            contentPadding = tvBleedRowPadding(edgePadding, start = bleedStart),
         ) {
             itemsIndexed(
                 items,
@@ -777,10 +776,9 @@ private fun TvLibraryRow(
         TvSectionTitle(title)
         LazyRow(
             state = listState,
+            modifier = Modifier.tvRowBleed(),
             horizontalArrangement = Arrangement.spacedBy(18.dp),
-            contentPadding =
-                androidx.compose.foundation.layout
-                    .PaddingValues(6.dp),
+            contentPadding = tvBleedRowPadding(6.dp),
         ) {
             itemsIndexed(
                 libraries,
@@ -829,10 +827,9 @@ private fun TvHomeSectionRow(
         TvSectionTitle(section.title)
         LazyRow(
             state = listState,
+            modifier = Modifier.tvRowBleed(),
             horizontalArrangement = Arrangement.spacedBy(18.dp),
-            contentPadding =
-                androidx.compose.foundation.layout
-                    .PaddingValues(6.dp),
+            contentPadding = tvBleedRowPadding(6.dp),
         ) {
             itemsIndexed(
                 section.items,
@@ -1461,7 +1458,9 @@ internal fun TvDiscoverScreen(
                     TvSectionTitle(strings.requests)
                     LazyRow(
                         state = rowStates.getValue("requests"),
+                        modifier = Modifier.tvRowBleed(),
                         horizontalArrangement = Arrangement.spacedBy(18.dp),
+                        contentPadding = tvBleedRowPadding(6.dp),
                     ) {
                         itemsIndexed(
                             requestItems,
@@ -1552,16 +1551,16 @@ internal fun TvSeerrRow(
     focusTargetId: (String) -> String,
     screenEntry: Boolean = false,
     edgePadding: Dp = 6.dp,
+    bleedStart: Dp = TvLayoutTokens.ContentStart,
     onFocused: (JellyseerrSearchItem) -> Unit = {},
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         TvSectionTitle(title)
         LazyRow(
             state = listState,
+            modifier = Modifier.tvRowBleed(start = bleedStart),
             horizontalArrangement = Arrangement.spacedBy(18.dp),
-            contentPadding =
-                androidx.compose.foundation.layout
-                    .PaddingValues(edgePadding),
+            contentPadding = tvBleedRowPadding(edgePadding, start = bleedStart),
         ) {
             itemsIndexed(
                 items,

@@ -240,7 +240,8 @@ private fun TvCinematicBrowseRow(
         TvSectionTitle(row.title, Modifier.testTag("cinematic-row-title-${row.id}"))
         LazyRow(
             state = rowState,
-            contentPadding = PaddingValues(6.dp),
+            modifier = Modifier.tvRowBleed(),
+            contentPadding = tvBleedRowPadding(6.dp),
             horizontalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             itemsIndexed(items = row.cards, key = { _, card -> card.id }) { index, card ->

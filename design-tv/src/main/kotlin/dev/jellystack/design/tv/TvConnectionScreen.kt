@@ -18,7 +18,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -349,7 +349,8 @@ private fun TvTextField(
         visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
         keyboardOptions = KeyboardOptions(keyboardType = if (password) KeyboardType.Password else KeyboardType.Uri),
         colors = tvOutlinedTextFieldColors(),
-        modifier = modifier.fillMaxWidth().height(height),
+        // A minimum, not a fixed height: TV text sizes need more room than the phone defaults.
+        modifier = modifier.fillMaxWidth().heightIn(min = height),
     )
 }
 

@@ -1,8 +1,11 @@
 package dev.jellystack.design.tv
 
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.Immutable
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.math.floor
@@ -36,7 +39,6 @@ internal object TvLayoutTokens {
     const val FOCUS_SCALE = 1.055f
     val FocusLightRing = Color.White
     val FocusDarkRing = Color.Black
-    val FocusAccentRing = TvPurple
 }
 
 internal fun tvSafeBounds(
@@ -50,6 +52,33 @@ internal fun tvSafeBounds(
         right = widthDp - insets.horizontal.value,
         bottom = heightDp - insets.vertical.value,
     )
+
+/**
+ * Lets a horizontal row draw into the [start] and [end] padding of its parent, so cards scroll to the screen
+ * edge instead of being cut off at the safe inset. Pair it with [tvBleedRowPadding] so the first card still
+ * lines up with the content.
+ */
+internal fun Modifier.tvRowBleed(
+    start: Dp = TvLayoutTokens.ContentStart,
+    end: Dp = TvLayoutTokens.SafeInsets.horizontal,
+): Modifier =
+    layout { measurable, constraints ->
+        if (!constraints.hasBoundedWidth) {
+            val placeable = measurable.measure(constraints)
+            return@layout layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+        }
+        val startPx = start.roundToPx()
+        val width = constraints.maxWidth + startPx + end.roundToPx()
+        val placeable = measurable.measure(constraints.copy(minWidth = width, maxWidth = width))
+        layout(constraints.maxWidth, placeable.height) { placeable.place(-startPx, 0) }
+    }
+
+/** Content padding for a row widened by [tvRowBleed]; [edge] is the room for the focused card's halo. */
+internal fun tvBleedRowPadding(
+    edge: Dp,
+    start: Dp = TvLayoutTokens.ContentStart,
+    end: Dp = TvLayoutTokens.SafeInsets.horizontal,
+): PaddingValues = PaddingValues(start = start + edge, end = end + edge, top = edge, bottom = edge)
 
 @Suppress("FunctionOnlyReturningConstant", "UNUSED_PARAMETER")
 internal fun tvContentOffsetForRail(expanded: Boolean): Float = 0f
