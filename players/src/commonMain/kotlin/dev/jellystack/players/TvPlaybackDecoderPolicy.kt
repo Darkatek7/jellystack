@@ -135,6 +135,8 @@ fun selectTvDecoderCapabilities(snapshot: PlaybackCapabilitySnapshot): PlaybackD
             } ?: transcodeAudioCodecs.mapNotNull(maxAudioChannelCounts::get).maxOrNull(),
         transcodingAudioCodecPreference = transcodeAudioPreference,
         supportsPgsSubtitles = true,
+        // Hardware AV1 plays a server remux as well as Direct Play, so an audio-only transcode keeps the video.
+        hlsFmp4VideoCopyCodecs = directVideoCodecs.filterTo(mutableSetOf()) { it == PlaybackVideoCodec.AV1 },
     )
 }
 

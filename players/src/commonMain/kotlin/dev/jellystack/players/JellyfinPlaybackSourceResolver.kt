@@ -104,7 +104,16 @@ class JellyfinPlaybackSourceResolver(
                         profile
                     }
                 }
-        val preferredTranscodeProfile = deviceProfile.transcodingProfiles.firstOrNull()
+        val selectedVideoCodec = selection.videoCodec?.lowercase()
+        // Mirrors Jellyfin's StreamBuilder: with video copy allowed it takes the first transcoding profile that
+        // lists the source codec (AV1 only fits the fMP4 one), otherwise the first profile.
+        val copyTranscodeProfile =
+            selectedVideoCodec?.takeIf { canRemuxVideoOnServer }?.let { codec ->
+                deviceProfile.transcodingProfiles.firstOrNull { profile ->
+                    codec in profile.videoCodec.split(',').map { it.trim().lowercase() }
+                }
+            }
+        val preferredTranscodeProfile = copyTranscodeProfile ?: deviceProfile.transcodingProfiles.firstOrNull()
         val preferredTranscodeCodec =
             preferredTranscodeProfile
                 ?.videoCodec
@@ -112,15 +121,8 @@ class JellyfinPlaybackSourceResolver(
                 ?.trim()
                 ?.takeIf(String::isNotEmpty)
                 ?: PlaybackVideoCodec.H264.jellyfinName
-        val selectedVideoCodec = selection.videoCodec?.lowercase()
         val canCopyVideoIntoPreferredHls =
-            canRemuxVideoOnServer &&
-                (
-                    selectedVideoCodec == null ||
-                        deviceProfile.transcodingProfiles.any { profile ->
-                            selectedVideoCodec in profile.videoCodec.split(',').map { it.trim().lowercase() }
-                        }
-                )
+            canRemuxVideoOnServer && (selectedVideoCodec == null || copyTranscodeProfile != null)
         val allowDirectPlayback = isAuto && !forceAnyTranscoding
         val audioTarget =
             resolveAudioTranscodeTarget(

@@ -54,6 +54,14 @@ data class PlaybackDecoderCapabilities(
      * burn them into the video.
      */
     val supportsPgsSubtitles: Boolean = false,
+    /**
+     * Decodable video codecs the server may copy into fMP4 HLS segments but never encodes to. They are
+     * appended after the encoder targets of the fMP4 transcoding profile only (MPEG-TS cannot carry
+     * AV1). Jellyfin 10.9+ prefers the transcoding profile that can copy the source video, so a source
+     * in one of these codecs keeps its video and only the audio is transcoded. Codecs outside
+     * [videoCodecs] are ignored.
+     */
+    val hlsFmp4VideoCopyCodecs: Set<PlaybackVideoCodec> = emptySet(),
 )
 
 fun interface PlaybackDeviceProfileProvider {
@@ -99,6 +107,12 @@ object PlaybackDeviceProfileFactory {
                 PlaybackVideoCodec.HEVC,
                 PlaybackVideoCodec.H264,
             ).filter(capabilities.transcodingVideoCodecs::contains)
+        // The encoder target stays the head of the list; copy-only codecs only ever match a source.
+        val hlsFmp4VideoCodecs =
+            hlsVideoCodecs +
+                directCodecs.filter { codec ->
+                    codec in capabilities.hlsFmp4VideoCopyCodecs && codec !in hlsVideoCodecs
+                }
 
         fun orderedTranscodeAudioCodecs(defaultOrder: List<PlaybackAudioCodec>): List<PlaybackAudioCodec> =
             (capabilities.transcodingAudioCodecPreference + defaultOrder)
@@ -216,7 +230,7 @@ object PlaybackDeviceProfileFactory {
                             add(
                                 JellyfinTranscodingProfileDto(
                                     container = "mp4",
-                                    videoCodec = hlsVideoCodecs.joinToString(",") { codec -> codec.jellyfinName },
+                                    videoCodec = hlsFmp4VideoCodecs.joinToString(",") { codec -> codec.jellyfinName },
                                     audioCodec = hlsFmp4AudioCodecs.joinToString(",") { codec -> codec.jellyfinName },
                                     maxAudioChannels = maxTranscodeAudioChannels?.toString(),
                                     breakOnNonKeyFrames = false,

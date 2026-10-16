@@ -677,6 +677,52 @@ class JellyfinPlaybackSourceResolverTest {
         }
 
     @Test
+    fun tvAv1SourceCopiesItsVideoIntoFmp4HlsAndOnlyTranscodesTheAudio() =
+        runTest {
+            val service = RecordingPlaybackInfoService(noMethodResponse())
+            val resolver =
+                JellyfinPlaybackSourceResolver(
+                    service,
+                    tvProvider(
+                        tvSnapshot(
+                            PlaybackAudioCodec.EAC3,
+                            PlaybackAudioCodec.AAC,
+                            hardwareVideo = setOf(PlaybackVideoCodec.AV1, PlaybackVideoCodec.HEVC),
+                        ),
+                    ),
+                )
+            val request = videoRequest()
+
+            fun selection(videoCodec: String) =
+                PlaybackStreamSelector()
+                    .select(request.mediaSources)
+                    .copy(
+                        videoCodec = videoCodec,
+                        audioTracks = listOf(audioTrack(codec = "dts", channels = 6, streamIndex = 2)),
+                    )
+
+            val av1 = resolver.resolve(request, selection("av1"), environment(), 0, PlaybackSourceOptions())
+
+            assertEquals(true, service.lastRequest?.allowVideoStreamCopy)
+            assertEquals("mp4", av1.url.queryParameter("SegmentContainer"))
+            assertEquals("copy", av1.url.queryParameter("VideoCodec"))
+            assertEquals("eac3", av1.url.queryParameter("AudioCodec"))
+            assertEquals("6", av1.url.queryParameter("TranscodingMaxAudioChannels"))
+
+            val hevc = resolver.resolve(request, selection("hevc"), environment(), 0, PlaybackSourceOptions())
+
+            assertEquals("ts", hevc.url.queryParameter("SegmentContainer"))
+            assertEquals("copy", hevc.url.queryParameter("VideoCodec"))
+
+            val forced =
+                resolver.resolve(request, selection("av1"), environment(), 0, PlaybackSourceOptions(forceTranscoding = true))
+
+            assertEquals(false, service.lastRequest?.allowVideoStreamCopy)
+            assertEquals("ts", forced.url.queryParameter("SegmentContainer"))
+            assertEquals("hevc", forced.url.queryParameter("VideoCodec"))
+        }
+
+    @Test
     fun aacOnlyTvTranscodesUnsupportedAudioToStereoAac() =
         runTest {
             val service = RecordingPlaybackInfoService(noMethodResponse())
@@ -1516,20 +1562,29 @@ class JellyfinPlaybackSourceResolverTest {
             override fun usesBestAvailableAudioTranscodeTarget(): Boolean = true
         }
 
-    /** Complete snapshot where H.264 and exactly [audio] are playable, each reporting 8 input channels. */
-    private fun tvSnapshot(vararg audio: PlaybackAudioCodec) =
-        PlaybackCapabilitySnapshot(
-            videoSupport =
-                PlaybackVideoCodec.entries.associateWith { CapabilitySupport.UNSUPPORTED } +
-                    (PlaybackVideoCodec.H264 to CapabilitySupport.SUPPORTED),
-            videoHardwareSupport = PlaybackVideoCodec.entries.associateWith { CapabilitySupport.UNSUPPORTED },
-            audioSupport =
-                PlaybackAudioCodec.entries.associateWith {
-                    if (it in audio) CapabilitySupport.SUPPORTED else CapabilitySupport.UNSUPPORTED
-                },
-            maxAudioChannelCounts = audio.associateWith { 8 },
-            inspectionCompleteness = PlaybackCapabilityInspection.COMPLETE,
-        )
+    /**
+     * Complete snapshot where H.264, the hardware-decoded [hardwareVideo] and exactly [audio] are playable, each
+     * audio codec reporting 8 input channels.
+     */
+    private fun tvSnapshot(
+        vararg audio: PlaybackAudioCodec,
+        hardwareVideo: Set<PlaybackVideoCodec> = emptySet(),
+    ) = PlaybackCapabilitySnapshot(
+        videoSupport =
+            PlaybackVideoCodec.entries.associateWith {
+                if (it == PlaybackVideoCodec.H264 || it in hardwareVideo) CapabilitySupport.SUPPORTED else CapabilitySupport.UNSUPPORTED
+            },
+        videoHardwareSupport =
+            PlaybackVideoCodec.entries.associateWith {
+                if (it in hardwareVideo) CapabilitySupport.SUPPORTED else CapabilitySupport.UNSUPPORTED
+            },
+        audioSupport =
+            PlaybackAudioCodec.entries.associateWith {
+                if (it in audio) CapabilitySupport.SUPPORTED else CapabilitySupport.UNSUPPORTED
+            },
+        maxAudioChannelCounts = audio.associateWith { 8 },
+        inspectionCompleteness = PlaybackCapabilityInspection.COMPLETE,
+    )
 
     private fun audioTrack(
         codec: String,

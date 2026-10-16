@@ -189,6 +189,36 @@ class TvPlaybackDecoderPolicyTest {
         )
     }
 
+    @Test
+    fun onlyHardwareAv1IsOfferedForVideoCopyAndOnlyInTheFmp4TranscodingProfile() {
+        fun transcodingVideoCodecs(av1Hardware: CapabilitySupport) =
+            PlaybackDeviceProfileFactory
+                .create(
+                    name = "Test TV",
+                    capabilities =
+                        selectTvDecoderCapabilities(
+                            snapshot(
+                                videoSupport = PlaybackVideoCodec.entries.associateWith { CapabilitySupport.SUPPORTED },
+                                videoHardwareSupport =
+                                    PlaybackVideoCodec.entries.associateWith { CapabilitySupport.SUPPORTED } +
+                                        (PlaybackVideoCodec.AV1 to av1Hardware),
+                                audioSupport = PlaybackAudioCodec.entries.associateWith { CapabilitySupport.SUPPORTED },
+                            ),
+                        ),
+                ).transcodingProfiles
+                .associate { it.container to it.videoCodec }
+
+        // AV1 stays last so the server never picks it as an encoder target.
+        assertEquals(
+            mapOf("ts" to "hevc,h264", "mp4" to "hevc,h264,av1"),
+            transcodingVideoCodecs(CapabilitySupport.SUPPORTED),
+        )
+        assertEquals(
+            mapOf("ts" to "hevc,h264", "mp4" to "hevc,h264"),
+            transcodingVideoCodecs(CapabilitySupport.UNSUPPORTED),
+        )
+    }
+
     private fun snapshot(
         videoSupport: Map<PlaybackVideoCodec, CapabilitySupport> = emptyMap(),
         videoHardwareSupport: Map<PlaybackVideoCodec, CapabilitySupport> = emptyMap(),
