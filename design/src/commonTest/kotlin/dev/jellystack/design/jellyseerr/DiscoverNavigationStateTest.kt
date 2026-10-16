@@ -6,9 +6,7 @@ import dev.jellystack.core.jellyseerr.JellyseerrMediaAvailability
 import dev.jellystack.core.jellyseerr.JellyseerrMediaStatus
 import dev.jellystack.core.jellyseerr.JellyseerrMediaType
 import dev.jellystack.core.jellyseerr.JellyseerrMessageCode
-import dev.jellystack.core.jellyseerr.JellyseerrPermission
 import dev.jellystack.core.jellyseerr.JellyseerrRecommendationRail
-import dev.jellystack.core.jellyseerr.JellyseerrRequestCapabilities
 import dev.jellystack.core.jellyseerr.JellyseerrRequestFilter
 import dev.jellystack.core.jellyseerr.JellyseerrRequestProfileSelection
 import dev.jellystack.core.jellyseerr.JellyseerrRequestStatus
@@ -16,6 +14,8 @@ import dev.jellystack.core.jellyseerr.JellyseerrRequestVariant
 import dev.jellystack.core.jellyseerr.JellyseerrSearchItem
 import dev.jellystack.core.jellyseerr.JellyseerrSeasonStatus
 import dev.jellystack.core.jellyseerr.JellyseerrUser
+import dev.jellystack.core.jellyseerr.SeerrPrimaryAction
+import dev.jellystack.core.jellyseerr.resolveSeerrRequestCommand
 import dev.jellystack.design.navigation.DiscoverDestination
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -326,71 +326,6 @@ class DiscoverNavigationStateTest {
         assertEquals(listOf(2, 4), requestableSeasons(listOf(1, 2, 3, 4), request))
         assertEquals("Dune", request.toSearchItemOrNull()?.title)
         assertNull(request.copy(tmdbId = null).toSearchItemOrNull())
-    }
-
-    @Test
-    fun primaryCommandsAreStatusAwareAndAvailableIsNeverAnAction() {
-        assertEquals(
-            SeerrPrimaryAction.Request,
-            resolveSeerrRequestCommand(
-                mediaType = JellyseerrMediaType.MOVIE,
-                mediaStatus = null,
-                hasRequest = false,
-                requestableSeasons = emptyList(),
-            ).primaryAction,
-        )
-        listOf(
-            JellyseerrMediaStatus.PENDING,
-            JellyseerrMediaStatus.PROCESSING,
-            JellyseerrMediaStatus.AVAILABLE,
-        ).forEach { status ->
-            val command =
-                resolveSeerrRequestCommand(
-                    mediaType = JellyseerrMediaType.MOVIE,
-                    mediaStatus = status,
-                    hasRequest = status != JellyseerrMediaStatus.AVAILABLE,
-                    requestableSeasons = emptyList(),
-                )
-            assertNull(command.primaryAction)
-            assertTrue(command.showStatus)
-        }
-        assertEquals(
-            SeerrPrimaryAction.RequestMoreSeasons,
-            resolveSeerrRequestCommand(
-                mediaType = JellyseerrMediaType.TV,
-                mediaStatus = JellyseerrMediaStatus.PARTIALLY_AVAILABLE,
-                hasRequest = true,
-                requestableSeasons = listOf(2, 3),
-            ).primaryAction,
-        )
-    }
-
-    @Test
-    fun requestCommandHidesMovieActionWithoutMoviePermission() {
-        val tvOnly =
-            JellyseerrRequestCapabilities.fromPermissions(JellyseerrPermission.REQUEST_TV)
-
-        val movie =
-            resolveSeerrRequestCommand(
-                mediaType = JellyseerrMediaType.MOVIE,
-                mediaStatus = null,
-                hasRequest = false,
-                requestableSeasons = emptyList(),
-                capabilities = tvOnly,
-            )
-        val show =
-            resolveSeerrRequestCommand(
-                mediaType = JellyseerrMediaType.TV,
-                mediaStatus = null,
-                hasRequest = false,
-                requestableSeasons = emptyList(),
-                capabilities = tvOnly,
-            )
-
-        assertNull(movie.primaryAction)
-        assertTrue(movie.permissionDenied)
-        assertEquals(SeerrPrimaryAction.Request, show.primaryAction)
-        assertFalse(show.permissionDenied)
     }
 
     @Test

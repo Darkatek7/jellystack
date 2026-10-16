@@ -509,6 +509,8 @@ class JellyseerrRepository(
             collection = (collection ?: belongsToCollection)?.toDomain(),
             keywords = keywords.mapNotNull { it.name.ifNotBlank() }.distinct(),
             videos = domainVideos,
+            availability = mediaInfo.toDomainAvailability(),
+            requests = mediaInfo.toDomainRequests(),
         )
     }
 
@@ -578,6 +580,8 @@ class JellyseerrRepository(
             seasons = domainSeasons,
             keywords = keywords.mapNotNull { it.name.ifNotBlank() }.distinct(),
             videos = domainVideos,
+            availability = mediaInfo.toDomainAvailability(),
+            requests = mediaInfo.toDomainRequests(),
         )
     }
 
@@ -1314,11 +1318,7 @@ class JellyseerrRepository(
                 !firstAirDate.isNullOrBlank() && firstAirDate.length >= 4 -> firstAirDate.substring(0, 4)
                 else -> null
             }
-        val availability =
-            JellyseerrMediaAvailability(
-                standard = JellyseerrMediaStatus.from(mediaInfo?.status),
-                `4k` = JellyseerrMediaStatus.from(mediaInfo?.status4k),
-            )
+        val availability = mediaInfo.toDomainAvailability()
         val requests = mediaInfo?.requests?.map { it.toDomainWith(mediaInfo) } ?: emptyList()
         return JellyseerrSearchItem(
             tmdbId = id,
@@ -1334,6 +1334,15 @@ class JellyseerrRepository(
             requests = requests,
         )
     }
+
+    private fun JellyseerrMediaInfoDto?.toDomainAvailability(): JellyseerrMediaAvailability =
+        JellyseerrMediaAvailability(
+            standard = JellyseerrMediaStatus.from(this?.status),
+            `4k` = JellyseerrMediaStatus.from(this?.status4k),
+        )
+
+    private fun JellyseerrMediaInfoDto?.toDomainRequests(): List<JellyseerrRequestSummary> =
+        this?.let { info -> info.requests.map { it.toDomainWith(info) } }.orEmpty()
 
     private fun JellyseerrRequestDto.toDomainWith(mediaInfo: JellyseerrMediaInfoDto): JellyseerrRequestSummary =
         this.copy(media = mediaInfo).toDomain()
