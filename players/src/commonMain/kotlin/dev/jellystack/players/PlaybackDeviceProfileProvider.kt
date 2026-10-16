@@ -57,7 +57,7 @@ data class PlaybackDecoderCapabilities(
     /**
      * Decodable video codecs the server may copy into fMP4 HLS segments but never encodes to. They are
      * appended after the encoder targets of the fMP4 transcoding profile only (MPEG-TS cannot carry
-     * AV1). Jellyfin 10.9+ prefers the transcoding profile that can copy the source video, so a source
+     * AV1). Jellyfin 10.10+ prefers the transcoding profile that can copy the source video, so a source
      * in one of these codecs keeps its video and only the audio is transcoded. Codecs outside
      * [videoCodecs] are ignored.
      */

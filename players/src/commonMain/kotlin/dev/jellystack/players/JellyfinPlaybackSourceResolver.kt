@@ -330,6 +330,7 @@ class JellyfinPlaybackSourceResolver(
         JellystackLog.d(
             "Playback decision mode=$mode fallbackUrl=$isFallbackHls stereoAacFallback=$forceStereoAac " +
                 "audioCopyAllowed=$allowAudioStreamCopy transcodeReasons=${loggable("TranscodeReasons")} " +
+                "segmentContainer=${loggable("SegmentContainer")} videoCodec=${loggable("VideoCodec")} " +
                 "audioCodec=${loggable("AudioCodec")} audioChannels=$channels " +
                 "audioStreamIndex=${loggable("AudioStreamIndex")}",
         )
