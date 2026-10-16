@@ -130,6 +130,12 @@ class JellyfinPlaybackSourceResolver(
                         detectedMax
                     }
                 } ?: preferredTranscodeProfile?.maxAudioChannels?.toIntOrNull()
+        // Text subtitles are sideloaded by the player; a missing method would make the server burn them in too.
+        val deliverSubtitleExternally =
+            selection.subtitleTracks
+                .firstOrNull { it.streamIndex == subtitleStreamIndex }
+                ?.format
+                ?.isImageBased == false
         val fallbackVideoBitrate =
             autoTranscodeVideoBitrate(
                 sourceVideoBitrate = selection.videoBitrate,
@@ -207,6 +213,7 @@ class JellyfinPlaybackSourceResolver(
                         playSessionId = playSessionId,
                         audioStreamIndex = audioStreamIndex,
                         subtitleStreamIndex = subtitleStreamIndex,
+                        deliverSubtitleExternally = deliverSubtitleExternally,
                         maxAudioChannels = maxTranscodeAudioChannels,
                         maxStreamingBitrate = manualOption?.maxBitrate ?: deviceProfile.maxStreamingBitrate,
                         copyVideo = canCopyVideoIntoPreferredHls,
@@ -281,6 +288,7 @@ class JellyfinPlaybackSourceResolver(
         playSessionId: String,
         audioStreamIndex: Int?,
         subtitleStreamIndex: Int?,
+        deliverSubtitleExternally: Boolean,
         maxAudioChannels: Int?,
         maxStreamingBitrate: Int?,
         copyVideo: Boolean,
@@ -356,6 +364,7 @@ class JellyfinPlaybackSourceResolver(
             subtitleStreamIndex?.let { index ->
                 append("&SubtitleStreamIndex=")
                 append(index)
+                if (deliverSubtitleExternally) append("&SubtitleMethod=External")
             }
         }
 

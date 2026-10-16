@@ -811,6 +811,50 @@ class JellyfinPlaybackSourceResolverTest {
         }
 
     @Test
+    fun hlsFallbackUrlDeliversOnlyTextSubtitlesExternallySoTheServerDoesNotBurnThemIn() =
+        runTest {
+            val service =
+                RecordingPlaybackInfoService(
+                    JellyfinPlaybackInfoResponseDto(
+                        mediaSources =
+                            listOf(
+                                JellyfinPlaybackMediaSourceDto(
+                                    id = "source-1",
+                                    container = "mkv",
+                                    supportsDirectPlay = false,
+                                    supportsDirectStream = false,
+                                    supportsTranscoding = false,
+                                ),
+                            ),
+                    ),
+                )
+            val resolver = JellyfinPlaybackSourceResolver(service, FixedPlaybackDeviceProfileProvider)
+            val request = videoRequest()
+            val tracks =
+                listOf(SubtitleFormat.SRT, SubtitleFormat.PGS).mapIndexed { index, format ->
+                    SubtitleTrack(
+                        id = "subtitle-$index",
+                        language = "en",
+                        title = "English",
+                        format = format,
+                        isDefault = false,
+                        isForced = false,
+                        streamIndex = index + 1,
+                    )
+                }
+            val selection = PlaybackStreamSelector().select(request.mediaSources).copy(subtitleTracks = tracks)
+
+            val textSource =
+                resolver.resolve(request, selection, environment(), 0, PlaybackSourceOptions(subtitleStreamIndex = 1))
+            val bitmapSource =
+                resolver.resolve(request, selection, environment(), 0, PlaybackSourceOptions(subtitleStreamIndex = 2))
+
+            assertEquals("External", textSource.url.queryParameter("SubtitleMethod"))
+            assertNull(bitmapSource.url.queryParameter("SubtitleMethod"))
+            assertEquals("2", bitmapSource.url.queryParameter("SubtitleStreamIndex"))
+        }
+
+    @Test
     fun autoFallbackKeepsSourceResolutionAndUsesAQualityVideoBitrate() =
         runTest {
             val service =
