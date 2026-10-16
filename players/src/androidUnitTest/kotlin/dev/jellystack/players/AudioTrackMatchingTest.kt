@@ -35,6 +35,18 @@ class AudioTrackMatchingTest {
     }
 
     @Test
+    fun directPlayIgnoresTheRegionOfAContainerLanguage() {
+        val tracks =
+            listOf(
+                candidate(formatId = "2", language = "en-us"),
+                candidate(formatId = "3", language = "en-gb"),
+            )
+        val secondEnglish = audioTrack(streamIndex = 2, audioIndex = 1, language = "eng")
+
+        assertEquals(1, match(tracks, secondEnglish, trackLanguage = "en", idsAreStreamIndexes = false))
+    }
+
+    @Test
     fun directPlaySkipsAnUnsupportedTrackAtThePosition() {
         val tracks =
             listOf(

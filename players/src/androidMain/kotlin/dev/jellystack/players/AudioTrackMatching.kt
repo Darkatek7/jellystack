@@ -25,14 +25,12 @@ internal fun matchAudioTrackCandidate(
     serverSelectedAudioStreamIndex: Int?,
 ): Int? {
     val supported = candidates.indices.filter { candidates[it].isSupported }
+    val primaryTrackLanguage = trackLanguage?.let(::primaryLanguage)
 
     fun languageMatches(index: Int): Boolean =
-        trackLanguage != null && candidates[index].language?.equals(trackLanguage, ignoreCase = true) == true
+        primaryTrackLanguage != null && candidates[index].language?.let(::primaryLanguage) == primaryTrackLanguage
 
-    fun languageAgrees(index: Int): Boolean {
-        val candidateLanguage = candidates[index].language
-        return trackLanguage == null || candidateLanguage == null || candidateLanguage.equals(trackLanguage, ignoreCase = true)
-    }
+    fun languageAgrees(index: Int): Boolean = primaryTrackLanguage == null || candidates[index].language == null || languageMatches(index)
 
     val idMatch =
         if (idsAreStreamIndexes) {
@@ -61,3 +59,6 @@ internal fun matchAudioTrackCandidate(
             track.streamIndex != null && track.streamIndex == serverSelectedAudioStreamIndex
         }
 }
+
+// Containers may carry a region ("en-US") that Jellyfin's ISO 639-2 code never has.
+private fun primaryLanguage(language: String): String = language.substringBefore('-').lowercase()
