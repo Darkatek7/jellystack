@@ -459,7 +459,8 @@ private fun TvProfileHost(
                     strings = strings,
                     onCreated = { created ->
                         addProfile = false
-                        beginActivation(created)
+                        // An account that already had a profile keeps that profile's PIN; a new profile has none.
+                        selectProfile(created)
                     },
                     onDismiss = { addProfile = false },
                 )
