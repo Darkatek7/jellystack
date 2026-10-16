@@ -4,6 +4,7 @@
 
 - Play with real Direct Play and surround passthrough; when Jellyfin has to transcode, it picks the best audio the TV supports (E-AC3 or AC3 5.1) and switches to stereo only when no sound arrives.
 - Send Jellyfin the complete device profile, so it decides Direct Play and transcoding correctly instead of the app building its own streams.
+- Keep AV1 video untouched on TVs with an AV1 decoder when only the audio has to be transcoded, which saves the server a full video encode.
 - See Jellyfin SRT, ASS, and PGS subtitles; PGS no longer makes the server burn subtitles into the video.
 - Add a second profile with a password for an account that is already on the TV, and sign Quick Connect profiles in to the household's Seerr automatically.
 - See titles that another profile already requested as requested instead of requesting them again.
