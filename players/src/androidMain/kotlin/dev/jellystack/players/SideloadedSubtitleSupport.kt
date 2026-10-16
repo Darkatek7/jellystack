@@ -46,7 +46,7 @@ internal fun MediaSource.mergedWithSideloadedSubtitles(
 internal fun ResolvedSubtitle.toSubtitleConfiguration(): SubtitleConfiguration =
     SubtitleConfiguration
         .Builder(Uri.parse(url))
-        .setMimeType(mimeType)
+        .setMimeType(sideloadedSampleMimeType(mimeType))
         .setLanguage(language)
         .setLabel(label ?: language ?: trackId)
         .setSelectionFlags(if (isForced) C.SELECTION_FLAG_FORCED else 0)
@@ -56,7 +56,8 @@ internal fun ResolvedSubtitle.toSubtitleConfiguration(): SubtitleConfiguration =
 
 /**
  * Sideloaded single-sample subtitles deliver raw `text/vtt` and `application/x-subrip` samples,
- * which the default text renderer refuses to decode unless legacy decoding is enabled.
+ * which the default text renderer refuses to decode unless legacy decoding is enabled. The
+ * renderer also decodes sideloaded Jellyfin `.sup` files (PGS) through [JellystackSubtitleDecoderFactory].
  */
 @UnstableApi
 internal class JellystackRenderersFactory(
@@ -69,7 +70,7 @@ internal class JellystackRenderersFactory(
         extensionRendererMode: Int,
         out: ArrayList<Renderer>,
     ) {
-        val renderer = TextRenderer(output, outputLooper)
+        val renderer = TextRenderer(output, outputLooper, JellystackSubtitleDecoderFactory)
         renderer.experimentalSetLegacyDecodingEnabled(true)
         out.add(renderer)
     }

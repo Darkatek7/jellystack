@@ -1019,6 +1019,76 @@ class JellyfinPlaybackSourceResolverTest {
         }
 
     @Test
+    fun tvProfileDeliversSelectedPgsSubtitleAsAnExternalSupInsteadOfBurningItIn() =
+        runTest {
+            val service =
+                RecordingPlaybackInfoService(
+                    JellyfinPlaybackInfoResponseDto(
+                        mediaSources =
+                            listOf(
+                                JellyfinPlaybackMediaSourceDto(
+                                    id = "source-1",
+                                    container = "mkv",
+                                    supportsDirectPlay = false,
+                                    supportsDirectStream = false,
+                                    supportsTranscoding = false,
+                                ),
+                            ),
+                    ),
+                )
+            val resolver = JellyfinPlaybackSourceResolver(service, tvProvider(tvSnapshot(PlaybackAudioCodec.EAC3)))
+            val request = videoRequest()
+            val selection = PlaybackStreamSelector().select(request.mediaSources).copy(subtitleTracks = pgsAndTextTracks())
+
+            val source = resolver.resolve(request, selection, environment(), 0, PlaybackSourceOptions(subtitleStreamIndex = 2))
+
+            assertEquals(PlaybackMode.HLS, source.mode)
+            assertEquals("External", source.url.queryParameter("SubtitleMethod"))
+            val pgs = source.subtitles.single { it.trackId == "subtitle-1" }
+            assertEquals("application/pgs", pgs.mimeType)
+            assertTrue(pgs.url.contains("/Subtitles/2/stream.sup"), pgs.url)
+            assertEquals("sup", pgs.url.queryParameter("format"))
+            val offered = checkNotNull(service.lastRequest).deviceProfile.subtitleProfiles
+            assertTrue(offered.any { it.format == "pgssub" && it.method == "Embed" })
+            assertTrue(offered.any { it.format == "pgssub" && it.method == "External" })
+        }
+
+    @Test
+    fun tvDirectPlayLeavesPgsToTheContainerAndDoesNotSideloadIt() =
+        runTest {
+            val service =
+                RecordingPlaybackInfoService(
+                    JellyfinPlaybackInfoResponseDto(
+                        mediaSources =
+                            listOf(
+                                JellyfinPlaybackMediaSourceDto(id = "source-1", container = "mkv", supportsDirectPlay = true),
+                            ),
+                    ),
+                )
+            val resolver = JellyfinPlaybackSourceResolver(service, tvProvider(tvSnapshot(PlaybackAudioCodec.EAC3)))
+            val request = videoRequest()
+            val selection = PlaybackStreamSelector().select(request.mediaSources).copy(subtitleTracks = pgsAndTextTracks())
+
+            val source = resolver.resolve(request, selection, environment(), 0, PlaybackSourceOptions(subtitleStreamIndex = 2))
+
+            assertEquals(PlaybackMode.DIRECT, source.mode)
+            assertEquals(listOf("subtitle-0"), source.subtitles.map(ResolvedSubtitle::trackId))
+        }
+
+    private fun pgsAndTextTracks() =
+        listOf(SubtitleFormat.SRT, SubtitleFormat.PGS).mapIndexed { index, format ->
+            SubtitleTrack(
+                id = "subtitle-$index",
+                language = "en",
+                title = "English",
+                format = format,
+                isDefault = false,
+                isForced = false,
+                streamIndex = index + 1,
+            )
+        }
+
+    @Test
     fun autoFallbackKeepsSourceResolutionAndUsesAQualityVideoBitrate() =
         runTest {
             val service =

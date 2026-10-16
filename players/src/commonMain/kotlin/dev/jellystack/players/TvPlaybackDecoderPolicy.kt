@@ -134,6 +134,7 @@ fun selectTvDecoderCapabilities(snapshot: PlaybackCapabilitySnapshot): PlaybackD
                 maxAudioChannelCounts[codec] ?: CONSERVATIVE_UNKNOWN_CHANNEL_COUNT
             } ?: transcodeAudioCodecs.mapNotNull(maxAudioChannelCounts::get).maxOrNull(),
         transcodingAudioCodecPreference = transcodeAudioPreference,
+        supportsPgsSubtitles = true,
     )
 }
 

@@ -655,17 +655,27 @@ class AndroidPlayerEngine(
         // Sideloaded subtitles carry the app track id; embedded container tracks use container-specific
         // ids that can collide with it, so prefer the sideloaded ones when both exist.
         val sideloadedCandidates = candidates.filter { candidate -> (mergedSourceIndex(candidate.formatId) ?: 0) > 0 }
+        // Matroska numbers its tracks from 1 while Jellyfin counts streams from 0, so a container PGS track never
+        // matches by stream index (an index hit would be a different subtitle); sideloaded ones match above.
+        val trackIdCandidates =
+            if (track.format.isImageBased) emptyList() else candidates
         val matched =
             sideloadedCandidates.firstOrNull { candidate -> candidate.matchesTrackId(track) }
-                ?: candidates.firstOrNull { candidate -> candidate.matchesTrackId(track) }
+                ?: trackIdCandidates.firstOrNull { candidate -> candidate.matchesTrackId(track) }
                 ?: candidates.firstOrNull { candidate ->
                     candidate.languageMatches(track.language) &&
                         candidate.labelMatches(track.title) &&
                         candidate.formatMatches(track.format) &&
                         candidate.forcedMatches(track.isForced)
                 } ?: candidates
-                .filter { it.languageMatches(track.language) }
-                .singleOrNull()
+                .filter { candidate ->
+                    candidate.languageMatches(track.language) &&
+                        candidate.formatMatches(track.format) &&
+                        candidate.forcedMatches(track.isForced)
+                }.singleOrNull()
+                ?: candidates
+                    .filter { it.languageMatches(track.language) }
+                    .singleOrNull()
         return matched?.let { TrackSelectionOverride(it.group.mediaTrackGroup, it.trackIndex) }
     }
 
@@ -683,6 +693,10 @@ class AndroidPlayerEngine(
             formatIdMatches(formatId, track.id) ||
                 (track.streamIndex != null && formatIdMatches(formatId, track.streamIndex.toString()))
 
+        // Container tracks are transcoded to Media3 cues, which keep the original mime type as their codecs.
+        private val codecsOrEmpty: String
+            get() = format.codecs.orEmpty().lowercase()
+
         fun languageMatches(language: String?): Boolean = language != null && format.language?.equals(language, ignoreCase = true) == true
 
         fun labelMatches(label: String?): Boolean = label != null && format.label?.equals(label, ignoreCase = true) == true
@@ -699,7 +713,7 @@ class AndroidPlayerEngine(
                 -> mime == MimeTypes.TEXT_SSA
                 SubtitleFormat.PGS,
                 SubtitleFormat.SUP,
-                -> mime == MimeTypes.APPLICATION_PGS
+                -> mime == MimeTypes.APPLICATION_PGS || codecsOrEmpty == MimeTypes.APPLICATION_PGS
                 SubtitleFormat.UNKNOWN -> true
             }
         }
