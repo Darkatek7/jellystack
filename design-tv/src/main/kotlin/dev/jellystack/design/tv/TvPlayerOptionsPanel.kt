@@ -144,7 +144,14 @@ internal fun TvPlayerOptionRow(
     ) {
         Icon(icon, contentDescription = null, tint = if (selected) TvPurple else Color.White, modifier = Modifier.size(28.dp))
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(title, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 19.sp, maxLines = 1)
+            Text(
+                title,
+                color = Color.White,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 19.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
             summary?.takeIf(String::isNotBlank)?.let {
                 Text(it, color = TvTextMuted, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
