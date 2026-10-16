@@ -84,11 +84,13 @@ import dev.jellystack.core.jellyfin.withProgressOf
 import dev.jellystack.core.jellyseerr.JellyseerrCreateSelection
 import dev.jellystack.core.jellyseerr.JellyseerrMediaDetailState
 import dev.jellystack.core.jellyseerr.JellyseerrMediaType
+import dev.jellystack.core.jellyseerr.JellyseerrRequestCapabilities
 import dev.jellystack.core.jellyseerr.JellyseerrRequestProfileSelection
 import dev.jellystack.core.jellyseerr.JellyseerrRequestVariant
 import dev.jellystack.core.jellyseerr.JellyseerrRequestsCoordinator
 import dev.jellystack.core.jellyseerr.JellyseerrRequestsState
 import dev.jellystack.core.jellyseerr.JellyseerrSearchItem
+import dev.jellystack.core.jellyseerr.SeerrPrimaryAction
 import dev.jellystack.players.PlaybackController
 import dev.jellystack.players.PlaybackRequest
 import kotlinx.coroutines.launch
@@ -979,8 +981,9 @@ internal fun LazyListScope.tvJellyfinDetailSections(
                         TvSectionTitle(strings.seasons)
                         LazyRow(
                             state = focusModifiers.horizontalListState,
+                            modifier = Modifier.tvRowBleed(start = 108.dp, end = 48.dp),
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                            contentPadding = PaddingValues(start = 116.dp, end = 56.dp, top = 6.dp, bottom = 6.dp),
                         ) {
                             itemsIndexed(section.groups, key = {
                                     _,
@@ -1025,7 +1028,9 @@ internal fun LazyListScope.tvJellyfinDetailSections(
                         TvSectionTitle(strings.cast)
                         LazyRow(
                             state = focusModifiers.horizontalListState,
+                            modifier = Modifier.tvRowBleed(start = 108.dp, end = 48.dp),
                             horizontalArrangement = Arrangement.spacedBy(18.dp),
+                            contentPadding = tvBleedRowPadding(0.dp, start = 108.dp, end = 48.dp),
                         ) {
                             items(people, key = TvDetailCastItem.Jellyfin::id, contentType = { "cast-card" }) { castItem ->
                                 val person = castItem.person
@@ -1111,7 +1116,9 @@ private fun TvKeyedDetailItemRow(
         TvSectionTitle(title)
         LazyRow(
             state = focusModifiers.horizontalListState,
+            modifier = Modifier.tvRowBleed(start = 108.dp, end = 48.dp),
             horizontalArrangement = Arrangement.spacedBy(18.dp),
+            contentPadding = tvBleedRowPadding(0.dp, start = 108.dp, end = 48.dp),
         ) {
             items(keyedItems, key = TvKeyedJellyfinDetailItem::id, contentType = { "media-card" }) { keyedItem ->
                 val item = keyedItem.item
@@ -1207,7 +1214,9 @@ internal fun LazyListScope.tvSeerrDetailSections(
                         TvSectionTitle(strings.cast)
                         LazyRow(
                             state = focusModifiers.horizontalListState,
+                            modifier = Modifier.tvRowBleed(start = 58.dp, end = 58.dp),
                             horizontalArrangement = Arrangement.spacedBy(18.dp),
+                            contentPadding = tvBleedRowPadding(0.dp, start = 58.dp, end = 58.dp),
                         ) {
                             items(people, key = TvDetailCastItem.Seerr::id, contentType = { "cast-card" }) { castItem ->
                                 val person = castItem.person
@@ -1238,7 +1247,9 @@ internal fun LazyListScope.tvSeerrDetailSections(
                         TvSectionTitle(strings.similar)
                         LazyRow(
                             state = focusModifiers.horizontalListState,
+                            modifier = Modifier.tvRowBleed(start = 58.dp, end = 58.dp),
                             horizontalArrangement = Arrangement.spacedBy(18.dp),
+                            contentPadding = tvBleedRowPadding(0.dp, start = 58.dp, end = 58.dp),
                         ) {
                             items(items, key = TvDetailSimilarItem.Seerr::id, contentType = { "media-card" }) { similarItem ->
                                 val item = similarItem.item
@@ -1306,14 +1317,21 @@ internal fun TvSeerrDetailScreen(
     val detail = loaded?.detail
     val readyRequests = requestsState as? JellyseerrRequestsState.Ready
     val activeRequest = readyRequests?.currentRequestsByMedia?.get(route.mediaType to route.tmdbId)
-    val canRequestStandard = readyRequests?.capabilities?.canRequest(route.mediaType) == true
-    val canRequest4k = readyRequests?.capabilities?.canRequest(route.mediaType, JellyseerrRequestVariant.FOUR_K) == true
+    val requestState =
+        resolveTvSeerrRequestState(
+            mediaType = route.mediaType,
+            detail = detail,
+            activeRequest = activeRequest,
+            capabilities = readyRequests?.capabilities ?: JellyseerrRequestCapabilities.NONE,
+        )
+    val requestCommand = requestState.command
     var showRequestDialog by remember(route) { mutableStateOf(false) }
     LaunchedEffect(activeRequest?.id) {
         if (activeRequest != null) showRequestDialog = false
     }
     val similar = detail?.enrichment?.similar.orEmpty()
-    val hasRequestAction = activeRequest == null && (canRequestStandard || canRequest4k)
+    val hasRequestAction = readyRequests != null && requestCommand.primaryAction != null
+    val requestMoreSeasons = requestCommand.primaryAction == SeerrPrimaryAction.RequestMoreSeasons
     val trailerUrl = detail?.trailer?.url ?: detail?.videos?.firstOrNull { it.url != null }?.url
     val status = detailState.tvSeerrDetailStatus()
     val primaryAction = tvSeerrPrimaryAction(status, canRequest = hasRequestAction, hasTrailer = trailerUrl != null)
@@ -1379,16 +1397,16 @@ internal fun TvSeerrDetailScreen(
                         )
                     }
                     when {
-                        activeRequest != null ->
+                        requestCommand.primaryAction == null && requestCommand.showStatus && !requestCommand.permissionDenied ->
                             TvActionButton(
-                                activeRequest.availability.standard.label(strings),
+                                requestState.mediaStatus.label(strings),
                                 {},
                                 enabled = false,
                                 modifier = Modifier.width(250.dp),
                             )
                         hasRequestAction ->
                             TvActionButton(
-                                strings.request,
+                                if (requestMoreSeasons) strings.requestMoreSeasons else strings.request,
                                 primary = true,
                                 onClick = { showRequestDialog = true },
                                 modifier =
@@ -1440,11 +1458,16 @@ internal fun TvSeerrDetailScreen(
             title = detail?.title ?: route.title,
             mediaType = route.mediaType,
             seasons =
-                detail
-                    ?.seasons
-                    .orEmpty()
-                    .filter { it.seasonNumber > 0 }
-                    .map { it.seasonNumber },
+                if (requestMoreSeasons) {
+                    requestState.requestableSeasons
+                } else {
+                    detail
+                        ?.seasons
+                        .orEmpty()
+                        .filter { it.seasonNumber > 0 }
+                        .map { it.seasonNumber }
+                },
+            onlyListedSeasons = requestMoreSeasons,
             requestsState = readyRequests,
             strings = strings,
             onDismiss = { showRequestDialog = false },
@@ -1465,6 +1488,7 @@ private fun TvRequestDialog(
     title: String,
     mediaType: JellyseerrMediaType,
     seasons: List<Int>,
+    onlyListedSeasons: Boolean,
     requestsState: JellyseerrRequestsState.Ready,
     strings: TvStrings,
     onDismiss: () -> Unit,
@@ -1614,6 +1638,8 @@ private fun TvRequestDialog(
                             profile,
                             when {
                                 mediaType != JellyseerrMediaType.TV -> null
+                                // Seasons another request already covers must not be sent again.
+                                allSeasons && onlyListedSeasons -> JellyseerrCreateSelection.Seasons(seasons.sorted())
                                 allSeasons -> JellyseerrCreateSelection.AllSeasons
                                 else -> JellyseerrCreateSelection.Seasons(selectedSeasons.sorted())
                             },

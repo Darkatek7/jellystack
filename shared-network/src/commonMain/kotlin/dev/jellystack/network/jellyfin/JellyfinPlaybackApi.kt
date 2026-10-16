@@ -11,6 +11,8 @@ import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.http.path
 import io.ktor.http.takeFrom
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -69,57 +71,65 @@ data class JellyfinPlaybackInfoRequestDto(
     @SerialName("AllowAudioStreamCopy") val allowAudioStreamCopy: Boolean,
 )
 
+// NetworkJson leaves default values out of requests. Jellyfin has its own defaults for these fields
+// (profile Type Audio, Protocol http, subtitle Method Encode), so every profile field is always sent.
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class JellyfinDeviceProfileDto(
     @SerialName("Name") val name: String,
     @SerialName("MaxStreamingBitrate") val maxStreamingBitrate: Int? = null,
     @SerialName("DirectPlayProfiles") val directPlayProfiles: List<JellyfinDirectPlayProfileDto>,
     @SerialName("TranscodingProfiles") val transcodingProfiles: List<JellyfinTranscodingProfileDto>,
-    @SerialName("SubtitleProfiles") val subtitleProfiles: List<JellyfinSubtitleProfileDto> = emptyList(),
-    @SerialName("CodecProfiles") val codecProfiles: List<JellyfinCodecProfileDto> = emptyList(),
+    @EncodeDefault @SerialName("SubtitleProfiles") val subtitleProfiles: List<JellyfinSubtitleProfileDto> = emptyList(),
+    @EncodeDefault @SerialName("CodecProfiles") val codecProfiles: List<JellyfinCodecProfileDto> = emptyList(),
 )
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class JellyfinDirectPlayProfileDto(
     @SerialName("Container") val container: String,
-    @SerialName("Type") val type: String = "Video",
+    @EncodeDefault @SerialName("Type") val type: String = "Video",
     @SerialName("VideoCodec") val videoCodec: String,
     @SerialName("AudioCodec") val audioCodec: String,
 )
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class JellyfinTranscodingProfileDto(
-    @SerialName("Container") val container: String = "ts",
-    @SerialName("Type") val type: String = "Video",
+    @EncodeDefault @SerialName("Container") val container: String = "ts",
+    @EncodeDefault @SerialName("Type") val type: String = "Video",
     @SerialName("VideoCodec") val videoCodec: String,
-    @SerialName("AudioCodec") val audioCodec: String = "aac",
-    @SerialName("Protocol") val protocol: String = "hls",
-    @SerialName("Context") val context: String = "Streaming",
-    @SerialName("MinSegments") val minSegments: Int = 1,
-    @SerialName("BreakOnNonKeyFrames") val breakOnNonKeyFrames: Boolean = true,
+    @EncodeDefault @SerialName("AudioCodec") val audioCodec: String = "aac",
+    @EncodeDefault @SerialName("Protocol") val protocol: String = "hls",
+    @EncodeDefault @SerialName("Context") val context: String = "Streaming",
+    @EncodeDefault @SerialName("MinSegments") val minSegments: Int = 1,
+    @EncodeDefault @SerialName("BreakOnNonKeyFrames") val breakOnNonKeyFrames: Boolean = true,
     @SerialName("MaxAudioChannels") val maxAudioChannels: String? = null,
 )
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class JellyfinCodecProfileDto(
-    @SerialName("Type") val type: String = "VideoAudio",
+    @EncodeDefault @SerialName("Type") val type: String = "VideoAudio",
     @SerialName("Codec") val codec: String? = null,
-    @SerialName("Conditions") val conditions: List<JellyfinProfileConditionDto> = emptyList(),
-    @SerialName("ApplyConditions") val applyConditions: List<JellyfinProfileConditionDto> = emptyList(),
+    @EncodeDefault @SerialName("Conditions") val conditions: List<JellyfinProfileConditionDto> = emptyList(),
+    @EncodeDefault @SerialName("ApplyConditions") val applyConditions: List<JellyfinProfileConditionDto> = emptyList(),
 )
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class JellyfinProfileConditionDto(
     @SerialName("Condition") val condition: String,
     @SerialName("Property") val property: String,
     @SerialName("Value") val value: String,
-    @SerialName("IsRequired") val isRequired: Boolean = true,
+    @EncodeDefault @SerialName("IsRequired") val isRequired: Boolean = true,
 )
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class JellyfinSubtitleProfileDto(
     @SerialName("Format") val format: String,
-    @SerialName("Method") val method: String = "External",
+    @EncodeDefault @SerialName("Method") val method: String = "External",
 )
 
 @Serializable

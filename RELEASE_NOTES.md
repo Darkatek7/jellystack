@@ -1,5 +1,23 @@
 # Release Notes
 
+## 0.17.2 (TV)
+
+- Play with real Direct Play and surround passthrough; when Jellyfin has to transcode, it picks the best audio the TV supports (E-AC3 or AC3 5.1) and switches to stereo only when no sound arrives.
+- Send Jellyfin the complete device profile, so it decides Direct Play and transcoding correctly instead of the app building its own streams.
+- Keep AV1 video untouched on TVs with an AV1 decoder when only the audio has to be transcoded, which saves the server a full video encode.
+- See Jellyfin SRT, ASS, and PGS subtitles; PGS no longer makes the server burn subtitles into the video.
+- Add a second profile with a password for an account that is already on the TV, and sign Quick Connect profiles in to the household's Seerr automatically.
+- See titles that another profile already requested as requested instead of requesting them again.
+- Let rows scroll to the screen edges instead of being cut off, and edit a search after submitting it.
+- Fix a crash when the app is opened again right after exiting it.
+- Open books, music, playlists, and collections straight on their titles, and step back out of folders to the card you came from.
+- Open the Playlists tile on Home as a library instead of a detail page.
+- Load Seerr details from My List and after the app restarts, with a loading line and Retry when a load fails.
+- Start dialogs on their default button, close the keyboard in Search with Back, and open the menu from Search again.
+- Pause and resume a SyncPlay group from the TV, and read audio and subtitle tracks by language without codec clutter.
+- Play the audio track you pick during Direct Play; choosing English no longer plays the German track.
+- Fix dark boxes inside focused buttons, focus rings, the profile avatar outline, clipped text fields, long track names, library images taking over the screen, black frames before trailers, stalled trailers, German wording, and a playback error dialog the remote could not reach.
+
 ## 0.17.1 (TV)
 
 - Add another profile without typing the Jellyfin server address again.

@@ -611,6 +611,77 @@ class JellyseerrRepositoryTest {
         }
 
     @Test
+    fun fetchRecommendationDetailMapsMediaLevelStatusAndRequestsFromOtherUsers() =
+        runTest {
+            val client =
+                HttpClient(
+                    MockEngine { request ->
+                        when (request.url.encodedPath) {
+                            "/api/v1/movie/550" ->
+                                respondJson(
+                                    """
+                                    {
+                                      "id": 550,
+                                      "title": "Fight Club",
+                                      "mediaInfo": {
+                                        "id": 9,
+                                        "tmdbId": 550,
+                                        "status": 2,
+                                        "status4k": 5,
+                                        "requests": [
+                                          {"id": 31, "status": 1, "type": "movie", "requestedBy": {"id": 2}}
+                                        ]
+                                      }
+                                    }
+                                    """.trimIndent(),
+                                )
+                            "/api/v1/tv/77" ->
+                                respondJson(
+                                    """
+                                    {
+                                      "id": 77,
+                                      "name": "Dune: Prophecy",
+                                      "numberOfSeasons": 2,
+                                      "mediaInfo": {"id": 10, "tmdbId": 77, "status": 4}
+                                    }
+                                    """.trimIndent(),
+                                )
+                            else -> error("Unexpected request ${request.method} ${request.url}")
+                        }
+                    },
+                ) {
+                    install(ContentNegotiation) { json(NetworkJson.default) }
+                }
+            val repository = JellyseerrRepository(httpClient = client)
+
+            val movie =
+                repository.fetchRecommendationPrimaryDetail(
+                    environment,
+                    tmdbId = 550,
+                    mediaType = JellyseerrMediaType.MOVIE,
+                )
+            val show =
+                repository.fetchRecommendationPrimaryDetail(
+                    environment,
+                    tmdbId = 77,
+                    mediaType = JellyseerrMediaType.TV,
+                )
+
+            assertEquals(JellyseerrMediaStatus.PENDING, movie.availability.standard)
+            assertEquals(JellyseerrMediaStatus.AVAILABLE, movie.availability.`4k`)
+            assertEquals(listOf(31), movie.requests.map { it.id })
+            assertEquals(
+                2,
+                movie.requests
+                    .single()
+                    .requestedBy
+                    ?.id,
+            )
+            assertEquals(JellyseerrMediaStatus.PARTIALLY_AVAILABLE, show.availability.standard)
+            assertTrue(show.requests.isEmpty())
+        }
+
+    @Test
     fun fetchRecommendationPrimaryDetailReturnsWithoutOptionalRequests() =
         runTest {
             val requestedPaths = mutableListOf<String>()

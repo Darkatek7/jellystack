@@ -27,6 +27,12 @@ class HouseholdProfileRepository(
 
     fun observeBindings(): Flow<List<ProfileConnectionBinding>> = store.observeBindings()
 
+    /** The profile that already signs in with [jellyfinConnectionId], if any. */
+    suspend fun profileForJellyfinConnection(jellyfinConnectionId: String): HouseholdProfile? =
+        store.listProfiles().firstOrNull { profile ->
+            store.getBinding(profile.id)?.jellyfinConnectionId == jellyfinConnectionId
+        }
+
     /**
      * Points the profile at [seerrConnectionId], or at no Seerr when null. Returns the previous Seerr
      * connection when no profile uses it anymore, so the caller can delete that local record.

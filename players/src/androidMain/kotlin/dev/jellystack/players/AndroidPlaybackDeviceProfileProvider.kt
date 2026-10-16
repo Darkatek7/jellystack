@@ -65,7 +65,7 @@ class AndroidPlaybackDeviceProfileProvider(
 class AndroidTvPlaybackDeviceProfileProvider(
     private val snapshotSource: PlaybackCapabilitySnapshotSource = AndroidRuntimePlaybackCapabilitySnapshotSource(),
 ) : PlaybackDeviceProfileProvider {
-    override fun requiresServerSelectedAudioForVideo(): Boolean = true
+    override fun usesBestAvailableAudioTranscodeTarget(): Boolean = true
 
     override fun deviceProfile(): JellyfinDeviceProfileDto =
         PlaybackDeviceProfileFactory.create(

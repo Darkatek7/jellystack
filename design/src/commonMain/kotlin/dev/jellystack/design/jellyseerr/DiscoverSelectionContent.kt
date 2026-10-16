@@ -46,6 +46,8 @@ import dev.jellystack.core.jellyseerr.JellyseerrRequestStatus
 import dev.jellystack.core.jellyseerr.JellyseerrRequestSummary
 import dev.jellystack.core.jellyseerr.JellyseerrRequestVariant
 import dev.jellystack.core.jellyseerr.JellyseerrSearchItem
+import dev.jellystack.core.jellyseerr.SeerrPrimaryAction
+import dev.jellystack.core.jellyseerr.resolveSeerrRequestCommand
 import jellystack_mobile.design.generated.resources.Res
 import jellystack_mobile.design.generated.resources.cancel
 import jellystack_mobile.design.generated.resources.close

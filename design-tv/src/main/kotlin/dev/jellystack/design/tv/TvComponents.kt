@@ -52,10 +52,13 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.graphics.isUnspecified
@@ -241,14 +244,16 @@ private fun Modifier.tvFocusDecoration(
         }.drawWithContent {
             drawContent()
             if (focused && focusIndication == TvFocusIndication.FULL) {
-                val outline = shape.createOutline(size, layoutDirection, this)
-                drawOutline(
-                    outline,
-                    TvLayoutTokens.FocusDarkRing,
-                    style = Stroke(width = focusAppearance.ringWidthDp.dp.toPx()),
+                // Both rings sit outside the element, so no dark gap separates its fill from the light ring.
+                val lightWidth = 3.dp.toPx()
+                val darkWidth = (focusAppearance.ringWidthDp / 2f).dp.toPx()
+                drawFocusRing(shape, outset = lightWidth / 2f, width = lightWidth, color = TvLayoutTokens.FocusLightRing)
+                drawFocusRing(
+                    shape,
+                    outset = lightWidth + darkWidth / 2f,
+                    width = darkWidth,
+                    color = TvLayoutTokens.FocusDarkRing,
                 )
-                drawOutline(outline, TvLayoutTokens.FocusLightRing, style = Stroke(width = 2.dp.toPx()))
-                drawOutline(outline, TvLayoutTokens.FocusAccentRing, style = Stroke(width = 1.dp.toPx()))
             }
         }.clip(shape)
 }
@@ -258,6 +263,16 @@ private fun Modifier.tvFocusDecoration(
  * rectangle. Elements without a fill draw their own opaque content inside the focus layer and keep the shadow.
  */
 private fun tvFocusFillCastsShadow(fill: Color): Boolean = fill.isUnspecified || fill.alpha >= 1f
+
+private fun DrawScope.drawFocusRing(
+    shape: RoundedCornerShape,
+    outset: Float,
+    width: Float,
+    color: Color,
+) {
+    val outline = shape.createOutline(Size(size.width + outset * 2f, size.height + outset * 2f), layoutDirection, this)
+    translate(-outset, -outset) { drawOutline(outline, color, style = Stroke(width = width)) }
+}
 
 @Composable
 internal fun TvActionButton(

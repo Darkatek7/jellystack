@@ -64,8 +64,13 @@ class JellyfinPlaybackApiTest {
                     deviceProfile =
                         JellyfinDeviceProfileDto(
                             name = "Android",
-                            directPlayProfiles = emptyList(),
-                            transcodingProfiles = emptyList(),
+                            directPlayProfiles =
+                                listOf(
+                                    JellyfinDirectPlayProfileDto(container = "mkv", videoCodec = "hevc", audioCodec = "eac3"),
+                                ),
+                            transcodingProfiles = listOf(JellyfinTranscodingProfileDto(videoCodec = "hevc")),
+                            subtitleProfiles = listOf(JellyfinSubtitleProfileDto("srt")),
+                            codecProfiles = listOf(JellyfinCodecProfileDto(codec = "eac3")),
                         ),
                     mediaSourceId = "source-1",
                     audioStreamIndex = 2,
@@ -84,6 +89,15 @@ class JellyfinPlaybackApiTest {
             assertTrue(body.contains("\"MaxStreamingBitrate\":420000"))
             assertTrue(body.contains("\"AllowVideoStreamCopy\":false"))
             assertTrue(body.contains("\"SubtitleStreamIndex\":5"))
+            // Jellyfin falls back to its own defaults (Audio, http, Encode) for profile fields that are left out.
+            val transcodingProfile = body.substringAfter("\"TranscodingProfiles\":[").substringBefore("]")
+            assertTrue(transcodingProfile.contains("\"Type\":\"Video\""))
+            assertTrue(transcodingProfile.contains("\"Protocol\":\"hls\""))
+            assertTrue(transcodingProfile.contains("\"Context\":\"Streaming\""))
+            assertTrue(transcodingProfile.contains("\"Container\":\"ts\""))
+            assertTrue(body.substringAfter("\"DirectPlayProfiles\":[").substringBefore("]").contains("\"Type\":\"Video\""))
+            assertTrue(body.substringAfter("\"SubtitleProfiles\":[").substringBefore("]").contains("\"Method\":\"External\""))
+            assertTrue(body.substringAfter("\"CodecProfiles\":[").contains("\"Type\":\"VideoAudio\""))
             assertEquals("play-1", response.playSessionId)
             assertEquals(
                 "hevc",

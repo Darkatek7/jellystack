@@ -249,7 +249,9 @@ internal fun TvPlaybackScreen(
             else -> onClose()
         }
     }
-    TvPlayerBackHandler(handlePlaybackBack)
+    TvPlayerBackHandler {
+        if (playbackState is PlaybackState.PlaybackError) onClose() else handlePlaybackBack()
+    }
 
     Box(
         modifier =
@@ -259,6 +261,8 @@ internal fun TvPlaybackScreen(
                 .focusRequester(playerFocusRequester)
                 .focusable()
                 .onPreviewKeyEvent { event ->
+                    // The error dialog owns the remote: its buttons need Center/Enter and the D-pad.
+                    if (playbackState is PlaybackState.PlaybackError) return@onPreviewKeyEvent false
                     val horizontal =
                         event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT ||
                             event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
@@ -499,6 +503,8 @@ private fun TvPlaybackError(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val retryFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(error) { retryFocusRequester.requestFocus() }
     Column(
         modifier
             .width(
@@ -511,7 +517,13 @@ private fun TvPlaybackError(
         Text(strings.playbackFailedTitle, color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold)
         Text(tvPlaybackErrorMessage(error.message, strings), color = TvTextMuted, fontSize = 21.sp)
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            TvActionButton(strings.retry, controller::retry, modifier = Modifier.width(230.dp), primary = true)
+            TvActionButton(
+                strings.retry,
+                controller::retry,
+                modifier = Modifier.width(230.dp),
+                primary = true,
+                focusRequester = retryFocusRequester,
+            )
             TvActionButton(strings.close, onClose, modifier = Modifier.width(170.dp))
         }
     }
