@@ -15,6 +15,7 @@
 - Load Seerr details from My List and after the app restarts, with a loading line and Retry when a load fails.
 - Start dialogs on their default button, close the keyboard in Search with Back, and open the menu from Search again.
 - Pause and resume a SyncPlay group from the TV, and read audio and subtitle tracks by language without codec clutter.
+- Play the audio track you pick during Direct Play; choosing English no longer plays the German track.
 - Fix dark boxes inside focused buttons, focus rings, the profile avatar outline, clipped text fields, long track names, library images taking over the screen, black frames before trailers, stalled trailers, German wording, and a playback error dialog the remote could not reach.
 
 ## 0.17.1 (TV)
