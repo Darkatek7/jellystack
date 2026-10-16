@@ -18,6 +18,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.common.util.Util
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -66,6 +67,7 @@ class AndroidPlayerEngine(
 
     /** Stream index of the one audio rendition Jellyfin muxed into the current HLS source, if any. */
     private var serverSelectedAudioStreamIndex: Int? = null
+    private var audioTrackIdsAreStreamIndexes = false
     private var pendingSubtitleTrack: SubtitleTrack? = null
     private var pendingSubtitleSelectionConfirmationId: String? = null
     private var videoSurface: PlayerView? = null
@@ -305,6 +307,7 @@ class AndroidPlayerEngine(
         pendingAudioTrack = audioTrack
         pendingSubtitleTrack = subtitleTrack
         serverSelectedAudioStreamIndex = source.audioStreamIndex.takeIf { source.mode == PlaybackMode.HLS }
+        audioTrackIdsAreStreamIndexes = source.mode == PlaybackMode.HLS
         withContext(Dispatchers.Main) {
             val mediaItem =
                 MediaItem
@@ -580,32 +583,17 @@ class AndroidPlayerEngine(
         if (track == null) return null
         val candidates =
             exoPlayer.currentTracks.groups
-                .asSequence()
                 .filter { it.type == C.TRACK_TYPE_AUDIO }
-                .flatMap { group ->
-                    (0 until group.length)
-                        .asSequence()
-                        .filter(group::isTrackSupported)
-                        .map { index -> AudioCandidate(group, index) }
-                }.toList()
+                .flatMap { group -> (0 until group.length).map { index -> AudioCandidate(group, index) } }
+        // Media3 normalizes container languages ("ger" becomes "de"), Jellyfin reports the raw ISO 639-2 code.
         val matched =
-            candidates.firstOrNull { candidate ->
-                val id = candidate.formatId
-                formatIdMatches(id, track.id) ||
-                    (track.streamIndex != null && formatIdMatches(id, track.streamIndex.toString()))
-            } ?: track.audioIndex?.let(candidates::getOrNull)
-                ?: candidates.firstOrNull { candidate ->
-                    candidate.languageMatches(track.language) &&
-                        candidate.labelMatches(track.title) &&
-                        candidate.codecMatches(track.codec)
-                } ?: candidates
-                .filter { it.languageMatches(track.language) }
-                .singleOrNull()
-                // The server transcoded exactly the requested stream into the HLS source, so its only audio
-                // rendition is the track even though it carries none of the original stream's metadata.
-                ?: candidates.singleOrNull()?.takeIf {
-                    track.streamIndex != null && track.streamIndex == serverSelectedAudioStreamIndex
-                }
+            matchAudioTrackCandidate(
+                candidates = candidates.map { it.toMatchCandidate(track) },
+                track = track,
+                trackLanguage = track.language?.let(Util::normalizeLanguageCode),
+                idsAreStreamIndexes = audioTrackIdsAreStreamIndexes,
+                serverSelectedAudioStreamIndex = serverSelectedAudioStreamIndex,
+            )?.let(candidates::get)
         return matched?.let {
             TrackSelectionOverride(it.group.mediaTrackGroup, it.trackIndex)
         }
@@ -618,14 +606,16 @@ class AndroidPlayerEngine(
         private val format
             get() = group.getTrackFormat(trackIndex)
 
-        val formatId: String?
-            get() = format.id
+        fun toMatchCandidate(track: AudioTrack): AudioTrackCandidate =
+            AudioTrackCandidate(
+                formatId = format.id,
+                language = format.language,
+                label = format.label,
+                codecMatches = codecMatches(track.codec),
+                isSupported = group.isTrackSupported(trackIndex),
+            )
 
-        fun languageMatches(language: String?): Boolean = language != null && format.language?.equals(language, ignoreCase = true) == true
-
-        fun labelMatches(label: String?): Boolean = label == null || format.label?.equals(label, ignoreCase = true) == true
-
-        fun codecMatches(codec: String?): Boolean {
+        private fun codecMatches(codec: String?): Boolean {
             if (codec == null) return true
             val mime = format.sampleMimeType.orEmpty().lowercase()
             return when (codec.lowercase()) {
