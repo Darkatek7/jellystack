@@ -40,6 +40,42 @@ class PlaybackDeviceProfileProviderTest {
     }
 
     @Test
+    fun audioPreferenceReordersTranscodeTargetsWithoutAddingUnsupportedCodecs() {
+        val profile =
+            PlaybackDeviceProfileFactory.create(
+                name = "Preferring TV",
+                capabilities =
+                    PlaybackDecoderCapabilities(
+                        videoCodecs = setOf(PlaybackVideoCodec.H264),
+                        audioCodecs = setOf(PlaybackAudioCodec.AAC, PlaybackAudioCodec.EAC3, PlaybackAudioCodec.FLAC),
+                        transcodingAudioCodecPreference =
+                            listOf(PlaybackAudioCodec.EAC3, PlaybackAudioCodec.AC3, PlaybackAudioCodec.AAC),
+                    ),
+            )
+
+        assertEquals("eac3,aac", profile.transcodingProfiles[0].audioCodec)
+        assertEquals("eac3,aac,flac", profile.transcodingProfiles[1].audioCodec)
+    }
+
+    @Test
+    fun pgsSubtitleProfilesAreOnlyOfferedToDevicesThatRenderPgsThemselves() {
+        fun subtitleProfiles(supportsPgs: Boolean) =
+            PlaybackDeviceProfileFactory
+                .create(
+                    name = "Subtitles",
+                    capabilities = PlaybackDecoderCapabilities(setOf(PlaybackVideoCodec.H264), supportsPgsSubtitles = supportsPgs),
+                ).subtitleProfiles
+                .filter { it.format == "pgssub" }
+                .map { it.method }
+
+        assertEquals(listOf("Embed", "External"), subtitleProfiles(supportsPgs = true))
+        assertEquals(emptyList(), subtitleProfiles(supportsPgs = false))
+        assertTrue(
+            ConservativePlaybackDeviceProfileProvider.deviceProfile().subtitleProfiles.none { it.format == "pgssub" },
+        )
+    }
+
+    @Test
     fun h264RemainsTheConservativeTranscodeFallback() {
         val profile =
             PlaybackDeviceProfileFactory.create(

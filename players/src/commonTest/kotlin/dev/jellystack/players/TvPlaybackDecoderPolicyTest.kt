@@ -119,6 +119,76 @@ class TvPlaybackDecoderPolicyTest {
         assertEquals(2, capabilities.maxAudioChannelCounts[PlaybackAudioCodec.OPUS])
     }
 
+    @Test
+    fun surroundCapableTvPrefersDolbyTranscodeTargetsWithTheirOwnChannelLimit() {
+        val dolbyAndAac = setOf(PlaybackAudioCodec.AAC, PlaybackAudioCodec.AC3, PlaybackAudioCodec.EAC3, PlaybackAudioCodec.MP3)
+        val capabilities =
+            selectTvDecoderCapabilities(
+                snapshot(
+                    audioSupport =
+                        PlaybackAudioCodec.entries.associateWith {
+                            if (it in dolbyAndAac) CapabilitySupport.SUPPORTED else CapabilitySupport.UNSUPPORTED
+                        },
+                    maxAudioChannelCounts =
+                        mapOf(
+                            PlaybackAudioCodec.AAC to 8,
+                            PlaybackAudioCodec.AC3 to 6,
+                            PlaybackAudioCodec.EAC3 to 8,
+                            PlaybackAudioCodec.MP3 to 2,
+                        ),
+                ),
+            )
+
+        assertEquals(
+            listOf(PlaybackAudioCodec.EAC3, PlaybackAudioCodec.AC3, PlaybackAudioCodec.AAC, PlaybackAudioCodec.MP3),
+            capabilities.transcodingAudioCodecPreference,
+        )
+        assertEquals(6, capabilities.maxTranscodingAudioChannelCount)
+    }
+
+    @Test
+    fun aacOnlyTvKeepsStereoAacAsTheTranscodeTarget() {
+        val capabilities =
+            selectTvDecoderCapabilities(
+                snapshot(
+                    audioSupport = mapOf(PlaybackAudioCodec.AAC to CapabilitySupport.SUPPORTED),
+                    maxAudioChannelCounts = mapOf(PlaybackAudioCodec.AAC to 6),
+                ),
+            )
+
+        assertEquals(listOf(PlaybackAudioCodec.AAC), capabilities.transcodingAudioCodecPreference)
+        assertEquals(2, capabilities.maxTranscodingAudioChannelCount)
+    }
+
+    @Test
+    fun unverifiedAacFallbackStillGetsAStereoCodecProfileSoSurroundTargetsCannotRaiseIt() {
+        val profile =
+            PlaybackDeviceProfileFactory.create(
+                name = "Partially inspected TV",
+                capabilities =
+                    selectTvDecoderCapabilities(
+                        PlaybackCapabilitySnapshot(
+                            videoSupport = mapOf(PlaybackVideoCodec.H264 to CapabilitySupport.SUPPORTED),
+                            videoHardwareSupport = emptyMap(),
+                            audioSupport = mapOf(PlaybackAudioCodec.EAC3 to CapabilitySupport.SUPPORTED),
+                            maxAudioChannelCounts = mapOf(PlaybackAudioCodec.EAC3 to 6),
+                            inspectionCompleteness = PlaybackCapabilityInspection.PARTIAL,
+                        ),
+                    ),
+            )
+
+        assertEquals("eac3,aac", profile.transcodingProfiles.first().audioCodec)
+        assertEquals("6", profile.transcodingProfiles.first().maxAudioChannels)
+        assertEquals(
+            "2",
+            profile.codecProfiles
+                .single { it.codec == "aac" }
+                .conditions
+                .single()
+                .value,
+        )
+    }
+
     private fun snapshot(
         videoSupport: Map<PlaybackVideoCodec, CapabilitySupport> = emptyMap(),
         videoHardwareSupport: Map<PlaybackVideoCodec, CapabilitySupport> = emptyMap(),

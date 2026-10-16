@@ -144,8 +144,6 @@ private fun TvProfileTile(
         Box(
             Modifier
                 .size(112.dp)
-                .clip(CircleShape)
-                .profileAvatarFocusRing(focused)
                 .semantics(mergeDescendants = true) {
                     contentDescription =
                         if (profile.pinRequired) "${profile.displayName}, $pinLabel" else profile.displayName
@@ -157,7 +155,8 @@ private fun TvProfileTile(
                     onFocusChanged = { focused = it },
                     focusIndication = TvFocusIndication.NO_RING,
                     fill = profileAvatarColor(profile.id),
-                ).testTag("$tagPrefix:${profile.id}:tile"),
+                ).profileAvatarFocusRing(focused)
+                .testTag("$tagPrefix:${profile.id}:tile"),
             contentAlignment = Alignment.Center,
         ) {
             Text(
@@ -299,8 +298,6 @@ private fun TvAddProfileTile(
         Box(
             Modifier
                 .size(112.dp)
-                .clip(CircleShape)
-                .profileAvatarFocusRing(focused)
                 .semantics(mergeDescendants = true) { contentDescription = label }
                 .tvFocusable(
                     onClick = onClick,
@@ -309,7 +306,8 @@ private fun TvAddProfileTile(
                     onFocusChanged = { focused = it },
                     focusIndication = TvFocusIndication.NO_RING,
                     fill = TvSurface,
-                ).testTag("profile:add:tile"),
+                ).profileAvatarFocusRing(focused)
+                .testTag("profile:add:tile"),
             contentAlignment = Alignment.Center,
         ) {
             Icon(Icons.Default.Add, null, tint = TvText, modifier = Modifier.size(46.dp))
@@ -327,14 +325,19 @@ private fun TvAddProfileTile(
     }
 }
 
+/**
+ * Applied inside the focus layer, so the ring scales with the avatar and nothing clips the circular focus shadow.
+ * A light ring on the disc's edge with a dark contrast ring inside it.
+ */
 private fun Modifier.profileAvatarFocusRing(focused: Boolean): Modifier =
     drawWithContent {
         drawContent()
         if (focused) {
-            val outerRadius = size.minDimension / 2f - 3.dp.toPx()
-            drawCircle(TvLayoutTokens.FocusDarkRing, outerRadius, style = Stroke(5.dp.toPx()))
-            drawCircle(TvLayoutTokens.FocusLightRing, outerRadius - 3.dp.toPx(), style = Stroke(2.dp.toPx()))
-            drawCircle(TvLayoutTokens.FocusAccentRing, outerRadius - 5.dp.toPx(), style = Stroke(1.dp.toPx()))
+            val lightWidth = 4.dp.toPx()
+            val darkWidth = 2.dp.toPx()
+            val radius = size.minDimension / 2f
+            drawCircle(TvLayoutTokens.FocusLightRing, radius - lightWidth / 2f, style = Stroke(lightWidth))
+            drawCircle(TvLayoutTokens.FocusDarkRing, radius - lightWidth - darkWidth / 2f, style = Stroke(darkWidth))
         }
     }
 

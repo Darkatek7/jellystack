@@ -9,7 +9,6 @@ import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -240,7 +239,8 @@ private fun TvCinematicBrowseRow(
         TvSectionTitle(row.title, Modifier.testTag("cinematic-row-title-${row.id}"))
         LazyRow(
             state = rowState,
-            contentPadding = PaddingValues(6.dp),
+            modifier = Modifier.tvRowBleed(),
+            contentPadding = tvBleedRowPadding(6.dp),
             horizontalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             itemsIndexed(items = row.cards, key = { _, card -> card.id }) { index, card ->

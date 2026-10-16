@@ -284,6 +284,10 @@ data class JellyseerrMediaDetail(
     val keywords: List<String> = emptyList(),
     val videos: List<JellyseerrMediaVideo> = emptyList(),
     val enrichment: JellyseerrMediaDetailEnrichment = JellyseerrMediaDetailEnrichment(ratings = ratings),
+    /** Media-level Seerr status across all users; independent of the current user's own requests. */
+    val availability: JellyseerrMediaAvailability = JellyseerrMediaAvailability(null, null),
+    /** Every request Seerr knows for this media, regardless of who submitted it. */
+    val requests: List<JellyseerrRequestSummary> = emptyList(),
 )
 
 sealed interface JellyseerrMediaDetailState {

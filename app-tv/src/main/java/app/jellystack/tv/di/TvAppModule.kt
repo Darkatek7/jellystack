@@ -21,6 +21,7 @@ import dev.jellystack.core.profile.ProfileMyListRepository
 import dev.jellystack.core.profile.ProfilePinRepository
 import dev.jellystack.core.profile.ProfilePreferencesRepository
 import dev.jellystack.core.profile.ProfileRemovalCoordinator
+import dev.jellystack.core.profile.ProfileSeerrAutoLinkCoordinator
 import dev.jellystack.core.profile.ProfileStore
 import dev.jellystack.core.server.ServerStore
 import dev.jellystack.database.JellyfinFavoritesStore
@@ -103,6 +104,13 @@ val tvAppModule =
                 store = get(),
                 activeServerPreferences = get(),
                 legacyProfileMigration = get<ProfilePreferencesRepository>()::migrateLegacyProfile,
+            )
+        }
+        single {
+            ProfileSeerrAutoLinkCoordinator(
+                profileRepository = get(),
+                serverRepository = get(),
+                connectionCoordinator = get(),
             )
         }
     }

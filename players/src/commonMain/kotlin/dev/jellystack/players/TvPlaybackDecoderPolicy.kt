@@ -113,20 +113,28 @@ fun selectTvDecoderCapabilities(snapshot: PlaybackCapabilitySnapshot): PlaybackD
             minOf(reported ?: CONSERVATIVE_UNKNOWN_CHANNEL_COUNT, codec.safeMaximumChannelCount)
         }
 
+    // Best target first: multichannel Dolby keeps the surround mix the TV can decode, AAC stays the
+    // interoperable stereo fallback. Only codecs the device reported as playable are ever listed.
+    val transcodeAudioPreference =
+        TV_TRANSCODE_AUDIO_PREFERENCE.filter { it in transcodeAudioCodecs }
+    val preferredTranscodeCodec = transcodeAudioPreference.firstOrNull()
+
     return PlaybackDecoderCapabilities(
         videoCodecs = directVideoCodecs,
         audioCodecs = directAudioCodecs,
-        maxAacChannelCount = maxAudioChannelCounts[PlaybackAudioCodec.AAC],
+        maxAacChannelCount =
+            maxAudioChannelCounts[PlaybackAudioCodec.AAC]
+                ?: CONSERVATIVE_UNKNOWN_CHANNEL_COUNT.takeIf { PlaybackAudioCodec.AAC in transcodeAudioCodecs },
         maxAudioChannelCounts = maxAudioChannelCounts,
         maxStreamingBitrate = 120_000_000,
         transcodingVideoCodecs = transcodeVideoCodecs,
         transcodingAudioCodecs = transcodeAudioCodecs,
         maxTranscodingAudioChannelCount =
-            if (PlaybackAudioCodec.AAC in transcodeAudioCodecs) {
-                maxAudioChannelCounts[PlaybackAudioCodec.AAC] ?: CONSERVATIVE_UNKNOWN_CHANNEL_COUNT
-            } else {
-                transcodeAudioCodecs.mapNotNull(maxAudioChannelCounts::get).maxOrNull()
-            },
+            preferredTranscodeCodec?.let { codec ->
+                maxAudioChannelCounts[codec] ?: CONSERVATIVE_UNKNOWN_CHANNEL_COUNT
+            } ?: transcodeAudioCodecs.mapNotNull(maxAudioChannelCounts::get).maxOrNull(),
+        transcodingAudioCodecPreference = transcodeAudioPreference,
+        supportsPgsSubtitles = true,
     )
 }
 
@@ -138,6 +146,14 @@ private val ADVANCED_VIDEO_CODECS =
     )
 
 private const val CONSERVATIVE_UNKNOWN_CHANNEL_COUNT = 2
+
+private val TV_TRANSCODE_AUDIO_PREFERENCE =
+    listOf(
+        PlaybackAudioCodec.EAC3,
+        PlaybackAudioCodec.AC3,
+        PlaybackAudioCodec.AAC,
+        PlaybackAudioCodec.MP3,
+    )
 
 private val PlaybackAudioCodec.safeMaximumChannelCount: Int
     get() =

@@ -13,7 +13,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -281,6 +281,7 @@ private fun ColumnScope.TvSearchResults(
                     listState = lists.rows.getValue("jellyfin"),
                     focusTargetId = { itemId -> tvSearchResultTargetId("jellyfin", itemId) },
                     edgePadding = TV_SEARCH_ROW_EDGE,
+                    bleedStart = TvLayoutTokens.ContentStart - TV_SEARCH_ROW_EDGE,
                 )
             }
         }
@@ -305,6 +306,7 @@ private fun ColumnScope.TvSearchResults(
                     listState = lists.rows.getValue("seerr"),
                     focusTargetId = { id -> tvSearchResultTargetId("seerr", id) },
                     edgePadding = TV_SEARCH_ROW_EDGE,
+                    bleedStart = TvLayoutTokens.ContentStart - TV_SEARCH_ROW_EDGE,
                     onFocused = { item ->
                         val backdrop = item.backdropPath
                         onBackdrop(tmdbImageUrl(backdrop ?: item.posterPath, backdrop = backdrop != null))
@@ -387,14 +389,14 @@ private fun TvSearchHeader(
                     .focusRequester(queryFocus.requester)
                     .onFocusChanged { state -> queryFocus.onFocusChanged(state.isFocused) }
                     .fillMaxWidth(0.6f)
-                    .height(60.dp)
+                    .heightIn(min = 60.dp)
                     .testTag("tv-search-query")
                     .onPreviewKeyEvent { event ->
                         val keyDown = event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN
                         val opensEditing =
                             sessionState.mode == TvSearchMode.BROWSE &&
                                 keyDown &&
-                                event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_CENTER
+                                event.nativeKeyEvent.keyCode in TV_SEARCH_EDIT_KEYS
                         if (opensEditing) actions.onEnterEditMode()
                         // The rail handler below consumes Left; remember it so ending the edit keeps rail focus.
                         if (keyDown && event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
@@ -489,6 +491,10 @@ private fun TvSearchBackdrop(url: String?) {
         }
     }
 }
+
+/** Select on a remote, and Enter on keyboards and emulators, reopen the query for editing. */
+private val TV_SEARCH_EDIT_KEYS =
+    setOf(KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER)
 
 /** Room for a focused card's halo at the start of each result row. */
 private val TV_SEARCH_ROW_EDGE = 12.dp

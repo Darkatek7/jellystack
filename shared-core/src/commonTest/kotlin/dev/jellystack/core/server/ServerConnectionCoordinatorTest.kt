@@ -12,6 +12,7 @@ import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 
@@ -71,6 +72,59 @@ class ServerConnectionCoordinatorTest {
 
             assertEquals(first.server.id, second.server.id)
             assertEquals(1, repository.currentServers().count { it.type == ServerType.JELLYSEERR })
+        }
+
+    @Test
+    fun signingInToAnAlreadyStoredJellyfinAccountFailsUnlessRefreshingIsRequested() =
+        runTest {
+            val repository = repository()
+            val coordinator = ServerConnectionCoordinator(repository, RecordingAuthenticator())
+            val input =
+                JellyfinConnectionInput(
+                    name = "Media",
+                    baseUrl = "https://media.example",
+                    username = "dummy-linked-user",
+                    password = "dummy-old-password",
+                )
+            val stored = coordinator.connectJellyfin(input)
+
+            assertFailsWith<DuplicateServerException> {
+                coordinator.connectJellyfin(input.copy(password = "dummy-new-password"))
+            }
+            assertEquals("dummy-old-password", repository.jellyfinPassword(stored.id)?.reveal())
+
+            val refreshed =
+                coordinator.connectJellyfin(
+                    input.copy(password = "dummy-new-password", refreshExistingAccount = true),
+                )
+
+            assertEquals(stored.id, refreshed.id)
+            assertEquals(1, repository.currentServers().count { it.type == ServerType.JELLYFIN })
+            assertEquals("dummy-new-password", repository.jellyfinPassword(stored.id)?.reveal())
+        }
+
+    @Test
+    fun automaticSeerrConnectionCanUseAnExplicitJellyfinServer() =
+        runTest {
+            val authenticator = RecordingAuthenticator()
+            val repository = repository()
+            val coordinator = ServerConnectionCoordinator(repository, authenticator)
+            val active = coordinator.connectJellyfin(JellyfinConnectionInput("Media", "https://media.example", "active-user", "active-pw"))
+            val other =
+                coordinator.connectJellyfin(
+                    JellyfinConnectionInput("Other", "https://other.example", "other-user", "other-pw"),
+                )
+            repository.setActiveServer(ServerType.JELLYFIN, active.id)
+
+            val result =
+                coordinator.connectSeerrAutomatically(
+                    SeerrServerInput("Requests", "https://requests.example"),
+                    other,
+                )
+
+            assertIs<SeerrConnectionResult.Connected>(result)
+            assertEquals("other-user", authenticator.lastRequest?.username)
+            assertEquals("other-pw", authenticator.lastRequest?.password)
         }
 
     @Test

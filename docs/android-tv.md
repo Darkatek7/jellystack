@@ -53,6 +53,9 @@ Test at minimum:
 - Wi-Fi or Ethernet interruption and recovery
 - A playback session longer than 30 minutes
 
+## Audio playback
+
+Playback requests Direct Play first. Jellyfin approves it only when container, video codec and the selected audio track fit the device profile; otherwise the server returns its own stream and transcodes unsupported audio to the best codec the TV reported (EAC3, then AC3, AAC, MP3), copying video and any supported audio bit-identically. Switching to a track the TV cannot decode asks the server for a new stream. If audio output does not start, playback falls back once to server-selected stereo AAC HLS. Check Stats for Nerds and the debug log line `Playback decision` when testing DTS or TrueHD sources.
 ## Remote controls
 
 - Navigation rail: hidden while the content has focus; Left at the content's left edge or Back slides it in

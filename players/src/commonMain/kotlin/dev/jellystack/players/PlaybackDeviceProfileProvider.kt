@@ -41,18 +41,44 @@ data class PlaybackDecoderCapabilities(
     val transcodingVideoCodecs: Set<PlaybackVideoCodec> = videoCodecs,
     val transcodingAudioCodecs: Set<PlaybackAudioCodec> = audioCodecs,
     val maxTranscodingAudioChannelCount: Int? = null,
+    /**
+     * Preferred HLS audio encoder targets, best first. Jellyfin offers the profile's codec list
+     * in order and encodes to the first one it can, so the head of this list is the target for
+     * every source the device cannot play itself. Codecs outside [transcodingAudioCodecs] are
+     * ignored; the remaining codecs keep the factory's default order. Empty keeps that default.
+     */
+    val transcodingAudioCodecPreference: List<PlaybackAudioCodec> = emptyList(),
+    /**
+     * The player can render PGS (bitmap) subtitles itself, both from the container on Direct Play
+     * and from a sideloaded `.sup` file next to a transcoded stream. Jellyfin then never has to
+     * burn them into the video.
+     */
+    val supportsPgsSubtitles: Boolean = false,
 )
 
 fun interface PlaybackDeviceProfileProvider {
     fun deviceProfile(): JellyfinDeviceProfileDto
 
     /**
-     * TV implementations can expose an audio rendition as selectable while failing to route it
-     * to the active output. Resolve one server-selected compatibility rendition before the first
-     * prepare so initial playback follows the same reliable path as an explicit track switch.
+     * True for devices that negotiate Direct Play first and let the server transcode anything they
+     * cannot decode to the best audio codec of their profile (instead of the stereo AAC
+     * compatibility rendition phones fall back to). Stereo AAC HLS remains the explicit fallback
+     * after audio output failed, which is requested through [PlaybackSourceOptions].
      */
-    fun requiresServerSelectedAudioForVideo(): Boolean = false
+    fun usesBestAvailableAudioTranscodeTarget(): Boolean = false
 }
+
+internal const val PGS_SUBTITLE_FORMAT = "pgssub"
+internal const val SUBTITLE_METHOD_EMBED = "Embed"
+internal const val SUBTITLE_METHOD_EXTERNAL = "External"
+
+/** True when the profile tells Jellyfin it may deliver PGS as a separate `.sup` stream next to a transcode. */
+internal val JellyfinDeviceProfileDto.acceptsExternalPgsSubtitles: Boolean
+    get() =
+        subtitleProfiles.any { profile ->
+            profile.format.equals(PGS_SUBTITLE_FORMAT, ignoreCase = true) &&
+                profile.method.equals(SUBTITLE_METHOD_EXTERNAL, ignoreCase = true)
+        }
 
 object PlaybackDeviceProfileFactory {
     fun create(
@@ -73,22 +99,31 @@ object PlaybackDeviceProfileFactory {
                 PlaybackVideoCodec.HEVC,
                 PlaybackVideoCodec.H264,
             ).filter(capabilities.transcodingVideoCodecs::contains)
+
+        fun orderedTranscodeAudioCodecs(defaultOrder: List<PlaybackAudioCodec>): List<PlaybackAudioCodec> =
+            (capabilities.transcodingAudioCodecPreference + defaultOrder)
+                .distinct()
+                .filter { codec -> codec in defaultOrder && codec in capabilities.transcodingAudioCodecs }
         val hlsMpegTsAudioCodecs =
-            listOf(
-                PlaybackAudioCodec.AAC,
-                PlaybackAudioCodec.AC3,
-                PlaybackAudioCodec.EAC3,
-                PlaybackAudioCodec.MP3,
-            ).filter(capabilities.transcodingAudioCodecs::contains)
+            orderedTranscodeAudioCodecs(
+                listOf(
+                    PlaybackAudioCodec.AAC,
+                    PlaybackAudioCodec.AC3,
+                    PlaybackAudioCodec.EAC3,
+                    PlaybackAudioCodec.MP3,
+                ),
+            )
         val hlsFmp4AudioCodecs =
-            listOf(
-                PlaybackAudioCodec.AAC,
-                PlaybackAudioCodec.AC3,
-                PlaybackAudioCodec.EAC3,
-                PlaybackAudioCodec.MP3,
-                PlaybackAudioCodec.FLAC,
-                PlaybackAudioCodec.OPUS,
-            ).filter(capabilities.transcodingAudioCodecs::contains)
+            orderedTranscodeAudioCodecs(
+                listOf(
+                    PlaybackAudioCodec.AAC,
+                    PlaybackAudioCodec.AC3,
+                    PlaybackAudioCodec.EAC3,
+                    PlaybackAudioCodec.MP3,
+                    PlaybackAudioCodec.FLAC,
+                    PlaybackAudioCodec.OPUS,
+                ),
+            )
         val maxTranscodeAudioChannels =
             capabilities.maxTranscodingAudioChannelCount
                 ?: hlsFmp4AudioCodecs.mapNotNull(capabilities.maxAudioChannelCounts::get).maxOrNull()
@@ -191,12 +226,18 @@ object PlaybackDeviceProfileFactory {
                     }
                 },
             subtitleProfiles =
-                listOf(
-                    JellyfinSubtitleProfileDto("vtt"),
-                    JellyfinSubtitleProfileDto("srt"),
-                    JellyfinSubtitleProfileDto("ass"),
-                    JellyfinSubtitleProfileDto("ssa"),
-                ),
+                buildList {
+                    add(JellyfinSubtitleProfileDto("vtt"))
+                    add(JellyfinSubtitleProfileDto("srt"))
+                    add(JellyfinSubtitleProfileDto("ass"))
+                    add(JellyfinSubtitleProfileDto("ssa"))
+                    if (capabilities.supportsPgsSubtitles) {
+                        // Embed keeps Direct Play alive for a selected PGS stream; External lets the server hand the
+                        // raw .sup to the player next to a transcode instead of burning the bitmaps into the video.
+                        add(JellyfinSubtitleProfileDto(PGS_SUBTITLE_FORMAT, method = SUBTITLE_METHOD_EMBED))
+                        add(JellyfinSubtitleProfileDto(PGS_SUBTITLE_FORMAT, method = SUBTITLE_METHOD_EXTERNAL))
+                    }
+                },
             codecProfiles =
                 buildList {
                     capabilities.maxAudioChannelCounts.forEach { (codec, maxChannels) ->
@@ -216,10 +257,10 @@ object PlaybackDeviceProfileFactory {
                             )
                         }
                     }
-                    if (
-                        PlaybackAudioCodec.AAC in capabilities.audioCodecs &&
-                        PlaybackAudioCodec.AAC !in capabilities.maxAudioChannelCounts
-                    ) {
+                    val aacIsOffered =
+                        PlaybackAudioCodec.AAC in capabilities.audioCodecs ||
+                            PlaybackAudioCodec.AAC in capabilities.transcodingAudioCodecs
+                    if (aacIsOffered && PlaybackAudioCodec.AAC !in capabilities.maxAudioChannelCounts) {
                         capabilities.maxAacChannelCount?.let { maxChannels ->
                             add(
                                 JellyfinCodecProfileDto(

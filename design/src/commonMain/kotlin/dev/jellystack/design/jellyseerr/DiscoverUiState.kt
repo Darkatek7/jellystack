@@ -1,12 +1,10 @@
 package dev.jellystack.design.jellyseerr
 
 import dev.jellystack.core.jellyseerr.JellyseerrCreateSelection
-import dev.jellystack.core.jellyseerr.JellyseerrMediaStatus
 import dev.jellystack.core.jellyseerr.JellyseerrMediaType
 import dev.jellystack.core.jellyseerr.JellyseerrMessageCode
 import dev.jellystack.core.jellyseerr.JellyseerrOperationKey
 import dev.jellystack.core.jellyseerr.JellyseerrRecommendationRail
-import dev.jellystack.core.jellyseerr.JellyseerrRequestCapabilities
 import dev.jellystack.core.jellyseerr.JellyseerrRequestFilter
 import dev.jellystack.core.jellyseerr.JellyseerrRequestProfileSelection
 import dev.jellystack.core.jellyseerr.JellyseerrRequestSummary
@@ -31,17 +29,6 @@ internal data class SeerrDetailViewState(
     val selectedSection: JellyseerrDetailSection = JellyseerrDetailSection.Overview,
     val firstVisibleItemIndex: Int = 0,
     val firstVisibleItemScrollOffset: Int = 0,
-)
-
-internal enum class SeerrPrimaryAction {
-    Request,
-    RequestMoreSeasons,
-}
-
-internal data class SeerrRequestCommand(
-    val primaryAction: SeerrPrimaryAction?,
-    val showStatus: Boolean,
-    val permissionDenied: Boolean = false,
 )
 
 internal data class SeerrDetailEntry(
@@ -365,43 +352,3 @@ private fun DiscoverPendingOperation?.matches(
                     )
             null -> false
         }
-
-internal fun resolveSeerrRequestCommand(
-    mediaType: JellyseerrMediaType,
-    mediaStatus: JellyseerrMediaStatus?,
-    hasRequest: Boolean,
-    requestableSeasons: List<Int>,
-    capabilities: JellyseerrRequestCapabilities = JellyseerrRequestCapabilities.ALL,
-): SeerrRequestCommand {
-    val requestMoreSeasons =
-        mediaType == JellyseerrMediaType.TV &&
-            requestableSeasons.isNotEmpty() &&
-            (
-                hasRequest ||
-                    mediaStatus == JellyseerrMediaStatus.PARTIALLY_AVAILABLE
-            )
-    val candidateAction =
-        when {
-            mediaStatus == JellyseerrMediaStatus.AVAILABLE -> null
-            mediaStatus == JellyseerrMediaStatus.PENDING -> null
-            mediaStatus == JellyseerrMediaStatus.PROCESSING -> null
-            requestMoreSeasons -> SeerrPrimaryAction.RequestMoreSeasons
-            mediaStatus == JellyseerrMediaStatus.PARTIALLY_AVAILABLE -> null
-            hasRequest -> null
-            else -> SeerrPrimaryAction.Request
-        }
-    val permissionDenied =
-        candidateAction != null &&
-            !capabilities.canRequest(mediaType, JellyseerrRequestVariant.STANDARD) &&
-            !capabilities.canRequest(mediaType, JellyseerrRequestVariant.FOUR_K)
-    val primaryAction = candidateAction.takeUnless { permissionDenied }
-    return SeerrRequestCommand(
-        primaryAction = primaryAction,
-        showStatus =
-            permissionDenied ||
-                hasRequest ||
-                mediaStatus != null &&
-                mediaStatus != JellyseerrMediaStatus.UNKNOWN,
-        permissionDenied = permissionDenied,
-    )
-}
