@@ -139,11 +139,7 @@ class AndroidPlayerEngine(
 
                         override fun onTracksChanged(tracks: Tracks) {
                             scheduleFirstFrameWatchdog()
-                            if (tracks.hasSelectedAudioTrack()) {
-                                audioOutputWatchdog?.cancel()
-                            } else {
-                                scheduleAudioOutputWatchdog()
-                            }
+                            scheduleAudioOutputWatchdog()
                             val audioResult = applyAudioTrack(pendingAudioTrack)
                             val subtitleResult = applySubtitleTrack(pendingSubtitleTrack)
                             val pendingTrackId = pendingAudioSelectionConfirmationId
@@ -460,22 +456,25 @@ class AndroidPlayerEngine(
             !expectsAudioOutput ||
             audioOutputUnavailableReported ||
             !exoPlayer.playWhenReady ||
-            exoPlayer.audioFormat != null ||
-            exoPlayer.currentTracks.hasSelectedAudioTrack()
+            exoPlayer.audioFormat != null
         ) {
             return
         }
+        // A track can be selected while no audio renderer ever receives a format (direct play of a
+        // codec the output path cannot route). The renderer format is the only evidence that audio
+        // is flowing, so a selected track is given a longer window than a missing one.
+        val timeoutMs =
+            if (exoPlayer.currentTracks.hasSelectedAudioTrack()) AUDIO_SELECTED_SILENT_TIMEOUT_MS else AUDIO_OUTPUT_TIMEOUT_MS
         audioOutputWatchdog?.cancel()
         audioOutputWatchdog =
             scope.launch {
-                delay(AUDIO_OUTPUT_TIMEOUT_MS)
+                delay(timeoutMs)
                 if (
                     expectsAudioOutput &&
                     !audioOutputUnavailableReported &&
                     exoPlayer.playWhenReady &&
                     exoPlayer.playbackState == Player.STATE_READY &&
-                    exoPlayer.audioFormat == null &&
-                    !exoPlayer.currentTracks.hasSelectedAudioTrack()
+                    exoPlayer.audioFormat == null
                 ) {
                     audioOutputUnavailableReported = true
                     eventFlow.emit(PlayerEvent.AudioOutputUnavailable)
@@ -710,6 +709,7 @@ class AndroidPlayerEngine(
         const val MIN_SUBTITLE_BOTTOM_PADDING_FRACTION = 0f
         const val MAX_SUBTITLE_BOTTOM_PADDING_FRACTION = 1f
         private const val AUDIO_OUTPUT_TIMEOUT_MS = 1_500L
+        private const val AUDIO_SELECTED_SILENT_TIMEOUT_MS = 4_000L
         private const val FIRST_FRAME_TIMEOUT_MS = 8_000L
         private const val POSITION_POLL_INTERVAL_MS = 500L
     }

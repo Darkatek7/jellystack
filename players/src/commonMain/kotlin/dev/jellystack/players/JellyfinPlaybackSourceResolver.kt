@@ -1,10 +1,12 @@
 package dev.jellystack.players
 
 import dev.jellystack.core.jellyfin.JellyfinEnvironment
+import dev.jellystack.core.logging.JellystackLog
 import dev.jellystack.network.jellyfin.JellyfinCodecProfileDto
 import dev.jellystack.network.jellyfin.JellyfinDeviceProfileDto
 import dev.jellystack.network.jellyfin.JellyfinPlaybackInfoRequestDto
 import dev.jellystack.network.jellyfin.JellyfinProfileConditionDto
+import dev.jellystack.network.jellyfin.JellyfinTranscodingProfileDto
 import kotlin.math.max
 import kotlin.random.Random
 
@@ -26,6 +28,14 @@ class JellyfinPlaybackSourceResolver(
         } else {
             resolveVideo(request, selection, environment, startPositionMs, options)
         }
+
+    override fun canPlayAudioCodecLocally(codec: String?): Boolean {
+        if (!deviceProfileProvider.usesBestAvailableAudioTranscodeTarget()) return true
+        val normalized = codec?.trim()?.lowercase()?.takeIf(String::isNotEmpty) ?: return true
+        return deviceProfileProvider.deviceProfile().directPlayProfiles.any { profile ->
+            profile.audioCodec.split(',').any { it.trim().equals(normalized, ignoreCase = true) }
+        }
+    }
 
     private suspend fun resolveVideo(
         request: PlaybackRequest,
@@ -60,17 +70,28 @@ class JellyfinPlaybackSourceResolver(
                     selectedAudioTrack?.channels?.let { it > selectedAudioMaxChannels }
                         ?: selectedAudioIsAac
                 )
-        val requiresServerSelectedAudioForVideo =
+        val usesBestAudioTarget =
             request.mediaKind == PlaybackMediaKind.VIDEO &&
-                deviceProfileProvider.requiresServerSelectedAudioForVideo()
-        val forceAudioTranscoding =
+                deviceProfileProvider.usesBestAvailableAudioTranscodeTarget()
+        // Stereo AAC is only the explicit compatibility fallback. Devices that negotiate for the best
+        // audio target let Jellyfin judge channel limits itself, so the client-side safety check is
+        // skipped for them.
+        val forceStereoAac =
             !options.forceTranscoding &&
-                (options.forceAudioTranscoding || requiresSafeAudioTranscode || requiresServerSelectedAudioForVideo)
-        val forceAnyTranscoding = options.forceTranscoding || forceAudioTranscoding
+                (
+                    options.forceAudioTranscoding ||
+                        (requiresSafeAudioTranscode && !usesBestAudioTarget) ||
+                        (options.selectAudioOnServer && !usesBestAudioTarget)
+                )
+        // The server must pick one audio rendition (HLS, no direct play) for the compatibility
+        // fallback and for an explicit track switch that the device cannot do locally.
+        val serverSelectsAudio = !options.forceTranscoding && (forceStereoAac || options.selectAudioOnServer)
+        val forceAnyTranscoding = options.forceTranscoding || serverSelectsAudio
+        val canRemuxVideoOnServer = !options.forceTranscoding && (serverSelectsAudio || usesBestAudioTarget)
         val deviceProfile =
             baseDeviceProfile
                 .let { profile ->
-                    if (forceAudioTranscoding) profile.withCompatibilityStereoAudio() else profile
+                    if (forceStereoAac) profile.withCompatibilityStereoAudio() else profile
                 }.let { profile ->
                     if (options.preferFmp4Hls) {
                         profile.copy(
@@ -91,16 +112,9 @@ class JellyfinPlaybackSourceResolver(
                 ?.trim()
                 ?.takeIf(String::isNotEmpty)
                 ?: PlaybackVideoCodec.H264.jellyfinName
-        val preferredTranscodeAudioCodec =
-            preferredTranscodeProfile
-                ?.audioCodec
-                ?.substringBefore(',')
-                ?.trim()
-                ?.takeIf(String::isNotEmpty)
-                ?: PlaybackAudioCodec.AAC.jellyfinName
         val selectedVideoCodec = selection.videoCodec?.lowercase()
         val canCopyVideoIntoPreferredHls =
-            forceAudioTranscoding &&
+            canRemuxVideoOnServer &&
                 (
                     selectedVideoCodec == null ||
                         deviceProfile.transcodingProfiles.any { profile ->
@@ -108,28 +122,15 @@ class JellyfinPlaybackSourceResolver(
                         }
                 )
         val allowDirectPlayback = isAuto && !forceAnyTranscoding
-        // AAC stereo is the only audio-only HLS fallback that proved interoperable across
-        // Android TV, Fire OS, and fMP4. Keep higher-quality original audio when it is safe;
-        // only compatibility fallbacks use this baseline.
-        val compatibleTranscodeAudioCodec =
-            if (forceAudioTranscoding) {
-                "aac"
-            } else {
-                preferredTranscodeAudioCodec
-            }
-        val maxTranscodeAudioChannels =
-            deviceProfile
-                .maxAudioChannelsFor(compatibleTranscodeAudioCodec)
-                ?.let { detectedMax ->
-                    if (
-                        forceAudioTranscoding &&
-                        compatibleTranscodeAudioCodec == "aac"
-                    ) {
-                        minOf(detectedMax, SAFE_AAC_FALLBACK_CHANNELS)
-                    } else {
-                        detectedMax
-                    }
-                } ?: preferredTranscodeProfile?.maxAudioChannels?.toIntOrNull()
+        val audioTarget =
+            resolveAudioTranscodeTarget(
+                deviceProfile = deviceProfile,
+                preferredTranscodeProfile = preferredTranscodeProfile,
+                selectedAudioTrack = selectedAudioTrack,
+                forceStereoAac = forceStereoAac,
+                preferSourceCodec = usesBestAudioTarget && !forceStereoAac && !options.forceTranscoding,
+            )
+        val allowAudioStreamCopy = !options.forceTranscoding && !forceStereoAac
         // Text subtitles are sideloaded by the player; a missing method would make the server burn them in too.
         val deliverSubtitleExternally =
             selection.subtitleTracks
@@ -152,10 +153,10 @@ class JellyfinPlaybackSourceResolver(
                 startTimeTicks = max(0, startPositionMs).toTicks(),
                 maxStreamingBitrate = manualOption?.maxBitrate ?: deviceProfile.maxStreamingBitrate,
                 enableDirectPlay = allowDirectPlayback,
-                enableDirectStream = allowDirectPlayback || forceAudioTranscoding,
+                enableDirectStream = allowDirectPlayback || serverSelectsAudio,
                 enableTranscoding = true,
                 allowVideoStreamCopy = allowDirectPlayback || canCopyVideoIntoPreferredHls,
-                allowAudioStreamCopy = !forceAnyTranscoding,
+                allowAudioStreamCopy = allowAudioStreamCopy,
             )
         val response =
             playbackInfoService.fetch(
@@ -188,9 +189,18 @@ class JellyfinPlaybackSourceResolver(
         val resolvedMimeType: String?
         val isFallbackHls: Boolean
 
+        // Jellyfin only reports SupportsDirectPlay when container, video and the selected audio stream all
+        // match the profile. A bare direct-stream answer next to a usable transcode URL is not trusted on
+        // devices that negotiate for the best audio target: that URL carries the audio transcode.
         val canUseDirectSource =
             allowDirectPlayback &&
-                (negotiatedSource.supportsDirectPlay || negotiatedSource.supportsDirectStream)
+                (
+                    negotiatedSource.supportsDirectPlay ||
+                        (
+                            negotiatedSource.supportsDirectStream &&
+                                (!usesBestAudioTarget || usableTranscodingUrl == null)
+                        )
+                )
         if (canUseDirectSource) {
             resolvedMode = PlaybackMode.DIRECT
             resolvedUrl =
@@ -214,11 +224,12 @@ class JellyfinPlaybackSourceResolver(
                         audioStreamIndex = audioStreamIndex,
                         subtitleStreamIndex = subtitleStreamIndex,
                         deliverSubtitleExternally = deliverSubtitleExternally,
-                        maxAudioChannels = maxTranscodeAudioChannels,
+                        maxAudioChannels = audioTarget.maxChannels,
                         maxStreamingBitrate = manualOption?.maxBitrate ?: deviceProfile.maxStreamingBitrate,
                         copyVideo = canCopyVideoIntoPreferredHls,
                         videoCodec = preferredTranscodeCodec,
-                        audioCodec = compatibleTranscodeAudioCodec,
+                        audioCodec = audioTarget.codec,
+                        allowAudioCopy = allowAudioStreamCopy && usesBestAudioTarget,
                         videoBitrate = fallbackVideoBitrate,
                         maxWidth = if (manualOption == null) selection.videoWidth else null,
                         maxHeight = manualOption?.maxHeight ?: selection.videoHeight,
@@ -252,6 +263,14 @@ class JellyfinPlaybackSourceResolver(
             isFallbackHls = fallbackHlsUrl != null
         }
 
+        logPlaybackDecision(
+            mode = resolvedMode,
+            url = resolvedUrl,
+            isFallbackHls = isFallbackHls,
+            forceStereoAac = forceStereoAac,
+            allowAudioStreamCopy = allowAudioStreamCopy,
+        )
+
         return ResolvedPlaybackSource(
             url = resolvedUrl,
             headers = playbackHeaders(),
@@ -281,6 +300,35 @@ class JellyfinPlaybackSourceResolver(
         )
     }
 
+    /**
+     * One debug line per negotiation. Only codec names, channel counts, the stream index and the
+     * server's transcode reasons are read from the URL; the URL itself, its token and its ids never
+     * reach the log.
+     */
+    private fun logPlaybackDecision(
+        mode: PlaybackMode,
+        url: String,
+        isFallbackHls: Boolean,
+        forceStereoAac: Boolean,
+        allowAudioStreamCopy: Boolean,
+    ) {
+        fun loggable(name: String): String =
+            url
+                .queryParameter(name)
+                ?.takeIf { LOGGABLE_QUERY_VALUE.matches(it) }
+                ?: "-"
+        val channels =
+            listOf("TranscodingMaxAudioChannels", "MaxAudioChannels", "AudioChannels")
+                .firstNotNullOfOrNull { name -> url.queryParameter(name)?.takeIf { LOGGABLE_QUERY_VALUE.matches(it) } }
+                ?: "-"
+        JellystackLog.d(
+            "Playback decision mode=$mode fallbackUrl=$isFallbackHls stereoAacFallback=$forceStereoAac " +
+                "audioCopyAllowed=$allowAudioStreamCopy transcodeReasons=${loggable("TranscodeReasons")} " +
+                "audioCodec=${loggable("AudioCodec")} audioChannels=$channels " +
+                "audioStreamIndex=${loggable("AudioStreamIndex")}",
+        )
+    }
+
     private fun buildFallbackHlsUrl(
         request: PlaybackRequest,
         environment: JellyfinEnvironment,
@@ -294,6 +342,7 @@ class JellyfinPlaybackSourceResolver(
         copyVideo: Boolean,
         videoCodec: String,
         audioCodec: String,
+        allowAudioCopy: Boolean,
         videoBitrate: Int?,
         maxWidth: Int?,
         maxHeight: Int?,
@@ -328,7 +377,8 @@ class JellyfinPlaybackSourceResolver(
             append(copyVideo)
             append("&AllowVideoStreamCopy=")
             append(copyVideo)
-            append("&AllowAudioStreamCopy=false")
+            append("&AllowAudioStreamCopy=")
+            append(allowAudioCopy)
             videoBitrate?.let { bitrate ->
                 append("&VideoBitRate=")
                 append(bitrate)
@@ -564,6 +614,7 @@ class JellyfinPlaybackSourceResolver(
         private const val SAFE_AAC_FALLBACK_CHANNELS = 2
         private const val UNKNOWN_SOURCE_VIDEO_BITRATE = 40_000_000
         private const val HLS_MIME_TYPE = "application/vnd.apple.mpegurl"
+        private val LOGGABLE_QUERY_VALUE = Regex("[A-Za-z0-9,_-]{1,96}")
     }
 
     private fun autoTranscodeVideoBitrate(
@@ -592,6 +643,53 @@ class JellyfinPlaybackSourceResolver(
                 ?: resolutionFloor
         return ceiling?.let { qualityTarget.coerceAtMost(it) } ?: qualityTarget
     }
+}
+
+private data class AudioTranscodeTarget(
+    val codec: String,
+    val maxChannels: Int?,
+)
+
+/**
+ * Picks the audio codec and channel ceiling for the fallback HLS URL and mirrors what Jellyfin
+ * derives from the same profile: the first codec of the transcoding profile is the encoder target.
+ * Only the explicit compatibility fallback is pinned to stereo AAC. When the device can play the
+ * selected source codec within its channel limit, that codec is requested so the server copies it.
+ */
+private fun resolveAudioTranscodeTarget(
+    deviceProfile: JellyfinDeviceProfileDto,
+    preferredTranscodeProfile: JellyfinTranscodingProfileDto?,
+    selectedAudioTrack: AudioTrack?,
+    forceStereoAac: Boolean,
+    preferSourceCodec: Boolean,
+): AudioTranscodeTarget {
+    val aac = PlaybackAudioCodec.AAC.jellyfinName
+    val offeredCodecs =
+        preferredTranscodeProfile
+            ?.audioCodec
+            ?.split(',')
+            ?.map { it.trim().lowercase() }
+            ?.filter(String::isNotEmpty)
+            .orEmpty()
+    val sourceCodec = selectedAudioTrack?.codec?.trim()?.lowercase()
+    val sourceFitsDevice =
+        preferSourceCodec &&
+            sourceCodec != null &&
+            sourceCodec in offeredCodecs &&
+            selectedAudioTrack.channels?.let { channels ->
+                channels <= (deviceProfile.maxAudioChannelsFor(sourceCodec) ?: Int.MAX_VALUE)
+            } == true
+    val codec =
+        when {
+            forceStereoAac -> aac
+            sourceFitsDevice -> checkNotNull(sourceCodec)
+            else -> offeredCodecs.firstOrNull() ?: aac
+        }
+    val detectedMax = deviceProfile.maxAudioChannelsFor(codec)
+    val maxChannels =
+        detectedMax?.let { max -> if (forceStereoAac) minOf(max, SAFE_COMPATIBILITY_AUDIO_CHANNELS) else max }
+            ?: preferredTranscodeProfile?.maxAudioChannels?.toIntOrNull()
+    return AudioTranscodeTarget(codec, maxChannels)
 }
 
 private fun JellyfinDeviceProfileDto.maxAudioChannelsFor(codec: String?): Int? {

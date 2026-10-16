@@ -23,6 +23,12 @@ data class PlaybackSourceOptions(
     val playSessionId: String? = null,
     val forceTranscoding: Boolean = false,
     val forceAudioTranscoding: Boolean = false,
+    /**
+     * Ask the server for exactly one audio rendition of the chosen track (used by an explicit
+     * track switch). Devices that already negotiate this way get their best audio target; all
+     * others get the stereo AAC compatibility rendition, as with [forceAudioTranscoding].
+     */
+    val selectAudioOnServer: Boolean = false,
     val preferFmp4Hls: Boolean = false,
     val stopEncodingPlaySessionId: String? = null,
 )
@@ -44,4 +50,10 @@ fun interface PlaybackSourceResolver {
         startPositionMs: Long,
         options: PlaybackSourceOptions,
     ): ResolvedPlaybackSource
+
+    /**
+     * Whether a directly played file can switch to an audio track with this codec inside the player.
+     * Resolvers that cannot tell keep the local switch.
+     */
+    fun canPlayAudioCodecLocally(codec: String?): Boolean = true
 }

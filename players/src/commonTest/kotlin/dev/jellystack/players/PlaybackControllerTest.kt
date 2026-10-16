@@ -2698,7 +2698,7 @@ class PlaybackControllerTest {
 
                 val switchOptions = resolver.requests.last()
                 assertFalse(switchOptions.forceTranscoding)
-                assertTrue(switchOptions.forceAudioTranscoding)
+                assertTrue(switchOptions.selectAudioOnServer)
                 assertFalse(switchOptions.preferFmp4Hls)
                 assertEquals(beforeSwitch.source.playSessionId, switchOptions.stopEncodingPlaySessionId)
                 assertEquals(null, switchOptions.playSessionId)
@@ -2809,18 +2809,19 @@ private class DirectFallbackPlaybackSourceResolver : PlaybackSourceResolver {
         options: PlaybackSourceOptions,
     ): ResolvedPlaybackSource {
         requests += options
+        val viaHls = options.forceTranscoding || options.forceAudioTranscoding || options.selectAudioOnServer
         return resolvedSource(
             url =
-                if (options.forceTranscoding || options.forceAudioTranscoding) {
+                if (viaHls) {
                     "${environment.baseUrl}/videos/${request.mediaId}/master.m3u8"
                 } else {
                     "${environment.baseUrl}/videos/${request.mediaId}/stream.mkv"
                 },
-            mode = if (options.forceTranscoding || options.forceAudioTranscoding) PlaybackMode.HLS else PlaybackMode.DIRECT,
+            mode = if (viaHls) PlaybackMode.HLS else PlaybackMode.DIRECT,
             playSessionId = options.playSessionId ?: "fallback-session",
             mediaSourceId = selection.sourceId,
             supportsTranscoding = true,
-        ).copy(segmentContainer = if (options.forceTranscoding || options.forceAudioTranscoding) "mp4" else null)
+        ).copy(segmentContainer = if (viaHls) "mp4" else null)
     }
 }
 

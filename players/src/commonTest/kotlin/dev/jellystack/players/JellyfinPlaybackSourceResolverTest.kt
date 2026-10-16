@@ -546,83 +546,247 @@ class JellyfinPlaybackSourceResolverTest {
         }
 
     @Test
-    fun tvInitialVideoStartUsesTheSameReliableAudioPathAsManualTrackSwitching() =
+    fun tvAutoRequestsRealDirectPlayAndUsesItWhenJellyfinApprovesTheSelectedTracks() =
+        runTest {
+            val service = RecordingPlaybackInfoService(directPlayResponse())
+            val resolver =
+                JellyfinPlaybackSourceResolver(service, tvProvider(tvSnapshot(PlaybackAudioCodec.EAC3, PlaybackAudioCodec.AAC)))
+            val request = videoRequest()
+            val selection =
+                PlaybackStreamSelector()
+                    .select(request.mediaSources)
+                    .copy(audioTracks = listOf(audioTrack(codec = "eac3", channels = 6, streamIndex = 2)))
+
+            val source = resolver.resolve(request, selection, environment(), 0, PlaybackSourceOptions())
+
+            val sent = checkNotNull(service.lastRequest)
+            assertEquals(PlaybackMode.DIRECT, source.mode)
+            assertEquals(true, sent.enableDirectPlay)
+            assertEquals(true, sent.enableDirectStream)
+            assertEquals(true, sent.allowVideoStreamCopy)
+            assertEquals(true, sent.allowAudioStreamCopy)
+            assertEquals(2, sent.audioStreamIndex)
+        }
+
+    @Test
+    fun tvDtsDefaultTrackUsesTheServerTranscodeUrlWithTheBestSupportedCodec() =
+        runTest {
+            val service =
+                RecordingPlaybackInfoService(
+                    transcodeOnlyResponse(
+                        "/Videos/item-1/master.m3u8?SegmentContainer=ts&VideoCodec=copy&AudioCodec=eac3&AudioStreamIndex=2" +
+                            "&TranscodeReasons=AudioCodecNotSupported",
+                    ),
+                )
+            val resolver =
+                JellyfinPlaybackSourceResolver(service, tvProvider(tvSnapshot(PlaybackAudioCodec.EAC3, PlaybackAudioCodec.AAC)))
+            val request = videoRequest()
+            val selection =
+                PlaybackStreamSelector()
+                    .select(request.mediaSources)
+                    .copy(audioTracks = listOf(audioTrack(codec = "dts", channels = 6, streamIndex = 2)))
+
+            val source = resolver.resolve(request, selection, environment(), 0, PlaybackSourceOptions())
+
+            val sent = checkNotNull(service.lastRequest)
+            assertEquals(true, sent.enableDirectPlay)
+            assertEquals(true, sent.allowAudioStreamCopy)
+            assertEquals(
+                "eac3,aac",
+                sent.deviceProfile.transcodingProfiles
+                    .first()
+                    .audioCodec,
+            )
+            assertTrue(sent.deviceProfile.transcodingProfiles.all { it.maxAudioChannels == "6" })
+            assertEquals(PlaybackMode.HLS, source.mode)
+            assertEquals("eac3", source.url.queryParameter("AudioCodec"))
+        }
+
+    @Test
+    fun tvTrustsTheServerTranscodeUrlOverABareDirectStreamAnswer() =
         runTest {
             val service =
                 RecordingPlaybackInfoService(
                     JellyfinPlaybackInfoResponseDto(
-                        playSessionId = "play-tv-initial-audio",
                         mediaSources =
                             listOf(
                                 JellyfinPlaybackMediaSourceDto(
                                     id = "source-1",
-                                    supportsDirectPlay = true,
+                                    container = "mkv",
+                                    supportsDirectPlay = false,
+                                    supportsDirectStream = true,
                                     supportsTranscoding = true,
-                                    transcodingUrl =
-                                        "/Videos/item-1/master.m3u8?SegmentContainer=ts&VideoCodec=h264&AudioCodec=aac",
+                                    transcodingUrl = "/Videos/item-1/master.m3u8?VideoCodec=copy&AudioCodec=eac3",
                                     transcodingContainer = "ts",
                                     transcodingSubProtocol = "hls",
                                 ),
                             ),
                     ),
                 )
-            val tvProfile =
-                object : PlaybackDeviceProfileProvider {
-                    override fun deviceProfile() =
-                        PlaybackDeviceProfileFactory.create(
-                            name = "Test TV",
-                            capabilities =
-                                PlaybackDecoderCapabilities(
-                                    videoCodecs = setOf(PlaybackVideoCodec.H264),
-                                    audioCodecs = setOf(PlaybackAudioCodec.EAC3, PlaybackAudioCodec.AAC),
-                                    maxAudioChannelCounts =
-                                        mapOf(
-                                            PlaybackAudioCodec.EAC3 to 6,
-                                            PlaybackAudioCodec.AAC to 2,
-                                        ),
-                                ),
-                        )
+            val resolver =
+                JellyfinPlaybackSourceResolver(service, tvProvider(tvSnapshot(PlaybackAudioCodec.EAC3, PlaybackAudioCodec.AAC)))
+            val request = videoRequest()
+            val selection = PlaybackStreamSelector().select(request.mediaSources)
 
-                    override fun requiresServerSelectedAudioForVideo(): Boolean = true
-                }
-            val resolver = JellyfinPlaybackSourceResolver(service, tvProfile)
+            val source = resolver.resolve(request, selection, environment(), 0, PlaybackSourceOptions())
+
+            assertEquals(PlaybackMode.HLS, source.mode)
+        }
+
+    @Test
+    fun supportedTvSourceCodecIsRequestedAsIsOnTheFallbackUrlSoTheServerCopiesIt() =
+        runTest {
+            val service = RecordingPlaybackInfoService(noMethodResponse())
+            val resolver =
+                JellyfinPlaybackSourceResolver(
+                    service,
+                    tvProvider(tvSnapshot(PlaybackAudioCodec.EAC3, PlaybackAudioCodec.AC3, PlaybackAudioCodec.AAC)),
+                )
             val request = videoRequest()
             val selection =
                 PlaybackStreamSelector()
                     .select(request.mediaSources)
-                    .copy(
-                        mode = PlaybackMode.DIRECT,
-                        audioTracks =
-                            listOf(
-                                AudioTrack(
-                                    id = "2",
-                                    language = "eng",
-                                    title = "English 5.1",
-                                    codec = "eac3",
-                                    isDefault = true,
-                                    streamIndex = 2,
-                                    channels = 6,
-                                ),
-                            ),
-                    )
+                    .copy(audioTracks = listOf(audioTrack(codec = "ac3", channels = 6, streamIndex = 1)))
 
             val source = resolver.resolve(request, selection, environment(), 0, PlaybackSourceOptions())
 
-            assertEquals(false, service.lastRequest?.enableDirectPlay)
-            assertEquals(true, service.lastRequest?.allowVideoStreamCopy)
-            assertEquals(false, service.lastRequest?.allowAudioStreamCopy)
-            assertEquals(2, service.lastRequest?.audioStreamIndex)
-            assertEquals("h264", source.url.queryParameter("VideoCodec"))
+            assertTrue(source.isFallbackHls)
+            assertEquals("ac3", source.url.queryParameter("AudioCodec"))
+            assertEquals("true", source.url.queryParameter("AllowAudioStreamCopy"))
+            assertEquals("6", source.url.queryParameter("TranscodingMaxAudioChannels"))
+            assertEquals("1", source.url.queryParameter("AudioStreamIndex"))
+        }
+
+    @Test
+    fun unsupportedTvSourceCodecFallsBackToTheBestSupportedTargetWithItsChannelLimit() =
+        runTest {
+            val service = RecordingPlaybackInfoService(noMethodResponse())
+            val resolver =
+                JellyfinPlaybackSourceResolver(service, tvProvider(tvSnapshot(PlaybackAudioCodec.EAC3, PlaybackAudioCodec.AAC)))
+            val request = videoRequest()
+            val selection =
+                PlaybackStreamSelector()
+                    .select(request.mediaSources)
+                    .copy(audioTracks = listOf(audioTrack(codec = "dts", channels = 6, streamIndex = 2)))
+
+            val source = resolver.resolve(request, selection, environment(), 0, PlaybackSourceOptions())
+
+            assertEquals("eac3", source.url.queryParameter("AudioCodec"))
+            assertEquals("6", source.url.queryParameter("TranscodingMaxAudioChannels"))
+            assertEquals("true", source.url.queryParameter("AllowAudioStreamCopy"))
+        }
+
+    @Test
+    fun aacOnlyTvTranscodesUnsupportedAudioToStereoAac() =
+        runTest {
+            val service = RecordingPlaybackInfoService(noMethodResponse())
+            val resolver = JellyfinPlaybackSourceResolver(service, tvProvider(tvSnapshot(PlaybackAudioCodec.AAC)))
+            val request = videoRequest()
+            val selection =
+                PlaybackStreamSelector()
+                    .select(request.mediaSources)
+                    .copy(audioTracks = listOf(audioTrack(codec = "dts", channels = 6, streamIndex = 2)))
+
+            val source = resolver.resolve(request, selection, environment(), 0, PlaybackSourceOptions())
+
+            val sent = checkNotNull(service.lastRequest)
+            assertTrue(sent.deviceProfile.transcodingProfiles.all { it.audioCodec == "aac" && it.maxAudioChannels == "2" })
             assertEquals("aac", source.url.queryParameter("AudioCodec"))
-            assertEquals("ts", source.url.queryParameter("SegmentContainer"))
+            assertEquals("2", source.url.queryParameter("TranscodingMaxAudioChannels"))
+        }
+
+    @Test
+    fun audioOutputFallbackOnTvLeavesDirectPlayForServerSelectedStereoAacHls() =
+        runTest {
+            val service = RecordingPlaybackInfoService(directPlayResponse())
+            val resolver =
+                JellyfinPlaybackSourceResolver(
+                    service,
+                    tvProvider(tvSnapshot(PlaybackAudioCodec.EAC3, PlaybackAudioCodec.AC3, PlaybackAudioCodec.AAC)),
+                )
+            val request = videoRequest()
+            val selection =
+                PlaybackStreamSelector()
+                    .select(request.mediaSources)
+                    .copy(audioTracks = listOf(audioTrack(codec = "eac3", channels = 6, streamIndex = 1)))
+
+            val source =
+                resolver.resolve(
+                    request,
+                    selection,
+                    environment(),
+                    0,
+                    PlaybackSourceOptions(forceAudioTranscoding = true),
+                )
+
+            val sent = checkNotNull(service.lastRequest)
+            assertEquals(PlaybackMode.HLS, source.mode)
+            assertEquals(false, sent.enableDirectPlay)
+            assertEquals(false, sent.allowAudioStreamCopy)
+            assertTrue(sent.deviceProfile.transcodingProfiles.all { it.audioCodec == "aac" && it.maxAudioChannels == "2" })
+            assertEquals("aac", source.url.queryParameter("AudioCodec"))
+            assertEquals("2", source.url.queryParameter("TranscodingMaxAudioChannels"))
+            assertEquals("false", source.url.queryParameter("AllowAudioStreamCopy"))
+        }
+
+    @Test
+    fun audioTrackSwitchGetsTheBestTargetOnTvAndTheStereoCompatibilityRenditionElsewhere() =
+        runTest {
+            val request = videoRequest()
+            val selection =
+                PlaybackStreamSelector()
+                    .select(request.mediaSources)
+                    .copy(audioTracks = listOf(audioTrack(codec = "dts", channels = 6, streamIndex = 2)))
+            val tvService = RecordingPlaybackInfoService(directPlayResponse())
+            val phoneService = RecordingPlaybackInfoService(directPlayResponse())
+            val phoneProfile =
+                PlaybackDeviceProfileProvider {
+                    PlaybackDeviceProfileFactory.create(
+                        "Phone",
+                        PlaybackDecoderCapabilities(
+                            videoCodecs = setOf(PlaybackVideoCodec.H264),
+                            audioCodecs = setOf(PlaybackAudioCodec.AAC, PlaybackAudioCodec.AC3),
+                        ),
+                    )
+                }
+
+            val tvSource =
+                JellyfinPlaybackSourceResolver(
+                    tvService,
+                    tvProvider(tvSnapshot(PlaybackAudioCodec.EAC3, PlaybackAudioCodec.AAC)),
+                ).resolve(request, selection, environment(), 0, PlaybackSourceOptions(selectAudioOnServer = true))
+            val phoneSource =
+                JellyfinPlaybackSourceResolver(phoneService, phoneProfile)
+                    .resolve(request, selection, environment(), 0, PlaybackSourceOptions(selectAudioOnServer = true))
+
+            assertEquals(PlaybackMode.HLS, tvSource.mode)
+            assertEquals(false, tvService.lastRequest?.enableDirectPlay)
+            assertEquals("eac3", tvSource.url.queryParameter("AudioCodec"))
+            assertEquals(true, tvService.lastRequest?.allowAudioStreamCopy)
+            assertEquals("aac", phoneSource.url.queryParameter("AudioCodec"))
+            assertEquals(false, phoneService.lastRequest?.allowAudioStreamCopy)
             assertTrue(
-                service.lastRequest
+                phoneService.lastRequest
                     ?.deviceProfile
                     ?.transcodingProfiles
                     .orEmpty()
-                    .all { it.maxAudioChannels == "2" },
+                    .all { it.audioCodec == "aac" },
             )
         }
+
+    @Test
+    fun tvOnlyHandsTracksItCannotDecodeToTheServer() {
+        val service = RecordingPlaybackInfoService(directPlayResponse())
+        val resolver =
+            JellyfinPlaybackSourceResolver(service, tvProvider(tvSnapshot(PlaybackAudioCodec.EAC3, PlaybackAudioCodec.AAC)))
+
+        assertTrue(resolver.canPlayAudioCodecLocally("eac3"))
+        assertTrue(resolver.canPlayAudioCodecLocally("AAC"))
+        assertFalse(resolver.canPlayAudioCodecLocally("dts"))
+        assertFalse(resolver.canPlayAudioCodecLocally("truehd"))
+        assertTrue(resolver.canPlayAudioCodecLocally(null))
+        assertTrue(JellyfinPlaybackSourceResolver(service).canPlayAudioCodecLocally("dts"))
+    }
 
     @Test
     fun forcedTranscodingKeepsTheBestCodecNegotiatedByTheServer() =
@@ -1227,7 +1391,7 @@ class JellyfinPlaybackSourceResolverTest {
     }
 
     @Test
-    fun tvProfileNeverOffersDtsAndForcesAServerTranscodeOfTheSelectedDtsTrack() =
+    fun tvProfileNeverOffersDtsAndTranscodesTheSelectedDtsTrackToTheBestSupportedCodec() =
         runTest {
             val service =
                 RecordingPlaybackInfoService(
@@ -1237,7 +1401,7 @@ class JellyfinPlaybackSourceResolverTest {
                                 JellyfinPlaybackMediaSourceDto(
                                     id = "source-1",
                                     supportsTranscoding = true,
-                                    transcodingUrl = "/Videos/item-1/master.m3u8?VideoCodec=copy&AudioCodec=aac",
+                                    transcodingUrl = "/Videos/item-1/master.m3u8?VideoCodec=copy&AudioCodec=eac3",
                                     transcodingContainer = "ts",
                                     transcodingSubProtocol = "hls",
                                 ),
@@ -1252,45 +1416,115 @@ class JellyfinPlaybackSourceResolverTest {
                     maxAudioChannelCounts = PlaybackAudioCodec.entries.associateWith { 8 },
                     inspectionCompleteness = PlaybackCapabilityInspection.COMPLETE,
                 )
-            val tvProvider =
-                object : PlaybackDeviceProfileProvider {
-                    override fun deviceProfile() =
-                        PlaybackDeviceProfileFactory.create("Test TV", selectTvDecoderCapabilities(everythingSupported))
-
-                    override fun requiresServerSelectedAudioForVideo(): Boolean = true
-                }
-            val resolver = JellyfinPlaybackSourceResolver(service, tvProvider)
+            val resolver = JellyfinPlaybackSourceResolver(service, tvProvider(everythingSupported))
             val request = videoRequest()
             val selection =
                 PlaybackStreamSelector()
                     .select(request.mediaSources)
-                    .copy(
-                        audioTracks =
-                            listOf(
-                                AudioTrack(
-                                    id = "2",
-                                    language = "eng",
-                                    title = "English - DTS-HD MA - 5.1",
-                                    codec = "dts",
-                                    isDefault = true,
-                                    streamIndex = 2,
-                                    channels = 6,
-                                ),
-                            ),
-                    )
+                    .copy(audioTracks = listOf(audioTrack(codec = "dts", channels = 6, streamIndex = 2)))
 
             resolver.resolve(request, selection, environment(), 0, PlaybackSourceOptions())
 
             val sent = checkNotNull(service.lastRequest)
             assertEquals(2, sent.audioStreamIndex)
-            assertFalse(sent.allowAudioStreamCopy)
-            assertFalse(sent.enableDirectPlay)
+            assertTrue(sent.allowAudioStreamCopy)
+            assertTrue(sent.enableDirectPlay)
             val offeredAudioCodecs =
                 (sent.deviceProfile.directPlayProfiles.map { it.audioCodec } + sent.deviceProfile.transcodingProfiles.map { it.audioCodec })
                     .flatMap { codecs -> codecs.split(',') }
-                    .toSet()
-            assertEquals(setOf("aac", "mp3"), offeredAudioCodecs)
+            assertFalse("dts" in offeredAudioCodecs)
+            sent.deviceProfile.transcodingProfiles.forEach { profile ->
+                assertTrue(profile.audioCodec.startsWith("eac3,ac3,aac,mp3"), profile.audioCodec)
+                assertEquals("6", profile.maxAudioChannels)
+            }
         }
+
+    private fun tvProvider(snapshot: PlaybackCapabilitySnapshot) =
+        object : PlaybackDeviceProfileProvider {
+            override fun deviceProfile() = PlaybackDeviceProfileFactory.create("Test TV", selectTvDecoderCapabilities(snapshot))
+
+            override fun usesBestAvailableAudioTranscodeTarget(): Boolean = true
+        }
+
+    /** Complete snapshot where H.264 and exactly [audio] are playable, each reporting 8 input channels. */
+    private fun tvSnapshot(vararg audio: PlaybackAudioCodec) =
+        PlaybackCapabilitySnapshot(
+            videoSupport =
+                PlaybackVideoCodec.entries.associateWith { CapabilitySupport.UNSUPPORTED } +
+                    (PlaybackVideoCodec.H264 to CapabilitySupport.SUPPORTED),
+            videoHardwareSupport = PlaybackVideoCodec.entries.associateWith { CapabilitySupport.UNSUPPORTED },
+            audioSupport =
+                PlaybackAudioCodec.entries.associateWith {
+                    if (it in audio) CapabilitySupport.SUPPORTED else CapabilitySupport.UNSUPPORTED
+                },
+            maxAudioChannelCounts = audio.associateWith { 8 },
+            inspectionCompleteness = PlaybackCapabilityInspection.COMPLETE,
+        )
+
+    private fun audioTrack(
+        codec: String,
+        channels: Int?,
+        streamIndex: Int,
+    ) = AudioTrack(
+        id = streamIndex.toString(),
+        language = "eng",
+        title = "English",
+        codec = codec,
+        isDefault = true,
+        streamIndex = streamIndex,
+        channels = channels,
+    )
+
+    /** PlaybackInfo where Jellyfin approves Direct Play of the selected tracks. */
+    private fun directPlayResponse() =
+        JellyfinPlaybackInfoResponseDto(
+            playSessionId = "play-direct",
+            mediaSources =
+                listOf(
+                    JellyfinPlaybackMediaSourceDto(
+                        id = "source-1",
+                        container = "mkv",
+                        supportsDirectPlay = true,
+                        supportsDirectStream = true,
+                        supportsTranscoding = true,
+                    ),
+                ),
+        )
+
+    /** PlaybackInfo where Jellyfin rejects Direct Play and returns its own transcode URL. */
+    private fun transcodeOnlyResponse(transcodingUrl: String) =
+        JellyfinPlaybackInfoResponseDto(
+            playSessionId = "play-transcode",
+            mediaSources =
+                listOf(
+                    JellyfinPlaybackMediaSourceDto(
+                        id = "source-1",
+                        container = "mkv",
+                        supportsDirectPlay = false,
+                        supportsDirectStream = false,
+                        supportsTranscoding = true,
+                        transcodingUrl = transcodingUrl,
+                        transcodingContainer = "ts",
+                        transcodingSubProtocol = "hls",
+                    ),
+                ),
+        )
+
+    /** PlaybackInfo without any method or URL, which makes the resolver build the HLS URL itself. */
+    private fun noMethodResponse() =
+        JellyfinPlaybackInfoResponseDto(
+            playSessionId = "play-no-method",
+            mediaSources =
+                listOf(
+                    JellyfinPlaybackMediaSourceDto(
+                        id = "source-1",
+                        container = "mkv",
+                        supportsDirectPlay = false,
+                        supportsDirectStream = false,
+                        supportsTranscoding = true,
+                    ),
+                ),
+        )
 
     private fun assertModernQueryAuthentication(source: ResolvedPlaybackSource) {
         assertEquals("dummy-token", source.url.queryParameter("ApiKey"))

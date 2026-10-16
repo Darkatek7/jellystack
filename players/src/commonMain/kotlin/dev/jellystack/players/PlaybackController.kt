@@ -860,7 +860,13 @@ class PlaybackController(
             return
         }
 
-        if (current.source.mode == PlaybackMode.HLS && !isRemoteConnected()) {
+        val resolveOnServer =
+            shouldResolveAudioTrackOnServer(
+                mode = current.source.mode,
+                isRemoteConnected = isRemoteConnected(),
+                canPlayTrackLocally = playbackSourceResolver.canPlayAudioCodecLocally(audio.codec),
+            )
+        if (resolveOnServer) {
             cancelSubtitleSwitch()
             switchHlsAudioTrack(current, audio)
             return
@@ -897,7 +903,7 @@ class PlaybackController(
                                 PlaybackSourceOptions(
                                     audioStreamIndex = audio.streamIndex,
                                     subtitleStreamIndex = current.subtitleTrack?.streamIndex ?: SUBTITLES_DISABLED_INDEX,
-                                    forceAudioTranscoding = true,
+                                    selectAudioOnServer = true,
                                     stopEncodingPlaySessionId = current.source.playSessionId,
                                 ),
                         )

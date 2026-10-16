@@ -41,17 +41,25 @@ data class PlaybackDecoderCapabilities(
     val transcodingVideoCodecs: Set<PlaybackVideoCodec> = videoCodecs,
     val transcodingAudioCodecs: Set<PlaybackAudioCodec> = audioCodecs,
     val maxTranscodingAudioChannelCount: Int? = null,
+    /**
+     * Preferred HLS audio encoder targets, best first. Jellyfin offers the profile's codec list
+     * in order and encodes to the first one it can, so the head of this list is the target for
+     * every source the device cannot play itself. Codecs outside [transcodingAudioCodecs] are
+     * ignored; the remaining codecs keep the factory's default order. Empty keeps that default.
+     */
+    val transcodingAudioCodecPreference: List<PlaybackAudioCodec> = emptyList(),
 )
 
 fun interface PlaybackDeviceProfileProvider {
     fun deviceProfile(): JellyfinDeviceProfileDto
 
     /**
-     * TV implementations can expose an audio rendition as selectable while failing to route it
-     * to the active output. Resolve one server-selected compatibility rendition before the first
-     * prepare so initial playback follows the same reliable path as an explicit track switch.
+     * True for devices that negotiate Direct Play first and let the server transcode anything they
+     * cannot decode to the best audio codec of their profile (instead of the stereo AAC
+     * compatibility rendition phones fall back to). Stereo AAC HLS remains the explicit fallback
+     * after audio output failed, which is requested through [PlaybackSourceOptions].
      */
-    fun requiresServerSelectedAudioForVideo(): Boolean = false
+    fun usesBestAvailableAudioTranscodeTarget(): Boolean = false
 }
 
 object PlaybackDeviceProfileFactory {
@@ -73,22 +81,31 @@ object PlaybackDeviceProfileFactory {
                 PlaybackVideoCodec.HEVC,
                 PlaybackVideoCodec.H264,
             ).filter(capabilities.transcodingVideoCodecs::contains)
+
+        fun orderedTranscodeAudioCodecs(defaultOrder: List<PlaybackAudioCodec>): List<PlaybackAudioCodec> =
+            (capabilities.transcodingAudioCodecPreference + defaultOrder)
+                .distinct()
+                .filter { codec -> codec in defaultOrder && codec in capabilities.transcodingAudioCodecs }
         val hlsMpegTsAudioCodecs =
-            listOf(
-                PlaybackAudioCodec.AAC,
-                PlaybackAudioCodec.AC3,
-                PlaybackAudioCodec.EAC3,
-                PlaybackAudioCodec.MP3,
-            ).filter(capabilities.transcodingAudioCodecs::contains)
+            orderedTranscodeAudioCodecs(
+                listOf(
+                    PlaybackAudioCodec.AAC,
+                    PlaybackAudioCodec.AC3,
+                    PlaybackAudioCodec.EAC3,
+                    PlaybackAudioCodec.MP3,
+                ),
+            )
         val hlsFmp4AudioCodecs =
-            listOf(
-                PlaybackAudioCodec.AAC,
-                PlaybackAudioCodec.AC3,
-                PlaybackAudioCodec.EAC3,
-                PlaybackAudioCodec.MP3,
-                PlaybackAudioCodec.FLAC,
-                PlaybackAudioCodec.OPUS,
-            ).filter(capabilities.transcodingAudioCodecs::contains)
+            orderedTranscodeAudioCodecs(
+                listOf(
+                    PlaybackAudioCodec.AAC,
+                    PlaybackAudioCodec.AC3,
+                    PlaybackAudioCodec.EAC3,
+                    PlaybackAudioCodec.MP3,
+                    PlaybackAudioCodec.FLAC,
+                    PlaybackAudioCodec.OPUS,
+                ),
+            )
         val maxTranscodeAudioChannels =
             capabilities.maxTranscodingAudioChannelCount
                 ?: hlsFmp4AudioCodecs.mapNotNull(capabilities.maxAudioChannelCounts::get).maxOrNull()
@@ -216,10 +233,10 @@ object PlaybackDeviceProfileFactory {
                             )
                         }
                     }
-                    if (
-                        PlaybackAudioCodec.AAC in capabilities.audioCodecs &&
-                        PlaybackAudioCodec.AAC !in capabilities.maxAudioChannelCounts
-                    ) {
+                    val aacIsOffered =
+                        PlaybackAudioCodec.AAC in capabilities.audioCodecs ||
+                            PlaybackAudioCodec.AAC in capabilities.transcodingAudioCodecs
+                    if (aacIsOffered && PlaybackAudioCodec.AAC !in capabilities.maxAudioChannelCounts) {
                         capabilities.maxAacChannelCount?.let { maxChannels ->
                             add(
                                 JellyfinCodecProfileDto(
