@@ -77,6 +77,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import dev.jellystack.core.coroutines.runSuspendCatching
 import dev.jellystack.core.di.JellystackDI
 import dev.jellystack.core.downloads.DownloadRequest
 import dev.jellystack.core.downloads.DownloadStatus
@@ -2387,7 +2388,7 @@ fun JellystackRoot(
                     isDetailEpisodesLoading = false
                     return@LaunchedEffect
                 }
-                val refreshResult = runCatching { browseRepository.refreshEpisodesForSeries(seriesId) }
+                val refreshResult = runSuspendCatching { browseRepository.refreshEpisodesForSeries(seriesId) }
                 val refreshedEpisodes = refreshResult.getOrNull()
                 if (refreshedEpisodes != null) {
                     JellystackLog.d("Refreshed ${refreshedEpisodes.size} episodes for series $seriesId.")

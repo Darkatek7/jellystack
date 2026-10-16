@@ -633,8 +633,7 @@ private fun JellystackApp(
                     scope = coordinatorScope,
                     modeProvider = { appSettingsRepository.settings.value.autoplayNextMode },
                     resolveNext = resolve@{ mediaId, seriesId ->
-                        val cached = browseRepository.episodesForSeries(seriesId)
-                        val episodes = if (cached.isEmpty()) browseRepository.refreshEpisodesForSeries(seriesId) else cached
+                        val episodes = browseRepository.latestEpisodesForSeries(seriesId)
                         val next = selectNextEpisode(episodes, mediaId) ?: return@resolve null
                         val detail = browseRepository.getItemDetail(next.id) ?: return@resolve null
                         val playbackEnvironment = environmentProvider.current() ?: return@resolve null
