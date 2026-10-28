@@ -628,6 +628,16 @@ class JellyfinBrowseRepository(
     suspend fun latestEpisodesForSeries(seriesId: String): List<JellyfinItem> =
         runSuspendCatching { refreshEpisodesForSeries(seriesId) }.getOrElse { episodesForSeries(seriesId) }
 
+    /**
+     * The episodes a Play action on [container] (a Series or a Season) chooses from, as the server lists them now or
+     * the cached ones when it cannot be reached. Pass the result to [SeriesPlaybackTargetResolver].
+     */
+    suspend fun latestEpisodesToPlay(container: JellyfinItem): List<JellyfinItem> {
+        if (!container.type.equals("Season", ignoreCase = true)) return latestEpisodesForSeries(container.id)
+        val seriesId = container.seriesId ?: return episodesForSeason(container.id)
+        return latestEpisodesForSeries(seriesId).filter { it.seasonId == container.id }
+    }
+
     suspend fun episodesForSeason(seasonId: String): List<JellyfinItem> {
         val environment = environmentProvider.current() ?: return emptyList()
         return itemStore.listEpisodesForSeason(environment.serverKey, seasonId).map { it.toDomain() }
