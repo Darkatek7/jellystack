@@ -116,10 +116,14 @@ class HomeSectionsRepository(
                 supervisorScope {
                     descriptors
                         .sortedBy(HomeSectionInfoDto::orderIndex)
-                        .map { descriptor ->
+                        .mapNotNull { descriptor ->
+                            val type = descriptor.section?.takeIf(String::isNotBlank) ?: return@mapNotNull null
+                            SectionRequest("$type:${descriptor.additionalData.orEmpty()}", type, descriptor)
+                        }
+                        // The UI keys rows by this id, so two descriptors that resolve to the same section load it once.
+                        .distinctBy(SectionRequest::id)
+                        .map { (id, type, descriptor) ->
                             async {
-                                val type = descriptor.section?.takeIf(String::isNotBlank) ?: return@async null
-                                val id = "$type:${descriptor.additionalData.orEmpty()}"
                                 runCatching {
                                     val items =
                                         api
@@ -184,6 +188,12 @@ class HomeSectionsRepository(
         return result
     }
 }
+
+private data class SectionRequest(
+    val id: String,
+    val type: String,
+    val descriptor: HomeSectionInfoDto,
+)
 
 private fun String?.toViewMode(): HomeSectionViewMode =
     when (this?.lowercase()) {
