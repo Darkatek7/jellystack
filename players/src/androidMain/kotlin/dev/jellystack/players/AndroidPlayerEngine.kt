@@ -337,6 +337,8 @@ class AndroidPlayerEngine(
                     ->
                         DefaultHttpDataSource
                             .Factory()
+                            // Jellyfin behind a reverse proxy commonly redirects http to https.
+                            .setAllowCrossProtocolRedirects(true)
                             .setDefaultRequestProperties(source.headers)
 
                     PlaybackMode.LOCAL -> DefaultDataSource.Factory(appContext)
