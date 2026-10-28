@@ -24,6 +24,7 @@ import dev.jellystack.players.cast.CastSessionSnapshot
 import dev.jellystack.players.cast.CastStreamType
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.launch
@@ -2903,6 +2904,34 @@ class PlaybackControllerTest {
 
                 val state = controller.state.value as PlaybackState.Active
                 assertEquals("item-2", state.mediaId)
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
+    fun cancelledPlayLeavesPreparingForStopped() =
+        runTest {
+            val engine = BlockingPlayerEngine()
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = TestPlaybackSourceResolver(),
+                    playerEngine = engine,
+                    scope = TestScope(UnconfinedTestDispatcher(testScheduler)),
+                )
+
+            try {
+                val playJob =
+                    launch {
+                        controller.play(PlaybackRequest.from(sampleItem(), sampleDetail(withDirect = true)), testEnvironment())
+                    }
+                runCurrent()
+                assertTrue(controller.state.value is PlaybackState.Preparing)
+
+                playJob.cancelAndJoin()
+
+                assertEquals(PlaybackState.Stopped, controller.state.value)
+                assertNull(controller.currentSession())
             } finally {
                 controller.release()
             }

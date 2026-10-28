@@ -289,6 +289,11 @@ class PlaybackController(
                 }
             }
         } catch (cancelled: CancellationException) {
+            if (attemptGeneration == playGeneration && !released) {
+                // The caller gave up on this attempt without stop/play/release moving on: never leave the
+                // controller in Preparing, which keeps a TV screen awake indefinitely.
+                stopInternal(saveProgress = true)
+            }
             throw cancelled
         } catch (error: Throwable) {
             if (attemptGeneration == playGeneration && !released) {
