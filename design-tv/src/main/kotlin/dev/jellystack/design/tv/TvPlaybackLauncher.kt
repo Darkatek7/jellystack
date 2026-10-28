@@ -31,6 +31,12 @@ internal data class TvResumeAsk(
 private fun JellyfinItem.isEpisodeContainer(): Boolean =
     type.equals("Series", ignoreCase = true) || type.equals("Season", ignoreCase = true)
 
+/** Where the launcher reads the item detail and the episodes of a series from. */
+internal class TvPlaybackSources(
+    val loadDetail: suspend (String) -> JellyfinItemDetail?,
+    val loadEpisodes: suspend (JellyfinItem) -> List<JellyfinItem>,
+)
+
 /** Starts a resolved request; returns false when there is no server to play from. */
 internal fun interface TvPlaybackStarter {
     suspend fun start(
@@ -105,13 +111,12 @@ private data class TvStartAttempt(
  * [openPlayer] runs as soon as a start begins, so the player route can show progress while the server
  * answers; [cancelStart] and a failure are reported through [startState].
  *
- * A Series or Season has no media source of its own: [loadEpisodes] lists its episodes and
+ * A Series or Season has no media source of its own: [TvPlaybackSources.loadEpisodes] lists its episodes and
  * [SeriesPlaybackTargetResolver] picks the one to play (the one in progress, else the first unwatched, else the first).
  */
 internal class TvPlaybackLauncher(
     private val scope: CoroutineScope,
-    private val loadDetail: suspend (String) -> JellyfinItemDetail?,
-    private val loadEpisodes: suspend (JellyfinItem) -> List<JellyfinItem>,
+    private val sources: TvPlaybackSources,
     private val starter: TvPlaybackStarter,
     private val currentSettings: () -> AppSettings,
     private val openPlayer: () -> Unit,
@@ -196,20 +201,20 @@ internal class TvPlaybackLauncher(
                             TvPlaybackStartState.Idle
                         }
                         is TvStartOutcome.Failed -> {
-                            JellystackLog.w(
-                                "TV playback did not start: ${outcome.reason} (item=${sanitizeIdentifier(attempt.item.id)})",
-                            )
+                            val itemId = sanitizeIdentifier(attempt.item.id)
+                            JellystackLog.w("TV playback did not start: ${outcome.reason} (item=$itemId)")
                             TvPlaybackStartState.Failed(attempt.item, outcome.failure)
                         }
                     }
             }
     }
 
-    private suspend fun run(attempt: TvStartAttempt): TvStartOutcome {
-        if (!attempt.item.isEpisodeContainer()) return begin(attempt)
-        val episode =
-            resolveEpisode(attempt.item)
-                ?: return TvStartOutcome.Failed(TvStartFailure.NO_PLAYABLE_EPISODE, "no playable episode")
+    private suspend fun run(attempt: TvStartAttempt): TvStartOutcome =
+        if (attempt.item.isEpisodeContainer()) runEpisodeOf(attempt.item) else begin(attempt)
+
+    private suspend fun runEpisodeOf(container: JellyfinItem): TvStartOutcome {
+        val episode = resolveEpisode(container)
+        if (episode == null) return TvStartOutcome.Failed(TvStartFailure.NO_PLAYABLE_EPISODE, "no playable episode")
         startState = TvPlaybackStartState.Starting(episode)
         return when (val decision = decidePlaybackStart(episode.positionTicks, currentSettings().resumeMode)) {
             is PlaybackStartDecision.Ask ->
@@ -220,11 +225,11 @@ internal class TvPlaybackLauncher(
 
     /** The episode a Play on [container] starts, or null when it has no playable one. */
     private suspend fun resolveEpisode(container: JellyfinItem): JellyfinItem? =
-        seriesTargetResolver.resolve(loadEpisodes(container), completedDownloadIds = emptySet())?.episode
+        seriesTargetResolver.resolve(sources.loadEpisodes(container), completedDownloadIds = emptySet())?.episode
 
     private suspend fun begin(target: TvStartAttempt): TvStartOutcome {
         val detail =
-            target.detail ?: loadDetail(target.item.id)
+            target.detail ?: sources.loadDetail(target.item.id)
                 ?: return TvStartOutcome.Failed(TvStartFailure.COULD_NOT_START, "item detail unavailable")
         val fromItem = PlaybackRequest.from(target.item, detail, startPolicy = target.policy)
         val groupStart = target.groupStartPositionMs

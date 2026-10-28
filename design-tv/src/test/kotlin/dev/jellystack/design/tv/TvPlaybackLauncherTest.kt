@@ -19,6 +19,7 @@ class TvPlaybackLauncherTest {
     private val started = mutableListOf<PlaybackRequest>()
     private val startedSettings = mutableListOf<AppSettings>()
     private var startedRoutes = 0
+    private var defaultPlaybackSpeed = 1f
 
     @Test
     fun askModeWithSavedPositionWaitsForTheAnswerAndStartsWithIt() =
@@ -152,7 +153,8 @@ class TvPlaybackLauncherTest {
     @Test
     fun aQueueFromTheSyncPlayGroupOpensThePlayerAtTheGroupPositionWithoutAskingOrSpeedingUp() =
         runTest {
-            val launcher = launcher(ResumeMode.ASK, defaultPlaybackSpeed = 1.5f)
+            defaultPlaybackSpeed = 1.5f
+            val launcher = launcher(ResumeMode.ASK)
 
             launcher.playForGroup(item(positionTicks = 7_540_000_000L), startPositionMs = 90_000L)
             assertEquals("the route opens before the server answered", 1, startedRoutes)
@@ -173,7 +175,7 @@ class TvPlaybackLauncherTest {
                     episode("s1e2", season = 1, number = 2, playedPercentage = 40.0, positionTicks = 7_540_000_000L),
                     episode("s1e3", season = 1, number = 3),
                 )
-            val launcher = launcher(ResumeMode.RESUME, episodes = episodes)
+            val launcher = launcher(ResumeMode.RESUME, loadEpisodes = { episodes })
 
             launcher.play(series())
             runCurrent()
@@ -191,7 +193,7 @@ class TvPlaybackLauncherTest {
                     episode("s1e2", season = 1, number = 2),
                     episode("s1e1", season = 1, number = 1),
                 )
-            val launcher = launcher(ResumeMode.RESUME, episodes = episodes)
+            val launcher = launcher(ResumeMode.RESUME, loadEpisodes = { episodes })
 
             launcher.play(series())
             runCurrent()
@@ -207,7 +209,7 @@ class TvPlaybackLauncherTest {
                     episode("s1e2", season = 1, number = 2, playedPercentage = 100.0),
                     episode("s1e1", season = 1, number = 1, playedPercentage = 100.0),
                 )
-            val launcher = launcher(ResumeMode.RESUME, episodes = episodes)
+            val launcher = launcher(ResumeMode.RESUME, loadEpisodes = { episodes })
 
             launcher.play(series())
             runCurrent()
@@ -218,8 +220,10 @@ class TvPlaybackLauncherTest {
     @Test
     fun anInProgressEpisodeOfASeriesAsksBeforeResumingInAskMode() =
         runTest {
-            val episodes = listOf(episode("s1e2", season = 1, number = 2, playedPercentage = 40.0, positionTicks = 7_540_000_000L))
-            val launcher = launcher(ResumeMode.ASK, episodes = episodes)
+            val inProgress =
+                episode("s1e2", season = 1, number = 2, playedPercentage = 40.0, positionTicks = 7_540_000_000L)
+            val episodes = listOf(inProgress)
+            val launcher = launcher(ResumeMode.ASK, loadEpisodes = { episodes })
 
             launcher.play(series())
             runCurrent()
@@ -240,16 +244,17 @@ class TvPlaybackLauncherTest {
     fun aSeriesWithoutAPlayableEpisodeEndsInAFailedStartWithItsOwnReason() =
         runTest {
             val series = series()
-            val noEpisodes = launcher(ResumeMode.RESUME, episodes = emptyList())
+            val noEpisodes = launcher(ResumeMode.RESUME, loadEpisodes = { emptyList() })
             noEpisodes.play(series)
             runCurrent()
             assertEquals(TvPlaybackStartState.Failed(series, TvStartFailure.NO_PLAYABLE_EPISODE), noEpisodes.startState)
 
-            val missingOnly =
-                launcher(ResumeMode.RESUME, episodes = listOf(episode("s1e1", season = 1, number = 1, locationType = "Virtual")))
+            val missing = episode("s1e1", season = 1, number = 1).copy(locationType = "Virtual")
+            val missingOnly = launcher(ResumeMode.RESUME, loadEpisodes = { listOf(missing) })
             missingOnly.play(series)
             runCurrent()
-            assertEquals(TvPlaybackStartState.Failed(series, TvStartFailure.NO_PLAYABLE_EPISODE), missingOnly.startState)
+            val failed = TvPlaybackStartState.Failed(series, TvStartFailure.NO_PLAYABLE_EPISODE)
+            assertEquals(failed, missingOnly.startState)
 
             assertEquals(emptyList<PlaybackRequest>(), started)
         }
@@ -285,14 +290,11 @@ class TvPlaybackLauncherTest {
         resumeMode: ResumeMode,
         startSucceeds: Boolean = true,
         loadDetail: suspend () -> JellyfinItemDetail? = { detail() },
-        episodes: List<JellyfinItem> = emptyList(),
-        loadEpisodes: suspend () -> List<JellyfinItem> = { episodes },
+        loadEpisodes: suspend () -> List<JellyfinItem> = { emptyList() },
         startGate: CompletableDeferred<Unit>? = null,
-        defaultPlaybackSpeed: Float = 1f,
     ) = TvPlaybackLauncher(
         scope = this,
-        loadDetail = { loadDetail() },
-        loadEpisodes = { loadEpisodes() },
+        sources = TvPlaybackSources(loadDetail = { loadDetail() }, loadEpisodes = { loadEpisodes() }),
         starter =
             TvPlaybackStarter { request, settings ->
                 startGate?.await()
@@ -312,9 +314,8 @@ class TvPlaybackLauncherTest {
         number: Int,
         playedPercentage: Double? = null,
         positionTicks: Long? = null,
-        locationType: String = "FileSystem",
     ) = item(positionTicks, id = id, type = "Episode").copy(
-        locationType = locationType,
+        locationType = "FileSystem",
         playedPercentage = playedPercentage,
         parentIndexNumber = season,
         indexNumber = number,

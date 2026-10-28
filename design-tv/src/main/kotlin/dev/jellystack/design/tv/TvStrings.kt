@@ -587,7 +587,8 @@ internal data class TvStrings(
                         forcedTrack = "Forced",
                         defaultTrack = "Default",
                         startFailedTitle = "Playback could not start",
-                        startFailedMessage = "Could not start playback. Check the connection to your server and try again.",
+                        startFailedMessage =
+                            "Could not start playback. Check the connection to your server and try again.",
                         noPlayableEpisodeMessage = "This series has no playable episodes.",
                     ),
                 seasonNumber = "Season %d",

@@ -951,8 +951,7 @@ private fun TvAuthenticatedApp(
         remember(accountGeneration, activeProfileId, playbackController) {
             TvPlaybackLauncher(
                 scope = scope,
-                loadDetail = browseRepository::getItemDetail,
-                loadEpisodes = browseRepository::latestEpisodesToPlay,
+                sources = TvPlaybackSources(browseRepository::getItemDetail, browseRepository::latestEpisodesToPlay),
                 starter = controllerPlaybackStarter(playbackController, environmentProvider),
                 currentSettings = currentSettings,
                 openPlayer = { push(TvRoute.Player) },
