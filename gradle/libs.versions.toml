@@ -37,6 +37,7 @@ screenshot = "0.0.1-alpha15"
 tv-material = "1.1.0"
 navigation3 = "1.1.4"
 benchmark = "1.4.1"
+baselineprofile = "1.4.1"
 profileinstaller = "1.4.1"
 uiautomator = "2.3.0"
 
@@ -109,6 +110,7 @@ androidx-biometric = { module = "androidx.biometric:biometric", version.ref = "a
 android-application = { id = "com.android.application", version.ref = "android-gradle-plugin" }
 android-library = { id = "com.android.library", version.ref = "android-gradle-plugin" }
 android-test = { id = "com.android.test", version.ref = "android-gradle-plugin" }
+androidx-baselineprofile = { id = "androidx.baselineprofile", version.ref = "baselineprofile" }
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
