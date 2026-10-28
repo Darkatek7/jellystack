@@ -223,6 +223,12 @@ internal fun TvSettingsScreen(
                 )
             }
         }
+        TvSettingsCategory.DIAGNOSTICS ->
+            TvDiagnosticsSettings(
+                appVersion = appVersion,
+                strings = strings,
+                modifier = modifier,
+            )
     }
 
     if (showSeerrConnect) {
@@ -759,6 +765,7 @@ private fun TvSettingsCategory.title(strings: TvStrings): String =
         TvSettingsCategory.AUDIO_SUBTITLES -> strings.settingsAudioSubtitles
         TvSettingsCategory.SEGMENT_SKIPPING -> strings.segmentSkipping
         TvSettingsCategory.CONNECTIONS -> strings.connections
+        TvSettingsCategory.DIAGNOSTICS -> strings.diagnostics.categoryTitle
     }
 
 private fun TvSettingsCategory.description(strings: TvStrings): String =
@@ -768,4 +775,5 @@ private fun TvSettingsCategory.description(strings: TvStrings): String =
         TvSettingsCategory.AUDIO_SUBTITLES -> strings.settingsAudioSubtitlesDescription
         TvSettingsCategory.SEGMENT_SKIPPING -> strings.settingsSegmentSkippingDescription
         TvSettingsCategory.CONNECTIONS -> strings.settingsConnectionsDescription
+        TvSettingsCategory.DIAGNOSTICS -> strings.diagnostics.categoryDescription
     }

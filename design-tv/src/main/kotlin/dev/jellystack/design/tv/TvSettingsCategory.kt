@@ -8,6 +8,7 @@ internal enum class TvSettingsCategory(
     AUDIO_SUBTITLES("audio-subtitles"),
     SEGMENT_SKIPPING("segment-skipping"),
     CONNECTIONS("connections"),
+    DIAGNOSTICS("diagnostics"),
     ;
 
     companion object {
@@ -42,6 +43,7 @@ internal fun tvSettingsControlKeys(category: TvSettingsCategory): List<String> =
         TvSettingsCategory.SEGMENT_SKIPPING ->
             listOf("segment-intro", "segment-recap", "segment-outro", "segment-preview", "segment-commercial")
         TvSettingsCategory.CONNECTIONS -> emptyList()
+        TvSettingsCategory.DIAGNOSTICS -> listOf(TV_DIAGNOSTICS_REFRESH_KEY)
     }
 
 internal fun tvSettingsCategoryTargetId(category: TvSettingsCategory): String = "settings:category:${category.routeKey}"
