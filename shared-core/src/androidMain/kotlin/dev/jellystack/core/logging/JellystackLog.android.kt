@@ -1,6 +1,8 @@
 package dev.jellystack.core.logging
 
 import android.util.Log
+import dev.jellystack.core.diagnostics.DiagnosticsLogLevel
+import dev.jellystack.core.diagnostics.JellystackDiagnostics
 
 actual object JellystackLog {
     private const val TAG = "Jellystack"
@@ -11,6 +13,7 @@ actual object JellystackLog {
     }
 
     actual fun d(message: String) {
+        JellystackDiagnostics.logBuffer.record(DiagnosticsLogLevel.DEBUG, message)
         if (!enabled) return
         JellystackLogMonitor.notifyDebug(message)
         runCatching { Log.d(TAG, message) }
@@ -21,6 +24,7 @@ actual object JellystackLog {
         message: String,
         throwable: Throwable?,
     ) {
+        JellystackDiagnostics.logBuffer.record(DiagnosticsLogLevel.ERROR, message, throwable)
         if (!enabled) return
         JellystackLogMonitor.notifyError(message, throwable)
         runCatching {
@@ -42,6 +46,7 @@ actual object JellystackLog {
         message: String,
         throwable: Throwable?,
     ) {
+        JellystackDiagnostics.logBuffer.record(DiagnosticsLogLevel.WARN, message, throwable)
         if (!enabled) return
         runCatching {
             if (throwable != null) {
