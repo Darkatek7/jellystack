@@ -2520,6 +2520,7 @@ class PlaybackControllerTest {
 
             try {
                 controller.play(request, testEnvironment())
+                engine.emitEvent(PlayerEvent.Ready)
                 engine.emitPosition(42_000L)
                 engine.emitEvent(PlayerEvent.Error(IllegalStateException("Decoder failed")))
                 controllerScope.advanceUntilIdle()
@@ -2563,6 +2564,7 @@ class PlaybackControllerTest {
 
             try {
                 controller.play(request, testEnvironment())
+                engine.emitEvent(PlayerEvent.Ready)
                 engine.emitPosition(31_000L)
                 controller.setPlaybackSpeed(1.5f)
                 controller.pause()
@@ -2603,6 +2605,7 @@ class PlaybackControllerTest {
 
             try {
                 controller.play(request, testEnvironment())
+                engine.emitEvent(PlayerEvent.Ready)
                 engine.emitPosition(31_000L)
                 engine.emitEvent(
                     PlayerEvent.Error(
@@ -2636,6 +2639,7 @@ class PlaybackControllerTest {
 
             try {
                 controller.play(request, testEnvironment())
+                engine.emitEvent(PlayerEvent.Ready)
                 engine.emitPosition(31_000L)
                 engine.emitEvent(PlayerEvent.AudioOutputUnavailable)
                 controllerScope.advanceUntilIdle()
@@ -2665,6 +2669,7 @@ class PlaybackControllerTest {
 
             try {
                 controller.play(request, testEnvironment())
+                engine.emitEvent(PlayerEvent.Ready)
                 engine.emitPosition(44_000L)
                 controller.setPlaybackSpeed(1.25f)
                 controller.pause()
@@ -2932,6 +2937,44 @@ class PlaybackControllerTest {
 
                 assertEquals(PlaybackState.Stopped, controller.state.value)
                 assertNull(controller.currentSession())
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
+    fun engineLeftoverPositionBeforeReadyDoesNotOverwriteTheResumePoint() =
+        runTest {
+            val store = InMemoryPlaybackProgressStore()
+            val engine = RecordingPlayerEngine()
+            val controllerScope = TestScope(UnconfinedTestDispatcher(testScheduler))
+            val controller =
+                PlaybackController(
+                    progressStore = store,
+                    playbackSourceResolver = TestPlaybackSourceResolver(),
+                    playerEngine = engine,
+                    scope = controllerScope,
+                )
+            val request =
+                PlaybackRequest.from(
+                    sampleItem(positionTicks = 120_000L.toTicks()),
+                    sampleDetail(withDirect = true, durationMs = 3_600_000L),
+                )
+
+            try {
+                controller.play(request, testEnvironment())
+                // The previous item's last position, then an idle player's zero.
+                engine.emitPosition(3_590_000L)
+                engine.emitPosition(0L)
+
+                assertEquals(120_000L, (controller.state.value as PlaybackState.Active).positionMs)
+                assertNull(store.read(request.mediaId))
+
+                engine.emitEvent(PlayerEvent.Ready)
+                engine.emitPosition(130_000L)
+
+                assertEquals(130_000L, (controller.state.value as PlaybackState.Active).positionMs)
+                assertEquals(130_000L, store.read(request.mediaId)?.positionMs)
             } finally {
                 controller.release()
             }

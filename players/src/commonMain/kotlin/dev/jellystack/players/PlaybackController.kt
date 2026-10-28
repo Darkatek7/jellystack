@@ -82,6 +82,9 @@ class PlaybackController(
     private var playGeneration = 0L
     private val fallbackState = PlaybackFallbackState()
     private val recovery = PlaybackRecoveryCoordinator(scope, playerEngine, playbackSourceResolver, fallbackState, RecoveryHost())
+
+    /** False until the player reported READY for the current session: earlier engine positions are leftovers. */
+    private var positionsConfirmed = false
     private val streamingReportMutex = Mutex()
     private var finalStreamingReportJob: Job? = null
     private var released = false
@@ -270,6 +273,7 @@ class PlaybackController(
             )
             ensureCurrentPlayAttempt(attemptGeneration)
             session = newSession
+            positionsConfirmed = false
             startCollectors()
             playerEngine.setVideoQuality(negotiatedSelection.maxBitrate)
             playerEngine.setPlaybackSpeed(1f)
@@ -1595,7 +1599,7 @@ class PlaybackController(
         progressJob =
             scope.launch {
                 playerEngine.positionUpdates.collect { positionMs ->
-                    updateProgress(positionMs)
+                    if (positionsConfirmed) updateProgress(positionMs)
                 }
             }
         eventsJob =
@@ -1603,7 +1607,10 @@ class PlaybackController(
                 playerEngine.events.collect { event ->
                     when (event) {
                         PlayerEvent.Buffering -> updatePlaybackPhase(PlaybackPhase.Buffering)
-                        PlayerEvent.Ready -> updatePlaybackPhase(PlaybackPhase.Ready)
+                        PlayerEvent.Ready -> {
+                            positionsConfirmed = true
+                            updatePlaybackPhase(PlaybackPhase.Ready)
+                        }
                         PlayerEvent.VideoOutputStalled -> {
                             if (!recovery.attemptFallback()) {
                                 publishPlaybackError(IllegalStateException("Video output did not start."))
