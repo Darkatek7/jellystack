@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("androidx.baselineprofile")
 }
 
 val keystorePropertiesFile = rootProject.file("keystore.properties")
@@ -77,6 +78,22 @@ android {
             signingConfig = signingConfigs.getByName("debug")
             matchingFallbacks += listOf("release")
         }
+        // The baseline profile plugin derives these two from release; declared here so they are signed with the
+        // debug key (release may have no keystore, and a differently signed APK cannot replace an installed one).
+        // nonMinifiedRelease is what the profile is generated from; benchmarkRelease is what the real-app
+        // macrobenchmarks measure.
+        create("nonMinifiedRelease") {
+            initWith(getByName("release"))
+            isMinifyEnabled = false
+            isShrinkResources = false
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+        }
+        create("benchmarkRelease") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+        }
     }
 
     buildFeatures {
@@ -100,6 +117,16 @@ android {
 
 kotlin {
     jvmToolchain(17)
+}
+
+// Generated from :tv-baseline-profile with `generateBaselineProfile` on a TV emulator or device and committed
+// under src/main/generated/baselineProfiles. Fire TV gets no Play cloud profiles, so the profile packaged in
+// the APK is what keeps the first runs off the interpreter.
+baselineProfile {
+    mergeIntoMain = true
+    saveInSrc = true
+    automaticGenerationDuringBuild = false
+    dexLayoutOptimization = true
 }
 
 tasks.named("check").configure {
@@ -126,6 +153,8 @@ dependencies {
     implementation(libs.koin.compose)
     implementation(libs.napier)
     implementation(libs.androidx.profileinstaller)
+
+    baselineProfile(projects.tvBaselineProfile)
 
     testImplementation(kotlin("test"))
     testImplementation(libs.coroutines.test)

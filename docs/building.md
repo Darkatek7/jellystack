@@ -84,6 +84,18 @@ Reference images live in `design-screenshots/src/screenshotTestDebug/reference/`
 
 The TV tests render production `design-tv` composables through `JellystackTvGoldenFixture` (`design-tv/.../TvGoldenFixtures.kt`) with fictional data and no network artwork.
 
+## TV release shrinking and baseline profile
+
+`app-tv` release and `benchmark` builds run R8 (code and resource shrinking); keep rules live in `app-tv/proguard-rules.pro` and should only grow after a runtime failure of the shrunk build proves a rule is needed. Check a shrunk build with `./gradlew :app-tv:assembleBenchmark` on a TV emulator or device (`assembleRelease` needs the release keystore).
+
+The TV baseline profile and startup profile are committed under `app-tv/src/main/generated/baselineProfiles/`. Fire TV gets no Play cloud profiles, so this is what makes the first runs fast. Regenerate them after larger UI or startup changes, with a TV emulator or device running that is already signed in to a Jellyfin server with a few libraries (a local Jellyfin test server works):
+
+```bash
+ANDROID_SERIAL=<tv device serial> ./gradlew :app-tv:generateBaselineProfile
+```
+
+Set `ANDROID_SERIAL` so the phone emulator is not used too. Gradle uninstalls the app after the run, so sign in again afterwards. The generator and the real-app macrobenchmarks live in `tv-baseline-profile/`; the synthetic-fixture benchmark stays in `tv-benchmark/`.
+
 ## iOS (experimental)
 
 On macOS:
