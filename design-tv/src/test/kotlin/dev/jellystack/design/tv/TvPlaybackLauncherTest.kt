@@ -16,6 +16,7 @@ import org.junit.Test
 
 class TvPlaybackLauncherTest {
     private val started = mutableListOf<PlaybackRequest>()
+    private val startedSettings = mutableListOf<AppSettings>()
     private var startedRoutes = 0
 
     @Test
@@ -147,21 +148,38 @@ class TvPlaybackLauncherTest {
             assertEquals(TvPlaybackStartState.Idle, launcher.startState)
         }
 
+    @Test
+    fun aQueueFromTheSyncPlayGroupOpensThePlayerAtTheGroupPositionWithoutAskingOrSpeedingUp() =
+        runTest {
+            val launcher = launcher(ResumeMode.ASK, defaultPlaybackSpeed = 1.5f)
+
+            launcher.playForGroup(item(positionTicks = 7_540_000_000L), startPositionMs = 90_000L)
+            assertEquals("the route opens before the server answered", 1, startedRoutes)
+            runCurrent()
+
+            assertNull(launcher.pendingAsk)
+            assertEquals(listOf(900_000_000L), started.map { it.resumePositionTicks })
+            assertEquals(listOf(1f), startedSettings.map { it.defaultPlaybackSpeed })
+            assertEquals(TvPlaybackStartState.Idle, launcher.startState)
+        }
+
     private fun TestScope.launcher(
         resumeMode: ResumeMode,
         startSucceeds: Boolean = true,
         loadDetail: suspend () -> JellyfinItemDetail? = { detail() },
         startGate: CompletableDeferred<Unit>? = null,
+        defaultPlaybackSpeed: Float = 1f,
     ) = TvPlaybackLauncher(
         scope = this,
         loadDetail = { loadDetail() },
         starter =
-            TvPlaybackStarter { request, _ ->
+            TvPlaybackStarter { request, settings ->
                 startGate?.await()
                 if (startSucceeds) started += request
+                startedSettings += settings
                 startSucceeds
             },
-        currentSettings = { AppSettings(resumeMode = resumeMode) },
+        currentSettings = { AppSettings(resumeMode = resumeMode, defaultPlaybackSpeed = defaultPlaybackSpeed) },
         openPlayer = { startedRoutes += 1 },
     )
 

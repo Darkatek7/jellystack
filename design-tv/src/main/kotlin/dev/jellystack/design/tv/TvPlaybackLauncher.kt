@@ -65,6 +65,8 @@ private data class TvStartAttempt(
     val item: JellyfinItem,
     val detail: JellyfinItemDetail?,
     val policy: PlaybackStartPolicy,
+    /** Set when another SyncPlay member started the item: the group decides the position and the speed. */
+    val groupStartPositionMs: Long? = null,
 )
 
 /**
@@ -100,6 +102,20 @@ internal class TvPlaybackLauncher(
                 pendingAsk = TvResumeAsk(item, detail, formatPlaybackTime(decision.resumePositionMs))
             is PlaybackStartDecision.Start -> start(TvStartAttempt(item, detail, decision.policy))
         }
+    }
+
+    /**
+     * Plays [item] because another member of the joined SyncPlay group started it at [startPositionMs]. It opens the
+     * player route like a local play action (without it the audio would play behind the browse UI) and skips the
+     * resume prompt, because the group decides where to start.
+     */
+    fun playForGroup(
+        item: JellyfinItem,
+        startPositionMs: Long,
+    ) {
+        pendingAsk = null
+        val attempt = TvStartAttempt(item, detail = null, policy = PlaybackStartPolicy.RESUME)
+        start(attempt.copy(groupStartPositionMs = startPositionMs))
     }
 
     /** Answers the pending prompt; `null` cancels it. */
@@ -138,7 +154,14 @@ internal class TvPlaybackLauncher(
 
     private suspend fun run(attempt: TvStartAttempt): Boolean {
         val detail = attempt.detail ?: loadDetail(attempt.item.id) ?: return false
-        val request = PlaybackRequest.from(attempt.item, detail, startPolicy = attempt.policy)
-        return starter.start(request, currentSettings())
+        val fromItem = PlaybackRequest.from(attempt.item, detail, startPolicy = attempt.policy)
+        val groupStart = attempt.groupStartPositionMs
+        // SyncPlay keeps the whole group at normal speed, whatever the default speed setting says.
+        val groupTicks = groupStart?.times(TICKS_PER_MILLISECOND)
+        val request = if (groupTicks == null) fromItem else fromItem.copy(resumePositionTicks = groupTicks)
+        val settings = currentSettings().let { if (groupStart == null) it else it.copy(defaultPlaybackSpeed = 1f) }
+        return starter.start(request, settings)
     }
 }
+
+private const val TICKS_PER_MILLISECOND = 10_000L
