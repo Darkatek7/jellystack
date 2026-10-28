@@ -42,6 +42,7 @@ class JellyfinBrowseRepositoryTest {
     private val nextUpParentIds = mutableListOf<String?>()
     private var libraryItemsMode: LibraryItemsResponseMode = LibraryItemsResponseMode.DEFAULT
     private var libraryItemsRequestCount: Int = 0
+    private var similarBody: String = SIMILAR_JSON
 
     private val environment =
         JellyfinEnvironment(
@@ -78,7 +79,7 @@ class JellyfinBrowseRepositoryTest {
                     }
                     "/Items/item-1" -> DETAIL_JSON
                     "/Items/episode-artwork" -> EPISODE_ARTWORK_DETAIL_JSON
-                    "/Items/item-1/Similar" -> SIMILAR_JSON
+                    "/Items/item-1/Similar" -> similarBody
                     "/UserPlayedItems/item-1" -> PLAYED_USER_DATA_JSON
                     "/Items/item-1/LocalTrailers" -> LOCAL_TRAILERS_JSON
                     "/Items/Latest" ->
@@ -813,6 +814,28 @@ class JellyfinBrowseRepositoryTest {
             val stored = itemStore.listContinueWatching(environment.serverKey, limit = 10)
             assertEquals(listOf("item-1"), stored.map { it.id })
             assertNull(itemStore.get("stale-episode")?.positionTicks)
+        }
+
+    @Test
+    fun anItemWithoutANameStaysInThePageAndFallsBackToItsSortName() =
+        runTest {
+            similarBody =
+                """
+                {
+                  "Items": [
+                    {"Id": "no-name", "Type": "Movie", "SortName": "sorted title"},
+                    {"Id": "blank-name", "Name": " ", "Type": "Movie"},
+                    {"Id": "named", "Name": "Named", "Type": "Movie"}
+                  ]
+                }
+                """.trimIndent()
+
+            val items = repository.fetchSimilarItems("item-1").associateBy { it.id }
+
+            assertEquals(setOf("no-name", "blank-name", "named"), items.keys)
+            assertEquals("sorted title", items.getValue("no-name").name)
+            assertEquals("", items.getValue("blank-name").name)
+            assertEquals("Named", items.getValue("named").name)
         }
 
     @Test

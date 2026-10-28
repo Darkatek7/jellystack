@@ -912,7 +912,7 @@ private fun JellyfinItemDto.toRecord(
         id = id,
         serverId = environment.serverKey,
         libraryId = fallbackLibraryId ?: parentId,
-        name = name,
+        name = displayName(),
         sortName = sortName,
         overview = overview,
         type = type,
@@ -971,6 +971,15 @@ private fun JellyfinItemDto.toRecord(
             ).normalized(),
     )
 
+/**
+ * Servers may omit `Name`. The sort name stands in for it, and an item without either keeps an empty name so the UI
+ * can show its own "untitled" label instead of the whole page failing to decode.
+ */
+private fun JellyfinItemDto.displayName(): String = name.orBlankFallback(sortName)
+
+private fun String?.orBlankFallback(fallback: String?): String =
+    this?.takeIf(String::isNotBlank) ?: fallback?.takeIf(String::isNotBlank).orEmpty()
+
 private fun JellyfinItemRecord.toDomain(): JellyfinItem =
     JellyfinItem(
         id = id,
@@ -1024,7 +1033,7 @@ private fun JellyfinItemDetailRecord.toDomain(): JellyfinItemDetail =
 private fun JellyfinItemDetailDto.toDomain(): JellyfinItemDetail =
     JellyfinItemDetail(
         id = id,
-        name = name,
+        name = name.orBlankFallback(originalTitle),
         overview = overview,
         taglines = taglines ?: emptyList(),
         runTimeTicks = runTimeTicks,
@@ -1033,7 +1042,7 @@ private fun JellyfinItemDetailDto.toDomain(): JellyfinItemDetail =
         communityRating = communityRating,
         officialRating = officialRating,
         genres = genres ?: emptyList(),
-        studios = studios?.map { it.name } ?: emptyList(),
+        studios = studios.orEmpty().mapNotNull { it.name?.takeIf(String::isNotBlank) },
         primaryImageTag = imageTags?.get("Primary"),
         backdropImageTags = backdropImageTags.orEmpty(),
         mediaSources = mediaSources.map { it.toDomain() },

@@ -395,7 +395,7 @@ data class JellyfinItemDto(
     @SerialName("Id")
     val id: String,
     @SerialName("Name")
-    val name: String,
+    val name: String? = null,
     @SerialName("Type")
     val type: String,
     @SerialName("MediaType")
@@ -485,7 +485,7 @@ data class JellyfinItemDetailDto(
     @SerialName("Id")
     val id: String,
     @SerialName("Name")
-    val name: String,
+    val name: String? = null,
     @SerialName("Overview")
     val overview: String? = null,
     @SerialName("OriginalTitle")
@@ -547,7 +547,7 @@ data class JellyfinPersonDto(
 @Serializable
 data class JellyfinStudioDto(
     @SerialName("Name")
-    val name: String,
+    val name: String? = null,
 )
 
 @Serializable
