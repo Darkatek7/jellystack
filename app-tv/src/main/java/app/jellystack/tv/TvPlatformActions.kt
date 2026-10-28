@@ -26,10 +26,12 @@ internal class TvPlatformActionCoordinator<E>(
     private var bridgeReleased = false
 
     fun onPlaybackActivityChanged(active: Boolean) {
-        actions.setKeepScreenOn(active)
         if (active && !playbackWasActive) actions.markPlaybackStarted()
         playbackWasActive = active
     }
+
+    /** Decided separately from playback activity: a long pause releases the screen, see [keepScreenOn]. */
+    fun onKeepScreenOnChanged(enabled: Boolean) = actions.setKeepScreenOn(enabled)
 
     fun dispatchMediaKey(
         event: E,

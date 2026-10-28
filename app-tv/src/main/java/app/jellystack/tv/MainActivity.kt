@@ -33,6 +33,7 @@ import dev.jellystack.players.PlaybackPreferencesProvider
 import dev.jellystack.players.PlaybackState
 import dev.jellystack.players.SettingsPlaybackProgressStore
 import dev.jellystack.players.SettingsSubtitlePreferenceStore
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 @OptIn(UnstableApi::class)
@@ -125,10 +126,9 @@ class MainActivity : AppCompatActivity() {
                 },
             )
         lifecycleScope.launch {
-            playbackController.state.collect { state ->
-                val playbackIsActive = state is PlaybackState.Active || state is PlaybackState.Preparing
-                platformActions.onPlaybackActivityChanged(playbackIsActive)
-            }
+            val activity = playbackController.state.map(PlaybackState::screenActivity)
+            launch { activity.map { it != TvScreenActivity.IDLE }.collect(platformActions::onPlaybackActivityChanged) }
+            launch { activity.keepScreenOn().collect(platformActions::onKeepScreenOnChanged) }
         }
         setContent {
             TvJellystackRoot(
