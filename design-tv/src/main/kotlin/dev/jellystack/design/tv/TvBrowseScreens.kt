@@ -71,7 +71,6 @@ import dev.jellystack.core.jellyfin.LibraryLoadErrorKind
 import dev.jellystack.core.jellyfin.isBrowseContainer
 import dev.jellystack.core.jellyseerr.JellyseerrRecommendationRail
 import dev.jellystack.core.jellyseerr.JellyseerrRecommendationsState
-import dev.jellystack.core.jellyseerr.JellyseerrRequestSummary
 import dev.jellystack.core.jellyseerr.JellyseerrRequestsState
 import dev.jellystack.core.jellyseerr.JellyseerrSearchItem
 import dev.jellystack.core.profile.MediaIdentity
@@ -172,8 +171,8 @@ internal fun TvHomeScreen(
         (homeSections as? HomeSectionsState.Ready)
             ?.sections
             .orEmpty()
-            .distinctBy { it.id }
             .filter { it.items.isNotEmpty() }
+            .distinctBy { it.id }
     val focusRows =
         remember(visibleSections, homeSections, state.continueWatching, state.nextUp, state.libraries, myList) {
             buildList {
@@ -1281,27 +1280,24 @@ internal fun TvDiscoverScreen(
                 JellyseerrRecommendationRail.entries.filter { rail -> state.rails[rail]?.items?.isNotEmpty() == true }
             }.orEmpty()
     val requestItems = (requests as? JellyseerrRequestsState.Ready)?.requests.orEmpty()
-    if (hasCinematicDiscoverContent(ready, requestItems)) {
-        val cinematicTargetId = tvCinematicDiscoverInitialTargetId(requireNotNull(ready), requestItems)
+    val cinematicRows = ready?.let { buildTvDiscoverRows(it, requestItems, strings, isSaved) }
+    val cinematicTargetId = cinematicRows?.initialTargetId
+    if (cinematicRows != null && cinematicTargetId != null) {
         TvCinematicDiscoverContent(
-            state = ready,
-            requestItems = requestItems,
+            discover = cinematicRows,
             hasPartialFailure = content?.hasRailFailures == true,
             strings = strings,
             focusMemory = focusMemory,
             onItem = onItem,
-            isSaved = isSaved,
         )
-        if (cinematicTargetId != null) {
-            TvDiscoverRetryFocusRecovery(
-                request = retryFocusRequest,
-                currentTargetId = cinematicTargetId,
-                isRefreshing = false,
-                onCompleted = { revision ->
-                    if (retryFocusRequest?.revision == revision) retryFocusRequest = null
-                },
-            )
-        }
+        TvDiscoverRetryFocusRecovery(
+            request = retryFocusRequest,
+            currentTargetId = cinematicTargetId,
+            isRefreshing = false,
+            onCompleted = { revision ->
+                if (retryFocusRequest?.revision == revision) retryFocusRequest = null
+            },
+        )
         return
     }
     val outerState = rememberLazyListState()
@@ -1471,7 +1467,7 @@ internal fun TvDiscoverScreen(
                             val item = request.toSearchItem(strings.messages::untitledRequest)
                             val targetId = tvDiscoverItemTargetId("requests", request.id.toString())
                             TvMediaCard(
-                                title = request.title ?: request.originalTitle ?: strings.messages.untitledRequest(request.id),
+                                title = request.titleOrUntitled(strings.messages::untitledRequest),
                                 subtitle =
                                     listOfNotNull(
                                         request.requestStatus.label(strings),
@@ -1601,38 +1597,3 @@ internal fun JellyfinItem.subtitleText(): String? =
         if (type.equals("Episode", true)) tvEpisodeCode(parentIndexNumber, indexNumber) else null,
         tvRatingLabel(communityRating),
     ).joinToString("  •  ").ifBlank { null }
-
-internal fun JellyseerrRequestSummary.toSearchItem(untitled: (Int) -> String = { "" }): JellyseerrSearchItem? {
-    val id = tmdbId ?: return null
-    return JellyseerrSearchItem(
-        tmdbId = id,
-        mediaType = mediaType,
-        title = title ?: originalTitle ?: untitled(id),
-        overview = null,
-        releaseYear = null,
-        posterPath = posterPath,
-        backdropPath = backdropPath,
-        mediaInfoId = mediaId,
-        tvdbId = tvdbId,
-        availability = availability,
-        requests = listOf(this),
-    )
-}
-
-internal fun tvCinematicDiscoverInitialTargetId(
-    state: JellyseerrRecommendationsState.Ready,
-    requestItems: List<JellyseerrRequestSummary>,
-): String? {
-    val railTarget =
-        JellyseerrRecommendationRail.entries.firstNotNullOfOrNull { rail ->
-            state.rails[rail]?.items?.firstOrNull()?.let { item ->
-                tvCinematicFocusTargetId("discover-${rail.name.lowercase()}", item.cinematicKey())
-            }
-        }
-    if (railTarget != null) return railTarget
-    return requestItems
-        .firstNotNullOfOrNull { it.toSearchItem() }
-        ?.let { requestItem ->
-            tvCinematicFocusTargetId(DISCOVER_REQUESTS_ROW, "request:${requestItem.cinematicKey()}")
-        }
-}
