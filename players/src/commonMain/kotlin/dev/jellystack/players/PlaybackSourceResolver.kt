@@ -17,6 +17,9 @@ data class ResolvedPlaybackSource(
     val segmentContainer: String? = null,
 )
 
+/** `SubtitleStreamIndex` value that asks the server for no subtitles at all. */
+internal const val SUBTITLES_DISABLED_INDEX = -1
+
 data class PlaybackSourceOptions(
     val audioStreamIndex: Int? = null,
     val subtitleStreamIndex: Int? = null,

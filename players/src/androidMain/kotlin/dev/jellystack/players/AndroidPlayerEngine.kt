@@ -34,6 +34,7 @@ import dev.jellystack.core.preferences.SubtitleBackground
 import dev.jellystack.core.preferences.SubtitleTextSize
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -124,7 +125,7 @@ class AndroidPlayerEngine(
                             )
                             firstFrameWatchdog?.cancel()
                             audioOutputWatchdog?.cancel()
-                            scope.launch { eventFlow.emit(PlayerEvent.Error(error)) }
+                            scope.launch { eventFlow.emit(PlayerEvent.Error(error, error.toPlayerErrorCategory())) }
                         }
 
                         override fun onRenderedFirstFrame() {
@@ -183,7 +184,8 @@ class AndroidPlayerEngine(
     private var positionJob =
         scope.launch {
             while (isActive) {
-                positionFlow.emit(exoPlayer.currentPosition)
+                // An idle player has no media: its position is 0 or left over from the previous item.
+                if (exoPlayer.playbackState != Player.STATE_IDLE) positionFlow.emit(exoPlayer.currentPosition)
                 runtimeStatsFlow.value = currentRuntimeStats()
                 delay(POSITION_POLL_INTERVAL_MS)
             }
@@ -301,6 +303,7 @@ class AndroidPlayerEngine(
     ) {
         firstFrameWatchdog?.cancel()
         audioOutputWatchdog?.cancel()
+        dropStalePosition()
         firstFrameState.value = false
         expectsAudioOutput = audioTrack != null || source.audioStreamIndex != null
         audioOutputUnavailableReported = false
@@ -334,6 +337,9 @@ class AndroidPlayerEngine(
                     ->
                         DefaultHttpDataSource
                             .Factory()
+                            // Jellyfin behind a reverse proxy commonly redirects http to https. Only a plain-http source
+                            // may switch protocol, so an https source never sends its token to an http redirect.
+                            .setAllowCrossProtocolRedirects(source.url.startsWith("http://", ignoreCase = true))
                             .setDefaultRequestProperties(source.headers)
 
                     PlaybackMode.LOCAL -> DefaultDataSource.Factory(appContext)
@@ -378,6 +384,7 @@ class AndroidPlayerEngine(
         sessionArtworkUrl = null
         exoPlayer.stop()
         exoPlayer.clearMediaItems()
+        dropStalePosition()
     }
 
     override fun setSessionMetadata(
@@ -441,6 +448,10 @@ class AndroidPlayerEngine(
     }
 
     internal fun media3Player(): Player = exoPlayer
+
+    /** Forgets the replayed position, so a new collector never starts from the previous item's last one. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private fun dropStalePosition() = positionFlow.resetReplayCache()
 
     private fun scheduleFirstFrameWatchdog() {
         if (firstFrameState.value || !exoPlayer.playWhenReady || exoPlayer.videoFormat == null) return

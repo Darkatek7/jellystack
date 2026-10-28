@@ -233,6 +233,8 @@ sealed interface PlaybackState {
         val metadata: PlaybackMetadata? = null,
         val canRetry: Boolean = false,
         val mediaKind: PlaybackMediaKind = PlaybackMediaKind.VIDEO,
+        /** [PlayerErrorCategory.UNAUTHORIZED] means the server rejected the session: the user has to sign in again. */
+        val category: PlayerErrorCategory = PlayerErrorCategory.MEDIA,
     ) : PlaybackState
 
     sealed interface Active : PlaybackState {
@@ -395,6 +397,43 @@ internal fun JellyfinMediaStream.toSubtitleTrack(): SubtitleTrack? {
         isDefault = isDefault,
         isForced = isForced,
         streamIndex = index,
+    )
+}
+
+/** Reconciles the planned [PlaybackStreamSelection] with the source the server actually negotiated. */
+internal fun PlaybackStreamSelection.withResolvedSource(resolved: ResolvedPlaybackSource): PlaybackStreamSelection {
+    val resolvedSourceId = resolved.mediaSourceId ?: sourceId
+    val autoSelected =
+        selectedQualityId == PlaybackQualityOption.AUTO_ID ||
+            resolved.supportsTranscoding == false
+    val reconciledOptions =
+        qualityOptions
+            .map { option ->
+                if (option.isAuto && autoSelected) {
+                    option.copy(
+                        mode = resolved.mode,
+                        sourceId = resolvedSourceId,
+                    )
+                } else {
+                    option
+                }
+            }.let { options ->
+                if (resolved.supportsTranscoding == false) {
+                    options.filter { it.isAuto }
+                } else {
+                    options
+                }
+            }
+    return copy(
+        sourceId = resolvedSourceId,
+        mode = resolved.mode,
+        qualityOptions = reconciledOptions,
+        selectedQualityId =
+            if (resolved.supportsTranscoding == false) {
+                PlaybackQualityOption.AUTO_ID
+            } else {
+                selectedQualityId
+            },
     )
 }
 
