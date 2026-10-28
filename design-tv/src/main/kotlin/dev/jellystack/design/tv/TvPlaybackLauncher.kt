@@ -16,6 +16,7 @@ import dev.jellystack.players.PlaybackStartPolicy
 import dev.jellystack.players.decidePlaybackStart
 import dev.jellystack.players.formatPlaybackTime
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /** A play action waiting for the user to choose between resuming and restarting. */
@@ -45,19 +46,49 @@ internal fun controllerPlaybackStarter(
     true
 }
 
+/** Progress of a play action the user triggered, from the press until the controller owns the outcome. */
+internal sealed interface TvPlaybackStartState {
+    data object Idle : TvPlaybackStartState
+
+    /** Detail, source negotiation or the player start is still running for [item]. */
+    data class Starting(
+        val item: JellyfinItem,
+    ) : TvPlaybackStartState
+
+    /** The start ended before the controller took over (detail unavailable, no server, unexpected failure). */
+    data class Failed(
+        val item: JellyfinItem,
+    ) : TvPlaybackStartState
+}
+
+private data class TvStartAttempt(
+    val item: JellyfinItem,
+    val detail: JellyfinItemDetail?,
+    val policy: PlaybackStartPolicy,
+)
+
 /**
  * The one TV entry point for starting Jellyfin playback from Home, Library, Search, and Detail.
  * Applies the resume rule from [decidePlaybackStart] before handing the request to [starter].
+ *
+ * [openPlayer] runs as soon as a start begins, so the player route can show progress while the server
+ * answers; [cancelStart] and a failure are reported through [startState].
  */
 internal class TvPlaybackLauncher(
     private val scope: CoroutineScope,
     private val loadDetail: suspend (String) -> JellyfinItemDetail?,
     private val starter: TvPlaybackStarter,
     private val currentSettings: () -> AppSettings,
-    private val onStarted: () -> Unit,
+    private val openPlayer: () -> Unit,
 ) {
     var pendingAsk by mutableStateOf<TvResumeAsk?>(null)
         private set
+
+    var startState by mutableStateOf<TvPlaybackStartState>(TvPlaybackStartState.Idle)
+        private set
+
+    private var startJob: Job? = null
+    private var lastAttempt: TvStartAttempt? = null
 
     /** Plays [item]; [detail] skips the detail request when the caller already has it. */
     fun play(
@@ -67,7 +98,7 @@ internal class TvPlaybackLauncher(
         when (val decision = decidePlaybackStart(item.positionTicks, currentSettings().resumeMode)) {
             is PlaybackStartDecision.Ask ->
                 pendingAsk = TvResumeAsk(item, detail, formatPlaybackTime(decision.resumePositionMs))
-            is PlaybackStartDecision.Start -> start(item, detail, decision.policy)
+            is PlaybackStartDecision.Start -> start(TvStartAttempt(item, detail, decision.policy))
         }
     }
 
@@ -75,20 +106,39 @@ internal class TvPlaybackLauncher(
     fun answerAsk(policy: PlaybackStartPolicy?) {
         val ask = pendingAsk ?: return
         pendingAsk = null
-        if (policy != null) start(ask.item, ask.detail, policy)
+        if (policy != null) start(TvStartAttempt(ask.item, ask.detail, policy))
     }
 
-    private fun start(
-        item: JellyfinItem,
-        knownDetail: JellyfinItemDetail?,
-        policy: PlaybackStartPolicy,
-    ) {
-        scope.launch {
-            runSuspendCatching {
-                val detail = knownDetail ?: loadDetail(item.id) ?: return@runSuspendCatching
-                val request = PlaybackRequest.from(item, detail, startPolicy = policy)
-                if (starter.start(request, currentSettings())) onStarted()
-            }.onFailure { failure -> JellystackLog.e("TV playback could not start", failure) }
-        }
+    /** Runs the failed start again. */
+    fun retryStart() {
+        lastAttempt?.let(::start)
+    }
+
+    /** Abandons a start that has not reached the controller yet, or one that failed. */
+    fun cancelStart() {
+        startJob?.cancel()
+        startJob = null
+        startState = TvPlaybackStartState.Idle
+    }
+
+    private fun start(attempt: TvStartAttempt) {
+        startJob?.cancel()
+        lastAttempt = attempt
+        startState = TvPlaybackStartState.Starting(attempt.item)
+        openPlayer()
+        startJob =
+            scope.launch {
+                val started =
+                    runSuspendCatching { run(attempt) }
+                        .onFailure { failure -> JellystackLog.e("TV playback could not start", failure) }
+                        .getOrDefault(false)
+                startState = if (started) TvPlaybackStartState.Idle else TvPlaybackStartState.Failed(attempt.item)
+            }
+    }
+
+    private suspend fun run(attempt: TvStartAttempt): Boolean {
+        val detail = attempt.detail ?: loadDetail(attempt.item.id) ?: return false
+        val request = PlaybackRequest.from(attempt.item, detail, startPolicy = attempt.policy)
+        return starter.start(request, currentSettings())
     }
 }

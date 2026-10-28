@@ -6,6 +6,7 @@ import dev.jellystack.core.preferences.AppSettings
 import dev.jellystack.core.preferences.ResumeMode
 import dev.jellystack.players.PlaybackRequest
 import dev.jellystack.players.PlaybackStartPolicy
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -50,45 +51,118 @@ class TvPlaybackLauncherTest {
         }
 
     @Test
-    fun itemsWithoutPositionStartImmediatelyAndRouteOnlyAfterAStart() =
+    fun theStartOpensThePlayerRightAwayAndEndsIdleOnceTheControllerTookOver() =
         runTest {
-            launcher(ResumeMode.ASK).play(item(positionTicks = null))
-            runCurrent()
-            assertEquals(listOf(PlaybackStartPolicy.INHERIT), started.map { it.startPolicy })
-            assertEquals(1, startedRoutes)
+            val gate = CompletableDeferred<Unit>()
+            val launcher = launcher(ResumeMode.ASK, startGate = gate)
 
-            launcher(ResumeMode.RESUME, startSucceeds = false).play(item(positionTicks = 7_540_000_000L))
+            val movie = item(positionTicks = null)
+            launcher.play(movie)
+            assertEquals("the route opens before the server answered", 1, startedRoutes)
+            assertEquals(TvPlaybackStartState.Starting(movie), launcher.startState)
+
             runCurrent()
-            assertEquals("no server: no player route", 1, startedRoutes)
+            assertEquals(TvPlaybackStartState.Starting(movie), launcher.startState)
+            gate.complete(Unit)
+            runCurrent()
+
+            assertEquals(listOf(PlaybackStartPolicy.INHERIT), started.map { it.startPolicy })
+            assertEquals(TvPlaybackStartState.Idle, launcher.startState)
         }
 
     @Test
-    fun missingDetailOrFailingDetailRequestStartsNothing() =
+    fun missingServerDetailOrFailingDetailRequestEndInAFailedStartInsteadOfNothing() =
         runTest {
-            val unstarted = item(positionTicks = null)
-            launcher(ResumeMode.RESUME, detail = null).play(unstarted)
-            launcher(ResumeMode.RESUME, detailFailure = IllegalStateException("offline")).play(unstarted)
+            val movie = item(positionTicks = null)
+
+            val noServer = launcher(ResumeMode.RESUME, startSucceeds = false)
+            noServer.play(movie)
             runCurrent()
+            assertEquals(TvPlaybackStartState.Failed(movie), noServer.startState)
+
+            val noDetail = launcher(ResumeMode.RESUME, loadDetail = { null })
+            noDetail.play(movie)
+            runCurrent()
+            assertEquals(TvPlaybackStartState.Failed(movie), noDetail.startState)
+
+            val failingDetail = launcher(ResumeMode.RESUME, loadDetail = { throw IllegalStateException("offline") })
+            failingDetail.play(movie)
+            runCurrent()
+            assertEquals(TvPlaybackStartState.Failed(movie), failingDetail.startState)
 
             assertEquals(emptyList<PlaybackRequest>(), started)
-            assertEquals(0, startedRoutes)
+        }
+
+    @Test
+    fun retryRunsTheFailedStartAgain() =
+        runTest {
+            var detailAvailable = false
+            val movie = item(positionTicks = null)
+            val launcher = launcher(ResumeMode.RESUME, loadDetail = { if (detailAvailable) detail() else null })
+
+            launcher.play(movie)
+            runCurrent()
+            assertEquals(TvPlaybackStartState.Failed(movie), launcher.startState)
+
+            detailAvailable = true
+            launcher.retryStart()
+            assertEquals(TvPlaybackStartState.Starting(movie), launcher.startState)
+            runCurrent()
+
+            assertEquals(TvPlaybackStartState.Idle, launcher.startState)
+            assertEquals(1, started.size)
+        }
+
+    @Test
+    fun cancellingWhileTheStartIsPendingStopsItBeforeThePlayerStarts() =
+        runTest {
+            val gate = CompletableDeferred<Unit>()
+            val launcher = launcher(ResumeMode.RESUME, startGate = gate)
+
+            launcher.play(item(positionTicks = null))
+            runCurrent()
+            launcher.cancelStart()
+            gate.complete(Unit)
+            runCurrent()
+
+            assertEquals(TvPlaybackStartState.Idle, launcher.startState)
+            assertEquals(emptyList<PlaybackRequest>(), started)
+        }
+
+    @Test
+    fun aNewStartSupersedesAPendingOne() =
+        runTest {
+            val gate = CompletableDeferred<Unit>()
+            val first = item(positionTicks = null)
+            val second = item(positionTicks = null).copy(id = "other", name = "Other")
+            val launcher = launcher(ResumeMode.RESUME, startGate = gate)
+
+            launcher.play(first)
+            runCurrent()
+            launcher.play(second)
+            gate.complete(Unit)
+            runCurrent()
+
+            assertEquals(listOf("other"), started.map { it.mediaId })
+            assertEquals(TvPlaybackStartState.Idle, launcher.startState)
         }
 
     private fun TestScope.launcher(
         resumeMode: ResumeMode,
         startSucceeds: Boolean = true,
-        detail: JellyfinItemDetail? = detail(),
-        detailFailure: Exception? = null,
+        loadDetail: suspend () -> JellyfinItemDetail? = { detail() },
+        startGate: CompletableDeferred<Unit>? = null,
     ) = TvPlaybackLauncher(
         scope = this,
-        loadDetail = { detailFailure?.let { throw it } ?: detail },
+        loadDetail = { loadDetail() },
         starter =
             TvPlaybackStarter { request, _ ->
+                startGate?.await()
                 if (startSucceeds) started += request
                 startSucceeds
             },
         currentSettings = { AppSettings(resumeMode = resumeMode) },
-        onStarted = { startedRoutes += 1 },
+        openPlayer = { startedRoutes += 1 },
     )
 
     private fun item(positionTicks: Long?) =

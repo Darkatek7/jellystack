@@ -78,7 +78,7 @@ internal class TvAppStateHolder(
     var state by
         mutableStateOf(
             uiState(
-                backStack = initialSnapshot.backStack.ifEmpty { listOf(TvRoute.Home) },
+                backStack = initialSnapshot.backStack.withoutPlayerRoute(),
                 railExpanded = initialSnapshot.railExpanded,
                 activeProfileGeneration = initialSnapshot.activeProfileGeneration,
                 environmentIdentity = initialSnapshot.environmentIdentity,
@@ -109,6 +109,9 @@ internal class TvAppStateHolder(
         state = state.withBackStack(state.backStack.dropLast(1))
         return true
     }
+
+    /** Leaves the player route after playback stopped outside it; a no-op anywhere else. */
+    fun popPlayerRoute(): Boolean = state.currentRoute == TvRoute.Player && popRoute()
 
     fun openRail() {
         if (state.railExpanded) return
@@ -191,7 +194,7 @@ internal class TvAppStateHolder(
 
     fun snapshot(): TvAppStateSnapshot =
         TvAppStateSnapshot(
-            backStack = state.backStack.toList(),
+            backStack = state.backStack.withoutPlayerRoute(),
             railExpanded = state.railExpanded,
             activeProfileGeneration = state.activeProfileGeneration,
             environmentIdentity = state.environmentIdentity,
@@ -230,3 +233,12 @@ internal class TvAppStateHolder(
 }
 
 private fun TvRoute.isDetailRoute(): Boolean = this is TvRoute.JellyfinDetail || this is TvRoute.SeerrDetail
+
+/**
+ * The player route is never saved or restored: playback does not survive the process or a stop, so a
+ * restored player route would be an empty screen. An empty result falls back to Home.
+ */
+private fun List<TvRoute>.withoutPlayerRoute(): List<TvRoute> {
+    val saved = filterNot { it == TvRoute.Player }
+    return saved.ifEmpty { listOf(TvRoute.Home) }
+}

@@ -78,6 +78,7 @@ internal fun TvPlaybackScreen(
     engine: AndroidPlayerEngine,
     syncPlay: SyncPlayCoordinator,
     playbackState: PlaybackState,
+    startState: TvPlaybackStartState = TvPlaybackStartState.Idle,
     syncState: SyncPlayUiState,
     segmentState: PlaybackSegmentState,
     continuationState: PlaybackContinuationState,
@@ -96,6 +97,7 @@ internal fun TvPlaybackScreen(
     onSkipSegment: (PlaybackSegmentAction) -> Unit,
     onPlayNext: () -> Unit,
     onCancelAutoplay: () -> Unit = {},
+    startActions: TvPlayerStartActions = TvPlayerStartActions({}, {}, {}),
     strings: TvStrings,
     stopPlayback: () -> Unit,
     onClose: () -> Unit,
@@ -109,6 +111,7 @@ internal fun TvPlaybackScreen(
     val controlsFocusRequester = remember { FocusRequester() }
     val actionEntryFocusRequester = remember { FocusRequester() }
     val active = playbackState as? PlaybackState.Active
+    val overlay = tvPlayerOverlay(playbackState, startState)
     val promptCoordinator = remember(scope) { TvPlaybackPromptCoordinator(scope) }
     val promptState by promptCoordinator.state.collectAsStateWithLifecycle()
     var upNextDismissed by remember(active?.mediaId) { mutableStateOf(false) }
@@ -221,9 +224,18 @@ internal fun TvPlaybackScreen(
             }
         }
     }
+    // Without a video nothing else takes focus, and Back (cancel while preparing) needs a focused player.
+    LaunchedEffect(overlay) {
+        if (overlay == TvPlayerOverlay.PREPARING || overlay == TvPlayerOverlay.NONE) playerFocusRequester.requestFocus()
+    }
+    // A failed start behind a video that keeps playing (an episode switch) has nothing to report.
+    LaunchedEffect(active != null, startState) {
+        if (active != null && startState is TvPlaybackStartState.Failed) startActions.onFailureSeen()
+    }
     DisposableEffect(engine) {
         onDispose {
             engine.setSubtitleBottomPaddingFraction(TV_SUBTITLE_NORMAL_PADDING_FRACTION)
+            startActions.onCancel()
             stopPlayback()
         }
     }
@@ -238,20 +250,24 @@ internal fun TvPlaybackScreen(
         }
     }
     val handlePlaybackBack = {
-        when {
-            navigation.current != TvPlayerPanel.NONE -> navigation = navigation.back()
-            // Back closes the hidden-controls seek bar first; during a hold it also drops the pending seek.
-            !controlsVisible && hiddenScrubVisible -> {
+        val backAction =
+            tvPlayerBackAction(
+                videoActive = active != null,
+                panelOpen = navigation.current != TvPlayerPanel.NONE,
+                controlsVisible = controlsVisible,
+                hiddenScrubVisible = hiddenScrubVisible,
+            )
+        when (backAction) {
+            TvPlayerBackAction.CLOSE_PANEL -> navigation = navigation.back()
+            TvPlayerBackAction.CLOSE_SCRUB -> {
                 hiddenScrub.clear()
                 hiddenScrubVisible = false
             }
-            controlsVisible -> controlsVisible = false
-            else -> onClose()
+            TvPlayerBackAction.HIDE_CONTROLS -> controlsVisible = false
+            TvPlayerBackAction.CLOSE_PLAYER -> onClose()
         }
     }
-    TvPlayerBackHandler {
-        if (playbackState is PlaybackState.PlaybackError) onClose() else handlePlaybackBack()
-    }
+    TvPlayerBackHandler(handlePlaybackBack)
 
     Box(
         modifier =
@@ -262,7 +278,9 @@ internal fun TvPlaybackScreen(
                 .focusable()
                 .onPreviewKeyEvent { event ->
                     // The error dialog owns the remote: its buttons need Center/Enter and the D-pad.
-                    if (playbackState is PlaybackState.PlaybackError) return@onPreviewKeyEvent false
+                    if (overlay == TvPlayerOverlay.PLAYBACK_ERROR || overlay == TvPlayerOverlay.START_ERROR) {
+                        return@onPreviewKeyEvent false
+                    }
                     val horizontal =
                         event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT ||
                             event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
@@ -347,17 +365,17 @@ internal fun TvPlaybackScreen(
             onRelease = engine::releaseVideoSurface,
             modifier = Modifier.fillMaxSize(),
         )
-        when (playbackState) {
-            is PlaybackState.Preparing -> TvLoading(strings.preparingPlayback)
-            is PlaybackState.PlaybackError ->
-                TvPlaybackError(
-                    playbackState,
-                    controller,
-                    strings,
-                    onClose,
-                    Modifier.align(Alignment.Center),
+        when (overlay) {
+            TvPlayerOverlay.PREPARING ->
+                TvPlayerPreparing(
+                    model = tvPlayerPreparingModel(playbackState, startState, TvPlayerImageSource(imageBaseUrl, imageAccessToken)),
+                    label = strings.preparingPlayback,
                 )
-            else -> Unit
+            TvPlayerOverlay.PLAYBACK_ERROR ->
+                TvPlaybackError(playbackState, controller::retry, strings, onClose, Modifier.align(Alignment.Center))
+            TvPlayerOverlay.START_ERROR ->
+                TvPlaybackError(startState, startActions.onRetry, strings, onClose, Modifier.align(Alignment.Center))
+            TvPlayerOverlay.NONE -> Unit
         }
         if (active != null && controlsVisible) {
             TvPlayerHeader(
@@ -490,6 +508,13 @@ internal fun TvPlaybackScreen(
     }
 }
 
+/** Hooks from the player route into the launcher that started it. */
+internal data class TvPlayerStartActions(
+    val onRetry: () -> Unit,
+    val onCancel: () -> Unit,
+    val onFailureSeen: () -> Unit,
+)
+
 @Composable
 internal fun TvPlayerBackHandler(onBack: () -> Unit) {
     BackHandler(onBack = onBack)
@@ -497,8 +522,8 @@ internal fun TvPlayerBackHandler(onBack: () -> Unit) {
 
 @Composable
 private fun TvPlaybackError(
-    error: PlaybackState.PlaybackError,
-    controller: PlaybackController,
+    error: Any,
+    onRetry: () -> Unit,
     strings: TvStrings,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
@@ -515,11 +540,11 @@ private fun TvPlaybackError(
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
         Text(strings.playbackFailedTitle, color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold)
-        Text(tvPlaybackErrorMessage(error.message, strings), color = TvTextMuted, fontSize = 21.sp)
+        Text(tvPlaybackErrorMessage("", strings), color = TvTextMuted, fontSize = 21.sp)
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             TvActionButton(
                 strings.retry,
-                controller::retry,
+                onRetry,
                 modifier = Modifier.width(230.dp),
                 primary = true,
                 focusRequester = retryFocusRequester,

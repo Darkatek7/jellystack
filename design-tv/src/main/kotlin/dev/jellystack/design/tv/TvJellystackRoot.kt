@@ -1078,9 +1078,15 @@ private fun TvAuthenticatedApp(
                 loadDetail = browseRepository::getItemDetail,
                 starter = controllerPlaybackStarter(playbackController, environmentProvider),
                 currentSettings = currentSettings,
-                onStarted = { push(TvRoute.Player) },
+                openPlayer = { push(TvRoute.Player) },
             )
         }
+    TvPlayerRoutePopEffect(
+        onPlayerRoute = appUiState.currentRoute == TvRoute.Player,
+        playback = playbackState,
+        start = playbackLauncher.startState,
+        onPop = appStateHolder::popPlayerRoute,
+    )
 
     fun openLibrary(
         libraryId: String,
@@ -1569,6 +1575,7 @@ private fun TvAuthenticatedApp(
                                             engine = playerEngine,
                                             syncPlay = syncPlay,
                                             playbackState = playbackState,
+                                            startState = playbackLauncher.startState,
                                             syncState = syncPlayState,
                                             segmentState = segmentState,
                                             continuationState = continuationState,
@@ -1588,8 +1595,15 @@ private fun TvAuthenticatedApp(
                                             onPlayNext = continuationCoordinator::playNext,
                                             onCancelAutoplay = continuationCoordinator::cancelAutoplay,
                                             strings = strings,
+                                            startActions =
+                                                TvPlayerStartActions(
+                                                    onRetry = playbackLauncher::retryStart,
+                                                    onCancel = playbackLauncher::cancelStart,
+                                                    onFailureSeen = playbackLauncher::cancelStart,
+                                                ),
                                             stopPlayback = stopPlayback,
                                             onClose = {
+                                                playbackLauncher.cancelStart()
                                                 // Closing the player leaves a SyncPlay group, as on the phone.
                                                 if (syncPlay.state.value.currentGroup != null) syncPlay.leaveGroup()
                                                 stopPlayback()
