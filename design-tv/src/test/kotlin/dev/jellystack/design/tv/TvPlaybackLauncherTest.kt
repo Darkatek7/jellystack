@@ -2,6 +2,7 @@ package dev.jellystack.design.tv
 
 import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.JellyfinItemDetail
+import dev.jellystack.core.preferences.AppLanguage
 import dev.jellystack.core.preferences.AppSettings
 import dev.jellystack.core.preferences.ResumeMode
 import dev.jellystack.players.PlaybackRequest
@@ -163,15 +164,135 @@ class TvPlaybackLauncherTest {
             assertEquals(TvPlaybackStartState.Idle, launcher.startState)
         }
 
+    @Test
+    fun playingASeriesStartsTheEpisodeInProgress() =
+        runTest {
+            val episodes =
+                listOf(
+                    episode("s1e1", season = 1, number = 1, playedPercentage = 100.0),
+                    episode("s1e2", season = 1, number = 2, playedPercentage = 40.0, positionTicks = 7_540_000_000L),
+                    episode("s1e3", season = 1, number = 3),
+                )
+            val launcher = launcher(ResumeMode.RESUME, episodes = episodes)
+
+            launcher.play(series())
+            runCurrent()
+
+            assertEquals(listOf("s1e2"), started.map { it.mediaId })
+            assertEquals(TvPlaybackStartState.Idle, launcher.startState)
+        }
+
+    @Test
+    fun playingASeriesWithoutProgressStartsTheFirstEpisodeInSeasonOrder() =
+        runTest {
+            val episodes =
+                listOf(
+                    episode("s2e1", season = 2, number = 1),
+                    episode("s1e2", season = 1, number = 2),
+                    episode("s1e1", season = 1, number = 1),
+                )
+            val launcher = launcher(ResumeMode.RESUME, episodes = episodes)
+
+            launcher.play(series())
+            runCurrent()
+
+            assertEquals(listOf("s1e1"), started.map { it.mediaId })
+        }
+
+    @Test
+    fun playingAFullyWatchedSeriesStartsItFromTheFirstEpisode() =
+        runTest {
+            val episodes =
+                listOf(
+                    episode("s1e2", season = 1, number = 2, playedPercentage = 100.0),
+                    episode("s1e1", season = 1, number = 1, playedPercentage = 100.0),
+                )
+            val launcher = launcher(ResumeMode.RESUME, episodes = episodes)
+
+            launcher.play(series())
+            runCurrent()
+
+            assertEquals(listOf("s1e1"), started.map { it.mediaId })
+        }
+
+    @Test
+    fun anInProgressEpisodeOfASeriesAsksBeforeResumingInAskMode() =
+        runTest {
+            val episodes = listOf(episode("s1e2", season = 1, number = 2, playedPercentage = 40.0, positionTicks = 7_540_000_000L))
+            val launcher = launcher(ResumeMode.ASK, episodes = episodes)
+
+            launcher.play(series())
+            runCurrent()
+
+            assertEquals("s1e2", launcher.pendingAsk?.item?.id)
+            assertEquals("12:34", launcher.pendingAsk?.positionLabel)
+            assertEquals(TvPlaybackStartState.Idle, launcher.startState)
+            assertEquals(emptyList<PlaybackRequest>(), started)
+
+            launcher.answerAsk(PlaybackStartPolicy.RESTART)
+            runCurrent()
+
+            assertEquals(listOf("s1e2"), started.map { it.mediaId })
+            assertEquals(listOf(PlaybackStartPolicy.RESTART), started.map { it.startPolicy })
+        }
+
+    @Test
+    fun aSeriesWithoutAPlayableEpisodeEndsInAFailedStartWithItsOwnReason() =
+        runTest {
+            val series = series()
+            val noEpisodes = launcher(ResumeMode.RESUME, episodes = emptyList())
+            noEpisodes.play(series)
+            runCurrent()
+            assertEquals(TvPlaybackStartState.Failed(series, TvStartFailure.NO_PLAYABLE_EPISODE), noEpisodes.startState)
+
+            val missingOnly =
+                launcher(ResumeMode.RESUME, episodes = listOf(episode("s1e1", season = 1, number = 1, locationType = "Virtual")))
+            missingOnly.play(series)
+            runCurrent()
+            assertEquals(TvPlaybackStartState.Failed(series, TvStartFailure.NO_PLAYABLE_EPISODE), missingOnly.startState)
+
+            assertEquals(emptyList<PlaybackRequest>(), started)
+        }
+
+    @Test
+    fun aFailingEpisodeListEndsInAGenericFailedStart() =
+        runTest {
+            val series = series()
+            val launcher = launcher(ResumeMode.RESUME, loadEpisodes = { throw IllegalStateException("offline") })
+
+            launcher.play(series)
+            runCurrent()
+
+            assertEquals(TvPlaybackStartState.Failed(series, TvStartFailure.COULD_NOT_START), launcher.startState)
+        }
+
+    @Test
+    fun theStartErrorPanelNamesTheReasonOfTheFailure() {
+        val strings = TvStrings.current(AppLanguage.ENGLISH)
+        val series = series()
+
+        assertEquals(
+            strings.player.noPlayableEpisodeMessage,
+            tvStartFailureMessage(TvPlaybackStartState.Failed(series, TvStartFailure.NO_PLAYABLE_EPISODE), strings),
+        )
+        assertEquals(
+            strings.player.startFailedMessage,
+            tvStartFailureMessage(TvPlaybackStartState.Failed(series, TvStartFailure.COULD_NOT_START), strings),
+        )
+    }
+
     private fun TestScope.launcher(
         resumeMode: ResumeMode,
         startSucceeds: Boolean = true,
         loadDetail: suspend () -> JellyfinItemDetail? = { detail() },
+        episodes: List<JellyfinItem> = emptyList(),
+        loadEpisodes: suspend () -> List<JellyfinItem> = { episodes },
         startGate: CompletableDeferred<Unit>? = null,
         defaultPlaybackSpeed: Float = 1f,
     ) = TvPlaybackLauncher(
         scope = this,
         loadDetail = { loadDetail() },
+        loadEpisodes = { loadEpisodes() },
         starter =
             TvPlaybackStarter { request, settings ->
                 startGate?.await()
@@ -183,40 +304,60 @@ class TvPlaybackLauncherTest {
         openPlayer = { startedRoutes += 1 },
     )
 
-    private fun item(positionTicks: Long?) =
-        JellyfinItem(
-            id = "movie",
-            libraryId = null,
-            name = "Movie",
-            sortName = null,
-            overview = null,
-            type = "Movie",
-            mediaType = "Video",
-            locationType = null,
-            taglines = emptyList(),
-            parentId = null,
-            primaryImageTag = null,
-            thumbImageTag = null,
-            backdropImageTag = null,
-            seriesId = null,
-            seriesPrimaryImageTag = null,
-            seriesThumbImageTag = null,
-            seriesBackdropImageTag = null,
-            parentLogoImageTag = null,
-            runTimeTicks = null,
-            positionTicks = positionTicks,
-            playedPercentage = null,
-            productionYear = null,
-            premiereDate = null,
-            communityRating = null,
-            officialRating = null,
-            indexNumber = null,
-            parentIndexNumber = null,
-            seriesName = null,
-            seasonId = null,
-            episodeTitle = null,
-            lastPlayed = null,
-        )
+    private fun series() = item(positionTicks = null, id = "series", type = "Series")
+
+    private fun episode(
+        id: String,
+        season: Int,
+        number: Int,
+        playedPercentage: Double? = null,
+        positionTicks: Long? = null,
+        locationType: String = "FileSystem",
+    ) = item(positionTicks, id = id, type = "Episode").copy(
+        locationType = locationType,
+        playedPercentage = playedPercentage,
+        parentIndexNumber = season,
+        indexNumber = number,
+        seriesId = "series",
+    )
+
+    private fun item(
+        positionTicks: Long?,
+        id: String = "movie",
+        type: String = "Movie",
+    ) = JellyfinItem(
+        id = id,
+        libraryId = null,
+        name = id,
+        sortName = null,
+        overview = null,
+        type = type,
+        mediaType = "Video",
+        locationType = null,
+        taglines = emptyList(),
+        parentId = null,
+        primaryImageTag = null,
+        thumbImageTag = null,
+        backdropImageTag = null,
+        seriesId = null,
+        seriesPrimaryImageTag = null,
+        seriesThumbImageTag = null,
+        seriesBackdropImageTag = null,
+        parentLogoImageTag = null,
+        runTimeTicks = null,
+        positionTicks = positionTicks,
+        playedPercentage = null,
+        productionYear = null,
+        premiereDate = null,
+        communityRating = null,
+        officialRating = null,
+        indexNumber = null,
+        parentIndexNumber = null,
+        seriesName = null,
+        seasonId = null,
+        episodeTitle = null,
+        lastPlayed = null,
+    )
 
     private fun detail() =
         JellyfinItemDetail(

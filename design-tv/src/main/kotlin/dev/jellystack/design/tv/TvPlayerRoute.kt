@@ -39,6 +39,16 @@ internal fun tvPlayerOverlay(
         else -> TvPlayerOverlay.NONE
     }
 
+/** Message of the start error panel: what went wrong for a series without episodes, else a connection hint. */
+internal fun tvStartFailureMessage(
+    start: TvPlaybackStartState,
+    strings: TvStrings,
+): String =
+    when ((start as? TvPlaybackStartState.Failed)?.failure) {
+        TvStartFailure.NO_PLAYABLE_EPISODE -> strings.player.noPlayableEpisodeMessage
+        else -> strings.player.startFailedMessage
+    }
+
 /**
  * The player route has nothing left to show: playback ended outside the player (Home button, media
  * stop, SyncPlay stop, ...) and no start or error panel is waiting. The route then leaves instead of

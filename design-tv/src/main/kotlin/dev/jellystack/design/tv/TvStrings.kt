@@ -34,6 +34,9 @@ internal data class TvPlayerStrings(
     val watchCredits: String,
     val forcedTrack: String,
     val defaultTrack: String,
+    val startFailedTitle: String,
+    val startFailedMessage: String,
+    val noPlayableEpisodeMessage: String,
 )
 
 /** Labels of the settings screens. */
@@ -583,6 +586,9 @@ internal data class TvStrings(
                         watchCredits = "Watch credits",
                         forcedTrack = "Forced",
                         defaultTrack = "Default",
+                        startFailedTitle = "Playback could not start",
+                        startFailedMessage = "Could not start playback. Check the connection to your server and try again.",
+                        noPlayableEpisodeMessage = "This series has no playable episodes.",
                     ),
                 seasonNumber = "Season %d",
                 specials = "Specials",
@@ -867,6 +873,11 @@ internal data class TvStrings(
                         watchCredits = "Abspann ansehen",
                         forcedTrack = "Erzwungen",
                         defaultTrack = "Standard",
+                        startFailedTitle = "Wiedergabe konnte nicht gestartet werden",
+                        startFailedMessage =
+                            "Die Wiedergabe konnte nicht gestartet werden. " +
+                                "Prüfe die Verbindung zu deinem Server und versuche es erneut.",
+                        noPlayableEpisodeMessage = "Diese Serie hat keine abspielbaren Folgen.",
                     ),
                 seasonNumber = "Staffel %d",
                 specials = "Spezialfolgen",

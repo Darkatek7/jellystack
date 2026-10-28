@@ -7,7 +7,9 @@ import dev.jellystack.core.coroutines.runSuspendCatching
 import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
 import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.JellyfinItemDetail
+import dev.jellystack.core.jellyfin.SeriesPlaybackTargetResolver
 import dev.jellystack.core.logging.JellystackLog
+import dev.jellystack.core.logging.sanitizeIdentifier
 import dev.jellystack.core.preferences.AppSettings
 import dev.jellystack.players.PlaybackController
 import dev.jellystack.players.PlaybackRequest
@@ -25,6 +27,9 @@ internal data class TvResumeAsk(
     val detail: JellyfinItemDetail?,
     val positionLabel: String,
 )
+
+private fun JellyfinItem.isEpisodeContainer(): Boolean =
+    type.equals("Series", ignoreCase = true) || type.equals("Season", ignoreCase = true)
 
 /** Starts a resolved request; returns false when there is no server to play from. */
 internal fun interface TvPlaybackStarter {
@@ -58,7 +63,31 @@ internal sealed interface TvPlaybackStartState {
     /** The start ended before the controller took over (detail unavailable, no server, unexpected failure). */
     data class Failed(
         val item: JellyfinItem,
+        val failure: TvStartFailure = TvStartFailure.COULD_NOT_START,
     ) : TvPlaybackStartState
+}
+
+/** Why a start ended before the controller took over; it picks the copy of the start error panel. */
+internal enum class TvStartFailure {
+    /** No server, the item detail was unavailable, or an unexpected error. */
+    COULD_NOT_START,
+
+    /** A series or season without an episode that can be played. */
+    NO_PLAYABLE_EPISODE,
+}
+
+private sealed interface TvStartOutcome {
+    data object Started : TvStartOutcome
+
+    data class Failed(
+        val failure: TvStartFailure,
+        val reason: String,
+    ) : TvStartOutcome
+
+    /** The episode a series Play resolved to has saved progress and the resume mode asks what to do. */
+    data class AskResume(
+        val ask: TvResumeAsk,
+    ) : TvStartOutcome
 }
 
 private data class TvStartAttempt(
@@ -75,10 +104,14 @@ private data class TvStartAttempt(
  *
  * [openPlayer] runs as soon as a start begins, so the player route can show progress while the server
  * answers; [cancelStart] and a failure are reported through [startState].
+ *
+ * A Series or Season has no media source of its own: [loadEpisodes] lists its episodes and
+ * [SeriesPlaybackTargetResolver] picks the one to play (the one in progress, else the first unwatched, else the first).
  */
 internal class TvPlaybackLauncher(
     private val scope: CoroutineScope,
     private val loadDetail: suspend (String) -> JellyfinItemDetail?,
+    private val loadEpisodes: suspend (JellyfinItem) -> List<JellyfinItem>,
     private val starter: TvPlaybackStarter,
     private val currentSettings: () -> AppSettings,
     private val openPlayer: () -> Unit,
@@ -89,6 +122,7 @@ internal class TvPlaybackLauncher(
     var startState by mutableStateOf<TvPlaybackStartState>(TvPlaybackStartState.Idle)
         private set
 
+    private val seriesTargetResolver = SeriesPlaybackTargetResolver()
     private var startJob: Job? = null
     private var lastAttempt: TvStartAttempt? = null
 
@@ -97,6 +131,12 @@ internal class TvPlaybackLauncher(
         item: JellyfinItem,
         detail: JellyfinItemDetail? = null,
     ) {
+        if (item.isEpisodeContainer()) {
+            // The episode to play is only known once the episodes are loaded, so the resume rule runs in the start.
+            pendingAsk = null
+            start(TvStartAttempt(item, detail = null, policy = PlaybackStartPolicy.INHERIT))
+            return
+        }
         when (val decision = decidePlaybackStart(item.positionTicks, currentSettings().resumeMode)) {
             is PlaybackStartDecision.Ask ->
                 pendingAsk = TvResumeAsk(item, detail, formatPlaybackTime(decision.resumePositionMs))
@@ -144,23 +184,59 @@ internal class TvPlaybackLauncher(
         openPlayer()
         startJob =
             scope.launch {
-                val started =
+                val outcome =
                     runSuspendCatching { run(attempt) }
                         .onFailure { failure -> JellystackLog.e("TV playback could not start", failure) }
-                        .getOrDefault(false)
-                startState = if (started) TvPlaybackStartState.Idle else TvPlaybackStartState.Failed(attempt.item)
+                        .getOrDefault(TvStartOutcome.Failed(TvStartFailure.COULD_NOT_START, "unexpected error"))
+                startState =
+                    when (outcome) {
+                        TvStartOutcome.Started -> TvPlaybackStartState.Idle
+                        is TvStartOutcome.AskResume -> {
+                            pendingAsk = outcome.ask
+                            TvPlaybackStartState.Idle
+                        }
+                        is TvStartOutcome.Failed -> {
+                            JellystackLog.w(
+                                "TV playback did not start: ${outcome.reason} (item=${sanitizeIdentifier(attempt.item.id)})",
+                            )
+                            TvPlaybackStartState.Failed(attempt.item, outcome.failure)
+                        }
+                    }
             }
     }
 
-    private suspend fun run(attempt: TvStartAttempt): Boolean {
-        val detail = attempt.detail ?: loadDetail(attempt.item.id) ?: return false
-        val fromItem = PlaybackRequest.from(attempt.item, detail, startPolicy = attempt.policy)
-        val groupStart = attempt.groupStartPositionMs
+    private suspend fun run(attempt: TvStartAttempt): TvStartOutcome {
+        if (!attempt.item.isEpisodeContainer()) return begin(attempt)
+        val episode =
+            resolveEpisode(attempt.item)
+                ?: return TvStartOutcome.Failed(TvStartFailure.NO_PLAYABLE_EPISODE, "no playable episode")
+        startState = TvPlaybackStartState.Starting(episode)
+        return when (val decision = decidePlaybackStart(episode.positionTicks, currentSettings().resumeMode)) {
+            is PlaybackStartDecision.Ask ->
+                TvStartOutcome.AskResume(TvResumeAsk(episode, null, formatPlaybackTime(decision.resumePositionMs)))
+            is PlaybackStartDecision.Start -> begin(TvStartAttempt(episode, detail = null, policy = decision.policy))
+        }
+    }
+
+    /** The episode a Play on [container] starts, or null when it has no playable one. */
+    private suspend fun resolveEpisode(container: JellyfinItem): JellyfinItem? =
+        seriesTargetResolver.resolve(loadEpisodes(container), completedDownloadIds = emptySet())?.episode
+
+    private suspend fun begin(target: TvStartAttempt): TvStartOutcome {
+        val detail =
+            target.detail ?: loadDetail(target.item.id)
+                ?: return TvStartOutcome.Failed(TvStartFailure.COULD_NOT_START, "item detail unavailable")
+        val fromItem = PlaybackRequest.from(target.item, detail, startPolicy = target.policy)
+        val groupStart = target.groupStartPositionMs
         // SyncPlay keeps the whole group at normal speed, whatever the default speed setting says.
         val groupTicks = groupStart?.times(TICKS_PER_MILLISECOND)
         val request = if (groupTicks == null) fromItem else fromItem.copy(resumePositionTicks = groupTicks)
         val settings = currentSettings().let { if (groupStart == null) it else it.copy(defaultPlaybackSpeed = 1f) }
-        return starter.start(request, settings)
+        return if (starter.start(request, settings)) {
+            TvStartOutcome.Started
+        } else {
+            TvStartOutcome.Failed(TvStartFailure.COULD_NOT_START, "no server connection")
+        }
     }
 }
 

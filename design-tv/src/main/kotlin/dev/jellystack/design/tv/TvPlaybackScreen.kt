@@ -372,9 +372,23 @@ internal fun TvPlaybackScreen(
                     label = strings.preparingPlayback,
                 )
             TvPlayerOverlay.PLAYBACK_ERROR ->
-                TvPlaybackError(playbackState, controller::retry, strings, onClose, Modifier.align(Alignment.Center))
+                TvPlaybackError(
+                    title = strings.playbackFailedTitle,
+                    message = tvPlaybackErrorMessage("", strings),
+                    onRetry = controller::retry,
+                    strings = strings,
+                    onClose = onClose,
+                    modifier = Modifier.align(Alignment.Center),
+                )
             TvPlayerOverlay.START_ERROR ->
-                TvPlaybackError(startState, startActions.onRetry, strings, onClose, Modifier.align(Alignment.Center))
+                TvPlaybackError(
+                    title = strings.player.startFailedTitle,
+                    message = tvStartFailureMessage(startState, strings),
+                    onRetry = startActions.onRetry,
+                    strings = strings,
+                    onClose = onClose,
+                    modifier = Modifier.align(Alignment.Center),
+                )
             TvPlayerOverlay.NONE -> Unit
         }
         if (active != null && controlsVisible) {
@@ -522,14 +536,15 @@ internal fun TvPlayerBackHandler(onBack: () -> Unit) {
 
 @Composable
 private fun TvPlaybackError(
-    error: Any,
+    title: String,
+    message: String,
     onRetry: () -> Unit,
     strings: TvStrings,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val retryFocusRequester = remember { FocusRequester() }
-    LaunchedEffect(error) { retryFocusRequester.requestFocus() }
+    LaunchedEffect(message) { retryFocusRequester.requestFocus() }
     Column(
         modifier
             .width(
@@ -539,8 +554,8 @@ private fun TvPlaybackError(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
-        Text(strings.playbackFailedTitle, color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold)
-        Text(tvPlaybackErrorMessage("", strings), color = TvTextMuted, fontSize = 21.sp)
+        Text(title, color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold)
+        Text(message, color = TvTextMuted, fontSize = 21.sp)
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             TvActionButton(
                 strings.retry,
