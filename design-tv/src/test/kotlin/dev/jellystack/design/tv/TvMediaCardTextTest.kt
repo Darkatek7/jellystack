@@ -39,6 +39,20 @@ class TvMediaCardTextTest {
     }
 
     @Test
+    fun itemsWithoutANameReadUntitledInsteadOfShowingABlankCard() {
+        val untitled = strings.messages.untitled
+        val movie = item("Movie", "").tvCardText(strings)
+        val episode = episode("", season = 1, number = 2).tvCardText(strings)
+        val episodeOfSeries = episode("", season = 1, number = 2).copy(seriesName = "Example Show").tvCardText(strings)
+
+        assertEquals(untitled, movie.title)
+        assertEquals(untitled, episode.title)
+        assertEquals("Example Show", episodeOfSeries.title)
+        assertEquals("S1 E2", episodeOfSeries.subtitle)
+        assertEquals(untitled, item("Episode", "").tvEpisodeCardText(strings).title)
+    }
+
+    @Test
     fun moviesShowYearAndTimeLeftOrRating() {
         val movie = item("Movie", "Obsession").copy(productionYear = 2026)
         val inProgress = movie.copy(runTimeTicks = 100 * MINUTE, positionTicks = 82 * MINUTE).tvCardText(strings)

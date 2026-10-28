@@ -172,6 +172,7 @@ internal fun TvHomeScreen(
         (homeSections as? HomeSectionsState.Ready)
             ?.sections
             .orEmpty()
+            .distinctBy { it.id }
             .filter { it.items.isNotEmpty() }
     val focusRows =
         remember(visibleSections, homeSections, state.continueWatching, state.nextUp, state.libraries, myList) {
@@ -1076,7 +1077,7 @@ internal fun TvLibraryScreen(
                 val targetId = tvLibraryTargetId(item.id)
                 val artwork = resolveTvJellyfinArtwork(item)
                 TvMediaCard(
-                    title = item.name,
+                    title = item.name.ifBlank { strings.messages.untitled },
                     subtitle = item.subtitleText(),
                     imageUrl =
                         jellyfinImageUrl(

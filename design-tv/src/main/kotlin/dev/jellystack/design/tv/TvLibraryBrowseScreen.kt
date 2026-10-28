@@ -77,6 +77,7 @@ internal data class TvLibraryBrowseLabels(
     val recentlyAdded: String,
     val myList: String,
     val minutesLeft: String,
+    val untitled: String,
 )
 
 internal fun buildTvLibraryBrowseRows(
@@ -98,13 +99,11 @@ internal fun buildTvLibraryBrowseRows(
         items: List<JellyfinItem>,
         selectedIds: Set<String> = state.favorites,
     ): TvCinematicRow? =
-        items.forSelectedLibrary().takeIf(List<JellyfinItem>::isNotEmpty)?.let { values ->
-            TvCinematicRow(
-                id = id,
-                title = title,
-                cards = values.map { it.toCinematicCard(state, selectedIds, labels.minutesLeft) },
-            )
-        }
+        tvCinematicRowOrNull(
+            id = id,
+            title = title.ifBlank { labels.untitled },
+            cards = items.forSelectedLibrary().mapNotNull { it.toCinematicCard(state, selectedIds, labels) },
+        )
 
     val supportsNextUp = collectionType?.lowercase() in setOf("tvshows", "series", "mixed", null)
     val recentlyAdded =
@@ -131,7 +130,8 @@ internal fun buildTvLibraryBrowseRows(
         row("recent", labels.recentlyAdded, recentlyAdded)?.let(::add)
         row("my-list", labels.myList, myListItems, myListItems.map(JellyfinItem::id).toSet())?.let(::add)
         addAll(serverRows)
-    }
+        // The rows are keyed by ID; the plugin may repeat a section.
+    }.distinctBy(TvCinematicRow::id)
 }
 
 /**
@@ -159,12 +159,14 @@ internal fun tvLibraryEntryMode(
     return if (rows.isEmpty()) TvLibraryMode.TITLES_ONLY else TvLibraryMode.BROWSE
 }
 
+/** Null for an item without an ID: such a card could be neither keyed nor focused. */
 private fun JellyfinItem.toCinematicCard(
     state: JellyfinHomeState,
     selectedIds: Set<String>,
-    minutesLeft: String,
-): TvCinematicCard {
-    val text = tvCardText(minutesLeft)
+    labels: TvLibraryBrowseLabels,
+): TvCinematicCard? {
+    if (id.isBlank()) return null
+    val text = tvCardText(labels.minutesLeft, labels.untitled)
     return TvCinematicCard(
         id = id,
         title = text.title,
@@ -456,7 +458,7 @@ private fun TvLibraryAllTitles(
                 val artwork = resolveTvJellyfinArtwork(item, landscape = cardShape == TvLibraryCardShape.LANDSCAPE)
                 val targetId = tvLibraryTargetId(item.id)
                 TvMediaCard(
-                    title = item.name,
+                    title = item.name.ifBlank { strings.messages.untitled },
                     subtitle = item.subtitleText(),
                     imageUrl =
                         jellyfinImageUrl(
@@ -553,6 +555,7 @@ internal fun TvStrings.libraryBrowseLabels() =
         recentlyAdded = recentlyAdded,
         myList = myList,
         minutesLeft = metadata.minutesLeft,
+        untitled = messages.untitled,
     )
 
 private fun TvStrings.tvLibraryQueryLabels() =

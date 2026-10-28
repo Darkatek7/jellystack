@@ -75,6 +75,8 @@ internal data class TvMessageStrings(
     private val untitledRequestFormat: String,
     private val requestTitleFormat: String,
     val loadingDetails: String,
+    /** The title of a card whose server item came without a name. */
+    val untitled: String,
 ) {
     fun voiceSearchError(failure: TvVoiceSearchFailure): String =
         when (failure) {
@@ -943,6 +945,7 @@ private val englishMessageStrings =
         untitledRequestFormat = "Request #%d",
         requestTitleFormat = "Request %s",
         loadingDetails = "Loading details…",
+        untitled = "Untitled",
     )
 
 private val germanMessageStrings =
@@ -962,4 +965,5 @@ private val germanMessageStrings =
         untitledRequestFormat = "Anfrage #%d",
         requestTitleFormat = "%s anfragen",
         loadingDetails = "Details werden geladen…",
+        untitled = "Ohne Titel",
     )

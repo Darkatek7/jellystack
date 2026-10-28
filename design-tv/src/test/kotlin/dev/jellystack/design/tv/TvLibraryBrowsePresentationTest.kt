@@ -145,6 +145,38 @@ class TvLibraryBrowsePresentationTest {
     }
 
     @Test
+    fun serverDataThatWouldBreakARowIsSanitisedInsteadOfCrashing() {
+        val state =
+            JellyfinHomeState(
+                selectedLibraryId = "library",
+                continueWatching =
+                    listOf(
+                        item("same", "One", libraryId = "library"),
+                        item("same", "One again", libraryId = "library"),
+                        item("", "Item without an id", libraryId = "library"),
+                        item("nameless", "", libraryId = "library"),
+                    ),
+            )
+        val sections =
+            HomeSectionsState.Ready(
+                sections =
+                    listOf(
+                        section("repeated", "First", item("a", "A", libraryId = "library")),
+                        section("repeated", "Second", item("b", "B", libraryId = "library")),
+                    ),
+                imageBaseUrl = "",
+                imageAccessToken = "",
+            )
+
+        val rows = buildTvLibraryBrowseRows(state, sections, emptyList(), labels())
+
+        assertEquals(listOf("continue", "server:repeated"), rows.map(TvCinematicRow::id))
+        assertEquals(listOf("same", "nameless"), rows[0].cards.map(TvCinematicCard::id))
+        assertEquals("Untitled", rows[0].cards[1].title)
+        assertEquals(listOf("a"), rows[1].cards.map(TvCinematicCard::id))
+    }
+
+    @Test
     fun adaptiveGridUsesFiveColumnsAndLargeTextUsesFour() {
         assertEquals(5, tvLibraryAllTitlesColumnCount(960f, fontScale = 1f))
         assertEquals(4, tvLibraryAllTitlesColumnCount(960f, fontScale = 1.5f))
@@ -171,6 +203,7 @@ class TvLibraryBrowsePresentationTest {
             recentlyAdded = "Recently added",
             myList = "My List",
             minutesLeft = "%d min left",
+            untitled = "Untitled",
         )
 
     private fun item(

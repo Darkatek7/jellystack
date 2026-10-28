@@ -14,17 +14,24 @@ internal data class TvMediaCardText(
  * Episodes lead with the series name and their S/E number, so "Mr. Robot · S2 E6" reads instead of a
  * raw episode file name. In-progress items show the time left; others show the episode title or rating.
  */
-internal fun JellyfinItem.tvCardText(strings: TvStrings): TvMediaCardText = tvCardText(strings.metadata.minutesLeft)
+internal fun JellyfinItem.tvCardText(strings: TvStrings): TvMediaCardText =
+    tvCardText(strings.metadata.minutesLeft, strings.messages.untitled)
 
-/** [minutesLeft] is the "%d min left" format of the UI language. */
-internal fun JellyfinItem.tvCardText(minutesLeft: String): TvMediaCardText {
+/**
+ * [minutesLeft] is the "%d min left" format of the UI language. A server can send an item without a name, which
+ * reads [untitled] instead.
+ */
+internal fun JellyfinItem.tvCardText(
+    minutesLeft: String,
+    untitled: String,
+): TvMediaCardText {
     val progress = watchProgress()
     val timeLeft = progress?.remainingMinutes?.let { minutesLeft.format(it) }
-    val episodeName = episodeTitle ?: name
+    val episodeName = (episodeTitle?.takeIf { it.isNotBlank() } ?: name).takeIf { it.isNotBlank() }
     val series = seriesName?.takeIf { it.isNotBlank() }
     return if (type.equals("Episode", ignoreCase = true)) {
         TvMediaCardText(
-            title = series ?: episodeName,
+            title = series ?: episodeName ?: untitled,
             subtitle =
                 listOfNotNull(
                     tvEpisodeCode(parentIndexNumber, indexNumber),
@@ -34,7 +41,7 @@ internal fun JellyfinItem.tvCardText(minutesLeft: String): TvMediaCardText {
         )
     } else {
         TvMediaCardText(
-            title = episodeName,
+            title = episodeName ?: untitled,
             subtitle =
                 listOfNotNull(productionYear?.toString(), timeLeft ?: tvRatingLabel(communityRating))
                     .joinToString(TV_CARD_SEPARATOR)
@@ -52,7 +59,10 @@ internal fun JellyfinItem.tvEpisodeCardText(strings: TvStrings): TvMediaCardText
     val progress = watchProgress()
     val runtimeMinutes = runTimeTicks?.takeIf { it > 0L }?.let { it / TV_CARD_TICKS_PER_MINUTE }
     return TvMediaCardText(
-        title = listOfNotNull(indexNumber?.let { "$it." }, episodeTitle ?: name).joinToString(" "),
+        title =
+            listOfNotNull(indexNumber?.let { "$it." }, (episodeTitle ?: name).takeIf { it.isNotBlank() })
+                .joinToString(" ")
+                .ifBlank { strings.messages.untitled },
         subtitle =
             progress?.remainingMinutes?.let { strings.metadata.minutesLeft.format(it) }
                 ?: runtimeMinutes?.let { strings.metadata.minutesShort.format(it) },
