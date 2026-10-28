@@ -15,8 +15,10 @@ import io.ktor.client.plugins.logging.Logger
 import io.ktor.client.plugins.logging.Logging
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpMethod
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.CancellationException
 import kotlinx.io.IOException
 import kotlinx.serialization.json.Json
 
@@ -51,8 +53,14 @@ object NetworkClientFactory {
             }
             install(HttpRequestRetry) {
                 maxRetries = config.maxRetries
-                retryIf { _, response -> !response.status.isSuccess() && response.status.value >= 500 }
-                retryOnExceptionIf { _, cause -> cause is IOException }
+                // Only idempotent methods are retried: a POST (Seerr request, progress report) may already have
+                // taken effect on the server before the failure, so replaying it could duplicate the side effect.
+                retryIf { request, response ->
+                    request.method in idempotentRetryMethods && !response.status.isSuccess() && response.status.value >= 500
+                }
+                retryOnExceptionIf { request, cause ->
+                    request.method in idempotentRetryMethods && cause !is CancellationException && cause is IOException
+                }
                 delayMillis { attempt ->
                     val factor = (attempt + 1).coerceAtMost(4)
                     config.retryDelayMillis * factor
@@ -90,6 +98,8 @@ object NetworkClientFactory {
         }
     }
 }
+
+private val idempotentRetryMethods = setOf(HttpMethod.Get, HttpMethod.Head, HttpMethod.Options, HttpMethod.Put, HttpMethod.Delete)
 
 private object StdoutLogger : Logger {
     override fun log(message: String) {

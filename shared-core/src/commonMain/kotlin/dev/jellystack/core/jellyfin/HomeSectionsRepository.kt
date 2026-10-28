@@ -1,5 +1,6 @@
 package dev.jellystack.core.jellyfin
 
+import dev.jellystack.core.coroutines.runSuspendCatching
 import dev.jellystack.network.ClientConfig
 import dev.jellystack.network.NetworkClientFactory
 import dev.jellystack.network.jellyfin.HomeSectionInfoDto
@@ -124,7 +125,7 @@ class HomeSectionsRepository(
                         .distinctBy(SectionRequest::id)
                         .map { (id, type, descriptor) ->
                             async {
-                                runCatching {
+                                runSuspendCatching {
                                     val items =
                                         api
                                             .sectionItems(type, environment.userId, descriptor.additionalData, sectionLanguage)
