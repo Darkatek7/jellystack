@@ -17,6 +17,9 @@ internal data class TvCinematicHero(
 /**
  * [subtitle] is the line on the card itself; the stage shows [metadata] instead when there is one, and
  * [logoUrl] in place of the title text.
+ *
+ * Cards are built from server data, so the builders drop items without an [id] and fall back to an "untitled" label;
+ * a card itself never rejects what a server sent.
  */
 @Immutable
 internal data class TvCinematicCard(
@@ -35,8 +38,8 @@ internal data class TvCinematicCard(
     val keepsBackdrop: Boolean = false,
 ) {
     init {
+        // Builders skip server items without an ID and keep progress inside 0..1, so neither is server input here.
         require(id.isNotBlank()) { "A cinematic card requires a stable ID" }
-        require(title.isNotBlank()) { "A cinematic card requires a title" }
         require(resumeFraction == null || resumeFraction in 0f..1f) { "Resume progress must be between zero and one" }
     }
 }
@@ -48,11 +51,25 @@ internal data class TvCinematicRow(
     val cards: List<TvCinematicCard>,
 ) {
     init {
+        // Row IDs and titles are constants of the screen that builds the row.
         require(id.isNotBlank()) { "A cinematic row requires a stable ID" }
         require(title.isNotBlank()) { "A cinematic row requires a title" }
-        require(cards.map(TvCinematicCard::id).distinct().size == cards.size) { "Card IDs must be unique within a row" }
     }
 }
+
+/**
+ * Builds a row from server-derived cards. A card that repeats an earlier card's ID is dropped, because the lists key
+ * their items by it, and a row left without cards is not shown.
+ */
+internal fun tvCinematicRowOrNull(
+    id: String,
+    title: String,
+    cards: List<TvCinematicCard>,
+): TvCinematicRow? =
+    cards
+        .distinctBy(TvCinematicCard::id)
+        .takeIf(List<TvCinematicCard>::isNotEmpty)
+        ?.let { TvCinematicRow(id, title, it) }
 
 @Immutable
 internal data class TvCinematicBackdrop(
@@ -78,10 +95,6 @@ internal data class TvCinematicBrowseState(
     val backdrop: TvCinematicBackdrop = TvCinematicBackdrop(),
     val inlineStatus: TvCinematicInlineStatus? = null,
 ) {
-    init {
-        require(rows.map(TvCinematicRow::id).distinct().size == rows.size) { "Cinematic row IDs must be unique" }
-    }
-
     val focusedCard: TvCinematicCard?
         get() =
             focusedAnchor?.let { anchor ->

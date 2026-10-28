@@ -658,7 +658,7 @@ class JellyfinBrowseCoordinator internal constructor(
                 }
             val merged =
                 if (page == 0) {
-                    items
+                    items.distinctBy { it.id }
                 } else {
                     (stateBefore.libraryItems + items).distinctBy { it.id }
                 }

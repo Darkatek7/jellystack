@@ -1229,7 +1229,7 @@ class JellyseerrRepository(
                 result.toDomain()
             }
 
-    private fun JellyseerrSearchResultDto.toDomain(): JellyseerrSearchItem =
+    private fun JellyseerrSearchResultDto.toDomain(): JellyseerrSearchItem? =
         mapToSearchItem(
             id = id,
             mediaType = mediaType,
@@ -1241,7 +1241,7 @@ class JellyseerrRepository(
             releaseDate = releaseDate,
             firstAirDate = firstAirDate,
             mediaInfo = mediaInfo,
-        ) ?: error("Unsupported media type $mediaType for search result $id")
+        )
 
     private fun JellyseerrDiscoverResponseDto.toRecommendationPage(
         page: Int,
@@ -1311,7 +1311,8 @@ class JellyseerrRepository(
         if (type == JellyseerrMediaType.PERSON || type == JellyseerrMediaType.COLLECTION) {
             return null
         }
-        val movieOrTvTitle = title ?: name ?: ""
+        // An empty title stays empty: the UI shows its own "untitled" label.
+        val movieOrTvTitle = firstNonBlank(title, name).orEmpty()
         val releaseYear =
             when {
                 !releaseDate.isNullOrBlank() && releaseDate.length >= 4 -> releaseDate.substring(0, 4)

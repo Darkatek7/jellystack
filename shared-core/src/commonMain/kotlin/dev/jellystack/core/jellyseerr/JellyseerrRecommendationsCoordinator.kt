@@ -91,8 +91,8 @@ class JellyseerrRecommendationsCoordinator(
         scope.launch {
             val grouped =
                 requests
-                    .filter { it.tmdbId != null }
-                    .groupBy { it.mediaType to it.tmdbId!! }
+                    .mapNotNull { request -> request.tmdbId?.let { tmdbId -> (request.mediaType to tmdbId) to request } }
+                    .groupBy({ (key, _) -> key }, { (_, request) -> request })
             mutex.withLock {
                 requestSummaries.clear()
                 requestSummaries.putAll(grouped)

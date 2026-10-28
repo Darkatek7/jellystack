@@ -24,6 +24,7 @@ import dev.jellystack.players.cast.CastSessionSnapshot
 import dev.jellystack.players.cast.CastStreamType
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.launch
@@ -2503,6 +2504,61 @@ class PlaybackControllerTest {
         }
 
     @Test
+    fun engineSideAudioFocusLossAndRegainAreMirroredIntoTheState() =
+        runTest {
+            val engine = RecordingPlayerEngine()
+            val controllerScope = TestScope(UnconfinedTestDispatcher(testScheduler))
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = TestPlaybackSourceResolver(),
+                    playerEngine = engine,
+                    scope = controllerScope,
+                )
+
+            try {
+                controller.play(PlaybackRequest.from(sampleItem(), sampleDetail(withDirect = true)), testEnvironment())
+                engine.emitEvent(PlayerEvent.Ready)
+
+                engine.emitEvent(PlayerEvent.PlayWhenReadyChanged(playWhenReady = false))
+                assertTrue((controller.state.value as PlaybackState.Active).isPaused)
+                // The engine paused by itself; the controller must not send another pause back.
+                assertEquals(0, engine.pauseCount)
+
+                engine.emitEvent(PlayerEvent.PlayWhenReadyChanged(playWhenReady = true))
+                assertFalse((controller.state.value as PlaybackState.Active).isPaused)
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
+    fun finishedItemIsNotResumedByAnEnginePlayWhenReadyChange() =
+        runTest {
+            val engine = RecordingPlayerEngine()
+            val controllerScope = TestScope(UnconfinedTestDispatcher(testScheduler))
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = TestPlaybackSourceResolver(),
+                    playerEngine = engine,
+                    scope = controllerScope,
+                )
+
+            try {
+                controller.play(PlaybackRequest.from(sampleItem(), sampleDetail(withDirect = true)), testEnvironment())
+                engine.emitEvent(PlayerEvent.Completed)
+                assertEquals(PlaybackPhase.Ended, (controller.state.value as PlaybackState.Active).phase)
+
+                engine.emitEvent(PlayerEvent.PlayWhenReadyChanged(playWhenReady = true))
+
+                val ended = controller.state.value as PlaybackState.Active
+                assertEquals(PlaybackPhase.Ended, ended.phase)
+                assertTrue(ended.isPaused)
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
     fun playerFailureShowsRetryableErrorAndRetryRestoresProgress() =
         runTest {
             val engine = RecordingPlayerEngine()
@@ -2519,6 +2575,7 @@ class PlaybackControllerTest {
 
             try {
                 controller.play(request, testEnvironment())
+                engine.emitEvent(PlayerEvent.Ready)
                 engine.emitPosition(42_000L)
                 engine.emitEvent(PlayerEvent.Error(IllegalStateException("Decoder failed")))
                 controllerScope.advanceUntilIdle()
@@ -2562,6 +2619,7 @@ class PlaybackControllerTest {
 
             try {
                 controller.play(request, testEnvironment())
+                engine.emitEvent(PlayerEvent.Ready)
                 engine.emitPosition(31_000L)
                 controller.setPlaybackSpeed(1.5f)
                 controller.pause()
@@ -2602,6 +2660,7 @@ class PlaybackControllerTest {
 
             try {
                 controller.play(request, testEnvironment())
+                engine.emitEvent(PlayerEvent.Ready)
                 engine.emitPosition(31_000L)
                 engine.emitEvent(
                     PlayerEvent.Error(
@@ -2635,6 +2694,7 @@ class PlaybackControllerTest {
 
             try {
                 controller.play(request, testEnvironment())
+                engine.emitEvent(PlayerEvent.Ready)
                 engine.emitPosition(31_000L)
                 engine.emitEvent(PlayerEvent.AudioOutputUnavailable)
                 controllerScope.advanceUntilIdle()
@@ -2664,6 +2724,7 @@ class PlaybackControllerTest {
 
             try {
                 controller.play(request, testEnvironment())
+                engine.emitEvent(PlayerEvent.Ready)
                 engine.emitPosition(44_000L)
                 controller.setPlaybackSpeed(1.25f)
                 controller.pause()
@@ -2797,6 +2858,312 @@ class PlaybackControllerTest {
                 controllerScope.advanceUntilIdle()
                 controller.stop()
                 assertNull(progressStore.read(request.mediaId))
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
+    fun stopDuringFallbackResolveNeverPreparesOrPlaysTheStoppedItemAgain() =
+        runTest {
+            val resolveStarted = CompletableDeferred<Unit>()
+            val allowResolve = CompletableDeferred<Unit>()
+            val engine = RecordingPlayerEngine()
+            val controllerScope = TestScope(UnconfinedTestDispatcher(testScheduler))
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = DelayingQualityResolver(resolveStarted, allowResolve),
+                    playerEngine = engine,
+                    scope = controllerScope,
+                )
+
+            try {
+                controller.play(PlaybackRequest.from(sampleItem(), sampleDetail(withDirect = true)), testEnvironment())
+                engine.emitEvent(PlayerEvent.Error(IllegalStateException("Decoder failed")))
+                resolveStarted.await()
+
+                controller.stop()
+                allowResolve.complete(Unit)
+                controllerScope.advanceUntilIdle()
+
+                assertEquals(PlaybackState.Stopped, controller.state.value)
+                assertNull(controller.currentSession())
+                assertEquals(1, engine.prepareCount)
+                assertEquals(1, engine.playCount)
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
+    fun newItemDuringOldItemsFallbackResolveStaysUntouched() =
+        runTest {
+            val resolveStarted = CompletableDeferred<Unit>()
+            val allowResolve = CompletableDeferred<Unit>()
+            val engine = RecordingPlayerEngine()
+            val controllerScope = TestScope(UnconfinedTestDispatcher(testScheduler))
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = DelayingQualityResolver(resolveStarted, allowResolve),
+                    playerEngine = engine,
+                    scope = controllerScope,
+                )
+
+            try {
+                controller.play(PlaybackRequest.from(sampleItem("item-1"), sampleDetail(withDirect = true)), testEnvironment())
+                engine.emitEvent(PlayerEvent.Error(IllegalStateException("Decoder failed")))
+                resolveStarted.await()
+
+                controller.play(PlaybackRequest.from(sampleItem("item-2"), sampleDetail(withDirect = true)), testEnvironment())
+                allowResolve.complete(Unit)
+                controllerScope.advanceUntilIdle()
+
+                val state = controller.state.value as PlaybackState.Active
+                assertEquals("item-2", state.mediaId)
+                assertEquals(2, engine.prepareCount)
+                assertEquals(2, engine.playCount)
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
+    fun failedFallbackResolveOfAReplacedItemDoesNotStopTheNewItem() =
+        runTest {
+            val resolveStarted = CompletableDeferred<Unit>()
+            val failResolve = CompletableDeferred<Unit>()
+            val engine = RecordingPlayerEngine()
+            val controllerScope = TestScope(UnconfinedTestDispatcher(testScheduler))
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver =
+                        PlaybackSourceResolver { request, selection, _, _, options ->
+                            if (options.forceTranscoding) {
+                                resolveStarted.complete(Unit)
+                                failResolve.await()
+                            }
+                            resolvedSource(
+                                url = "https://example.test/${request.mediaId}.mp4",
+                                mode = PlaybackMode.DIRECT,
+                                playSessionId = "play-${request.mediaId}",
+                                mediaSourceId = selection.sourceId,
+                            )
+                        },
+                    playerEngine = engine,
+                    scope = controllerScope,
+                )
+
+            try {
+                controller.play(PlaybackRequest.from(sampleItem("item-1"), sampleDetail(withDirect = true)), testEnvironment())
+                engine.emitEvent(PlayerEvent.Error(IllegalStateException("Decoder failed")))
+                resolveStarted.await()
+
+                controller.play(PlaybackRequest.from(sampleItem("item-2"), sampleDetail(withDirect = true)), testEnvironment())
+                failResolve.completeExceptionally(IllegalStateException("resolve failed"))
+                controllerScope.advanceUntilIdle()
+
+                val state = controller.state.value as PlaybackState.Active
+                assertEquals("item-2", state.mediaId)
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
+    fun cancelledPlayLeavesPreparingForStopped() =
+        runTest {
+            val engine = BlockingPlayerEngine()
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = TestPlaybackSourceResolver(),
+                    playerEngine = engine,
+                    scope = TestScope(UnconfinedTestDispatcher(testScheduler)),
+                )
+
+            try {
+                val playJob =
+                    launch {
+                        controller.play(PlaybackRequest.from(sampleItem(), sampleDetail(withDirect = true)), testEnvironment())
+                    }
+                runCurrent()
+                assertTrue(controller.state.value is PlaybackState.Preparing)
+
+                playJob.cancelAndJoin()
+
+                assertEquals(PlaybackState.Stopped, controller.state.value)
+                assertNull(controller.currentSession())
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
+    fun engineLeftoverPositionBeforeReadyDoesNotOverwriteTheResumePoint() =
+        runTest {
+            val store = InMemoryPlaybackProgressStore()
+            val engine = RecordingPlayerEngine()
+            val controllerScope = TestScope(UnconfinedTestDispatcher(testScheduler))
+            val controller =
+                PlaybackController(
+                    progressStore = store,
+                    playbackSourceResolver = TestPlaybackSourceResolver(),
+                    playerEngine = engine,
+                    scope = controllerScope,
+                )
+            val request =
+                PlaybackRequest.from(
+                    sampleItem(positionTicks = 120_000L.toTicks()),
+                    sampleDetail(withDirect = true, durationMs = 3_600_000L),
+                )
+
+            try {
+                controller.play(request, testEnvironment())
+                // The previous item's last position, then an idle player's zero.
+                engine.emitPosition(3_590_000L)
+                engine.emitPosition(0L)
+
+                assertEquals(120_000L, (controller.state.value as PlaybackState.Active).positionMs)
+                assertNull(store.read(request.mediaId))
+
+                engine.emitEvent(PlayerEvent.Ready)
+                engine.emitPosition(130_000L)
+
+                assertEquals(130_000L, (controller.state.value as PlaybackState.Active).positionMs)
+                assertEquals(130_000L, store.read(request.mediaId)?.positionMs)
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
+    fun networkErrorRetriesTheSameSourceAtTheLastPositionBeforeAnyFallback() =
+        runTest {
+            val engine = RecordingPlayerEngine()
+            val resolver = DirectFallbackPlaybackSourceResolver()
+            val controllerScope = TestScope(UnconfinedTestDispatcher(testScheduler))
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = resolver,
+                    playerEngine = engine,
+                    scope = controllerScope,
+                )
+
+            try {
+                controller.play(PlaybackRequest.from(sampleItem(), sampleDetail(withDirect = true)), testEnvironment())
+                val originalUrl = engine.lastPrepared?.url
+                engine.emitEvent(PlayerEvent.Ready)
+                engine.emitPosition(31_000L)
+
+                engine.emitEvent(PlayerEvent.Error(IllegalStateException("connection lost"), PlayerErrorCategory.NETWORK))
+
+                assertEquals(1, engine.prepareCount)
+                assertEquals(PlaybackPhase.Buffering, (controller.state.value as PlaybackState.Active).phase)
+
+                controllerScope.advanceUntilIdle()
+
+                val active = controller.state.value as PlaybackState.Active
+                assertEquals(PlaybackMode.DIRECT, active.stream.mode)
+                assertEquals(2, engine.prepareCount)
+                assertEquals(originalUrl, engine.lastPrepared?.url)
+                assertEquals(31_000L, engine.lastStartPositionMs)
+                assertEquals(1, resolver.requests.size)
+                assertEquals(2, engine.playCount)
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
+    fun exhaustedNetworkRetriesFallBackToTranscodingAndThenReportTheNetworkError() =
+        runTest {
+            val engine = RecordingPlayerEngine()
+            val resolver = DirectFallbackPlaybackSourceResolver()
+            val controllerScope = TestScope(UnconfinedTestDispatcher(testScheduler))
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = resolver,
+                    playerEngine = engine,
+                    scope = controllerScope,
+                )
+            val networkError = PlayerEvent.Error(IllegalStateException("connection lost"), PlayerErrorCategory.NETWORK)
+
+            try {
+                controller.play(PlaybackRequest.from(sampleItem(), sampleDetail(withDirect = true)), testEnvironment())
+                repeat(PlaybackNetworkRetryPolicy.DEFAULT_BACKOFF_MS.size) {
+                    engine.emitEvent(networkError)
+                    controllerScope.advanceUntilIdle()
+                }
+                assertEquals(1 + PlaybackNetworkRetryPolicy.DEFAULT_BACKOFF_MS.size, engine.prepareCount)
+                assertEquals(1, resolver.requests.size)
+
+                engine.emitEvent(networkError)
+                controllerScope.advanceUntilIdle()
+
+                assertTrue(resolver.requests.last().forceTranscoding)
+                assertEquals(PlaybackMode.HLS, (controller.state.value as PlaybackState.Active).stream.mode)
+                val preparedBeforeFailure = engine.prepareCount
+
+                engine.emitEvent(networkError)
+                controllerScope.advanceUntilIdle()
+
+                val error = controller.state.value as PlaybackState.PlaybackError
+                assertEquals(PlayerErrorCategory.NETWORK, error.category)
+                assertEquals(preparedBeforeFailure, engine.prepareCount)
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
+    fun stopDuringNetworkBackoffDoesNotPrepareThePlayerAgain() =
+        runTest {
+            val engine = RecordingPlayerEngine()
+            val controllerScope = TestScope(UnconfinedTestDispatcher(testScheduler))
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = DirectFallbackPlaybackSourceResolver(),
+                    playerEngine = engine,
+                    scope = controllerScope,
+                )
+
+            try {
+                controller.play(PlaybackRequest.from(sampleItem(), sampleDetail(withDirect = true)), testEnvironment())
+                engine.emitEvent(PlayerEvent.Error(IllegalStateException("connection lost"), PlayerErrorCategory.NETWORK))
+
+                controller.stop()
+                controllerScope.advanceUntilIdle()
+
+                assertEquals(PlaybackState.Stopped, controller.state.value)
+                assertEquals(1, engine.prepareCount)
+                assertEquals(1, engine.playCount)
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
+    fun unauthorizedErrorSkipsRetriesAndFallbacksAndIsExposedInTheState() =
+        runTest {
+            val engine = RecordingPlayerEngine()
+            val resolver = DirectFallbackPlaybackSourceResolver()
+            val controllerScope = TestScope(UnconfinedTestDispatcher(testScheduler))
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = resolver,
+                    playerEngine = engine,
+                    scope = controllerScope,
+                )
+
+            try {
+                controller.play(PlaybackRequest.from(sampleItem(), sampleDetail(withDirect = true)), testEnvironment())
+
+                engine.emitEvent(PlayerEvent.Error(IllegalStateException("Response code: 401"), PlayerErrorCategory.UNAUTHORIZED))
+                controllerScope.advanceUntilIdle()
+
+                val error = controller.state.value as PlaybackState.PlaybackError
+                assertEquals(PlayerErrorCategory.UNAUTHORIZED, error.category)
+                assertEquals(1, engine.prepareCount)
+                assertEquals(1, resolver.requests.size)
             } finally {
                 controller.release()
             }

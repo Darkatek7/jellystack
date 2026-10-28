@@ -34,9 +34,11 @@ import dev.jellystack.core.preferences.SubtitleBackground
 import dev.jellystack.core.preferences.SubtitleTextSize
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -85,9 +87,17 @@ class AndroidPlayerEngine(
     private var audioOutputUnavailableReported = false
     private var audioOutputWatchdog: Job? = null
 
-    private val exoPlayer =
+    // Created on first use: an engine that never plays (the TV trailer preview before its first trailer) holds
+    // no codecs, playback thread or buffer.
+    private val exoPlayerHolder = lazy(LazyThreadSafetyMode.NONE) { createExoPlayer(preferHighestSupportedBitrate) }
+    private val exoPlayer: ExoPlayer get() = exoPlayerHolder.value
+    private val exoPlayerIfCreated: ExoPlayer? get() = if (exoPlayerHolder.isInitialized()) exoPlayerHolder.value else null
+    private var audioOutputEnabled = true
+
+    private fun createExoPlayer(preferHighestSupportedBitrate: Boolean): ExoPlayer =
         ExoPlayer
-            .Builder(context, JellystackRenderersFactory(context))
+            .Builder(appContext, JellystackRenderersFactory(appContext))
+            .setLoadControl(PlaybackBufferSizing.loadControl(appContext))
             .build()
             .apply {
                 if (preferHighestSupportedBitrate) {
@@ -97,23 +107,43 @@ class AndroidPlayerEngine(
                             .setForceHighestSupportedBitrate(true)
                             .build()
                 }
-                setAudioAttributes(
-                    mediaAudioAttributes,
-                    true,
-                )
+                setAudioAttributes(mediaAudioAttributes, audioOutputEnabled)
+                volume = if (audioOutputEnabled) 1f else 0f
                 setHandleAudioBecomingNoisy(true)
                 addListener(
                     object : Player.Listener {
                         override fun onPlaybackStateChanged(playbackState: Int) {
                             when (playbackState) {
-                                Player.STATE_BUFFERING -> eventFlow.tryEmit(PlayerEvent.Buffering)
+                                Player.STATE_BUFFERING -> {
+                                    eventFlow.tryEmit(PlayerEvent.Buffering)
+                                    startPolling()
+                                }
                                 Player.STATE_READY -> {
                                     eventFlow.tryEmit(PlayerEvent.Ready)
+                                    publishSnapshot()
                                     scheduleFirstFrameWatchdog()
                                     scheduleAudioOutputWatchdog()
                                 }
-                                Player.STATE_ENDED -> eventFlow.tryEmit(PlayerEvent.Completed)
+                                Player.STATE_ENDED -> {
+                                    eventFlow.tryEmit(PlayerEvent.Completed)
+                                    publishSnapshot()
+                                }
                             }
+                        }
+
+                        override fun onIsPlayingChanged(isPlaying: Boolean) {
+                            // The last position of a pause or stall is published here; polling stops by itself.
+                            publishSnapshot()
+                            if (isPlaying) startPolling()
+                        }
+
+                        override fun onPositionDiscontinuity(
+                            oldPosition: Player.PositionInfo,
+                            newPosition: Player.PositionInfo,
+                            reason: Int,
+                        ) {
+                            // A seek while paused changes no playing state, yet the seek bar and progress need it.
+                            publishSnapshot()
                         }
 
                         override fun onPlayerError(error: PlaybackException) {
@@ -124,7 +154,7 @@ class AndroidPlayerEngine(
                             )
                             firstFrameWatchdog?.cancel()
                             audioOutputWatchdog?.cancel()
-                            scope.launch { eventFlow.emit(PlayerEvent.Error(error)) }
+                            scope.launch { eventFlow.emit(PlayerEvent.Error(error, error.toPlayerErrorCategory())) }
                         }
 
                         override fun onRenderedFirstFrame() {
@@ -137,6 +167,8 @@ class AndroidPlayerEngine(
                             reason: Int,
                         ) {
                             if (playWhenReady) scheduleFirstFrameWatchdog() else firstFrameWatchdog?.cancel()
+                            // Includes audio focus loss and regain, which ExoPlayer handles on its own.
+                            eventFlow.tryEmit(PlayerEvent.PlayWhenReadyChanged(playWhenReady))
                         }
 
                         override fun onTracksChanged(tracks: Tracks) {
@@ -177,25 +209,45 @@ class AndroidPlayerEngine(
                 )
             }
 
-    private val positionFlow = MutableSharedFlow<Long>(replay = 1)
+    // The latest position wins, so publishing from a player callback never waits for a slow collector.
+    private val positionFlow = MutableSharedFlow<Long>(replay = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     private val eventFlow = MutableSharedFlow<PlayerEvent>(extraBufferCapacity = 4)
     private val runtimeStatsFlow = MutableStateFlow(PlaybackRuntimeStats())
-    private var positionJob =
-        scope.launch {
-            while (isActive) {
-                positionFlow.emit(exoPlayer.currentPosition)
-                runtimeStatsFlow.value = currentRuntimeStats()
-                delay(POSITION_POLL_INTERVAL_MS)
+    private var pollJob: Job? = null
+
+    /** Polls position and stats only while the player plays or buffers; other changes publish one snapshot. */
+    private fun startPolling() {
+        if (pollJob?.isActive == true) return
+        pollJob =
+            scope.launch {
+                while (isActive && isPlayingOrBuffering()) {
+                    publishSnapshot()
+                    delay(POSITION_POLL_INTERVAL_MS)
+                }
             }
-        }
+    }
+
+    private fun isPlayingOrBuffering(): Boolean {
+        val player = exoPlayerIfCreated ?: return false
+        return player.isPlaying || player.playbackState == Player.STATE_BUFFERING
+    }
+
+    private fun publishSnapshot() {
+        val player = exoPlayerIfCreated ?: return
+        // An idle player has no media: its position is 0 or left over from the previous item.
+        if (player.playbackState != Player.STATE_IDLE) positionFlow.tryEmit(player.currentPosition)
+        runtimeStatsFlow.value = currentRuntimeStats(player)
+    }
 
     override val positionUpdates: SharedFlow<Long> = positionFlow.asSharedFlow()
     override val events: SharedFlow<PlayerEvent> = eventFlow.asSharedFlow()
     override val runtimeStats: StateFlow<PlaybackRuntimeStats> = runtimeStatsFlow.asStateFlow()
 
     fun setAudioOutputEnabled(enabled: Boolean) {
-        exoPlayer.volume = if (enabled) 1f else 0f
-        exoPlayer.setAudioAttributes(mediaAudioAttributes, enabled)
+        audioOutputEnabled = enabled
+        val player = exoPlayerIfCreated ?: return
+        player.volume = if (enabled) 1f else 0f
+        player.setAudioAttributes(mediaAudioAttributes, enabled)
     }
 
     fun createVideoSurface(
@@ -238,7 +290,7 @@ class AndroidPlayerEngine(
 
     fun releaseVideoSurface(view: View) {
         val playerView = view as? PlayerView ?: return
-        if (playerView.player === exoPlayer) {
+        if (playerView.player != null && playerView.player === exoPlayerIfCreated) {
             playerView.player = null
         }
         if (videoSurface === playerView) videoSurface = null
@@ -301,6 +353,7 @@ class AndroidPlayerEngine(
     ) {
         firstFrameWatchdog?.cancel()
         audioOutputWatchdog?.cancel()
+        dropStalePosition()
         firstFrameState.value = false
         expectsAudioOutput = audioTrack != null || source.audioStreamIndex != null
         audioOutputUnavailableReported = false
@@ -334,6 +387,9 @@ class AndroidPlayerEngine(
                     ->
                         DefaultHttpDataSource
                             .Factory()
+                            // Jellyfin behind a reverse proxy commonly redirects http to https. Only a plain-http source
+                            // may switch protocol, so an https source never sends its token to an http redirect.
+                            .setAllowCrossProtocolRedirects(source.url.startsWith("http://", ignoreCase = true))
                             .setDefaultRequestProperties(source.headers)
 
                     PlaybackMode.LOCAL -> DefaultDataSource.Factory(appContext)
@@ -366,7 +422,7 @@ class AndroidPlayerEngine(
     }
 
     override fun pause() {
-        exoPlayer.pause()
+        exoPlayerIfCreated?.pause()
     }
 
     override fun stop() {
@@ -376,8 +432,11 @@ class AndroidPlayerEngine(
         firstFrameState.value = false
         sessionMetadata = null
         sessionArtworkUrl = null
-        exoPlayer.stop()
-        exoPlayer.clearMediaItems()
+        exoPlayerIfCreated?.run {
+            stop()
+            clearMediaItems()
+        }
+        dropStalePosition()
     }
 
     override fun setSessionMetadata(
@@ -435,12 +494,16 @@ class AndroidPlayerEngine(
     override fun release() {
         firstFrameWatchdog?.cancel()
         audioOutputWatchdog?.cancel()
-        positionJob.cancel()
-        exoPlayer.release()
+        pollJob?.cancel()
+        exoPlayerIfCreated?.release()
         scope.cancel()
     }
 
     internal fun media3Player(): Player = exoPlayer
+
+    /** Forgets the replayed position, so a new collector never starts from the previous item's last one. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private fun dropStalePosition() = positionFlow.resetReplayCache()
 
     private fun scheduleFirstFrameWatchdog() {
         if (firstFrameState.value || !exoPlayer.playWhenReady || exoPlayer.videoFormat == null) return
@@ -485,9 +548,9 @@ class AndroidPlayerEngine(
             }
     }
 
-    private fun currentRuntimeStats(): PlaybackRuntimeStats {
-        val video = exoPlayer.videoFormat
-        val audio = exoPlayer.audioFormat
+    private fun currentRuntimeStats(player: ExoPlayer): PlaybackRuntimeStats {
+        val video = player.videoFormat
+        val audio = player.audioFormat
         val transfer = video?.colorInfo?.colorTransfer
         return runtimeStatsFlow.value.copy(
             videoCodec = video?.codecs ?: video?.sampleMimeType,
@@ -502,8 +565,8 @@ class AndroidPlayerEngine(
                     COLOR_TRANSFER_HLG -> "HLG"
                     else -> null
                 },
-            bufferedDurationMs = exoPlayer.totalBufferedDuration.coerceAtLeast(0L),
-            droppedFrames = exoPlayer.videoDecoderCounters?.droppedBufferCount,
+            bufferedDurationMs = player.totalBufferedDuration.coerceAtLeast(0L),
+            droppedFrames = player.videoDecoderCounters?.droppedBufferCount,
         )
     }
 

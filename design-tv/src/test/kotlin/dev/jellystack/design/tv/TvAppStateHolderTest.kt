@@ -155,6 +155,39 @@ class TvAppStateHolderTest {
     }
 
     @Test
+    fun theSavedSnapshotNeverContainsThePlayerRoute() {
+        val holder = TvAppStateHolder()
+        holder.push(TvRoute.JellyfinDetail("movie-1"))
+        holder.push(TvRoute.Player)
+
+        val snapshot = holder.snapshot()
+        assertEquals(listOf(TvRoute.Home, TvRoute.JellyfinDetail("movie-1")), snapshot.backStack)
+        // The live state is untouched: the player is still on screen.
+        assertEquals(TvRoute.Player, holder.state.currentRoute)
+
+        val restoredFromOldSave =
+            TvAppStateHolder(TvAppStateSnapshot(backStack = listOf(TvRoute.Home, TvRoute.Player)))
+        assertEquals(listOf<TvRoute>(TvRoute.Home), restoredFromOldSave.state.backStack)
+        assertEquals(
+            listOf<TvRoute>(TvRoute.Home),
+            TvAppStateHolder(TvAppStateSnapshot(backStack = listOf(TvRoute.Player))).state.backStack,
+        )
+    }
+
+    @Test
+    fun popPlayerRouteReturnsToWherePlaybackStartedAndIgnoresOtherRoutes() {
+        val holder = TvAppStateHolder()
+        holder.push(TvRoute.JellyfinDetail("movie-1"))
+
+        assertFalse(holder.popPlayerRoute())
+        assertEquals(TvRoute.JellyfinDetail("movie-1"), holder.state.currentRoute)
+
+        holder.push(TvRoute.Player)
+        assertTrue(holder.popPlayerRoute())
+        assertEquals(TvRoute.JellyfinDetail("movie-1"), holder.state.currentRoute)
+    }
+
+    @Test
     fun wakePreservesRouteAndFocusWithoutReopeningRail() {
         val holder = TvAppStateHolder()
         holder.selectTopLevel(TvRoute.Discover)

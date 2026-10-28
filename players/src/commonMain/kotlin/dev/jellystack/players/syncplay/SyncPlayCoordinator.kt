@@ -1,8 +1,10 @@
 package dev.jellystack.players.syncplay
 
+import dev.jellystack.core.coroutines.runSuspendCatching
 import dev.jellystack.core.jellyfin.JellyfinEnvironment
 import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
 import dev.jellystack.core.jellyfin.JellyfinSyncPlayAccess
+import dev.jellystack.core.logging.JellystackLog
 import dev.jellystack.network.ClientConfig
 import dev.jellystack.network.NetworkClientFactory
 import dev.jellystack.network.jellyfin.JellyfinClientIdentity
@@ -21,6 +23,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -78,12 +82,14 @@ class SyncPlayCoordinator(
         ),
     private val onAccessDenied: suspend () -> Unit = {},
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+    private val socketEvents: (JellyfinSyncPlayApi) -> Flow<JsonObject> = JellyfinSyncPlayApi::events,
 ) {
     private val mutableState = MutableStateFlow(SyncPlayUiState())
     val state: StateFlow<SyncPlayUiState> = mutableState.asStateFlow()
 
     private var api: JellyfinSyncPlayApi? = null
     private var apiEnvironmentKey: String? = null
+    private var apiAccessToken: String? = null
     private var socketJob: Job? = null
     private var playbackJob: Job? = null
     private var queuedItemIds: List<String> = emptyList()
@@ -125,6 +131,7 @@ class SyncPlayCoordinator(
             socketJob = null
             api = null
             apiEnvironmentKey = null
+            apiAccessToken = null
             clearJoinedGroup()
         }
         mutableState.value =
@@ -213,11 +220,13 @@ class SyncPlayCoordinator(
         }
     }
 
-    private suspend fun refreshInternal() {
+    private suspend fun refreshInternal(dropMissingGroup: Boolean = false) {
         mutableState.value = state.value.copy(loading = true, error = null)
         withApi { service ->
             val groups = service.groups().map { it.toDomain() }
             val currentId = state.value.currentGroup?.id
+            // After an outage the server may have dropped this client from its group.
+            if (dropMissingGroup && currentId != null && groups.none { it.id == currentId }) clearJoinedGroup()
             mutableState.value =
                 state.value.copy(
                     groups = groups,
@@ -245,10 +254,22 @@ class SyncPlayCoordinator(
 
     private fun apiFor(environment: JellyfinEnvironment): JellyfinSyncPlayApi {
         val existing = api
-        if (existing != null && apiEnvironmentKey == environment.serverKey) return existing
+        if (existing != null && apiEnvironmentKey == environment.serverKey) {
+            ensureSocket()
+            return existing
+        }
         socketJob?.cancel()
         clearJoinedGroup()
-        return JellyfinSyncPlayApi(
+        return createApi(environment).also {
+            api = it
+            apiEnvironmentKey = environment.serverKey
+            apiAccessToken = environment.accessToken
+            startSocket(it)
+        }
+    }
+
+    private fun createApi(environment: JellyfinEnvironment) =
+        JellyfinSyncPlayApi(
             client = client,
             baseUrl = environment.baseUrl,
             accessToken = environment.accessToken,
@@ -259,30 +280,80 @@ class SyncPlayCoordinator(
                     deviceName = environment.deviceName,
                     deviceId = environment.deviceId ?: "unknown",
                 ),
-        ).also {
-            api = it
-            apiEnvironmentKey = environment.serverKey
-            startSocket(it)
-        }
+        )
+
+    /** Starts a socket again when the last one ended while no group was joined. */
+    private fun ensureSocket() {
+        if (socketJob?.isActive == true) return
+        api?.let(::startSocket)
     }
 
     private fun startSocket(service: JellyfinSyncPlayApi) {
         socketJob?.cancel()
-        socketJob =
-            scope.launch {
-                try {
-                    service.events().collect(::handleEvent)
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (failure: Throwable) {
-                    publishError(failure)
+        socketJob = scope.launch { superviseSocket(service) }
+    }
+
+    /**
+     * Keeps the socket open. While a group is joined, a dropped socket (Wi-Fi loss, sleep, server restart) is opened
+     * again with [SyncPlayReconnectBackoff]; without a group the supervisor ends and the next group action starts a
+     * new socket. It also ends when the environment changes, the group is left or the coordinator is closed.
+     */
+    private suspend fun superviseSocket(first: JellyfinSyncPlayApi) {
+        var service = first
+        var failedAttempts = 0
+        var reconnecting = false
+        while (true) {
+            var opened = false
+            try {
+                socketEvents(service).collect { message ->
+                    if (!opened) {
+                        opened = true
+                        failedAttempts = 0
+                        if (reconnecting) onSocketRestored()
+                    }
+                    handleEvent(message)
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Throwable) {
+                JellystackLog.w("SyncPlay socket dropped", failure)
+                publishError(failure)
             }
+            if (state.value.currentGroup == null) return
+            mutableState.value = state.value.copy(connected = false)
+            delay(SyncPlayReconnectBackoff.delayMillis(failedAttempts))
+            failedAttempts += 1
+            if (state.value.currentGroup == null) return
+            service = currentApiForReconnect() ?: return
+            reconnecting = true
+        }
+    }
+
+    private suspend fun currentApiForReconnect(): JellyfinSyncPlayApi? {
+        val environment =
+            try {
+                environmentProvider.current()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Throwable) {
+                null
+            } ?: return null
+        if (environment.serverKey != apiEnvironmentKey) return null
+        if (environment.accessToken != apiAccessToken) {
+            apiAccessToken = environment.accessToken
+            api = createApi(environment)
+        }
+        return api
+    }
+
+    private fun onSocketRestored() {
+        scope.launch { refreshInternal(dropMissingGroup = true) }
     }
 
     private fun setJoinedGroup(group: SyncPlayGroup) {
         playbackController.setPlaybackSpeed(1f)
         mutableState.value = state.value.copy(currentGroup = group, connected = true, error = null)
+        ensureSocket()
         setCurrentPlaybackAsQueue()
     }
 
@@ -345,7 +416,7 @@ class SyncPlayCoordinator(
         val active = playbackController.state.value as? PlaybackState.Active
         if (active?.mediaId != itemId) {
             val startMs = payload.long("StartPositionTicks")?.div(TICKS_PER_MILLISECOND) ?: 0L
-            scope.launch { playItem(itemId, startMs) }
+            scope.launch { runSuspendCatching { playItem(itemId, startMs) }.onFailure(::publishError) }
         }
     }
 
@@ -397,4 +468,15 @@ class SyncPlayCoordinator(
     private companion object {
         const val TICKS_PER_MILLISECOND = 10_000L
     }
+}
+
+/** Waits between attempts to open the SyncPlay socket again: 1 s, doubling, capped at 30 s. */
+internal object SyncPlayReconnectBackoff {
+    private const val INITIAL_DELAY_MILLIS = 1_000L
+    private const val MAX_DELAY_MILLIS = 30_000L
+    private const val MAX_DOUBLINGS = 5
+
+    /** The wait before the reconnect attempt that follows [failedAttempts] consecutive failures (0 for the first). */
+    fun delayMillis(failedAttempts: Int): Long =
+        (INITIAL_DELAY_MILLIS shl failedAttempts.coerceIn(0, MAX_DOUBLINGS)).coerceAtMost(MAX_DELAY_MILLIS)
 }

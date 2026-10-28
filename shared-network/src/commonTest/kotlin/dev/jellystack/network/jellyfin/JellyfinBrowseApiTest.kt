@@ -268,6 +268,34 @@ class JellyfinBrowseApiTest {
         }
 
     @Test
+    fun aPageStillDecodesWhenOneItemHasNoName() =
+        runTest {
+            val engine =
+                MockEngine {
+                    respond(
+                        """
+                        {"Items":[
+                          {"Id":"a","Name":"A","Type":"Movie"},
+                          {"Id":"nameless","Type":"Movie","SortName":"sorted"},
+                          {"Id":"c","Name":"C","Type":"Movie"}
+                        ],"TotalRecordCount":3}
+                        """.trimIndent(),
+                        HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                    )
+                }
+            val client = NetworkClientFactory.create(ClientConfig(engine = engine, installLogging = false))
+            val api = JellyfinBrowseApi(client, baseUrl = "https://example.test", accessToken = "dummy-access-token")
+
+            val page = api.fetchLibraryItems("u-1", "library-1", startIndex = 0, limit = 3)
+
+            assertEquals(listOf("a", "nameless", "c"), page.items.map { it.id })
+            assertEquals(listOf("A", null, "C"), page.items.map { it.name })
+            assertEquals("sorted", page.items[1].sortName)
+            client.close()
+        }
+
+    @Test
     fun fetchSimilarItemsUsesItemEndpointAndUserContext() =
         runTest {
             var requestedPath = ""

@@ -2,10 +2,12 @@ package dev.jellystack.design.tv
 
 import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.JellyfinItemDetail
+import dev.jellystack.core.preferences.AppLanguage
 import dev.jellystack.core.preferences.AppSettings
 import dev.jellystack.core.preferences.ResumeMode
 import dev.jellystack.players.PlaybackRequest
 import dev.jellystack.players.PlaybackStartPolicy
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -15,7 +17,9 @@ import org.junit.Test
 
 class TvPlaybackLauncherTest {
     private val started = mutableListOf<PlaybackRequest>()
+    private val startedSettings = mutableListOf<AppSettings>()
     private var startedRoutes = 0
+    private var defaultPlaybackSpeed = 1f
 
     @Test
     fun askModeWithSavedPositionWaitsForTheAnswerAndStartsWithIt() =
@@ -50,81 +54,311 @@ class TvPlaybackLauncherTest {
         }
 
     @Test
-    fun itemsWithoutPositionStartImmediatelyAndRouteOnlyAfterAStart() =
+    fun theStartOpensThePlayerRightAwayAndEndsIdleOnceTheControllerTookOver() =
         runTest {
-            launcher(ResumeMode.ASK).play(item(positionTicks = null))
-            runCurrent()
-            assertEquals(listOf(PlaybackStartPolicy.INHERIT), started.map { it.startPolicy })
-            assertEquals(1, startedRoutes)
+            val gate = CompletableDeferred<Unit>()
+            val launcher = launcher(ResumeMode.ASK, startGate = gate)
 
-            launcher(ResumeMode.RESUME, startSucceeds = false).play(item(positionTicks = 7_540_000_000L))
+            val movie = item(positionTicks = null)
+            launcher.play(movie)
+            assertEquals("the route opens before the server answered", 1, startedRoutes)
+            assertEquals(TvPlaybackStartState.Starting(movie), launcher.startState)
+
             runCurrent()
-            assertEquals("no server: no player route", 1, startedRoutes)
+            assertEquals(TvPlaybackStartState.Starting(movie), launcher.startState)
+            gate.complete(Unit)
+            runCurrent()
+
+            assertEquals(listOf(PlaybackStartPolicy.INHERIT), started.map { it.startPolicy })
+            assertEquals(TvPlaybackStartState.Idle, launcher.startState)
         }
 
     @Test
-    fun missingDetailOrFailingDetailRequestStartsNothing() =
+    fun missingServerDetailOrFailingDetailRequestEndInAFailedStartInsteadOfNothing() =
         runTest {
-            val unstarted = item(positionTicks = null)
-            launcher(ResumeMode.RESUME, detail = null).play(unstarted)
-            launcher(ResumeMode.RESUME, detailFailure = IllegalStateException("offline")).play(unstarted)
+            val movie = item(positionTicks = null)
+
+            val noServer = launcher(ResumeMode.RESUME, startSucceeds = false)
+            noServer.play(movie)
             runCurrent()
+            assertEquals(TvPlaybackStartState.Failed(movie), noServer.startState)
+
+            val noDetail = launcher(ResumeMode.RESUME, loadDetail = { null })
+            noDetail.play(movie)
+            runCurrent()
+            assertEquals(TvPlaybackStartState.Failed(movie), noDetail.startState)
+
+            val failingDetail = launcher(ResumeMode.RESUME, loadDetail = { throw IllegalStateException("offline") })
+            failingDetail.play(movie)
+            runCurrent()
+            assertEquals(TvPlaybackStartState.Failed(movie), failingDetail.startState)
 
             assertEquals(emptyList<PlaybackRequest>(), started)
-            assertEquals(0, startedRoutes)
         }
+
+    @Test
+    fun retryRunsTheFailedStartAgain() =
+        runTest {
+            var detailAvailable = false
+            val movie = item(positionTicks = null)
+            val launcher = launcher(ResumeMode.RESUME, loadDetail = { if (detailAvailable) detail() else null })
+
+            launcher.play(movie)
+            runCurrent()
+            assertEquals(TvPlaybackStartState.Failed(movie), launcher.startState)
+
+            detailAvailable = true
+            launcher.retryStart()
+            assertEquals(TvPlaybackStartState.Starting(movie), launcher.startState)
+            runCurrent()
+
+            assertEquals(TvPlaybackStartState.Idle, launcher.startState)
+            assertEquals(1, started.size)
+        }
+
+    @Test
+    fun cancellingWhileTheStartIsPendingStopsItBeforeThePlayerStarts() =
+        runTest {
+            val gate = CompletableDeferred<Unit>()
+            val launcher = launcher(ResumeMode.RESUME, startGate = gate)
+
+            launcher.play(item(positionTicks = null))
+            runCurrent()
+            launcher.cancelStart()
+            gate.complete(Unit)
+            runCurrent()
+
+            assertEquals(TvPlaybackStartState.Idle, launcher.startState)
+            assertEquals(emptyList<PlaybackRequest>(), started)
+        }
+
+    @Test
+    fun aNewStartSupersedesAPendingOne() =
+        runTest {
+            val gate = CompletableDeferred<Unit>()
+            val first = item(positionTicks = null)
+            val second = item(positionTicks = null).copy(id = "other", name = "Other")
+            val launcher = launcher(ResumeMode.RESUME, startGate = gate)
+
+            launcher.play(first)
+            runCurrent()
+            launcher.play(second)
+            gate.complete(Unit)
+            runCurrent()
+
+            assertEquals(listOf("other"), started.map { it.mediaId })
+            assertEquals(TvPlaybackStartState.Idle, launcher.startState)
+        }
+
+    @Test
+    fun aQueueFromTheSyncPlayGroupOpensThePlayerAtTheGroupPositionWithoutAskingOrSpeedingUp() =
+        runTest {
+            defaultPlaybackSpeed = 1.5f
+            val launcher = launcher(ResumeMode.ASK)
+
+            launcher.playForGroup(item(positionTicks = 7_540_000_000L), startPositionMs = 90_000L)
+            assertEquals("the route opens before the server answered", 1, startedRoutes)
+            runCurrent()
+
+            assertNull(launcher.pendingAsk)
+            assertEquals(listOf(900_000_000L), started.map { it.resumePositionTicks })
+            assertEquals(listOf(1f), startedSettings.map { it.defaultPlaybackSpeed })
+            assertEquals(TvPlaybackStartState.Idle, launcher.startState)
+        }
+
+    @Test
+    fun playingASeriesStartsTheEpisodeInProgress() =
+        runTest {
+            val episodes =
+                listOf(
+                    episode("s1e1", season = 1, number = 1, playedPercentage = 100.0),
+                    episode("s1e2", season = 1, number = 2, playedPercentage = 40.0, positionTicks = 7_540_000_000L),
+                    episode("s1e3", season = 1, number = 3),
+                )
+            val launcher = launcher(ResumeMode.RESUME, loadEpisodes = { episodes })
+
+            launcher.play(series())
+            runCurrent()
+
+            assertEquals(listOf("s1e2"), started.map { it.mediaId })
+            assertEquals(TvPlaybackStartState.Idle, launcher.startState)
+        }
+
+    @Test
+    fun playingASeriesWithoutProgressStartsTheFirstEpisodeInSeasonOrder() =
+        runTest {
+            val episodes =
+                listOf(
+                    episode("s2e1", season = 2, number = 1),
+                    episode("s1e2", season = 1, number = 2),
+                    episode("s1e1", season = 1, number = 1),
+                )
+            val launcher = launcher(ResumeMode.RESUME, loadEpisodes = { episodes })
+
+            launcher.play(series())
+            runCurrent()
+
+            assertEquals(listOf("s1e1"), started.map { it.mediaId })
+        }
+
+    @Test
+    fun playingAFullyWatchedSeriesStartsItFromTheFirstEpisode() =
+        runTest {
+            val episodes =
+                listOf(
+                    episode("s1e2", season = 1, number = 2, playedPercentage = 100.0),
+                    episode("s1e1", season = 1, number = 1, playedPercentage = 100.0),
+                )
+            val launcher = launcher(ResumeMode.RESUME, loadEpisodes = { episodes })
+
+            launcher.play(series())
+            runCurrent()
+
+            assertEquals(listOf("s1e1"), started.map { it.mediaId })
+        }
+
+    @Test
+    fun anInProgressEpisodeOfASeriesAsksBeforeResumingInAskMode() =
+        runTest {
+            val inProgress =
+                episode("s1e2", season = 1, number = 2, playedPercentage = 40.0, positionTicks = 7_540_000_000L)
+            val episodes = listOf(inProgress)
+            val launcher = launcher(ResumeMode.ASK, loadEpisodes = { episodes })
+
+            launcher.play(series())
+            runCurrent()
+
+            assertEquals("s1e2", launcher.pendingAsk?.item?.id)
+            assertEquals("12:34", launcher.pendingAsk?.positionLabel)
+            assertEquals(TvPlaybackStartState.Idle, launcher.startState)
+            assertEquals(emptyList<PlaybackRequest>(), started)
+
+            launcher.answerAsk(PlaybackStartPolicy.RESTART)
+            runCurrent()
+
+            assertEquals(listOf("s1e2"), started.map { it.mediaId })
+            assertEquals(listOf(PlaybackStartPolicy.RESTART), started.map { it.startPolicy })
+        }
+
+    @Test
+    fun aSeriesWithoutAPlayableEpisodeEndsInAFailedStartWithItsOwnReason() =
+        runTest {
+            val series = series()
+            val noEpisodes = launcher(ResumeMode.RESUME, loadEpisodes = { emptyList() })
+            noEpisodes.play(series)
+            runCurrent()
+            assertEquals(TvPlaybackStartState.Failed(series, TvStartFailure.NO_PLAYABLE_EPISODE), noEpisodes.startState)
+
+            val missing = episode("s1e1", season = 1, number = 1).copy(locationType = "Virtual")
+            val missingOnly = launcher(ResumeMode.RESUME, loadEpisodes = { listOf(missing) })
+            missingOnly.play(series)
+            runCurrent()
+            val failed = TvPlaybackStartState.Failed(series, TvStartFailure.NO_PLAYABLE_EPISODE)
+            assertEquals(failed, missingOnly.startState)
+
+            assertEquals(emptyList<PlaybackRequest>(), started)
+        }
+
+    @Test
+    fun aFailingEpisodeListEndsInAGenericFailedStart() =
+        runTest {
+            val series = series()
+            val launcher = launcher(ResumeMode.RESUME, loadEpisodes = { throw IllegalStateException("offline") })
+
+            launcher.play(series)
+            runCurrent()
+
+            assertEquals(TvPlaybackStartState.Failed(series, TvStartFailure.COULD_NOT_START), launcher.startState)
+        }
+
+    @Test
+    fun theStartErrorPanelNamesTheReasonOfTheFailure() {
+        val strings = TvStrings.current(AppLanguage.ENGLISH)
+        val series = series()
+
+        assertEquals(
+            strings.player.noPlayableEpisodeMessage,
+            tvStartFailureMessage(TvPlaybackStartState.Failed(series, TvStartFailure.NO_PLAYABLE_EPISODE), strings),
+        )
+        assertEquals(
+            strings.player.startFailedMessage,
+            tvStartFailureMessage(TvPlaybackStartState.Failed(series, TvStartFailure.COULD_NOT_START), strings),
+        )
+    }
 
     private fun TestScope.launcher(
         resumeMode: ResumeMode,
         startSucceeds: Boolean = true,
-        detail: JellyfinItemDetail? = detail(),
-        detailFailure: Exception? = null,
+        loadDetail: suspend () -> JellyfinItemDetail? = { detail() },
+        loadEpisodes: suspend () -> List<JellyfinItem> = { emptyList() },
+        startGate: CompletableDeferred<Unit>? = null,
     ) = TvPlaybackLauncher(
         scope = this,
-        loadDetail = { detailFailure?.let { throw it } ?: detail },
+        sources = TvPlaybackSources(loadDetail = { loadDetail() }, loadEpisodes = { loadEpisodes() }),
         starter =
-            TvPlaybackStarter { request, _ ->
+            TvPlaybackStarter { request, settings ->
+                startGate?.await()
                 if (startSucceeds) started += request
+                startedSettings += settings
                 startSucceeds
             },
-        currentSettings = { AppSettings(resumeMode = resumeMode) },
-        onStarted = { startedRoutes += 1 },
+        currentSettings = { AppSettings(resumeMode = resumeMode, defaultPlaybackSpeed = defaultPlaybackSpeed) },
+        openPlayer = { startedRoutes += 1 },
     )
 
-    private fun item(positionTicks: Long?) =
-        JellyfinItem(
-            id = "movie",
-            libraryId = null,
-            name = "Movie",
-            sortName = null,
-            overview = null,
-            type = "Movie",
-            mediaType = "Video",
-            locationType = null,
-            taglines = emptyList(),
-            parentId = null,
-            primaryImageTag = null,
-            thumbImageTag = null,
-            backdropImageTag = null,
-            seriesId = null,
-            seriesPrimaryImageTag = null,
-            seriesThumbImageTag = null,
-            seriesBackdropImageTag = null,
-            parentLogoImageTag = null,
-            runTimeTicks = null,
-            positionTicks = positionTicks,
-            playedPercentage = null,
-            productionYear = null,
-            premiereDate = null,
-            communityRating = null,
-            officialRating = null,
-            indexNumber = null,
-            parentIndexNumber = null,
-            seriesName = null,
-            seasonId = null,
-            episodeTitle = null,
-            lastPlayed = null,
-        )
+    private fun series() = item(positionTicks = null, id = "series", type = "Series")
+
+    private fun episode(
+        id: String,
+        season: Int,
+        number: Int,
+        playedPercentage: Double? = null,
+        positionTicks: Long? = null,
+    ) = item(positionTicks, id = id, type = "Episode").copy(
+        locationType = "FileSystem",
+        playedPercentage = playedPercentage,
+        parentIndexNumber = season,
+        indexNumber = number,
+        seriesId = "series",
+    )
+
+    private fun item(
+        positionTicks: Long?,
+        id: String = "movie",
+        type: String = "Movie",
+    ) = JellyfinItem(
+        id = id,
+        libraryId = null,
+        name = id,
+        sortName = null,
+        overview = null,
+        type = type,
+        mediaType = "Video",
+        locationType = null,
+        taglines = emptyList(),
+        parentId = null,
+        primaryImageTag = null,
+        thumbImageTag = null,
+        backdropImageTag = null,
+        seriesId = null,
+        seriesPrimaryImageTag = null,
+        seriesThumbImageTag = null,
+        seriesBackdropImageTag = null,
+        parentLogoImageTag = null,
+        runTimeTicks = null,
+        positionTicks = positionTicks,
+        playedPercentage = null,
+        productionYear = null,
+        premiereDate = null,
+        communityRating = null,
+        officialRating = null,
+        indexNumber = null,
+        parentIndexNumber = null,
+        seriesName = null,
+        seasonId = null,
+        episodeTitle = null,
+        lastPlayed = null,
+    )
 
     private fun detail() =
         JellyfinItemDetail(

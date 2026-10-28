@@ -7,7 +7,7 @@ import kotlin.test.assertTrue
 
 class TvPlatformActionsTest {
     @Test
-    fun playbackTransitionsOwnWakeLockAndSessionStartExactlyOnce() {
+    fun playbackTransitionsStartTheSessionOncePerStart() {
         val actions = RecordingPlatformActions()
         val coordinator = TvPlatformActionCoordinator(actions)
 
@@ -15,9 +15,21 @@ class TvPlatformActionsTest {
         coordinator.onPlaybackActivityChanged(active = true)
         coordinator.onPlaybackActivityChanged(active = true)
         coordinator.onPlaybackActivityChanged(active = false)
+        coordinator.onPlaybackActivityChanged(active = true)
 
-        assertEquals(listOf(false, true, true, false), actions.keepScreenOn)
-        assertEquals(1, actions.playbackStarts)
+        assertEquals(2, actions.playbackStarts)
+        assertEquals(emptyList(), actions.keepScreenOn)
+    }
+
+    @Test
+    fun keepScreenOnIsAppliedAsDecidedByThePolicy() {
+        val actions = RecordingPlatformActions()
+        val coordinator = TvPlatformActionCoordinator(actions)
+
+        coordinator.onKeepScreenOnChanged(true)
+        coordinator.onKeepScreenOnChanged(false)
+
+        assertEquals(listOf(true, false), actions.keepScreenOn)
     }
 
     @Test

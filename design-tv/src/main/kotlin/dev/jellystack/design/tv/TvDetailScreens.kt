@@ -91,6 +91,7 @@ import dev.jellystack.core.jellyseerr.JellyseerrRequestsCoordinator
 import dev.jellystack.core.jellyseerr.JellyseerrRequestsState
 import dev.jellystack.core.jellyseerr.JellyseerrSearchItem
 import dev.jellystack.core.jellyseerr.SeerrPrimaryAction
+import dev.jellystack.core.logging.JellystackLog
 import dev.jellystack.players.PlaybackController
 import dev.jellystack.players.PlaybackRequest
 import kotlinx.coroutines.launch
@@ -741,7 +742,7 @@ internal fun TvJellyfinDetailScreen(
     onPlaybackStarted: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val scope = rememberCoroutineScope()
+    val scope = rememberCoroutineScope { tvCoroutineFailureHandler("the detail screen") }
     var item by remember(route.itemId) { mutableStateOf<JellyfinItem?>(null) }
     var detail by remember(route.itemId) { mutableStateOf<JellyfinItemDetail?>(null) }
     var episodes by remember(route.itemId) { mutableStateOf<List<JellyfinItem>>(emptyList()) }
@@ -749,6 +750,7 @@ internal fun TvJellyfinDetailScreen(
     var similar by remember(route.itemId) { mutableStateOf<List<JellyfinItem>>(emptyList()) }
     var trailer by remember(route.itemId) { mutableStateOf<DetailTrailerSource?>(null) }
     var trailerError by remember(route.itemId) { mutableStateOf(false) }
+    var actionFailed by remember(route.itemId) { mutableStateOf(false) }
     var error by remember(route.itemId) { mutableStateOf<String?>(null) }
     var loadRevision by remember(route.itemId) { mutableStateOf(0) }
     val uriHandler = LocalUriHandler.current
@@ -887,6 +889,7 @@ internal fun TvJellyfinDetailScreen(
                             favorite = currentItem.id in homeState.favorites || currentDetail.isFavorite,
                             played = currentDetail.isPlayed,
                             trailerError = trailerError,
+                            actionFailed = actionFailed,
                         ),
                     callbacks =
                         TvDetailHeroActionCallbacks(
@@ -894,7 +897,15 @@ internal fun TvJellyfinDetailScreen(
                             onToggleFavorite = { scope.launch { browseCoordinator.toggleFavorite(currentItem) } },
                             onTogglePlayed = {
                                 scope.launch {
-                                    detail = repository.setPlayedStatus(currentItem.id, !currentDetail.isPlayed)
+                                    // The server may be unreachable or reject the session; keep the screen and say so.
+                                    runSuspendCatching { repository.setPlayedStatus(currentItem.id, !currentDetail.isPlayed) }
+                                        .onSuccess { updated ->
+                                            actionFailed = false
+                                            detail = updated
+                                        }.onFailure { failure ->
+                                            JellystackLog.w("Could not change the watched state", failure)
+                                            actionFailed = true
+                                        }
                                 }
                             },
                             onTrailer =
@@ -903,12 +914,17 @@ internal fun TvJellyfinDetailScreen(
                                         when (source) {
                                             is DetailTrailerSource.Local -> {
                                                 scope.launch {
-                                                    val environment = environmentProvider.current() ?: return@launch
-                                                    playbackController.play(
-                                                        PlaybackRequest.from(source.item, source.detail),
-                                                        environment,
-                                                    )
-                                                    onPlaybackStarted()
+                                                    runSuspendCatching {
+                                                        val environment = environmentProvider.current() ?: return@runSuspendCatching
+                                                        playbackController.play(
+                                                            PlaybackRequest.from(source.item, source.detail),
+                                                            environment,
+                                                        )
+                                                        onPlaybackStarted()
+                                                    }.onFailure { failure ->
+                                                        JellystackLog.w("Could not start the local trailer", failure)
+                                                        trailerError = true
+                                                    }
                                                 }
                                             }
                                             is DetailTrailerSource.YouTube ->

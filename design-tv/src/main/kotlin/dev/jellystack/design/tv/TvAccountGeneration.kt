@@ -11,7 +11,7 @@ internal class TvAccountGeneration(
     parentScope: CoroutineScope,
 ) {
     private val job = SupervisorJob(parentScope.coroutineContext[Job])
-    val scope = CoroutineScope(parentScope.coroutineContext + job)
+    val scope = CoroutineScope(parentScope.coroutineContext + job + tvCoroutineFailureHandler("the account session"))
 
     fun close() {
         scope.cancel()

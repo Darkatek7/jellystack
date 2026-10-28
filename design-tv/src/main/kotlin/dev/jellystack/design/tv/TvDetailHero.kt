@@ -103,12 +103,13 @@ internal data class TvDetailHeroModel(
     val badges: List<String> = emptyList(),
 )
 
-/** Toggle states of the detail actions; [trailerError] shows the line below them. */
+/** Toggle states of the detail actions; [trailerError] and [actionFailed] show a line below them. */
 internal data class TvDetailHeroActionsState(
     val resume: Boolean,
     val favorite: Boolean,
     val played: Boolean,
     val trailerError: Boolean,
+    val actionFailed: Boolean = false,
 )
 
 /** [onTrailer] is null when the item has no trailer, which hides that button. */
@@ -164,6 +165,9 @@ internal fun TvDetailHeroActions(
     }
     if (state.trailerError) {
         Text(strings.trailerOpenFailed, color = Color(0xFFFFA59E), fontSize = 16.sp)
+    }
+    if (state.actionFailed) {
+        Text(strings.diagnostics.actionFailed, color = Color(0xFFFFA59E), fontSize = 16.sp)
     }
 }
 

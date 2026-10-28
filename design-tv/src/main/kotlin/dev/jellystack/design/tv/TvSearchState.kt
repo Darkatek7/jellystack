@@ -301,14 +301,17 @@ internal data class TvSearchPresentation(
 
 internal fun tvSearchPresentation(state: TvSearchUiState): TvSearchPresentation {
     val query = state.session.query.trim()
+    // The result rows key their cards by these IDs, so a title a server lists twice shows once.
     val jellyfinItems =
         state.jellyfin.items
             .takeIf { state.jellyfin.query == query }
             .orEmpty()
+            .distinctBy(JellyfinItem::id)
     val seerrItems =
         state.seerr.items
             .takeIf { state.seerr.query == query }
             .orEmpty()
+            .distinctBy { it.mediaType to it.tmdbId }
     val results = reconcileSearchResults(state.session.source, jellyfinItems, seerrItems)
     val visibleJellyfin = results.mapNotNull(TvSearchResult::jellyfinItem)
     val visibleSeerr = results.filter { it.jellyfinItem == null }.mapNotNull(TvSearchResult::seerrItem)

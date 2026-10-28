@@ -52,6 +52,7 @@ import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.ui.NavDisplay
 import androidx.tv.material3.Text
 import dev.jellystack.core.di.JellystackDI
+import dev.jellystack.core.jellyfin.AuthExpirySignal
 import dev.jellystack.core.jellyfin.DetailTrailerResolver
 import dev.jellystack.core.jellyfin.HomeSectionsRepository
 import dev.jellystack.core.jellyfin.HomeSectionsState
@@ -93,8 +94,6 @@ import dev.jellystack.core.server.ServerType
 import dev.jellystack.core.server.StoredCredential
 import dev.jellystack.players.AndroidPlayerEngine
 import dev.jellystack.players.PlaybackController
-import dev.jellystack.players.PlaybackRequest
-import dev.jellystack.players.PlaybackStartPolicy
 import dev.jellystack.players.PlaybackState
 import dev.jellystack.players.syncplay.SyncPlayCoordinator
 import kotlinx.coroutines.delay
@@ -221,6 +220,7 @@ private fun TvProfileHost(
     var configurationPinError by rememberSaveable { mutableStateOf(false) }
     var configurationCanRemove by rememberSaveable { mutableStateOf(false) }
     var reconnectProfile by remember { mutableStateOf<HouseholdProfile?>(null) }
+    val sessionRecovery = rememberTvSessionRecovery()
     var reconnectConnectionId by rememberSaveable { mutableStateOf<String?>(null) }
     var recoverPinProfileId by rememberSaveable { mutableStateOf<String?>(null) }
     var addProfile by rememberSaveable { mutableStateOf(false) }
@@ -282,7 +282,8 @@ private fun TvProfileHost(
             activeProfiles.clear()
             val binding = profileRepository.binding(profile.id)
             val jellyfin = binding?.let { serverRepository.findServer(it.jellyfinConnectionId) }
-            if (binding == null || jellyfin == null || jellyfin.type != ServerType.JELLYFIN) {
+            val serverUsable = jellyfin?.type == ServerType.JELLYFIN && !sessionRecovery.requiresSignIn(profile.id)
+            if (binding == null || !serverUsable) {
                 reconnectProfile = profile
                 reconnectConnectionId = binding?.jellyfinConnectionId
                 switchingProfile = null
@@ -308,6 +309,13 @@ private fun TvProfileHost(
             reconnectProfile = null
             reconnectConnectionId = null
             switchingProfile = null
+        }
+    }
+
+    fun showReconnect(profile: HouseholdProfile) {
+        scope.launch {
+            reconnectConnectionId = profileRepository.binding(profile.id)?.jellyfinConnectionId
+            reconnectProfile = profile
         }
     }
 
@@ -402,12 +410,32 @@ private fun TvProfileHost(
         }
     }
 
-    LaunchedEffect(initialized, loadedProfiles == null, pickerVisible, selectedProfileId, activatedProfileId) {
-        val selected = profiles.firstOrNull { it.id == selectedProfileId }
-        selected?.let { profile ->
-            val activationNeeded = initialized && !pickerVisible
-            val activationIdle = activatedProfileId != profile.id && switchingProfile == null
-            if (activationNeeded && activationIdle) beginActivation(profile)
+    LaunchedEffect(
+        initialized,
+        loadedProfiles == null,
+        pickerVisible,
+        selectedProfileId,
+        activatedProfileId,
+        reconnectProfile?.id,
+        sessionRecovery.requiresSignIn(selectedProfileId),
+    ) {
+        val profile = profiles.firstOrNull { it.id == selectedProfileId } ?: return@LaunchedEffect
+        val decision =
+            decideTvActivation(
+                TvActivationInputs(
+                    initialized = initialized,
+                    pickerVisible = pickerVisible,
+                    selectedProfileId = profile.id,
+                    activatedProfileId = activatedProfileId,
+                    switchingProfile = switchingProfile != null,
+                    reconnectPending = reconnectProfile != null,
+                    signInRequired = sessionRecovery.requiresSignIn(profile.id),
+                ),
+            )
+        when (decision) {
+            TvActivationDecision.ACTIVATE -> beginActivation(profile)
+            TvActivationDecision.SHOW_RECONNECT -> showReconnect(profile)
+            TvActivationDecision.WAIT -> Unit
         }
     }
 
@@ -480,6 +508,7 @@ private fun TvProfileHost(
                                 }
                                 recoverPinProfileId = null
                             }
+                            sessionRecovery.markSignedIn(profile.id)
                             beginActivation(profile)
                         }
                     },
@@ -685,13 +714,17 @@ private fun TvProfileHost(
                     activeProfileGeneration = generation,
                     onOpenProfiles = ::openProfilePicker,
                     onAuthenticationExpired = {
-                        stopPlayback()
-                        trailerPreviewController.stop(saveProgress = false)
-                        scope.launch {
-                            reconnectConnectionId = profileRepository.binding(selectedProfile.id)?.jellyfinConnectionId
-                            activeProfiles.clear()
-                            activatedProfileId = null
-                            reconnectProfile = selectedProfile
+                        // Parallel reports start the recovery once; only a successful sign-in lifts the mark.
+                        if (sessionRecovery.markExpired(selectedProfile.id)) {
+                            stopPlayback()
+                            trailerPreviewController.stop(saveProgress = false)
+                            scope.launch {
+                                reconnectConnectionId =
+                                    profileRepository.binding(selectedProfile.id)?.jellyfinConnectionId
+                                activeProfiles.clear()
+                                activatedProfileId = null
+                                reconnectProfile = selectedProfile
+                            }
                         }
                     },
                     voiceSearch = voiceSearch,
@@ -890,21 +923,48 @@ private fun TvAuthenticatedApp(
                 player = trailerPreviewPlayer,
             )
         }
+    val deviceSettings by settingsRepository.settings.collectAsStateWithLifecycle()
+    val profilePreferencesRepository = remember(koin) { koin.get<ProfilePreferencesRepository>() }
+    val preferenceProfileId = activeProfileId ?: "legacy-tv-profile"
+    val profilePreferences by
+        profilePreferencesRepository
+            .preferences(preferenceProfileId)
+            .collectAsStateWithLifecycle()
+    val settings =
+        if (activeProfileId == null) {
+            deviceSettings
+        } else {
+            profilePreferences.applyTo(deviceSettings)
+        }
+    val currentSettings = {
+        val currentDeviceSettings = settingsRepository.settings.value
+        activeProfileId?.let { profilePreferencesRepository.preferences(it).value.applyTo(currentDeviceSettings) }
+            ?: currentDeviceSettings
+    }
+
+    fun push(route: TvRoute) {
+        trailerPreviewCoordinator.clearFocus()
+        appStateHolder.push(route)
+    }
+
+    val playbackLauncher =
+        remember(accountGeneration, activeProfileId, playbackController) {
+            TvPlaybackLauncher(
+                scope = scope,
+                sources = TvPlaybackSources(browseRepository::getItemDetail, browseRepository::latestEpisodesToPlay),
+                starter = controllerPlaybackStarter(playbackController, environmentProvider),
+                currentSettings = currentSettings,
+                openPlayer = { push(TvRoute.Player) },
+            )
+        }
     val syncPlay =
         remember(accountGeneration) {
             SyncPlayCoordinator(
                 environmentProvider = environmentProvider,
                 playbackController = playbackController,
+                // A queue started by another group member opens the player route like a local play action.
                 playItem = { itemId, positionMs ->
-                    val item = browseRepository.cachedItem(itemId) ?: return@SyncPlayCoordinator
-                    val detail = browseRepository.getItemDetail(itemId) ?: return@SyncPlayCoordinator
-                    val environment = environmentProvider.current() ?: return@SyncPlayCoordinator
-                    playbackController.play(
-                        PlaybackRequest
-                            .from(item, detail, startPolicy = PlaybackStartPolicy.RESUME)
-                            .copy(resumePositionTicks = positionMs * 10_000L),
-                        environment,
-                    )
+                    browseRepository.cachedItem(itemId)?.let { playbackLauncher.playForGroup(it, positionMs) }
                 },
                 onAccessDenied = { sessionRepository.refresh() },
                 scope = scope,
@@ -938,24 +998,6 @@ private fun TvAuthenticatedApp(
                 resolveIdentity = browseRepository::cachedItem,
             )
     }
-    val deviceSettings by settingsRepository.settings.collectAsStateWithLifecycle()
-    val profilePreferencesRepository = remember(koin) { koin.get<ProfilePreferencesRepository>() }
-    val preferenceProfileId = activeProfileId ?: "legacy-tv-profile"
-    val profilePreferences by
-        profilePreferencesRepository
-            .preferences(preferenceProfileId)
-            .collectAsStateWithLifecycle()
-    val settings =
-        if (activeProfileId == null) {
-            deviceSettings
-        } else {
-            profilePreferences.applyTo(deviceSettings)
-        }
-    val currentSettings = {
-        val currentDeviceSettings = settingsRepository.settings.value
-        activeProfileId?.let { profilePreferencesRepository.preferences(it).value.applyTo(currentDeviceSettings) }
-            ?: currentDeviceSettings
-    }
     val playbackState by playbackController.state.collectAsStateWithLifecycle()
     val syncPlayState by syncPlay.state.collectAsStateWithLifecycle()
     val playbackIdentity =
@@ -975,6 +1017,13 @@ private fun TvAuthenticatedApp(
         }
     }
     val sessionState by sessionRepository.state.collectAsStateWithLifecycle()
+    TvAuthExpiryEffect(
+        signal = remember(koin) { koin.get<AuthExpirySignal>() },
+        environmentProvider = environmentProvider,
+        sessionRepository = sessionRepository,
+        playback = playbackState,
+        syncPlayError = syncPlayState.error,
+    )
     LaunchedEffect(sessionState) {
         if ((sessionState as? JellyfinSessionState.Error)?.authenticationExpired == true) {
             onAuthenticationExpired()
@@ -1066,21 +1115,12 @@ private fun TvAuthenticatedApp(
         (sessionState as? JellyfinSessionState.Ready)?.capabilities?.syncPlayAccess
             ?: JellyfinSyncPlayAccess.NONE
 
-    fun push(route: TvRoute) {
-        trailerPreviewCoordinator.clearFocus()
-        appStateHolder.push(route)
-    }
-
-    val playbackLauncher =
-        remember(accountGeneration, activeProfileId, playbackController) {
-            TvPlaybackLauncher(
-                scope = scope,
-                loadDetail = browseRepository::getItemDetail,
-                starter = controllerPlaybackStarter(playbackController, environmentProvider),
-                currentSettings = currentSettings,
-                onStarted = { push(TvRoute.Player) },
-            )
-        }
+    TvPlayerRoutePopEffect(
+        onPlayerRoute = appUiState.currentRoute == TvRoute.Player,
+        playback = playbackState,
+        start = playbackLauncher.startState,
+        onPop = appStateHolder::popPlayerRoute,
+    )
 
     fun openLibrary(
         libraryId: String,
@@ -1569,6 +1609,7 @@ private fun TvAuthenticatedApp(
                                             engine = playerEngine,
                                             syncPlay = syncPlay,
                                             playbackState = playbackState,
+                                            startState = playbackLauncher.startState,
                                             syncState = syncPlayState,
                                             segmentState = segmentState,
                                             continuationState = continuationState,
@@ -1588,8 +1629,15 @@ private fun TvAuthenticatedApp(
                                             onPlayNext = continuationCoordinator::playNext,
                                             onCancelAutoplay = continuationCoordinator::cancelAutoplay,
                                             strings = strings,
+                                            startActions =
+                                                TvPlayerStartActions(
+                                                    onRetry = playbackLauncher::retryStart,
+                                                    onCancel = playbackLauncher::cancelStart,
+                                                    onFailureSeen = playbackLauncher::cancelStart,
+                                                ),
                                             stopPlayback = stopPlayback,
                                             onClose = {
+                                                playbackLauncher.cancelStart()
                                                 // Closing the player leaves a SyncPlay group, as on the phone.
                                                 if (syncPlay.state.value.currentGroup != null) syncPlay.leaveGroup()
                                                 stopPlayback()

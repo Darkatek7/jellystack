@@ -81,6 +81,10 @@ class PlaybackController(
     private var subtitleSwitchGeneration = 0L
     private var playGeneration = 0L
     private val fallbackState = PlaybackFallbackState()
+    private val recovery = PlaybackRecoveryCoordinator(scope, playerEngine, playbackSourceResolver, fallbackState, RecoveryHost())
+
+    /** False until the player reported READY for the current session: earlier engine positions are leftovers. */
+    private var positionsConfirmed = false
     private val streamingReportMutex = Mutex()
     private var finalStreamingReportJob: Job? = null
     private var released = false
@@ -126,6 +130,7 @@ class PlaybackController(
         check(!released) { "PlaybackController has been released" }
         stopInternal(saveProgress = true, clearRetryContext = false)
         fallbackState.reset()
+        recovery.onNewPlayback()
         val attemptGeneration = playGeneration
         retryContext = RetryContext(request, environment)
         _state.value =
@@ -269,6 +274,7 @@ class PlaybackController(
             )
             ensureCurrentPlayAttempt(attemptGeneration)
             session = newSession
+            positionsConfirmed = false
             startCollectors()
             playerEngine.setVideoQuality(negotiatedSelection.maxBitrate)
             playerEngine.setPlaybackSpeed(1f)
@@ -288,6 +294,11 @@ class PlaybackController(
                 }
             }
         } catch (cancelled: CancellationException) {
+            if (attemptGeneration == playGeneration && !released) {
+                // The caller gave up on this attempt without stop/play/release moving on: never leave the
+                // controller in Preparing, which keeps a TV screen awake indefinitely.
+                stopInternal(saveProgress = true)
+            }
             throw cancelled
         } catch (error: Throwable) {
             if (attemptGeneration == playGeneration && !released) {
@@ -390,6 +401,7 @@ class PlaybackController(
         cancelQualitySwitch()
         cancelAudioSwitch()
         cancelSubtitleSwitch()
+        recovery.cancel()
         cancelRecoveryPromotion()
         cancelCollectors()
         playerEngine.stop()
@@ -443,6 +455,7 @@ class PlaybackController(
     private fun publishPlaybackError(
         error: Throwable,
         request: PlaybackRequest? = retryContext?.request,
+        category: PlayerErrorCategory = PlayerErrorCategory.MEDIA,
     ) {
         val failedRequest = request ?: return
         val errorState =
@@ -453,6 +466,7 @@ class PlaybackController(
                 metadata = failedRequest.metadata,
                 canRetry = retryContext != null,
                 mediaKind = failedRequest.mediaKind,
+                category = category,
             )
         stopInternal(
             saveProgress = true,
@@ -669,6 +683,7 @@ class PlaybackController(
 
     fun updateProgress(positionMs: Long) {
         if (positionMs < 0) return
+        recovery.onPosition(positionMs)
         session?.let {
             if (handoffPhase == HandoffPhase.RECOVERING) {
                 cancelRecoveryPromotion()
@@ -1225,42 +1240,6 @@ class PlaybackController(
         qualitySwitchJob = null
     }
 
-    private fun PlaybackStreamSelection.withResolvedSource(resolved: ResolvedPlaybackSource): PlaybackStreamSelection {
-        val resolvedSourceId = resolved.mediaSourceId ?: sourceId
-        val autoSelected =
-            selectedQualityId == PlaybackQualityOption.AUTO_ID ||
-                resolved.supportsTranscoding == false
-        val reconciledOptions =
-            qualityOptions
-                .map { option ->
-                    if (option.isAuto && autoSelected) {
-                        option.copy(
-                            mode = resolved.mode,
-                            sourceId = resolvedSourceId,
-                        )
-                    } else {
-                        option
-                    }
-                }.let { options ->
-                    if (resolved.supportsTranscoding == false) {
-                        options.filter { it.isAuto }
-                    } else {
-                        options
-                    }
-                }
-        return copy(
-            sourceId = resolvedSourceId,
-            mode = resolved.mode,
-            qualityOptions = reconciledOptions,
-            selectedQualityId =
-                if (resolved.supportsTranscoding == false) {
-                    PlaybackQualityOption.AUTO_ID
-                } else {
-                    selectedQualityId
-                },
-        )
-    }
-
     fun clearProgress(mediaId: String) {
         progressStore.clear(mediaId)
         if (session?.mediaId == mediaId) {
@@ -1624,7 +1603,7 @@ class PlaybackController(
         progressJob =
             scope.launch {
                 playerEngine.positionUpdates.collect { positionMs ->
-                    updateProgress(positionMs)
+                    if (positionsConfirmed) updateProgress(positionMs)
                 }
             }
         eventsJob =
@@ -1632,14 +1611,18 @@ class PlaybackController(
                 playerEngine.events.collect { event ->
                     when (event) {
                         PlayerEvent.Buffering -> updatePlaybackPhase(PlaybackPhase.Buffering)
-                        PlayerEvent.Ready -> updatePlaybackPhase(PlaybackPhase.Ready)
+                        PlayerEvent.Ready -> {
+                            positionsConfirmed = true
+                            updatePlaybackPhase(PlaybackPhase.Ready)
+                        }
+                        is PlayerEvent.PlayWhenReadyChanged -> applyEnginePlayWhenReady(event.playWhenReady)
                         PlayerEvent.VideoOutputStalled -> {
-                            if (!attemptPlaybackFallback()) {
+                            if (!recovery.attemptFallback()) {
                                 publishPlaybackError(IllegalStateException("Video output did not start."))
                             }
                         }
                         PlayerEvent.AudioOutputUnavailable -> {
-                            if (!attemptPlaybackFallback(audioOutputUnavailable = true)) {
+                            if (!recovery.attemptFallback(audioOutputUnavailable = true)) {
                                 publishPlaybackError(IllegalStateException("Audio output did not start."))
                             }
                         }
@@ -1670,11 +1653,7 @@ class PlaybackController(
                                 session = ended
                                 publishCurrentState(ended)
                             }
-                        is PlayerEvent.Error -> {
-                            if (!attemptPlaybackFallback(event.throwable)) {
-                                publishPlaybackError(event.throwable)
-                            }
-                        }
+                        is PlayerEvent.Error -> recovery.onPlayerError(event)
                     }
                 }
             }
@@ -1721,140 +1700,20 @@ class PlaybackController(
             }
     }
 
+    /** Mirrors a play-when-ready change the engine made on its own (audio focus, noisy output) into the state. */
+    private fun applyEnginePlayWhenReady(playWhenReady: Boolean) {
+        if (handoffPhase != HandoffPhase.LOCAL) return
+        val updated = session?.withEnginePlayWhenReady(playWhenReady) ?: return
+        session = updated
+        publishCurrentState(updated)
+    }
+
     private fun updatePlaybackPhase(phase: PlaybackPhase) {
         val current = session ?: return
         if (current.phase == PlaybackPhase.Ended && phase != PlaybackPhase.Buffering) return
         val updated = current.copy(phase = phase)
         session = updated
         publishCurrentState(updated)
-    }
-
-    private fun attemptPlaybackFallback(
-        originalError: Throwable? = null,
-        audioOutputUnavailable: Boolean = false,
-    ): Boolean {
-        val current = session ?: return false
-        val environment = lastEnvironment ?: return false
-        if (current.stream.mode == PlaybackMode.LOCAL || current.source.supportsTranscoding != true) return false
-        val fallbackOptions =
-            when (current.stream.mode) {
-                PlaybackMode.DIRECT -> {
-                    if (fallbackState.directAttempted) return false
-                    fallbackState.directAttempted = true
-                    val audioOnlyFallback = audioOutputUnavailable || originalError.isAudioDecoderFailure()
-                    fallbackState.hlsAudioAttempted = audioOnlyFallback
-                    fallbackState.hlsForcedTranscodeAttempted = !audioOnlyFallback
-                    PlaybackSourceOptions(
-                        audioStreamIndex = current.audioTrack?.streamIndex,
-                        subtitleStreamIndex = current.subtitleTrack?.streamIndex ?: SUBTITLES_DISABLED_INDEX,
-                        playSessionId = current.source.playSessionId,
-                        forceTranscoding = !audioOnlyFallback,
-                        forceAudioTranscoding = audioOnlyFallback,
-                    )
-                }
-
-                PlaybackMode.HLS -> {
-                    val audioOnlyFallback = audioOutputUnavailable || originalError.isAudioDecoderFailure()
-                    if (audioOnlyFallback && !fallbackState.hlsAudioAttempted) {
-                        fallbackState.hlsAudioAttempted = true
-                        PlaybackSourceOptions(
-                            audioStreamIndex = current.audioTrack?.streamIndex,
-                            subtitleStreamIndex = current.subtitleTrack?.streamIndex ?: SUBTITLES_DISABLED_INDEX,
-                            playSessionId = current.source.playSessionId,
-                            forceAudioTranscoding = true,
-                            preferFmp4Hls = current.source.segmentContainer.equals("mp4", true),
-                        )
-                    } else if (!fallbackState.hlsForcedTranscodeAttempted) {
-                        fallbackState.hlsForcedTranscodeAttempted = true
-                        PlaybackSourceOptions(
-                            audioStreamIndex = current.audioTrack?.streamIndex,
-                            subtitleStreamIndex = current.subtitleTrack?.streamIndex ?: SUBTITLES_DISABLED_INDEX,
-                            playSessionId = current.source.playSessionId,
-                            forceTranscoding = true,
-                        )
-                    } else {
-                        if (fallbackState.hlsContainerAttempted || current.source.segmentContainer.equals("mp4", true)) {
-                            return false
-                        }
-                        fallbackState.hlsContainerAttempted = true
-                        PlaybackSourceOptions(
-                            audioStreamIndex = current.audioTrack?.streamIndex,
-                            subtitleStreamIndex = current.subtitleTrack?.streamIndex ?: SUBTITLES_DISABLED_INDEX,
-                            playSessionId = current.source.playSessionId,
-                            forceTranscoding = true,
-                            preferFmp4Hls = true,
-                        )
-                    }
-                }
-
-                PlaybackMode.LOCAL -> return false
-            }
-        scope.launch {
-            try {
-                val latest = session ?: return@launch
-                val source =
-                    playbackSourceResolver.resolve(
-                        request = latest.request,
-                        selection = latest.stream,
-                        environment = environment,
-                        startPositionMs = latest.positionMs,
-                        options = fallbackOptions,
-                    )
-                val resolvedStream = latest.stream.withResolvedSource(source)
-                val resolvedSource =
-                    source.copy(
-                        audioStreamIndex = latest.audioTrack?.streamIndex,
-                        subtitleStreamIndex = latest.subtitleTrack?.streamIndex ?: SUBTITLES_DISABLED_INDEX,
-                    )
-                val updated =
-                    latest.copy(
-                        source = resolvedSource,
-                        stream = resolvedStream,
-                        qualityOptions = resolvedStream.qualityOptions,
-                        selectedQualityId = resolvedStream.selectedQualityId,
-                        phase = PlaybackPhase.Buffering,
-                        runtimeStats =
-                            latest.runtimeStats.copy(
-                                playbackMode = resolvedStream.mode,
-                                container = resolvedStream.container,
-                                videoCodec = resolvedStream.videoCodec,
-                                audioCodec = resolvedStream.audioCodec,
-                                videoBitrate = resolvedStream.videoBitrate,
-                            ),
-                    )
-                playerEngine.prepare(
-                    source = resolvedSource,
-                    startPositionMs = latest.positionMs,
-                    audioTrack = latest.audioTrack,
-                    subtitleTrack = latest.subtitleTrack,
-                )
-                session = updated
-                if (fallbackOptions.forceAudioTranscoding) fallbackState.onCompatibilityAudioPrepared()
-                playerEngine.setVideoQuality(resolvedStream.maxBitrate)
-                playerEngine.setPlaybackSpeed(latest.playbackSpeed)
-                publishCurrentState(updated)
-                if (latest.isPaused) playerEngine.pause() else playerEngine.play()
-            } catch (fallbackError: Throwable) {
-                publishPlaybackError(originalError ?: fallbackError)
-            }
-        }
-        return true
-    }
-
-    private fun Throwable?.isAudioDecoderFailure(): Boolean {
-        var current = this
-        while (current != null) {
-            val description = "${current::class.simpleName.orEmpty()} ${current.message.orEmpty()}".lowercase()
-            if (
-                "mediacodecaudiorenderer" in description ||
-                "audio renderer" in description ||
-                "audio decoder" in description
-            ) {
-                return true
-            }
-            current = current.cause
-        }
-        return false
     }
 
     private fun confirmPendingAudioSelection(trackId: String) {
@@ -1913,6 +1772,25 @@ class PlaybackController(
         recoveryPromotionJob = null
     }
 
+    private inner class RecoveryHost : PlaybackRecoveryHost {
+        override val generation: Long get() = playGeneration
+        override val released: Boolean get() = this@PlaybackController.released
+        override val session: PlaybackSession? get() = this@PlaybackController.session
+        override val environment: JellyfinEnvironment? get() = lastEnvironment
+        override val castOwnsPlayback: Boolean
+            get() = handoffPhase == HandoffPhase.CAST_ACTIVE || handoffPhase == HandoffPhase.CAST_CONNECTING
+
+        override fun commit(session: PlaybackSession) {
+            this@PlaybackController.session = session
+            publishCurrentState(session)
+        }
+
+        override fun fail(
+            error: Throwable,
+            category: PlayerErrorCategory,
+        ) = publishPlaybackError(error, category = category)
+    }
+
     private data class RetryContext(
         val request: PlaybackRequest,
         val environment: JellyfinEnvironment,
@@ -1922,7 +1800,6 @@ class PlaybackController(
         val PLAYBACK_SPEEDS: List<Float> = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
         private const val PROGRESS_WRITE_INTERVAL_MS = 5_000L
         private const val COMPLETION_THRESHOLD_PERCENT = 0.97
-        private const val SUBTITLES_DISABLED_INDEX = -1
     }
 }
 

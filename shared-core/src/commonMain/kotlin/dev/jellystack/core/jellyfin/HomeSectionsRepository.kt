@@ -1,10 +1,12 @@
 package dev.jellystack.core.jellyfin
 
+import dev.jellystack.core.coroutines.runSuspendCatching
 import dev.jellystack.network.ClientConfig
 import dev.jellystack.network.NetworkClientFactory
 import dev.jellystack.network.jellyfin.HomeSectionInfoDto
 import dev.jellystack.network.jellyfin.HomeSectionItemDto
 import dev.jellystack.network.jellyfin.HomeSectionsApi
+import dev.jellystack.network.jellyfin.observeJellyfinUnauthorized
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
@@ -116,11 +118,15 @@ class HomeSectionsRepository(
                 supervisorScope {
                     descriptors
                         .sortedBy(HomeSectionInfoDto::orderIndex)
-                        .map { descriptor ->
+                        .mapNotNull { descriptor ->
+                            val type = descriptor.section?.takeIf(String::isNotBlank) ?: return@mapNotNull null
+                            SectionRequest("$type:${descriptor.additionalData.orEmpty()}", type, descriptor)
+                        }
+                        // The UI keys rows by this id, so two descriptors that resolve to the same section load it once.
+                        .distinctBy(SectionRequest::id)
+                        .map { (id, type, descriptor) ->
                             async {
-                                val type = descriptor.section?.takeIf(String::isNotBlank) ?: return@async null
-                                val id = "$type:${descriptor.additionalData.orEmpty()}"
-                                runCatching {
+                                runSuspendCatching {
                                     val items =
                                         api
                                             .sectionItems(type, environment.userId, descriptor.additionalData, sectionLanguage)
@@ -184,6 +190,12 @@ class HomeSectionsRepository(
         return result
     }
 }
+
+private data class SectionRequest(
+    val id: String,
+    val type: String,
+    val descriptor: HomeSectionInfoDto,
+)
 
 private fun String?.toViewMode(): HomeSectionViewMode =
     when (this?.lowercase()) {
@@ -289,11 +301,18 @@ private fun HomeSectionItemDto.toDomain(baseUrl: String): HomeSectionItem? {
 
 fun defaultHomeSectionsApiFactory(
     acceptLanguageProvider: () -> String? = { null },
+    authExpirySignal: AuthExpirySignal? = null,
     clientProvider: (() -> HttpClient)? = null,
 ): HomeSectionsApiFactory {
     val client by lazy {
         clientProvider?.invoke()
-            ?: NetworkClientFactory.create(ClientConfig(installLogging = false, acceptLanguageProvider = acceptLanguageProvider))
+            ?: NetworkClientFactory.create(
+                ClientConfig(
+                    installLogging = false,
+                    acceptLanguageProvider = acceptLanguageProvider,
+                    configure = { authExpirySignal?.let { signal -> observeJellyfinUnauthorized(signal::report) } },
+                ),
+            )
     }
     return { environment ->
         HomeSectionsApi(

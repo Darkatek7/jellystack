@@ -30,6 +30,15 @@ sealed interface PlayerEvent {
 
     data object Completed : PlayerEvent
 
+    /**
+     * The player's play-when-ready flag changed. Besides the controller's own play/pause calls this reports
+     * changes it did not ask for (audio focus loss and regain, becoming noisy), which the controller mirrors
+     * into its state so the UI never shows playing while the audio is paused.
+     */
+    data class PlayWhenReadyChanged(
+        val playWhenReady: Boolean,
+    ) : PlayerEvent
+
     data class AudioTrackSelectionApplied(
         val trackId: String,
     ) : PlayerEvent
@@ -48,6 +57,8 @@ sealed interface PlayerEvent {
 
     data class Error(
         val throwable: Throwable,
+        /** What kind of failure this is; decides between a same-source retry, the fallback chain and a hard stop. */
+        val category: PlayerErrorCategory = PlayerErrorCategory.MEDIA,
     ) : PlayerEvent
 }
 

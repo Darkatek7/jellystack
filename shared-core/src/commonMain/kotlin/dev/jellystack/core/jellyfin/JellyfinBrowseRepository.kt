@@ -628,6 +628,16 @@ class JellyfinBrowseRepository(
     suspend fun latestEpisodesForSeries(seriesId: String): List<JellyfinItem> =
         runSuspendCatching { refreshEpisodesForSeries(seriesId) }.getOrElse { episodesForSeries(seriesId) }
 
+    /**
+     * The episodes a Play action on [container] (a Series or a Season) chooses from, as the server lists them now or
+     * the cached ones when it cannot be reached. Pass the result to [SeriesPlaybackTargetResolver].
+     */
+    suspend fun latestEpisodesToPlay(container: JellyfinItem): List<JellyfinItem> {
+        if (!container.type.equals("Season", ignoreCase = true)) return latestEpisodesForSeries(container.id)
+        val seriesId = container.seriesId ?: return episodesForSeason(container.id)
+        return latestEpisodesForSeries(seriesId).filter { it.seasonId == container.id }
+    }
+
     suspend fun episodesForSeason(seasonId: String): List<JellyfinItem> {
         val environment = environmentProvider.current() ?: return emptyList()
         return itemStore.listEpisodesForSeason(environment.serverKey, seasonId).map { it.toDomain() }
@@ -912,7 +922,7 @@ private fun JellyfinItemDto.toRecord(
         id = id,
         serverId = environment.serverKey,
         libraryId = fallbackLibraryId ?: parentId,
-        name = name,
+        name = displayName(),
         sortName = sortName,
         overview = overview,
         type = type,
@@ -971,6 +981,15 @@ private fun JellyfinItemDto.toRecord(
             ).normalized(),
     )
 
+/**
+ * Servers may omit `Name`. The sort name stands in for it, and an item without either keeps an empty name so the UI
+ * can show its own "untitled" label instead of the whole page failing to decode.
+ */
+private fun JellyfinItemDto.displayName(): String = name.orBlankFallback(sortName)
+
+private fun String?.orBlankFallback(fallback: String?): String =
+    this?.takeIf(String::isNotBlank) ?: fallback?.takeIf(String::isNotBlank).orEmpty()
+
 private fun JellyfinItemRecord.toDomain(): JellyfinItem =
     JellyfinItem(
         id = id,
@@ -1024,7 +1043,7 @@ private fun JellyfinItemDetailRecord.toDomain(): JellyfinItemDetail =
 private fun JellyfinItemDetailDto.toDomain(): JellyfinItemDetail =
     JellyfinItemDetail(
         id = id,
-        name = name,
+        name = name.orBlankFallback(originalTitle),
         overview = overview,
         taglines = taglines ?: emptyList(),
         runTimeTicks = runTimeTicks,
@@ -1033,7 +1052,7 @@ private fun JellyfinItemDetailDto.toDomain(): JellyfinItemDetail =
         communityRating = communityRating,
         officialRating = officialRating,
         genres = genres ?: emptyList(),
-        studios = studios?.map { it.name } ?: emptyList(),
+        studios = studios.orEmpty().mapNotNull { it.name?.takeIf(String::isNotBlank) },
         primaryImageTag = imageTags?.get("Primary"),
         backdropImageTags = backdropImageTags.orEmpty(),
         mediaSources = mediaSources.map { it.toDomain() },

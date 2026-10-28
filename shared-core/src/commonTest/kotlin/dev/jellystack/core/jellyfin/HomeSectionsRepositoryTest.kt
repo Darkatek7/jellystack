@@ -213,6 +213,39 @@ class HomeSectionsRepositoryTest {
         }
 
     @Test
+    fun descriptorsThatResolveToTheSameSectionIdYieldOneSectionInConfiguredOrder() =
+        runTest {
+            val sectionRequests = mutableListOf<String>()
+            val repository =
+                repository(
+                    onRequest = { url ->
+                        if (url.encodedPath.contains("/HomeScreen/Section/")) sectionRequests += url.parameters["additionalData"].orEmpty()
+                    },
+                ) { path ->
+                    when {
+                        path.endsWith("/HomeScreen/Meta") -> """{"Enabled":true,"PaginationEnabled":false}"""
+                        path.endsWith("/HomeScreen/Ready") -> ""
+                        path.endsWith("/HomeScreen/Sections") ->
+                            """{"Items":[
+                            {"Section":"Genre","AdditionalData":"Drama","DisplayText":"Drama again","OrderIndex":3},
+                            {"Section":"Genre","AdditionalData":"Drama","DisplayText":"Drama","OrderIndex":1},
+                            {"Section":"Genre","AdditionalData":"Comedy","DisplayText":"Comedy","OrderIndex":2}
+                        ]}"""
+                        path.endsWith("/HomeScreen/Section/Genre") ->
+                            """{"Items":[{"Id":"movie-1","Name":"Movie","Type":"Movie"}]}"""
+                        else -> error("Unexpected path $path")
+                    }
+                }
+
+            repository.refresh(enabledByUser = true, language = "en")
+
+            val sections = assertIs<HomeSectionsState.Ready>(repository.state.value).sections
+            assertEquals(listOf("Genre:Drama", "Genre:Comedy"), sections.map(HomeSection::id))
+            assertEquals(listOf("Drama", "Comedy"), sections.map(HomeSection::title))
+            assertEquals(listOf("Comedy", "Drama"), sectionRequests.sorted())
+        }
+
+    @Test
     fun preservesSeriesArtworkOwnershipForEpisodeCards() =
         runTest {
             val repository =

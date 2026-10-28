@@ -18,13 +18,17 @@ import io.ktor.http.takeFrom
 import io.ktor.websocket.Frame
 import io.ktor.websocket.readText
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.longOrNull
 
 class JellyfinSyncPlayApi(
     private val client: HttpClient,
@@ -103,13 +107,28 @@ class JellyfinSyncPlayApi(
         playlistItemId: String,
     ) = post("/SyncPlay/Buffering", SyncPlayReadyRequest(whenUtc, positionTicks, isPlaying, playlistItemId))
 
+    /**
+     * Messages of the Jellyfin socket until it closes or fails. While it is open the client answers the server's
+     * `ForceKeepAlive` with `KeepAlive` pings; the caller decides whether and when to reconnect.
+     */
     fun events(): Flow<JsonObject> =
         flow {
             client.webSocket(urlString = socketUrl()) {
-                for (frame in incoming) {
-                    val text = (frame as? Frame.Text)?.readText() ?: continue
-                    val payload = runCatching { json.parseToJsonElement(text).jsonObject }.getOrNull() ?: continue
-                    emit(payload)
+                coroutineScope {
+                    val keepAlive =
+                        SyncPlayKeepAlive(this) { send(Frame.Text(SYNC_PLAY_KEEP_ALIVE_MESSAGE)) }
+                    try {
+                        for (frame in incoming) {
+                            val text = (frame as? Frame.Text)?.readText() ?: continue
+                            val payload = runCatching { json.parseToJsonElement(text).jsonObject }.getOrNull() ?: continue
+                            if ((payload["MessageType"] as? JsonPrimitive)?.contentOrNull == SYNC_PLAY_FORCE_KEEP_ALIVE) {
+                                keepAlive.onForceKeepAlive((payload["Data"] as? JsonPrimitive)?.longOrNull)
+                            }
+                            emit(payload)
+                        }
+                    } finally {
+                        keepAlive.stop()
+                    }
                 }
             }
         }

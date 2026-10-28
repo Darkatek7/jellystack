@@ -62,6 +62,22 @@ class TvSearchDeduplicationTest {
     }
 
     @Test
+    fun aTitleThatOneServerListsTwiceShowsOnce() {
+        val presentation =
+            tvSearchPresentation(
+                TvSearchUiState.completed(
+                    query = "dune",
+                    jellyfin = listOf(jellyfinItem("jf"), jellyfinItem("jf")),
+                    seerr = listOf(seerrItem("Dune", tmdbId = 1), seerrItem("Dune", tmdbId = 1)),
+                ),
+            )
+
+        assertEquals(listOf("jellyfin:jf", "seerr:movie:1"), presentation.results.map(TvSearchResult::key))
+        assertEquals(1, presentation.jellyfinItems.size)
+        assertEquals(1, presentation.seerrItems.size)
+    }
+
+    @Test
     fun seerrOnlyResultUsesRequestAction() {
         val presentation =
             tvSearchPresentation(

@@ -8,51 +8,25 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import dev.jellystack.core.jellyseerr.JellyseerrRecommendationRail
-import dev.jellystack.core.jellyseerr.JellyseerrRecommendationsState
-import dev.jellystack.core.jellyseerr.JellyseerrRequestSummary
 import dev.jellystack.core.jellyseerr.JellyseerrSearchItem
 
-internal const val DISCOVER_REQUESTS_ROW = "discover-requests"
-
+/** Draws [discover], which is never empty: the caller shows another Discover state when no row has a card. */
 @Composable
 internal fun TvCinematicDiscoverContent(
-    state: JellyseerrRecommendationsState.Ready,
-    requestItems: List<JellyseerrRequestSummary>,
+    discover: TvDiscoverRows,
     hasPartialFailure: Boolean,
     strings: TvStrings,
     focusMemory: TvFocusMemory,
     onItem: (JellyseerrSearchItem) -> Unit,
-    isSaved: (JellyseerrSearchItem) -> Boolean,
 ) {
-    val itemsByKey = linkedMapOf<String, JellyseerrSearchItem>()
-    val rows =
-        buildList {
-            JellyseerrRecommendationRail.entries.forEach { rail ->
-                val items = state.rails[rail]?.items.orEmpty()
-                if (items.isNotEmpty()) {
-                    val rowId = "discover-${rail.name.lowercase()}"
-                    val cards =
-                        items.map { item ->
-                            val key = item.cinematicKey()
-                            itemsByKey[key] = item
-                            item.toCinematicCard(key, isSaved(item))
-                        }
-                    add(TvCinematicRow(rowId, rail.label(strings), cards))
-                }
-            }
-            val requests = requestItems.mapNotNull { it.toSearchItem(strings.messages::untitledRequest) }
-            if (requests.isNotEmpty()) {
-                val cards =
-                    requests.map { item ->
-                        val key = "request:${item.cinematicKey()}"
-                        itemsByKey[key] = item
-                        item.toCinematicCard(key, isSaved(item))
-                    }
-                add(TvCinematicRow(DISCOVER_REQUESTS_ROW, strings.requests, cards))
-            }
-        }
-    val availableKeys = itemsByKey.keys
+    val rows = discover.rows
+    val availableKeys = discover.cardIds
+    val firstCardId =
+        rows
+            .firstOrNull()
+            ?.cards
+            ?.firstOrNull()
+            ?.id
     var focusedKey by remember {
         mutableStateOf(
             focusMemory
@@ -60,29 +34,25 @@ internal fun TvCinematicDiscoverContent(
                 ?.anchor
                 ?.itemId
                 ?.takeIf(availableKeys::contains)
-                ?: rows
-                    .first()
-                    .cards
-                    .first()
-                    .id,
+                ?: firstCardId,
         )
     }
-    val effectiveFocusedKey =
-        focusedKey.takeIf(availableKeys::contains) ?: rows
-            .first()
-            .cards
-            .first()
-            .id
+    val effectiveFocusedKey = focusedKey?.takeIf(availableKeys::contains) ?: firstCardId
     LaunchedEffect(effectiveFocusedKey) {
         if (focusedKey != effectiveFocusedKey) focusedKey = effectiveFocusedKey
     }
-    val focusedRow = rows.first { row -> row.cards.any { it.id == effectiveFocusedKey } }
+    val focusedRow = effectiveFocusedKey?.let { key -> rows.firstOrNull { row -> row.cards.any { it.id == key } } }
     TvCinematicBrowse(
         state =
             TvCinematicBrowseState(
                 hero = TvCinematicHero(title = strings.discover, eyebrow = strings.discover),
                 rows = rows,
-                focusedAnchor = TvFocusAnchor(focusedRow.id, effectiveFocusedKey, TvFocusDestination.SECTION_ITEM),
+                focusedAnchor =
+                    if (focusedRow != null && effectiveFocusedKey != null) {
+                        TvFocusAnchor(focusedRow.id, effectiveFocusedKey, TvFocusDestination.SECTION_ITEM)
+                    } else {
+                        null
+                    },
                 inlineStatus =
                     if (hasPartialFailure) {
                         TvCinematicInlineStatus(strings.discoverLoadFailed, TvCinematicStatusKind.ERROR)
@@ -92,38 +62,15 @@ internal fun TvCinematicDiscoverContent(
             ),
         onCardFocused = { anchor, card ->
             focusedKey = card.id
-            val row = rows.first { it.id == anchor.sectionId }
+            val row = rows.firstOrNull { it.id == anchor.sectionId }
             focusMemory.remember(
                 routeKey = "discover",
                 rowKey = anchor.sectionId,
                 itemId = anchor.itemId,
-                horizontalIndex = row.cards.indexOfFirst { it.id == card.id }.coerceAtLeast(0),
+                horizontalIndex = row?.cards?.indexOfFirst { it.id == card.id }?.coerceAtLeast(0) ?: 0,
             )
         },
-        onCardClick = { card -> itemsByKey[card.id]?.let(onItem) },
+        onCardClick = { card -> discover.item(card.id)?.let(onItem) },
         resetVerticalFocusToFirstCard = true,
     )
 }
-
-internal fun hasCinematicDiscoverContent(
-    state: JellyseerrRecommendationsState.Ready?,
-    requestItems: List<JellyseerrRequestSummary>,
-): Boolean =
-    state != null &&
-        (state.rails.values.any { it.items.isNotEmpty() } || requestItems.any { it.tmdbId != null })
-
-private fun JellyseerrSearchItem.toCinematicCard(
-    key: String,
-    selected: Boolean,
-): TvCinematicCard =
-    TvCinematicCard(
-        id = key,
-        title = title,
-        subtitle = releaseYear,
-        overview = overview,
-        artworkUrl = tmdbImageUrl(backdropPath ?: posterPath, backdrop = backdropPath != null),
-        backdropUrl = tmdbImageUrl(backdropPath ?: posterPath, backdrop = backdropPath != null),
-        selected = selected,
-    )
-
-internal fun JellyseerrSearchItem.cinematicKey(): String = "${mediaType.name.lowercase()}:$tmdbId"

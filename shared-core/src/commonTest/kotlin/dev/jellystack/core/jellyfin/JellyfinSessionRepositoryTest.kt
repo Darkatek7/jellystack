@@ -66,6 +66,38 @@ class JellyfinSessionRepositoryTest {
             assertFalse((unavailable.state.value as JellyfinSessionState.Error).authenticationExpired)
         }
 
+    @Test
+    fun verifyingARejectedTokenPublishesTheExpiryWithoutAnotherRefresh() =
+        runTest {
+            val repository = repositoryWith("{}", HttpStatusCode.Unauthorized)
+
+            assertFalse(repository.verifyAuthentication())
+
+            assertTrue((repository.state.value as JellyfinSessionState.Error).authenticationExpired)
+        }
+
+    @Test
+    fun verifyingAnAcceptedTokenLeavesTheSessionStateAlone() =
+        runTest {
+            val repository = repositoryWith("""{"Id":"user-1","Name":"Viewer"}""")
+            repository.refresh()
+            val before = repository.state.value
+
+            assertTrue(repository.verifyAuthentication())
+
+            assertEquals(before, repository.state.value)
+        }
+
+    @Test
+    fun verifyingWhileTheServerIsDownProvesNothing() =
+        runTest {
+            val repository = repositoryWith("{}", HttpStatusCode.ServiceUnavailable)
+
+            assertTrue(repository.verifyAuthentication())
+
+            assertEquals(JellyfinSessionState.Disconnected, repository.state.value)
+        }
+
     private fun repositoryWith(
         responseBody: String,
         status: HttpStatusCode = HttpStatusCode.OK,
