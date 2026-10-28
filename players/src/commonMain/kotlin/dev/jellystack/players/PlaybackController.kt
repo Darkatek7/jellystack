@@ -130,6 +130,7 @@ class PlaybackController(
         check(!released) { "PlaybackController has been released" }
         stopInternal(saveProgress = true, clearRetryContext = false)
         fallbackState.reset()
+        recovery.onNewPlayback()
         val attemptGeneration = playGeneration
         retryContext = RetryContext(request, environment)
         _state.value =
@@ -454,6 +455,7 @@ class PlaybackController(
     private fun publishPlaybackError(
         error: Throwable,
         request: PlaybackRequest? = retryContext?.request,
+        category: PlayerErrorCategory = PlayerErrorCategory.MEDIA,
     ) {
         val failedRequest = request ?: return
         val errorState =
@@ -464,6 +466,7 @@ class PlaybackController(
                 metadata = failedRequest.metadata,
                 canRetry = retryContext != null,
                 mediaKind = failedRequest.mediaKind,
+                category = category,
             )
         stopInternal(
             saveProgress = true,
@@ -680,6 +683,7 @@ class PlaybackController(
 
     fun updateProgress(positionMs: Long) {
         if (positionMs < 0) return
+        recovery.onPosition(positionMs)
         session?.let {
             if (handoffPhase == HandoffPhase.RECOVERING) {
                 cancelRecoveryPromotion()
@@ -1648,11 +1652,7 @@ class PlaybackController(
                                 session = ended
                                 publishCurrentState(ended)
                             }
-                        is PlayerEvent.Error -> {
-                            if (!recovery.attemptFallback(event.throwable)) {
-                                publishPlaybackError(event.throwable)
-                            }
-                        }
+                        is PlayerEvent.Error -> recovery.onPlayerError(event)
                     }
                 }
             }
@@ -1776,7 +1776,10 @@ class PlaybackController(
             publishCurrentState(session)
         }
 
-        override fun fail(error: Throwable) = publishPlaybackError(error)
+        override fun fail(
+            error: Throwable,
+            category: PlayerErrorCategory,
+        ) = publishPlaybackError(error, category = category)
     }
 
     private data class RetryContext(

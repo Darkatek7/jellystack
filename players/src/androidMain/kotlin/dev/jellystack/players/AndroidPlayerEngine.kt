@@ -125,7 +125,7 @@ class AndroidPlayerEngine(
                             )
                             firstFrameWatchdog?.cancel()
                             audioOutputWatchdog?.cancel()
-                            scope.launch { eventFlow.emit(PlayerEvent.Error(error)) }
+                            scope.launch { eventFlow.emit(PlayerEvent.Error(error, error.toPlayerErrorCategory())) }
                         }
 
                         override fun onRenderedFirstFrame() {

@@ -4,6 +4,7 @@ import dev.jellystack.core.jellyfin.JellyfinEnvironment
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /** What the recovery coordinator needs from the controller that owns the playback session. */
@@ -21,14 +22,17 @@ internal interface PlaybackRecoveryHost {
     fun commit(session: PlaybackSession)
 
     /** Ends playback with an error state. */
-    fun fail(error: Throwable)
+    fun fail(
+        error: Throwable,
+        category: PlayerErrorCategory,
+    )
 }
 
 /**
- * Runs the fallback chain ([PlaybackFallbackState]) of ever more compatible streams after a player failure.
- * At most one attempt runs at a time, it is cancelled by [cancel], and it re-checks
- * [PlaybackRecoveryHost.generation] after every suspension so it can never resurrect a stopped item or overwrite
- * a newer one.
+ * Recovers a running session from player failures: same-source retries after network errors, then the
+ * fallback chain ([PlaybackFallbackState]) of ever more compatible streams. At most one recovery attempt runs
+ * at a time, it is cancelled by [cancel], and it re-checks [PlaybackRecoveryHost.generation] after every
+ * suspension so it can never resurrect a stopped item or overwrite a newer one.
  */
 internal class PlaybackRecoveryCoordinator(
     private val scope: CoroutineScope,
@@ -36,18 +40,37 @@ internal class PlaybackRecoveryCoordinator(
     private val resolver: PlaybackSourceResolver,
     private val fallbackState: PlaybackFallbackState,
     private val host: PlaybackRecoveryHost,
+    private val retryPolicy: PlaybackNetworkRetryPolicy = PlaybackNetworkRetryPolicy(),
 ) {
     private var job: Job? = null
+
+    /** Starts a fresh retry budget for a newly requested item. */
+    fun onNewPlayback() = retryPolicy.reset()
+
+    fun onPosition(positionMs: Long) = retryPolicy.onPosition(positionMs)
 
     fun cancel() {
         job?.cancel()
         job = null
     }
 
+    /** Handles a player failure: retry, fall back or end playback with the failure's category. */
+    fun onPlayerError(event: PlayerEvent.Error) {
+        val recovering =
+            when (event.category) {
+                PlayerErrorCategory.UNAUTHORIZED -> false
+                PlayerErrorCategory.NETWORK ->
+                    retrySameSource(event.throwable) || attemptFallback(event.throwable, category = event.category)
+                PlayerErrorCategory.MEDIA -> attemptFallback(event.throwable)
+            }
+        if (!recovering) host.fail(event.throwable, event.category)
+    }
+
     /** Starts the next fallback step; false when none is left (or none applies), so the caller must fail. */
     fun attemptFallback(
         originalError: Throwable? = null,
         audioOutputUnavailable: Boolean = false,
+        category: PlayerErrorCategory = PlayerErrorCategory.MEDIA,
     ): Boolean {
         if (job?.isActive == true) return true
         val current = host.session ?: return false
@@ -55,7 +78,7 @@ internal class PlaybackRecoveryCoordinator(
         if (current.stream.mode == PlaybackMode.LOCAL || current.source.supportsTranscoding != true) return false
         val options = fallbackState.nextFallback(current, originalError, audioOutputUnavailable) ?: return false
         val generation = host.generation
-        launchAttempt(generation, current.mediaId, originalError) {
+        launchAttempt(generation, current.mediaId, originalError, category) {
             val beforeResolve = currentSession(generation, current.mediaId) ?: return@launchAttempt
             val source =
                 resolver.resolve(
@@ -101,10 +124,33 @@ internal class PlaybackRecoveryCoordinator(
         return true
     }
 
+    /** Re-prepares the current source at the last position after a backoff; false once the budget is spent. */
+    private fun retrySameSource(originalError: Throwable): Boolean {
+        if (job?.isActive == true) return true
+        val current = host.session ?: return false
+        if (current.stream.mode == PlaybackMode.LOCAL) return false
+        val backoffMs = retryPolicy.nextBackoffMs(current.positionMs) ?: return false
+        val generation = host.generation
+        host.commit(current.copy(phase = PlaybackPhase.Buffering))
+        launchAttempt(generation, current.mediaId, originalError, PlayerErrorCategory.NETWORK) {
+            delay(backoffMs)
+            val beforePrepare = currentSession(generation, current.mediaId) ?: return@launchAttempt
+            engine.prepare(
+                source = beforePrepare.source,
+                startPositionMs = beforePrepare.positionMs,
+                audioTrack = beforePrepare.audioTrack,
+                subtitleTrack = beforePrepare.subtitleTrack,
+            )
+            resume(currentSession(generation, current.mediaId) ?: return@launchAttempt)
+        }
+        return true
+    }
+
     private fun launchAttempt(
         generation: Long,
         mediaId: String,
         originalError: Throwable?,
+        category: PlayerErrorCategory,
         block: suspend () -> Unit,
     ) {
         job =
@@ -115,7 +161,7 @@ internal class PlaybackRecoveryCoordinator(
                     throw cancelled
                 } catch (error: Throwable) {
                     if (currentSession(generation, mediaId) != null) {
-                        host.fail(originalError ?: error)
+                        host.fail(originalError ?: error, category)
                     }
                 }
             }

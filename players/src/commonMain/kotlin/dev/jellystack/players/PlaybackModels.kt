@@ -233,6 +233,8 @@ sealed interface PlaybackState {
         val metadata: PlaybackMetadata? = null,
         val canRetry: Boolean = false,
         val mediaKind: PlaybackMediaKind = PlaybackMediaKind.VIDEO,
+        /** [PlayerErrorCategory.UNAUTHORIZED] means the server rejected the session: the user has to sign in again. */
+        val category: PlayerErrorCategory = PlayerErrorCategory.MEDIA,
     ) : PlaybackState
 
     sealed interface Active : PlaybackState {

@@ -2980,6 +2980,139 @@ class PlaybackControllerTest {
             }
         }
 
+    @Test
+    fun networkErrorRetriesTheSameSourceAtTheLastPositionBeforeAnyFallback() =
+        runTest {
+            val engine = RecordingPlayerEngine()
+            val resolver = DirectFallbackPlaybackSourceResolver()
+            val controllerScope = TestScope(UnconfinedTestDispatcher(testScheduler))
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = resolver,
+                    playerEngine = engine,
+                    scope = controllerScope,
+                )
+
+            try {
+                controller.play(PlaybackRequest.from(sampleItem(), sampleDetail(withDirect = true)), testEnvironment())
+                val originalUrl = engine.lastPrepared?.url
+                engine.emitEvent(PlayerEvent.Ready)
+                engine.emitPosition(31_000L)
+
+                engine.emitEvent(PlayerEvent.Error(IllegalStateException("connection lost"), PlayerErrorCategory.NETWORK))
+
+                assertEquals(1, engine.prepareCount)
+                assertEquals(PlaybackPhase.Buffering, (controller.state.value as PlaybackState.Active).phase)
+
+                controllerScope.advanceUntilIdle()
+
+                val active = controller.state.value as PlaybackState.Active
+                assertEquals(PlaybackMode.DIRECT, active.stream.mode)
+                assertEquals(2, engine.prepareCount)
+                assertEquals(originalUrl, engine.lastPrepared?.url)
+                assertEquals(31_000L, engine.lastStartPositionMs)
+                assertEquals(1, resolver.requests.size)
+                assertEquals(2, engine.playCount)
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
+    fun exhaustedNetworkRetriesFallBackToTranscodingAndThenReportTheNetworkError() =
+        runTest {
+            val engine = RecordingPlayerEngine()
+            val resolver = DirectFallbackPlaybackSourceResolver()
+            val controllerScope = TestScope(UnconfinedTestDispatcher(testScheduler))
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = resolver,
+                    playerEngine = engine,
+                    scope = controllerScope,
+                )
+            val networkError = PlayerEvent.Error(IllegalStateException("connection lost"), PlayerErrorCategory.NETWORK)
+
+            try {
+                controller.play(PlaybackRequest.from(sampleItem(), sampleDetail(withDirect = true)), testEnvironment())
+                repeat(PlaybackNetworkRetryPolicy.DEFAULT_BACKOFF_MS.size) {
+                    engine.emitEvent(networkError)
+                    controllerScope.advanceUntilIdle()
+                }
+                assertEquals(1 + PlaybackNetworkRetryPolicy.DEFAULT_BACKOFF_MS.size, engine.prepareCount)
+                assertEquals(1, resolver.requests.size)
+
+                engine.emitEvent(networkError)
+                controllerScope.advanceUntilIdle()
+
+                assertTrue(resolver.requests.last().forceTranscoding)
+                assertEquals(PlaybackMode.HLS, (controller.state.value as PlaybackState.Active).stream.mode)
+                val preparedBeforeFailure = engine.prepareCount
+
+                engine.emitEvent(networkError)
+                controllerScope.advanceUntilIdle()
+
+                val error = controller.state.value as PlaybackState.PlaybackError
+                assertEquals(PlayerErrorCategory.NETWORK, error.category)
+                assertEquals(preparedBeforeFailure, engine.prepareCount)
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
+    fun stopDuringNetworkBackoffDoesNotPrepareThePlayerAgain() =
+        runTest {
+            val engine = RecordingPlayerEngine()
+            val controllerScope = TestScope(UnconfinedTestDispatcher(testScheduler))
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = DirectFallbackPlaybackSourceResolver(),
+                    playerEngine = engine,
+                    scope = controllerScope,
+                )
+
+            try {
+                controller.play(PlaybackRequest.from(sampleItem(), sampleDetail(withDirect = true)), testEnvironment())
+                engine.emitEvent(PlayerEvent.Error(IllegalStateException("connection lost"), PlayerErrorCategory.NETWORK))
+
+                controller.stop()
+                controllerScope.advanceUntilIdle()
+
+                assertEquals(PlaybackState.Stopped, controller.state.value)
+                assertEquals(1, engine.prepareCount)
+                assertEquals(1, engine.playCount)
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
+    fun unauthorizedErrorSkipsRetriesAndFallbacksAndIsExposedInTheState() =
+        runTest {
+            val engine = RecordingPlayerEngine()
+            val resolver = DirectFallbackPlaybackSourceResolver()
+            val controllerScope = TestScope(UnconfinedTestDispatcher(testScheduler))
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = resolver,
+                    playerEngine = engine,
+                    scope = controllerScope,
+                )
+
+            try {
+                controller.play(PlaybackRequest.from(sampleItem(), sampleDetail(withDirect = true)), testEnvironment())
+
+                engine.emitEvent(PlayerEvent.Error(IllegalStateException("Response code: 401"), PlayerErrorCategory.UNAUTHORIZED))
+                controllerScope.advanceUntilIdle()
+
+                val error = controller.state.value as PlaybackState.PlaybackError
+                assertEquals(PlayerErrorCategory.UNAUTHORIZED, error.category)
+                assertEquals(1, engine.prepareCount)
+                assertEquals(1, resolver.requests.size)
+            } finally {
+                controller.release()
+            }
+        }
 }
 
 private fun testEnvironment(): JellyfinEnvironment =

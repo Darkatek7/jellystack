@@ -48,6 +48,8 @@ sealed interface PlayerEvent {
 
     data class Error(
         val throwable: Throwable,
+        /** What kind of failure this is; decides between a same-source retry, the fallback chain and a hard stop. */
+        val category: PlayerErrorCategory = PlayerErrorCategory.MEDIA,
     ) : PlayerEvent
 }
 
