@@ -64,3 +64,31 @@ private fun maskGeneric(value: String): String {
     val end = value.last()
     return "$start***$end"
 }
+
+private val FREE_TEXT_URL_PATTERN = Regex("""[a-zA-Z][a-zA-Z0-9+.-]*://[^\s"'<>]+""")
+private val FREE_TEXT_LINE_SECRET_PATTERN = Regex("""(?i)\b(authorization|set-cookie|cookie)\b(\s*[:=]\s*)[^\r\n]*""")
+private val FREE_TEXT_BEARER_PATTERN = Regex("""(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+""")
+private val FREE_TEXT_KEYED_SECRET_PATTERN =
+    Regex(
+        """(?i)\b(x-emby-token|x-mediabrowser-token|api[_-]?key|access[_-]?token|refresh[_-]?token|token|password|passwd|secret|pw)\b""" +
+            """(["']?\s*[:=]\s*["']?)[^\s,;&"'}]+""",
+    )
+private val FREE_TEXT_EMAIL_PATTERN = Regex("""[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}""")
+private val FREE_TEXT_LONG_HEX_PATTERN = Regex("""\b[A-Fa-f0-9]{32,}\b""")
+
+/**
+ * Redacts free-form log or stack trace text before it is stored for diagnostics: URLs shrink to scheme, host and
+ * port, credentials in headers or key/value pairs and bearer tokens are replaced, email addresses and long hex
+ * identifiers are masked. The result may still be incomplete for unknown secret formats, so callers must never
+ * pass tokens or passwords in the first place; this is a safety net, not a licence to log them.
+ */
+fun redactSensitiveText(text: String): String {
+    if (text.isEmpty()) return text
+    var result = FREE_TEXT_URL_PATTERN.replace(text) { match -> sanitizeUrl(match.value) }
+    result = FREE_TEXT_LINE_SECRET_PATTERN.replace(result) { match -> "${match.groupValues[1]}${match.groupValues[2]}<redacted>" }
+    result = FREE_TEXT_BEARER_PATTERN.replace(result, "Bearer <redacted>")
+    result = FREE_TEXT_KEYED_SECRET_PATTERN.replace(result) { match -> "${match.groupValues[1]}${match.groupValues[2]}<redacted>" }
+    result = FREE_TEXT_EMAIL_PATTERN.replace(result) { match -> maskEmail(match.value) }
+    result = FREE_TEXT_LONG_HEX_PATTERN.replace(result) { match -> maskGeneric(match.value) }
+    return result
+}

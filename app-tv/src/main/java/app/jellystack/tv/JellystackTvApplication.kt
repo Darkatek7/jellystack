@@ -3,6 +3,7 @@ package app.jellystack.tv
 import android.app.Application
 import app.jellystack.tv.di.tvAppModule
 import dev.jellystack.core.di.JellystackDI
+import dev.jellystack.core.diagnostics.AndroidDiagnostics
 import dev.jellystack.core.logging.JellystackLog
 import io.github.aakira.napier.DebugAntilog
 import io.github.aakira.napier.Napier
@@ -14,6 +15,8 @@ class JellystackTvApplication : Application() {
         super.onCreate()
         if (BuildConfig.DEBUG) Napier.base(DebugAntilog())
         JellystackLog.configure(BuildConfig.DEBUG)
+        // Local only: feeds Settings > Diagnostics with the last crash, then lets the process die as usual.
+        AndroidDiagnostics.install(this, BuildConfig.VERSION_NAME)
         if (!JellystackDI.isStarted()) {
             startKoin {
                 androidContext(this@JellystackTvApplication)

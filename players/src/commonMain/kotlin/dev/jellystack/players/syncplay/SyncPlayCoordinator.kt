@@ -1,5 +1,6 @@
 package dev.jellystack.players.syncplay
 
+import dev.jellystack.core.coroutines.runSuspendCatching
 import dev.jellystack.core.jellyfin.JellyfinEnvironment
 import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
 import dev.jellystack.core.jellyfin.JellyfinSyncPlayAccess
@@ -345,7 +346,7 @@ class SyncPlayCoordinator(
         val active = playbackController.state.value as? PlaybackState.Active
         if (active?.mediaId != itemId) {
             val startMs = payload.long("StartPositionTicks")?.div(TICKS_PER_MILLISECOND) ?: 0L
-            scope.launch { playItem(itemId, startMs) }
+            scope.launch { runSuspendCatching { playItem(itemId, startMs) }.onFailure(::publishError) }
         }
     }
 

@@ -8,7 +8,7 @@ class TvSettingsCategoryTest {
     @Test
     fun categoriesUseStableCanonicalRouteKeys() {
         assertEquals(
-            listOf("appearance", "playback", "audio-subtitles", "segment-skipping", "connections"),
+            listOf("appearance", "playback", "audio-subtitles", "segment-skipping", "connections", "diagnostics"),
             TvSettingsCategory.entries.map { it.routeKey },
         )
     }

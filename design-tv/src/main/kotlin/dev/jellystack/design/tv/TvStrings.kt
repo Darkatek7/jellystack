@@ -105,6 +105,35 @@ internal data class TvMessageStrings(
     fun requestTitle(title: String): String = requestTitleFormat.format(title)
 }
 
+/** Settings > Diagnostics (local only), plus the "that failed" line under the detail actions. */
+internal data class TvDiagnosticsStrings(
+    val categoryTitle: String,
+    val categoryDescription: String,
+    val actionFailed: String,
+    val localOnlyNote: String,
+    val appVersionLabel: String,
+    val deviceLabel: String,
+    val lastCrash: String,
+    val noCrash: String,
+    val clearCrash: String,
+    val recentLog: String,
+    val noLogLines: String,
+    val refresh: String,
+    private val androidVersionFormat: String,
+    private val crashSummaryFormat: String,
+) {
+    fun androidVersion(
+        release: String,
+        sdk: Int,
+    ): String = androidVersionFormat.format(release, sdk)
+
+    fun crashSummary(
+        time: String,
+        thread: String,
+        version: String,
+    ): String = crashSummaryFormat.format(time, thread, version)
+}
+
 internal data class TvStrings(
     val home: String,
     val library: String,
@@ -344,6 +373,7 @@ internal data class TvStrings(
     val messages: TvMessageStrings,
     val metadata: TvMetadataStrings,
     val settingsLabels: TvSettingsStrings,
+    val diagnostics: TvDiagnosticsStrings,
     private val itemSingular: String,
     private val itemPlural: String,
 ) {
@@ -639,6 +669,7 @@ internal data class TvStrings(
                         secondsShort = "%s s",
                         decimalSeparator = ".",
                     ),
+                diagnostics = englishDiagnosticStrings,
                 itemSingular = "item",
                 itemPlural = "items",
             )
@@ -922,6 +953,7 @@ internal data class TvStrings(
                         secondsShort = "%s s",
                         decimalSeparator = ",",
                     ),
+                diagnostics = germanDiagnosticStrings,
                 itemSingular = "Element",
                 itemPlural = "Elemente",
             )
@@ -966,4 +998,40 @@ private val germanMessageStrings =
         requestTitleFormat = "%s anfragen",
         loadingDetails = "Details werden geladen…",
         untitled = "Ohne Titel",
+    )
+
+private val englishDiagnosticStrings =
+    TvDiagnosticsStrings(
+        categoryTitle = "Diagnostics",
+        categoryDescription = "Version, last crash and recent log",
+        actionFailed = "That did not work. Check the connection to your server and try again.",
+        localOnlyNote = "This information stays on this device. Nothing is sent anywhere.",
+        appVersionLabel = "App version",
+        deviceLabel = "Device",
+        lastCrash = "Last crash",
+        noCrash = "No crash has been recorded.",
+        clearCrash = "Clear crash report",
+        recentLog = "Recent log (newest first)",
+        noLogLines = "Nothing has been logged yet.",
+        refresh = "Refresh",
+        androidVersionFormat = "Android %1\$s (API %2\$d)",
+        crashSummaryFormat = "%1\$s on thread %2\$s, version %3\$s",
+    )
+
+private val germanDiagnosticStrings =
+    TvDiagnosticsStrings(
+        categoryTitle = "Diagnose",
+        categoryDescription = "Version, letzter Absturz und aktuelles Protokoll",
+        actionFailed = "Das hat nicht geklappt. Prüfe die Verbindung zu deinem Server und versuche es erneut.",
+        localOnlyNote = "Diese Angaben bleiben auf diesem Gerät. Es wird nichts gesendet.",
+        appVersionLabel = "App-Version",
+        deviceLabel = "Gerät",
+        lastCrash = "Letzter Absturz",
+        noCrash = "Es wurde kein Absturz aufgezeichnet.",
+        clearCrash = "Absturzbericht löschen",
+        recentLog = "Aktuelles Protokoll (neueste zuerst)",
+        noLogLines = "Es wurde noch nichts protokolliert.",
+        refresh = "Aktualisieren",
+        androidVersionFormat = "Android %1\$s (API %2\$d)",
+        crashSummaryFormat = "%1\$s im Thread %2\$s, Version %3\$s",
     )
