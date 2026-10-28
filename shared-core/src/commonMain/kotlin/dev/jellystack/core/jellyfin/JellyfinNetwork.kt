@@ -3,10 +3,12 @@ package dev.jellystack.core.jellyfin
 import dev.jellystack.network.ClientConfig
 import dev.jellystack.network.NetworkClientFactory
 import dev.jellystack.network.jellyfin.JellyfinBrowseApi
+import dev.jellystack.network.jellyfin.observeJellyfinUnauthorized
 import io.ktor.client.HttpClient
 
 fun defaultJellyfinBrowseApiFactory(
     acceptLanguageProvider: () -> String? = { null },
+    authExpirySignal: AuthExpirySignal? = null,
     clientProvider: (() -> HttpClient)? = null,
 ): JellyfinBrowseApiFactory {
     val sharedClient: HttpClient by lazy {
@@ -15,6 +17,7 @@ fun defaultJellyfinBrowseApiFactory(
                 ClientConfig(
                     installLogging = false,
                     acceptLanguageProvider = acceptLanguageProvider,
+                    configure = { authExpirySignal?.let { signal -> observeJellyfinUnauthorized(signal::report) } },
                 ),
             )
     }

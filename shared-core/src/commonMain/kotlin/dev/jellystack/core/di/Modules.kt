@@ -1,6 +1,7 @@
 package dev.jellystack.core.di
 
 import dev.jellystack.core.config.ServerConfigRepository
+import dev.jellystack.core.jellyfin.AuthExpirySignal
 import dev.jellystack.core.jellyfin.HomeSectionsApiFactory
 import dev.jellystack.core.jellyfin.HomeSectionsRepository
 import dev.jellystack.core.jellyfin.JellyfinAdminRepository
@@ -90,10 +91,12 @@ fun coreModule(): Module =
             )
         }
         single<JellystackLocaleProvider> { JellystackLocaleProvider { null } }
+        single { AuthExpirySignal() }
         single<JellyseerrEnvironmentProvider> { ServerRepositoryJellyseerrEnvironmentProvider(get()) }
         single<JellyfinBrowseApiFactory>(jellyfinBrowseApiFactoryQualifier) {
             defaultJellyfinBrowseApiFactory(
                 acceptLanguageProvider = { get<JellystackLocaleProvider>().languageTag() },
+                authExpirySignal = get(),
             )
         }
         single {
@@ -108,6 +111,7 @@ fun coreModule(): Module =
         single<HomeSectionsApiFactory>(homeSectionsApiFactoryQualifier) {
             defaultHomeSectionsApiFactory(
                 acceptLanguageProvider = { get<JellystackLocaleProvider>().languageTag() },
+                authExpirySignal = get(),
             )
         }
         single {
