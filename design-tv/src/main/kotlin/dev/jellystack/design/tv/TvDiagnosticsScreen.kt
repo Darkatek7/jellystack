@@ -1,3 +1,5 @@
+@file:Suppress("FunctionName")
+
 package dev.jellystack.design.tv
 
 import android.os.Build
@@ -11,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -69,18 +72,7 @@ internal fun TvDiagnosticsSettings(
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope { tvCoroutineFailureHandler("diagnostics") }
     var refreshCount by remember { mutableIntStateOf(0) }
-    var snapshot by remember { mutableStateOf<TvDiagnosticsSnapshot?>(null) }
-    LaunchedEffect(refreshCount) {
-        snapshot =
-            withContext(Dispatchers.IO) {
-                runSuspendCatching {
-                    tvDiagnosticsSnapshot(JellystackDiagnostics.lastCrash(), JellystackDiagnostics.logBuffer.snapshot())
-                }.getOrElse { failure ->
-                    JellystackLog.w("Could not read the diagnostics", failure)
-                    tvDiagnosticsSnapshot(null, JellystackDiagnostics.logBuffer.snapshot())
-                }
-            }
-    }
+    val snapshot = rememberTvDiagnosticsSnapshot(refreshCount)
     val refreshTarget = tvSettingsControlTargetId(TV_DIAGNOSTICS_REFRESH_KEY)
     TvRouteFocusMaterializer(
         ownerId = "settings-${TvSettingsCategory.DIAGNOSTICS.routeKey}",
@@ -94,7 +86,6 @@ internal fun TvDiagnosticsSettings(
             false
         }
     }
-    val current = snapshot
     LazyColumn(
         state = listState,
         modifier = modifier.fillMaxSize(),
@@ -102,70 +93,117 @@ internal fun TvDiagnosticsSettings(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text(
-                    labels.categoryTitle,
-                    modifier = Modifier.tvHeading(),
-                    color = TvText,
-                    fontSize = 38.sp,
-                    fontWeight = FontWeight.Bold,
-                )
-                Text(labels.localOnlyNote, color = TvTextMuted, fontSize = 19.sp)
-                Column(
-                    Modifier.fillMaxWidth().background(TvSurface, RoundedCornerShape(22.dp)).padding(22.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Text("${labels.appVersionLabel}: $appVersion", color = TvText, fontSize = 19.sp)
-                    Text("${labels.deviceLabel}: ${tvDeviceDescription(labels)}", color = TvText, fontSize = 19.sp)
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    TvActionButton(
-                        labels.refresh,
-                        onClick = { refreshCount += 1 },
-                        modifier = Modifier.tvScreenEntryFocus(focusTargetId = refreshTarget),
-                        focusToNavigationRailOnLeft = true,
-                        focusTargetId = refreshTarget,
-                    )
-                    if (current?.crash != null) {
-                        TvActionButton(
-                            labels.clearCrash,
-                            onClick = {
-                                scope.launch {
-                                    withContext(Dispatchers.IO) { JellystackDiagnostics.clearLastCrash() }
-                                    refreshCount += 1
-                                }
-                            },
-                            destructive = true,
-                            focusTargetId = tvSettingsControlTargetId(TV_DIAGNOSTICS_CLEAR_KEY),
-                        )
+            TvDiagnosticsHeader(
+                appVersion = appVersion,
+                labels = labels,
+                canClearCrash = snapshot?.crash != null,
+                onRefresh = { refreshCount += 1 },
+                onClearCrash = {
+                    scope.launch {
+                        withContext(Dispatchers.IO) { JellystackDiagnostics.clearLastCrash() }
+                        refreshCount += 1
                     }
+                },
+            )
+        }
+        tvDiagnosticsCrashSection(snapshot?.crash, labels)
+        tvDiagnosticsLogSection(snapshot?.logLines.orEmpty(), labels)
+        item { Spacer(Modifier.height(40.dp)) }
+    }
+}
+
+@Composable
+private fun rememberTvDiagnosticsSnapshot(refreshCount: Int): TvDiagnosticsSnapshot? {
+    var snapshot by remember { mutableStateOf<TvDiagnosticsSnapshot?>(null) }
+    LaunchedEffect(refreshCount) {
+        snapshot =
+            withContext(Dispatchers.IO) {
+                runSuspendCatching {
+                    tvDiagnosticsSnapshot(JellystackDiagnostics.lastCrash(), JellystackDiagnostics.logBuffer.snapshot())
+                }.getOrElse { failure ->
+                    JellystackLog.w("Could not read the diagnostics", failure)
+                    tvDiagnosticsSnapshot(null, JellystackDiagnostics.logBuffer.snapshot())
                 }
             }
+    }
+    return snapshot
+}
+
+@Composable
+private fun TvDiagnosticsHeader(
+    appVersion: String,
+    labels: TvDiagnosticsStrings,
+    canClearCrash: Boolean,
+    onRefresh: () -> Unit,
+    onClearCrash: () -> Unit,
+) {
+    val refreshTarget = tvSettingsControlTargetId(TV_DIAGNOSTICS_REFRESH_KEY)
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Text(
+            labels.categoryTitle,
+            modifier = Modifier.tvHeading(),
+            color = TvText,
+            fontSize = 38.sp,
+            fontWeight = FontWeight.Bold,
+        )
+        Text(labels.localOnlyNote, color = TvTextMuted, fontSize = 19.sp)
+        Column(
+            Modifier.fillMaxWidth().background(TvSurface, RoundedCornerShape(22.dp)).padding(22.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text("${labels.appVersionLabel}: $appVersion", color = TvText, fontSize = 19.sp)
+            Text("${labels.deviceLabel}: ${tvDeviceDescription(labels)}", color = TvText, fontSize = 19.sp)
         }
-        item { DiagnosticsSectionTitle(labels.lastCrash) }
-        val crash = current?.crash
-        if (crash == null) {
-            item { Text(labels.noCrash, color = TvTextMuted, fontSize = 18.sp) }
-        } else {
-            item { DiagnosticsLine(tvCrashSummary(crash, labels), emphasized = true) }
-            items(
-                crash.stackTrace
-                    .lines()
-                    .filter { it.isNotBlank() }
-                    .take(TV_DIAGNOSTICS_MAX_CRASH_LINES),
-            ) { line ->
-                DiagnosticsLine(line)
+        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            TvActionButton(
+                labels.refresh,
+                onClick = onRefresh,
+                modifier = Modifier.tvScreenEntryFocus(focusTargetId = refreshTarget),
+                focusToNavigationRailOnLeft = true,
+                focusTargetId = refreshTarget,
+            )
+            if (canClearCrash) {
+                TvActionButton(
+                    labels.clearCrash,
+                    onClick = onClearCrash,
+                    destructive = true,
+                    focusTargetId = tvSettingsControlTargetId(TV_DIAGNOSTICS_CLEAR_KEY),
+                )
             }
         }
-        item { Spacer(Modifier.height(8.dp)) }
-        item { DiagnosticsSectionTitle(labels.recentLog) }
-        val logLines = current?.logLines.orEmpty()
-        if (logLines.isEmpty()) {
-            item { Text(labels.noLogLines, color = TvTextMuted, fontSize = 18.sp) }
-        } else {
-            items(logLines) { line -> DiagnosticsLine(line) }
+    }
+}
+
+private fun LazyListScope.tvDiagnosticsCrashSection(
+    crash: CrashReport?,
+    labels: TvDiagnosticsStrings,
+) {
+    item { DiagnosticsSectionTitle(labels.lastCrash) }
+    if (crash == null) {
+        item { Text(labels.noCrash, color = TvTextMuted, fontSize = 18.sp) }
+    } else {
+        item { DiagnosticsLine(tvCrashSummary(crash, labels), emphasized = true) }
+        items(
+            crash.stackTrace
+                .lines()
+                .filter { it.isNotBlank() }
+                .take(TV_DIAGNOSTICS_MAX_CRASH_LINES),
+        ) { line ->
+            DiagnosticsLine(line)
         }
-        item { Spacer(Modifier.height(40.dp)) }
+    }
+}
+
+private fun LazyListScope.tvDiagnosticsLogSection(
+    logLines: List<String>,
+    labels: TvDiagnosticsStrings,
+) {
+    item { Spacer(Modifier.height(8.dp)) }
+    item { DiagnosticsSectionTitle(labels.recentLog) }
+    if (logLines.isEmpty()) {
+        item { Text(labels.noLogLines, color = TvTextMuted, fontSize = 18.sp) }
+    } else {
+        items(logLines) { line -> DiagnosticsLine(line) }
     }
 }
 

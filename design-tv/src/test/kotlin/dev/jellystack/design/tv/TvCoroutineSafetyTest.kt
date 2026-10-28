@@ -26,13 +26,18 @@ class TvCoroutineSafetyTest {
             }
 
             assertTrue(siblingRan)
-            val recorded = JellystackDiagnostics.logBuffer.snapshot().filter { "Unhandled failure in the account session" in it }
+            val recorded =
+                JellystackDiagnostics.logBuffer
+                    .snapshot()
+                    .filter { "Unhandled failure in the account session" in it }
             assertTrue(recorded.any { "network is down" in it }, recorded.toString())
         }
 
     @Test
     fun cancellationIsNotReportedAsAFailure() {
-        tvCoroutineFailureHandler("cancelled owner").handleException(EmptyCoroutineContext, CancellationException("left the screen"))
+        val handler = tvCoroutineFailureHandler("cancelled owner")
+
+        handler.handleException(EmptyCoroutineContext, CancellationException("left the screen"))
 
         assertFalse(JellystackDiagnostics.logBuffer.snapshot().any { "cancelled owner" in it })
     }

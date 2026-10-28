@@ -15,7 +15,7 @@ class JellystackTvApplication : Application() {
         super.onCreate()
         if (BuildConfig.DEBUG) Napier.base(DebugAntilog())
         JellystackLog.configure(BuildConfig.DEBUG)
-        // Local only: records the last crash and recent log lines for Settings > Diagnostics, then lets the process die.
+        // Local only: feeds Settings > Diagnostics with the last crash, then lets the process die as usual.
         AndroidDiagnostics.install(this, BuildConfig.VERSION_NAME)
         if (!JellystackDI.isStarted()) {
             startKoin {

@@ -105,7 +105,7 @@ internal data class TvMessageStrings(
     fun requestTitle(title: String): String = requestTitleFormat.format(title)
 }
 
-/** Settings > Diagnostics, plus the shared "that failed" line under detail actions. Everything shown there stays on the device. */
+/** Settings > Diagnostics (local only), plus the "that failed" line under the detail actions. */
 internal data class TvDiagnosticsStrings(
     val categoryTitle: String,
     val categoryDescription: String,
