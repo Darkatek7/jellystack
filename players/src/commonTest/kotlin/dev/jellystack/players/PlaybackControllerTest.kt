@@ -2801,6 +2801,113 @@ class PlaybackControllerTest {
                 controller.release()
             }
         }
+
+    @Test
+    fun stopDuringFallbackResolveNeverPreparesOrPlaysTheStoppedItemAgain() =
+        runTest {
+            val resolveStarted = CompletableDeferred<Unit>()
+            val allowResolve = CompletableDeferred<Unit>()
+            val engine = RecordingPlayerEngine()
+            val controllerScope = TestScope(UnconfinedTestDispatcher(testScheduler))
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = DelayingQualityResolver(resolveStarted, allowResolve),
+                    playerEngine = engine,
+                    scope = controllerScope,
+                )
+
+            try {
+                controller.play(PlaybackRequest.from(sampleItem(), sampleDetail(withDirect = true)), testEnvironment())
+                engine.emitEvent(PlayerEvent.Error(IllegalStateException("Decoder failed")))
+                resolveStarted.await()
+
+                controller.stop()
+                allowResolve.complete(Unit)
+                controllerScope.advanceUntilIdle()
+
+                assertEquals(PlaybackState.Stopped, controller.state.value)
+                assertNull(controller.currentSession())
+                assertEquals(1, engine.prepareCount)
+                assertEquals(1, engine.playCount)
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
+    fun newItemDuringOldItemsFallbackResolveStaysUntouched() =
+        runTest {
+            val resolveStarted = CompletableDeferred<Unit>()
+            val allowResolve = CompletableDeferred<Unit>()
+            val engine = RecordingPlayerEngine()
+            val controllerScope = TestScope(UnconfinedTestDispatcher(testScheduler))
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = DelayingQualityResolver(resolveStarted, allowResolve),
+                    playerEngine = engine,
+                    scope = controllerScope,
+                )
+
+            try {
+                controller.play(PlaybackRequest.from(sampleItem("item-1"), sampleDetail(withDirect = true)), testEnvironment())
+                engine.emitEvent(PlayerEvent.Error(IllegalStateException("Decoder failed")))
+                resolveStarted.await()
+
+                controller.play(PlaybackRequest.from(sampleItem("item-2"), sampleDetail(withDirect = true)), testEnvironment())
+                allowResolve.complete(Unit)
+                controllerScope.advanceUntilIdle()
+
+                val state = controller.state.value as PlaybackState.Active
+                assertEquals("item-2", state.mediaId)
+                assertEquals(2, engine.prepareCount)
+                assertEquals(2, engine.playCount)
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
+    fun failedFallbackResolveOfAReplacedItemDoesNotStopTheNewItem() =
+        runTest {
+            val resolveStarted = CompletableDeferred<Unit>()
+            val failResolve = CompletableDeferred<Unit>()
+            val engine = RecordingPlayerEngine()
+            val controllerScope = TestScope(UnconfinedTestDispatcher(testScheduler))
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver =
+                        PlaybackSourceResolver { request, selection, _, _, options ->
+                            if (options.forceTranscoding) {
+                                resolveStarted.complete(Unit)
+                                failResolve.await()
+                            }
+                            resolvedSource(
+                                url = "https://example.test/${request.mediaId}.mp4",
+                                mode = PlaybackMode.DIRECT,
+                                playSessionId = "play-${request.mediaId}",
+                                mediaSourceId = selection.sourceId,
+                            )
+                        },
+                    playerEngine = engine,
+                    scope = controllerScope,
+                )
+
+            try {
+                controller.play(PlaybackRequest.from(sampleItem("item-1"), sampleDetail(withDirect = true)), testEnvironment())
+                engine.emitEvent(PlayerEvent.Error(IllegalStateException("Decoder failed")))
+                resolveStarted.await()
+
+                controller.play(PlaybackRequest.from(sampleItem("item-2"), sampleDetail(withDirect = true)), testEnvironment())
+                failResolve.completeExceptionally(IllegalStateException("resolve failed"))
+                controllerScope.advanceUntilIdle()
+
+                val state = controller.state.value as PlaybackState.Active
+                assertEquals("item-2", state.mediaId)
+            } finally {
+                controller.release()
+            }
+        }
+
 }
 
 private fun testEnvironment(): JellyfinEnvironment =

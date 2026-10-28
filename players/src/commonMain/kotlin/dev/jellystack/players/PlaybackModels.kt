@@ -398,6 +398,43 @@ internal fun JellyfinMediaStream.toSubtitleTrack(): SubtitleTrack? {
     )
 }
 
+/** Reconciles the planned [PlaybackStreamSelection] with the source the server actually negotiated. */
+internal fun PlaybackStreamSelection.withResolvedSource(resolved: ResolvedPlaybackSource): PlaybackStreamSelection {
+    val resolvedSourceId = resolved.mediaSourceId ?: sourceId
+    val autoSelected =
+        selectedQualityId == PlaybackQualityOption.AUTO_ID ||
+            resolved.supportsTranscoding == false
+    val reconciledOptions =
+        qualityOptions
+            .map { option ->
+                if (option.isAuto && autoSelected) {
+                    option.copy(
+                        mode = resolved.mode,
+                        sourceId = resolvedSourceId,
+                    )
+                } else {
+                    option
+                }
+            }.let { options ->
+                if (resolved.supportsTranscoding == false) {
+                    options.filter { it.isAuto }
+                } else {
+                    options
+                }
+            }
+    return copy(
+        sourceId = resolvedSourceId,
+        mode = resolved.mode,
+        qualityOptions = reconciledOptions,
+        selectedQualityId =
+            if (resolved.supportsTranscoding == false) {
+                PlaybackQualityOption.AUTO_ID
+            } else {
+                selectedQualityId
+            },
+    )
+}
+
 internal fun PlaybackStreamSelection.defaultAudioTrack(): AudioTrack? =
     audioTracks.firstOrNull { it.isDefault } ?: audioTracks.firstOrNull()
 
