@@ -6,6 +6,7 @@ import dev.jellystack.network.NetworkClientFactory
 import dev.jellystack.network.jellyfin.HomeSectionInfoDto
 import dev.jellystack.network.jellyfin.HomeSectionItemDto
 import dev.jellystack.network.jellyfin.HomeSectionsApi
+import dev.jellystack.network.jellyfin.observeJellyfinUnauthorized
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
@@ -300,11 +301,18 @@ private fun HomeSectionItemDto.toDomain(baseUrl: String): HomeSectionItem? {
 
 fun defaultHomeSectionsApiFactory(
     acceptLanguageProvider: () -> String? = { null },
+    authExpirySignal: AuthExpirySignal? = null,
     clientProvider: (() -> HttpClient)? = null,
 ): HomeSectionsApiFactory {
     val client by lazy {
         clientProvider?.invoke()
-            ?: NetworkClientFactory.create(ClientConfig(installLogging = false, acceptLanguageProvider = acceptLanguageProvider))
+            ?: NetworkClientFactory.create(
+                ClientConfig(
+                    installLogging = false,
+                    acceptLanguageProvider = acceptLanguageProvider,
+                    configure = { authExpirySignal?.let { signal -> observeJellyfinUnauthorized(signal::report) } },
+                ),
+            )
     }
     return { environment ->
         HomeSectionsApi(

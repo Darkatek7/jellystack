@@ -99,6 +99,31 @@ class JellyfinSessionRepository(
         }
     }
 
+    /**
+     * Asks the server whether the current access token is still accepted, without disturbing [state] while it is.
+     * Only a rejected token publishes [JellyfinSessionState.Error] with `authenticationExpired`, which starts the
+     * sign-in recovery; an unreachable server or any other failure proves nothing and changes nothing.
+     * Returns `false` when the token was rejected.
+     */
+    suspend fun verifyAuthentication(): Boolean {
+        val environment = environmentProvider.current() ?: return true
+        val rejected =
+            try {
+                apiFactory(environment).currentUser()
+                false
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Throwable) {
+                failure.isAuthenticationExpired()
+            }
+        if (rejected && environmentProvider.current() == environment) {
+            generation += 1L
+            mutableState.value =
+                JellyfinSessionState.Error(message = "Jellyfin authentication expired", authenticationExpired = true)
+        }
+        return !rejected
+    }
+
     suspend fun api(): JellyfinSessionApi? = environmentProvider.current()?.let(apiFactory)
 }
 
