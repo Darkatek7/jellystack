@@ -2504,6 +2504,61 @@ class PlaybackControllerTest {
         }
 
     @Test
+    fun engineSideAudioFocusLossAndRegainAreMirroredIntoTheState() =
+        runTest {
+            val engine = RecordingPlayerEngine()
+            val controllerScope = TestScope(UnconfinedTestDispatcher(testScheduler))
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = TestPlaybackSourceResolver(),
+                    playerEngine = engine,
+                    scope = controllerScope,
+                )
+
+            try {
+                controller.play(PlaybackRequest.from(sampleItem(), sampleDetail(withDirect = true)), testEnvironment())
+                engine.emitEvent(PlayerEvent.Ready)
+
+                engine.emitEvent(PlayerEvent.PlayWhenReadyChanged(playWhenReady = false))
+                assertTrue((controller.state.value as PlaybackState.Active).isPaused)
+                // The engine paused by itself; the controller must not send another pause back.
+                assertEquals(0, engine.pauseCount)
+
+                engine.emitEvent(PlayerEvent.PlayWhenReadyChanged(playWhenReady = true))
+                assertFalse((controller.state.value as PlaybackState.Active).isPaused)
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
+    fun finishedItemIsNotResumedByAnEnginePlayWhenReadyChange() =
+        runTest {
+            val engine = RecordingPlayerEngine()
+            val controllerScope = TestScope(UnconfinedTestDispatcher(testScheduler))
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = TestPlaybackSourceResolver(),
+                    playerEngine = engine,
+                    scope = controllerScope,
+                )
+
+            try {
+                controller.play(PlaybackRequest.from(sampleItem(), sampleDetail(withDirect = true)), testEnvironment())
+                engine.emitEvent(PlayerEvent.Completed)
+                assertEquals(PlaybackPhase.Ended, (controller.state.value as PlaybackState.Active).phase)
+
+                engine.emitEvent(PlayerEvent.PlayWhenReadyChanged(playWhenReady = true))
+
+                val ended = controller.state.value as PlaybackState.Active
+                assertEquals(PlaybackPhase.Ended, ended.phase)
+                assertTrue(ended.isPaused)
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
     fun playerFailureShowsRetryableErrorAndRetryRestoresProgress() =
         runTest {
             val engine = RecordingPlayerEngine()
