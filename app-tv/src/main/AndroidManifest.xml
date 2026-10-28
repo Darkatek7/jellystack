@@ -41,8 +41,9 @@
         <activity
             android:name=".MainActivity"
             android:banner="@drawable/tv_banner"
-            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|uiMode"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|uiMode|screenLayout|smallestScreenSize|density|fontScale"
             android:exported="true"
+            android:launchMode="singleTask"
             android:resizeableActivity="false"
             android:screenOrientation="landscape">
             <intent-filter>
