@@ -36,6 +36,8 @@ kotlin {
                 implementation(kotlin("test"))
                 implementation(libs.multiplatform.settings)
                 implementation(libs.coroutines.test)
+                implementation(libs.ktor.client.mock)
+                implementation(libs.ktor.client.mock)
             }
         }
         val androidMain by getting {
