@@ -31,9 +31,27 @@ class AndroidPlaybackSessionBridge(
 
     // Media3 requires session ids to be unique per process. A relaunch can create the next activity's
     // bridge before the finishing activity has released its own session, so each bridge owns its id.
+    private val commandTarget =
+        object : PlaybackCommandTarget {
+            override fun resume() = controller.resume()
+
+            override fun pause() = controller.pause()
+
+            override fun stop() = stopPlayback()
+
+            override fun seekTo(positionMs: Long) = controller.seekTo(positionMs)
+
+            override fun seekBy(deltaMs: Long) {
+                val active = controller.state.value as? PlaybackState.Active ?: return
+                controller.seekTo(relativeSeekTarget(active.positionMs, active.durationMs, deltaMs))
+            }
+        }
+
+    // The session's player is the controller-routed one, so voice assistants, HDMI-CEC and other session
+    // controllers cannot drive ExoPlayer behind the PlaybackController's back.
     private val mediaSession =
         MediaSession
-            .Builder(appContext, engine.media3Player())
+            .Builder(appContext, ControllerRoutedPlayer(engine.media3Player(), commandTarget, seekBackMs, seekForwardMs))
             .setId("jellystack-playback-${sessionIds.incrementAndGet()}")
             .build()
     private val audioDeviceCallback =
@@ -68,15 +86,12 @@ class AndroidPlaybackSessionBridge(
             }
             KeyEvent.KEYCODE_MEDIA_REWIND,
             -> {
-                active?.let { controller.seekTo((it.positionMs - seekBackMs()).coerceAtLeast(0L)) }
+                commandTarget.seekBy(-seekBackMs())
                 active != null
             }
             KeyEvent.KEYCODE_MEDIA_FAST_FORWARD,
             -> {
-                active?.let { current ->
-                    val destination = current.positionMs + seekForwardMs()
-                    controller.seekTo(current.durationMs?.let(destination::coerceAtMost) ?: destination)
-                }
+                commandTarget.seekBy(seekForwardMs())
                 active != null
             }
             KeyEvent.KEYCODE_MEDIA_STOP -> {

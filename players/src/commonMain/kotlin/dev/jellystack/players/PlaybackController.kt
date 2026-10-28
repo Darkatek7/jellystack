@@ -1615,6 +1615,7 @@ class PlaybackController(
                             positionsConfirmed = true
                             updatePlaybackPhase(PlaybackPhase.Ready)
                         }
+                        is PlayerEvent.PlayWhenReadyChanged -> applyEnginePlayWhenReady(event.playWhenReady)
                         PlayerEvent.VideoOutputStalled -> {
                             if (!recovery.attemptFallback()) {
                                 publishPlaybackError(IllegalStateException("Video output did not start."))
@@ -1697,6 +1698,14 @@ class PlaybackController(
                     completed = completed,
                 )
             }
+    }
+
+    /** Mirrors a play-when-ready change the engine made on its own (audio focus, noisy output) into the state. */
+    private fun applyEnginePlayWhenReady(playWhenReady: Boolean) {
+        if (handoffPhase != HandoffPhase.LOCAL) return
+        val updated = session?.withEnginePlayWhenReady(playWhenReady) ?: return
+        session = updated
+        publishCurrentState(updated)
     }
 
     private fun updatePlaybackPhase(phase: PlaybackPhase) {

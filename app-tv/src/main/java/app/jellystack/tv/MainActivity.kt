@@ -13,6 +13,7 @@ import androidx.navigationevent.setViewTreeNavigationEventDispatcherOwner
 import com.russhwolf.settings.SharedPreferencesSettings
 import dev.jellystack.core.di.JellystackDI
 import dev.jellystack.core.jellyfin.JellyfinBrowseRepository
+import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
 import dev.jellystack.core.playback.JellyfinStreamingProgressReporter
 import dev.jellystack.core.preferences.AppSettingsRepository
 import dev.jellystack.core.preferences.ResumeMode
@@ -33,6 +34,7 @@ import dev.jellystack.players.PlaybackPreferencesProvider
 import dev.jellystack.players.PlaybackState
 import dev.jellystack.players.SettingsPlaybackProgressStore
 import dev.jellystack.players.SettingsSubtitlePreferenceStore
+import dev.jellystack.players.TranscodeStopReporter
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
@@ -146,15 +148,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun createTrailerPreviewController(settingsRepository: AppSettingsRepository): PlaybackController {
+        // The engine builds its ExoPlayer on the first trailer, so a session that never previews one pays nothing.
         trailerPreviewEngine = AndroidPlayerEngine(context = applicationContext)
+        val playbackInfoService = NetworkJellyfinPlaybackInfoService()
         return PlaybackController(
             playbackSourceResolver =
                 JellyfinPlaybackSourceResolver(
-                    playbackInfoService = NetworkJellyfinPlaybackInfoService(),
+                    playbackInfoService = playbackInfoService,
                     deviceProfileProvider = AndroidTvPlaybackDeviceProfileProvider(),
                     clientVersion = BuildConfig.VERSION_NAME,
                 ),
             playerEngine = trailerPreviewEngine,
+            // Previews stay out of the watch history; the reporter only stops the server transcode of a finished one.
+            streamingProgressReporter =
+                TranscodeStopReporter(playbackInfoService, JellystackDI.koin.get<JellyfinEnvironmentProvider>()),
             playbackPreferencesProvider =
                 PlaybackPreferencesProvider {
                     settingsRepository.settings.value.copy(
