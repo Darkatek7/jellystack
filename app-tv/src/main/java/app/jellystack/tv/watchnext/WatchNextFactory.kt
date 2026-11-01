@@ -1,6 +1,7 @@
 package app.jellystack.tv.watchnext
 
 import android.content.Context
+import android.os.Build
 import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
 import dev.jellystack.design.tv.TvWatchNextPublisher
 import dev.jellystack.design.tv.UnsupportedTvWatchNextPublisher
@@ -19,7 +20,9 @@ object WatchNextFactory {
         environments: JellyfinEnvironmentProvider,
     ): TvWatchNextPublisher {
         val appContext = context.applicationContext
-        if (!WatchNextSupport.detect(appContext)) return UnsupportedTvWatchNextPublisher
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || !WatchNextSupport.detect(appContext)) {
+            return UnsupportedTvWatchNextPublisher
+        }
         val preferences = appContext.getSharedPreferences("jellystack_watch_next", Context.MODE_PRIVATE)
         val state = SharedPreferencesWatchNextState(preferences)
         return AndroidWatchNextPublisher(
