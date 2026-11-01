@@ -38,8 +38,14 @@ internal enum class TvScrim(
         )
     }),
     DETAIL_HERO({
-        drawRect(Brush.horizontalGradient(listOf(TvBackground.copy(0.96f), TvBackground.copy(0.68f), Color.Transparent)))
-        drawRect(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.08f), TvBackground.copy(alpha = 0.12f), TvBackground)))
+        drawRect(
+            Brush.horizontalGradient(listOf(TvBackground.copy(0.96f), TvBackground.copy(0.68f), Color.Transparent)),
+        )
+        drawRect(
+            Brush.verticalGradient(
+                listOf(Color.Black.copy(alpha = 0.08f), TvBackground.copy(alpha = 0.12f), TvBackground),
+            ),
+        )
     }),
 }
 
@@ -70,7 +76,8 @@ private fun bakedScrim(
     val height = ceil(size.height / TV_SCRIM_BAKE_DIVISOR).toInt().coerceAtLeast(1)
     return bakedScrims.getOrPut(TvBakedScrimKey(scrim, width, height)) {
         ImageBitmap(width, height).also { bitmap ->
-            CanvasDrawScope().draw(density, layoutDirection, Canvas(bitmap), Size(width.toFloat(), height.toFloat()), scrim.draw)
+            val bakedSize = Size(width.toFloat(), height.toFloat())
+            CanvasDrawScope().draw(density, layoutDirection, Canvas(bitmap), bakedSize, scrim.draw)
         }
     }
 }
