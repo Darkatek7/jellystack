@@ -24,6 +24,7 @@ import dev.jellystack.core.profile.ProfileRemovalCoordinator
 import dev.jellystack.core.profile.ProfileSeerrAutoLinkCoordinator
 import dev.jellystack.core.profile.ProfileStore
 import dev.jellystack.core.server.ServerStore
+import dev.jellystack.database.DatabaseDispatcher
 import dev.jellystack.database.JellyfinFavoritesStore
 import dev.jellystack.database.JellystackDatabase
 import dev.jellystack.database.jellyfinItemDetailStore
@@ -47,13 +48,14 @@ val tvAppModule =
             )
         }
         single { JellystackDatabase(get()) }
-        single<ServerStore> { get<JellystackDatabase>().serverStore() }
-        single<ProfileStore> { get<JellystackDatabase>().profileStore() }
-        single<JellyfinLibraryStore> { get<JellystackDatabase>().jellyfinLibraryStore() }
-        single<JellyfinItemStore> { get<JellystackDatabase>().jellyfinItemStore() }
-        single<JellyfinItemDetailStore> { get<JellystackDatabase>().jellyfinItemDetailStore() }
-        single<JellyseerrRecommendationStore> { get<JellystackDatabase>().jellyseerrRecommendationStore() }
-        single<JellyfinFavoritesStoreApi> { JellyfinFavoritesStore(get()) }
+        single { DatabaseDispatcher() }
+        single<ServerStore> { get<JellystackDatabase>().serverStore(get()) }
+        single<ProfileStore> { get<JellystackDatabase>().profileStore(get()) }
+        single<JellyfinLibraryStore> { get<JellystackDatabase>().jellyfinLibraryStore(get()) }
+        single<JellyfinItemStore> { get<JellystackDatabase>().jellyfinItemStore(get()) }
+        single<JellyfinItemDetailStore> { get<JellystackDatabase>().jellyfinItemDetailStore(get()) }
+        single<JellyseerrRecommendationStore> { get<JellystackDatabase>().jellyseerrRecommendationStore(get()) }
+        single<JellyfinFavoritesStoreApi> { JellyfinFavoritesStore(get(), get<DatabaseDispatcher>().value) }
         single<JellystackLocaleProvider> {
             JellystackLocaleProvider {
                 val appLocales = AppCompatDelegate.getApplicationLocales()

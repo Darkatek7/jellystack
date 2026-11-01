@@ -46,10 +46,13 @@ import io.ktor.client.plugins.ServerResponseException
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 import kotlinx.serialization.Serializable
@@ -64,6 +67,8 @@ class JellyseerrRepository(
     private val json: Json = NetworkJson.default,
     private val recommendationsStore: JellyseerrRecommendationStore? = null,
     private val clock: Clock = Clock.System,
+    /** Runs JSON encode/decode of cached pages; pure work only, never repository state. */
+    private val computeDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) {
     private val client: HttpClient =
         httpClient ?: NetworkClientFactory.create(ClientConfig(installLogging = false))
@@ -181,13 +186,15 @@ class JellyseerrRepository(
         if (records.isEmpty()) {
             return emptyList()
         }
-        return records
-            .mapNotNull { record ->
-                runCatching {
-                    val response = json.decodeFromString<JellyseerrDiscoverResponseDto>(record.json)
-                    response.toRecommendationPage(record.page, record.updatedAt)
-                }.getOrNull()
-            }.sortedBy { it.page }
+        return withContext(computeDispatcher) {
+            records
+                .mapNotNull { record ->
+                    runCatching {
+                        val response = json.decodeFromString<JellyseerrDiscoverResponseDto>(record.json)
+                        response.toRecommendationPage(record.page, record.updatedAt)
+                    }.getOrNull()
+                }.sortedBy { it.page }
+        }
     }
 
     suspend fun fetchRecommendations(
@@ -205,14 +212,17 @@ class JellyseerrRepository(
                 JellyseerrRecommendationRail.UPCOMING_SHOWS -> api.discoverUpcomingTv(page)
             }
         val now = clock.now()
-        val recommendationPage = response.toRecommendationPage(page, now)
-        recommendationsStore?.let { store ->
+        val store = recommendationsStore
+        val (recommendationPage, serialized) =
+            withContext(computeDispatcher) {
+                response.toRecommendationPage(page, now) to store?.let { json.encodeToString(response) }
+            }
+        if (store != null && serialized != null) {
             if (page == 1) {
                 store.clear(environment.serverId, rail)
             } else {
                 store.clearAfter(environment.serverId, rail, page)
             }
-            val serialized = json.encodeToString(response)
             store.upsert(
                 JellyseerrRecommendationRecord(
                     serverId = environment.serverId,

@@ -24,6 +24,9 @@ import kotlin.math.roundToInt
  */
 internal enum class TvScrim(
     val draw: DrawScope.() -> Unit,
+    // Set for scrims that only change along one axis: they are baked at this size whatever the element's size, so
+    // elements that resize or differ in height share one bitmap.
+    val fixedBakeSize: IntSize? = null,
 ) {
     HOME_BACKDROP({
         drawRect(Brush.horizontalGradient(colorStops = TV_HOME_BACKDROP_SIDE_SCRIM))
@@ -47,6 +50,54 @@ internal enum class TvScrim(
             ),
         )
     }),
+    BACKDROP_PLACEHOLDER({
+        drawRect(Brush.linearGradient(listOf(Color(0xFF171824), Color(0xFF2B2342), Color(0xFF11121A))))
+    }),
+    SEERR_DETAIL_HERO(
+        draw = {
+            drawRect(Brush.verticalGradient(listOf(Color.Black.copy(0.1f), TvBackground.copy(0.2f), TvBackground)))
+        },
+        fixedBakeSize = TV_VERTICAL_SCRIM_BAKE_SIZE,
+    ),
+    RAIL_PANEL(
+        draw = {
+            drawRect(Brush.horizontalGradient(listOf(Color(0xFF080910), Color(0xF20E0F18), Color.Transparent)))
+        },
+        fixedBakeSize = TV_HORIZONTAL_SCRIM_BAKE_SIZE,
+    ),
+    PLAYER_HEADER(
+        draw = {
+            drawRect(
+                Brush.verticalGradient(
+                    listOf(Color.Black.copy(alpha = 0.86f), Color.Black.copy(alpha = 0.42f), Color.Transparent),
+                ),
+            )
+        },
+        fixedBakeSize = TV_VERTICAL_SCRIM_BAKE_SIZE,
+    ),
+    PLAYER_CONTROLS(
+        draw = { drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.95f)))) },
+        fixedBakeSize = TV_VERTICAL_SCRIM_BAKE_SIZE,
+    ),
+    PLAYER_SCRUB(
+        draw = { drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f)))) },
+        fixedBakeSize = TV_VERTICAL_SCRIM_BAKE_SIZE,
+    ),
+    MEDIA_CARD_TEXT(
+        draw = {
+            drawRect(
+                Brush.verticalGradient(
+                    colorStops =
+                        arrayOf(
+                            0f to Color.Transparent,
+                            0.35f to Color.Black.copy(alpha = 0.55f),
+                            1f to Color.Black.copy(alpha = 0.9f),
+                        ),
+                ),
+            )
+        },
+        fixedBakeSize = TV_VERTICAL_SCRIM_BAKE_SIZE,
+    ),
 }
 
 /** Draws [scrim] over this element's whole area. */
@@ -63,7 +114,8 @@ private data class TvBakedScrimKey(
     val height: Int,
 )
 
-// Shared by every screen with a backdrop; a scrim exists in very few sizes, usually one, so this stays small.
+// Shared by every screen with a backdrop. Screen-sized scrims exist in very few sizes, usually one, and fixed-size
+// scrims in exactly one, so this stays small.
 private val bakedScrims = HashMap<TvBakedScrimKey, ImageBitmap>()
 
 private fun bakedScrim(
@@ -72,8 +124,9 @@ private fun bakedScrim(
     density: Density,
     layoutDirection: LayoutDirection,
 ): ImageBitmap {
-    val width = ceil(size.width / TV_SCRIM_BAKE_DIVISOR).toInt().coerceAtLeast(1)
-    val height = ceil(size.height / TV_SCRIM_BAKE_DIVISOR).toInt().coerceAtLeast(1)
+    val fixed = scrim.fixedBakeSize
+    val width = fixed?.width ?: ceil(size.width / TV_SCRIM_BAKE_DIVISOR).toInt().coerceAtLeast(1)
+    val height = fixed?.height ?: ceil(size.height / TV_SCRIM_BAKE_DIVISOR).toInt().coerceAtLeast(1)
     return bakedScrims.getOrPut(TvBakedScrimKey(scrim, width, height)) {
         ImageBitmap(width, height).also { bitmap ->
             val bakedSize = Size(width.toFloat(), height.toFloat())
@@ -84,6 +137,10 @@ private fun bakedScrim(
 
 // Scrims are smooth, so a quarter of the screen size stays invisible once stretched, at a sixteenth of the memory.
 private const val TV_SCRIM_BAKE_DIVISOR = 4f
+
+// 128 texels along the gradient keep 8-bit gradients from banding once stretched over a tall element.
+private val TV_VERTICAL_SCRIM_BAKE_SIZE = IntSize(1, 128)
+private val TV_HORIZONTAL_SCRIM_BAKE_SIZE = IntSize(128, 1)
 
 // Dark behind the hero text and the open rail, clear on the right where the artwork shows.
 private val TV_HOME_BACKDROP_SIDE_SCRIM =

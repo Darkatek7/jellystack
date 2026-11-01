@@ -28,7 +28,6 @@ import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -120,7 +119,7 @@ private fun TvNavigationRailPanel(content: @Composable () -> Unit) {
         Modifier
             .width(TvLayoutTokens.ExpandedRailWidth + 56.dp)
             .fillMaxHeight()
-            .background(Brush.horizontalGradient(listOf(Color(0xFF080910), Color(0xF20E0F18), Color.Transparent))),
+            .tvBakedScrim(TvScrim.RAIL_PANEL),
     ) {
         Column(
             modifier =

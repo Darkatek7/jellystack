@@ -580,6 +580,23 @@ class JellyfinBrowseRepositoryTest {
         }
 
     @Test
+    fun hasCachedItemDetailAnswersFromTheStoreWithoutDecodingTheBlob() =
+        runTest {
+            assertFalse(repository.hasCachedItemDetail("item-1"))
+
+            detailStore.upsert(
+                JellyfinItemDetailRecord(
+                    itemId = "${environment.serverKey}:item-1",
+                    json = "not json at all",
+                    updatedAt = FixedClock.now(),
+                ),
+            )
+
+            assertTrue(repository.hasCachedItemDetail("item-1"))
+            assertFalse(repository.hasCachedItemDetail("item-2"))
+        }
+
+    @Test
     fun nonDefaultQueryCannotUseCanonicalCachePolicy() =
         runTest {
             assertFailsWith<IllegalArgumentException> {

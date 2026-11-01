@@ -65,6 +65,9 @@ private fun TvHomeCarouselState.select(itemId: String?) = if (selectedId == item
 /** Time a spotlight stays on screen before the hero moves on by itself. */
 internal const val TV_HOME_HERO_AUTO_ADVANCE_MS = 10_000L
 
+/** Focus rests this long on a row card before the stage takes it over, so passing cards loads no backdrop. */
+internal const val TV_HOME_STAGE_DWELL_MS = 300L
+
 /**
  * The hero only moves on by itself while nothing else claims the stage: a focused row card shows its
  * own item there, a trailer must not be cut off, and Reduced Motion turns automatic movement off.

@@ -10,14 +10,14 @@ import dev.jellystack.core.profile.ProfileConnectionBinding
 import dev.jellystack.core.profile.ProfileStore
 import dev.jellystack.core.profile.SavedMediaRecord
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.Instant
 
 class SqlDelightProfileStore(
     private val queries: HouseholdProfilesQueries,
-    private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
+    private val dispatcher: CoroutineDispatcher,
 ) : ProfileStore {
     override fun observeProfiles(): Flow<List<HouseholdProfile>> =
         queries
@@ -26,28 +26,18 @@ class SqlDelightProfileStore(
             .mapToList(dispatcher)
             .map { rows -> rows.map(Household_profiles::toDomain) }
 
-    override suspend fun listProfiles(): List<HouseholdProfile> = queries.selectProfiles().executeAsList().map(Household_profiles::toDomain)
+    override suspend fun listProfiles(): List<HouseholdProfile> =
+        withContext(dispatcher) {
+            queries.selectProfiles().executeAsList().map(Household_profiles::toDomain)
+        }
 
     override suspend fun getProfile(profileId: String): HouseholdProfile? =
-        queries.selectProfileById(profileId).executeAsOneOrNull()?.toDomain()
+        withContext(dispatcher) {
+            queries.selectProfileById(profileId).executeAsOneOrNull()?.toDomain()
+        }
 
     override suspend fun upsertProfile(profile: HouseholdProfile) {
-        queries.upsertProfile(
-            id = profile.id,
-            display_name = profile.displayName,
-            avatar_seed = profile.avatarSeed,
-            created_at = profile.createdAt.toEpochMilliseconds(),
-            updated_at = profile.updatedAt.toEpochMilliseconds(),
-            last_active_at = profile.lastActiveAt?.toEpochMilliseconds(),
-        )
-    }
-
-    override suspend fun createProfileWithBinding(
-        profile: HouseholdProfile,
-        binding: ProfileConnectionBinding,
-    ) {
-        require(profile.id == binding.profileId)
-        queries.transaction {
+        withContext(dispatcher) {
             queries.upsertProfile(
                 id = profile.id,
                 display_name = profile.displayName,
@@ -56,24 +46,47 @@ class SqlDelightProfileStore(
                 updated_at = profile.updatedAt.toEpochMilliseconds(),
                 last_active_at = profile.lastActiveAt?.toEpochMilliseconds(),
             )
-            queries.upsertBinding(
-                profile_id = binding.profileId,
-                jellyfin_connection_id = binding.jellyfinConnectionId,
-                seerr_connection_id = binding.seerrConnectionId,
-            )
+        }
+    }
+
+    override suspend fun createProfileWithBinding(
+        profile: HouseholdProfile,
+        binding: ProfileConnectionBinding,
+    ) {
+        require(profile.id == binding.profileId)
+        withContext(dispatcher) {
+            queries.transaction {
+                queries.upsertProfile(
+                    id = profile.id,
+                    display_name = profile.displayName,
+                    avatar_seed = profile.avatarSeed,
+                    created_at = profile.createdAt.toEpochMilliseconds(),
+                    updated_at = profile.updatedAt.toEpochMilliseconds(),
+                    last_active_at = profile.lastActiveAt?.toEpochMilliseconds(),
+                )
+                queries.upsertBinding(
+                    profile_id = binding.profileId,
+                    jellyfin_connection_id = binding.jellyfinConnectionId,
+                    seerr_connection_id = binding.seerrConnectionId,
+                )
+            }
         }
     }
 
     override suspend fun deleteProfile(profileId: String) {
-        queries.transaction {
-            queries.deleteSavedMediaByProfile(profileId)
-            queries.deleteBindingByProfile(profileId)
-            queries.deleteProfile(profileId)
+        withContext(dispatcher) {
+            queries.transaction {
+                queries.deleteSavedMediaByProfile(profileId)
+                queries.deleteBindingByProfile(profileId)
+                queries.deleteProfile(profileId)
+            }
         }
     }
 
     override suspend fun getBinding(profileId: String): ProfileConnectionBinding? =
-        queries.selectBindingByProfile(profileId).executeAsOneOrNull()?.toDomain()
+        withContext(dispatcher) {
+            queries.selectBindingByProfile(profileId).executeAsOneOrNull()?.toDomain()
+        }
 
     override fun observeBindings(): Flow<List<ProfileConnectionBinding>> =
         queries
@@ -83,11 +96,13 @@ class SqlDelightProfileStore(
             .map { rows -> rows.map(Profile_connection_bindings::toDomain) }
 
     override suspend fun upsertBinding(binding: ProfileConnectionBinding) {
-        queries.upsertBinding(
-            profile_id = binding.profileId,
-            jellyfin_connection_id = binding.jellyfinConnectionId,
-            seerr_connection_id = binding.seerrConnectionId,
-        )
+        withContext(dispatcher) {
+            queries.upsertBinding(
+                profile_id = binding.profileId,
+                jellyfin_connection_id = binding.jellyfinConnectionId,
+                seerr_connection_id = binding.seerrConnectionId,
+            )
+        }
     }
 
     override fun observeSavedMedia(profileId: String): Flow<List<SavedMediaRecord>> =
@@ -98,37 +113,43 @@ class SqlDelightProfileStore(
             .map { rows -> rows.map(Profile_saved_media::toDomain) }
 
     override suspend fun listSavedMedia(profileId: String): List<SavedMediaRecord> =
-        queries.selectSavedMediaByProfile(profileId).executeAsList().map(Profile_saved_media::toDomain)
+        withContext(dispatcher) {
+            queries.selectSavedMediaByProfile(profileId).executeAsList().map(Profile_saved_media::toDomain)
+        }
 
     override suspend fun upsertSavedMedia(record: SavedMediaRecord) {
-        val ids = record.providerIds.normalized()
-        val identity = record.identity
-        queries.upsertSavedMedia(
-            profile_id = record.profileId,
-            media_type = identity.mediaType,
-            provider = identity.provider.storageValue,
-            provider_id = identity.providerId,
-            tmdb_id = ids.tmdbId,
-            tvdb_id = ids.tvdbId,
-            source_local_id = ids.sourceLocalId,
-            title = record.title,
-            poster_path = record.posterPath,
-            backdrop_path = record.backdropPath,
-            created_at = record.createdAt.toEpochMilliseconds(),
-            updated_at = record.updatedAt.toEpochMilliseconds(),
-        )
+        withContext(dispatcher) {
+            val ids = record.providerIds.normalized()
+            val identity = record.identity
+            queries.upsertSavedMedia(
+                profile_id = record.profileId,
+                media_type = identity.mediaType,
+                provider = identity.provider.storageValue,
+                provider_id = identity.providerId,
+                tmdb_id = ids.tmdbId,
+                tvdb_id = ids.tvdbId,
+                source_local_id = ids.sourceLocalId,
+                title = record.title,
+                poster_path = record.posterPath,
+                backdrop_path = record.backdropPath,
+                created_at = record.createdAt.toEpochMilliseconds(),
+                updated_at = record.updatedAt.toEpochMilliseconds(),
+            )
+        }
     }
 
     override suspend fun deleteSavedMedia(
         profileId: String,
         identity: MediaIdentity,
     ) {
-        queries.deleteSavedMedia(
-            profile_id = profileId,
-            media_type = identity.mediaType,
-            provider = identity.provider.storageValue,
-            provider_id = identity.providerId,
-        )
+        withContext(dispatcher) {
+            queries.deleteSavedMedia(
+                profile_id = profileId,
+                media_type = identity.mediaType,
+                provider = identity.provider.storageValue,
+                provider_id = identity.providerId,
+            )
+        }
     }
 }
 
@@ -169,4 +190,5 @@ private fun Profile_saved_media.toDomain(): SavedMediaRecord =
         check(record.identity.providerId == provider_id)
     }
 
-fun JellystackDatabase.profileStore(): ProfileStore = SqlDelightProfileStore(householdProfilesQueries)
+fun JellystackDatabase.profileStore(dispatcher: DatabaseDispatcher): ProfileStore =
+    SqlDelightProfileStore(householdProfilesQueries, dispatcher.value)

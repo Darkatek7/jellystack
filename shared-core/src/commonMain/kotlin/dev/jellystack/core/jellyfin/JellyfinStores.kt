@@ -168,5 +168,8 @@ interface JellyfinItemStore {
 interface JellyfinItemDetailStore {
     suspend fun get(itemId: String): JellyfinItemDetailRecord?
 
+    /** Whether a detail blob is cached, without reading or decoding it. */
+    suspend fun exists(itemId: String): Boolean = get(itemId) != null
+
     suspend fun upsert(record: JellyfinItemDetailRecord)
 }

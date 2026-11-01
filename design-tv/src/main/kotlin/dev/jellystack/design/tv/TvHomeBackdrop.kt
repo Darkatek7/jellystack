@@ -8,15 +8,12 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -95,11 +92,7 @@ internal fun TvHomeBackdropScrims() {
 /** The placeholder stays underneath, so a backdrop that is missing or fails to load still leaves a backdrop. */
 @Composable
 internal fun TvHomeBackdropImage(backdropUrl: String?) {
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(Brush.linearGradient(listOf(Color(0xFF171824), Color(0xFF2B2342), Color(0xFF11121A)))),
-    )
+    Box(Modifier.fillMaxSize().tvBakedScrim(TvScrim.BACKDROP_PLACEHOLDER))
     if (backdropUrl != null) {
         AsyncImage(
             model = backdropUrl,
