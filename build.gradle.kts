@@ -68,6 +68,7 @@ tasks.register("generateThirdPartyReport") {
                 Triple("AndroidX Media3", version("media3"), "Apache-2.0"),
                 Triple("Compose for TV Material", version("tv-material"), "Apache-2.0"),
                 Triple("AndroidX Navigation 3", version("navigation3"), "Apache-2.0"),
+                Triple("Jellyfin Media3 FFmpeg decoder (TV)", version("media3-ffmpeg-jellyfin"), "GPL-3.0"),
                 Triple("Google Cast SDK", version("play-services-cast"), "Google APIs Terms"),
             )
         output.get().asFile.apply {

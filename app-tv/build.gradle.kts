@@ -146,6 +146,7 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.media3.ui)
     implementation(libs.androidx.media3.session)
+    implementation(libs.jellyfin.media3.ffmpeg.decoder)
     implementation(libs.sqldelight.android)
     implementation(libs.multiplatform.settings)
     implementation(libs.coroutines.android)

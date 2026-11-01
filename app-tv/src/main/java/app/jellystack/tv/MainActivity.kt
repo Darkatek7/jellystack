@@ -59,6 +59,7 @@ class MainActivity : AppCompatActivity() {
             AndroidPlayerEngine(
                 context = applicationContext,
                 preferHighestSupportedBitrate = true,
+                softwareAudio = FfmpegSoftwareAudioDecoding,
             )
         val koin = JellystackDI.koin
         val settingsRepository = koin.get<AppSettingsRepository>()
@@ -75,7 +76,8 @@ class MainActivity : AppCompatActivity() {
                 playbackSourceResolver =
                     JellyfinPlaybackSourceResolver(
                         playbackInfoService = NetworkJellyfinPlaybackInfoService(),
-                        deviceProfileProvider = AndroidTvPlaybackDeviceProfileProvider(applicationContext),
+                        deviceProfileProvider =
+                            AndroidTvPlaybackDeviceProfileProvider(applicationContext, FfmpegSoftwareAudioDecoding),
                         clientVersion = BuildConfig.VERSION_NAME,
                     ),
                 playerEngine = playerEngine,
@@ -149,13 +151,15 @@ class MainActivity : AppCompatActivity() {
 
     private fun createTrailerPreviewController(settingsRepository: AppSettingsRepository): PlaybackController {
         // The engine builds its ExoPlayer on the first trailer, so a session that never previews one pays nothing.
-        trailerPreviewEngine = AndroidPlayerEngine(context = applicationContext)
+        trailerPreviewEngine =
+            AndroidPlayerEngine(context = applicationContext, softwareAudio = FfmpegSoftwareAudioDecoding)
         val playbackInfoService = NetworkJellyfinPlaybackInfoService()
         return PlaybackController(
             playbackSourceResolver =
                 JellyfinPlaybackSourceResolver(
                     playbackInfoService = playbackInfoService,
-                    deviceProfileProvider = AndroidTvPlaybackDeviceProfileProvider(applicationContext),
+                    deviceProfileProvider =
+                        AndroidTvPlaybackDeviceProfileProvider(applicationContext, FfmpegSoftwareAudioDecoding),
                     clientVersion = BuildConfig.VERSION_NAME,
                 ),
             playerEngine = trailerPreviewEngine,

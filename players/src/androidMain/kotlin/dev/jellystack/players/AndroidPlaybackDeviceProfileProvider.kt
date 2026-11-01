@@ -71,10 +71,14 @@ class AndroidPlaybackDeviceProfileProvider(
 class AndroidTvPlaybackDeviceProfileProvider(
     private val snapshotSource: PlaybackCapabilitySnapshotSource,
 ) : PlaybackDeviceProfileProvider {
-    constructor(context: Context) : this(
+    constructor(
+        context: Context,
+        softwareAudioDecoderProbe: SoftwareAudioDecoderProbe = SoftwareAudioDecoderProbe.NONE,
+    ) : this(
         AndroidRuntimePlaybackCapabilitySnapshotSource(
             audioPassthroughProbe = Media3AudioPassthroughProbe(context.applicationContext),
             dolbyVisionDisplayProbe = AndroidDolbyVisionDisplayProbe(context.applicationContext),
+            softwareAudioDecoderProbe = softwareAudioDecoderProbe,
         ),
     )
 
@@ -104,6 +108,7 @@ internal class AndroidRuntimePlaybackCapabilitySnapshotSource(
     private val codecEntries: () -> List<AndroidRuntimeCodecEntry> = ::platformCodecEntries,
     private val audioPassthroughProbe: AudioPassthroughProbe = AudioPassthroughProbe { AudioPassthroughSupport.NONE },
     private val dolbyVisionDisplayProbe: DolbyVisionDisplayProbe = DolbyVisionDisplayProbe { false },
+    private val softwareAudioDecoderProbe: SoftwareAudioDecoderProbe = SoftwareAudioDecoderProbe.NONE,
 ) : PlaybackCapabilitySnapshotSource {
     override fun snapshot(): PlaybackCapabilitySnapshot {
         val entries = runCatching(codecEntries).getOrElse { return PlaybackCapabilitySnapshot.failed() }
@@ -192,6 +197,7 @@ internal class AndroidRuntimePlaybackCapabilitySnapshotSource(
                 observedMaxAudioChannels[codec] = maxOf(observedMaxAudioChannels[codec] ?: 0, channels)
             }
         val displayShowsDolbyVision = runCatching(dolbyVisionDisplayProbe::displayListsDolbyVision).getOrDefault(false)
+        val softwareAudioChannelCounts = softwareAudioChannelCounts(softwareAudioDecoderProbe, observedAudioSupport)
 
         val missingSupport =
             if (inspectionComplete) {
@@ -235,6 +241,7 @@ internal class AndroidRuntimePlaybackCapabilitySnapshotSource(
             hdrSupport = observedHdr,
             dolbyVisionProfiles = observedDolbyVisionProfiles,
             displaySupportsDolbyVision = displayShowsDolbyVision,
+            softwareAudioChannelCounts = softwareAudioChannelCounts,
         )
     }
 }

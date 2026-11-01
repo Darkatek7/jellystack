@@ -300,6 +300,83 @@ class TvPlaybackDecoderPolicyTest {
     }
 
     @Test
+    fun softwareDecoderLetsAStereoSinkDirectPlayDtsAndTrueHdInMkvWithEightChannels() {
+        val profile = stereoSinkProfile(softwareAudioChannelCounts = mapOf(PlaybackAudioCodec.DTS to 8, PlaybackAudioCodec.TRUEHD to 8))
+
+        val mkvAudio =
+            profile.directPlayProfiles
+                .single { it.container == "mkv" }
+                .audioCodec
+                .split(',')
+        assertTrue("dts" in mkvAudio && "truehd" in mkvAudio, mkvAudio.toString())
+        profile.directPlayProfiles.filter { it.container != "mkv" }.forEach { direct ->
+            assertFalse("dts" in direct.audioCodec || "truehd" in direct.audioCodec, direct.toString())
+        }
+        assertEquals("8", profile.audioChannelLimit("dts"))
+        assertEquals("8", profile.audioChannelLimit("truehd"))
+    }
+
+    @Test
+    fun withoutASoftwareDecoderAStereoSinkStillGetsNeitherDtsNorTrueHd() {
+        val profile = stereoSinkProfile(softwareAudioChannelCounts = emptyMap())
+
+        assertTrue(profile.directPlayProfiles.none { "dts" in it.audioCodec || "truehd" in it.audioCodec })
+        assertTrue(profile.codecProfiles.none { it.codec == "dts" || it.codec == "truehd" })
+    }
+
+    @Test
+    fun softwareDecodingNeverChangesWhatTheServerMayTranscodeTo() {
+        val withSoftware =
+            stereoSinkProfile(
+                softwareAudioChannelCounts =
+                    mapOf(
+                        PlaybackAudioCodec.DTS to 8,
+                        PlaybackAudioCodec.TRUEHD to 8,
+                        PlaybackAudioCodec.AC3 to 6,
+                        PlaybackAudioCodec.EAC3 to 6,
+                    ),
+            )
+        val without = stereoSinkProfile(softwareAudioChannelCounts = emptyMap())
+
+        assertEquals(without.transcodingProfiles, withSoftware.transcodingProfiles)
+    }
+
+    @Test
+    fun softwareOnlyDolbyDigitalIsDirectPlayedWithSixChannelsButNeverATranscodeTarget() {
+        val profile = stereoSinkProfile(softwareAudioChannelCounts = mapOf(PlaybackAudioCodec.AC3 to 6, PlaybackAudioCodec.EAC3 to 6))
+
+        val mkvAudio =
+            profile.directPlayProfiles
+                .single { it.container == "mkv" }
+                .audioCodec
+                .split(',')
+        assertTrue("ac3" in mkvAudio && "eac3" in mkvAudio, mkvAudio.toString())
+        assertEquals("6", profile.audioChannelLimit("ac3"))
+        assertEquals("6", profile.audioChannelLimit("eac3"))
+        profile.transcodingProfiles.forEach { transcode ->
+            assertFalse("ac3" in transcode.audioCodec || "eac3" in transcode.audioCodec, transcode.toString())
+        }
+    }
+
+    @Test
+    fun softwareDecoderRaisesTheDtsLimitOfACoreOnlyPassthroughSink() {
+        val profile =
+            PlaybackDeviceProfileFactory.create(
+                name = "Core DTS soundbar",
+                capabilities =
+                    selectTvDecoderCapabilities(
+                        passthroughSnapshot(
+                            supported = setOf(PlaybackAudioCodec.AAC, PlaybackAudioCodec.DTS),
+                            channels = mapOf(PlaybackAudioCodec.AAC to 2, PlaybackAudioCodec.DTS to 6),
+                            softwareAudioChannelCounts = mapOf(PlaybackAudioCodec.DTS to 8),
+                        ),
+                    ),
+            )
+
+        assertEquals("8", profile.audioChannelLimit("dts"))
+    }
+
+    @Test
     fun dolbyVisionProfile5IsNotDirectPlayedWithoutADolbyVisionDecoder() {
         val ranges = hevcRanges(hdr = setOf(PlaybackHdrFormat.HDR10, PlaybackHdrFormat.HLG), displaySupportsDolbyVision = true)
 
@@ -386,9 +463,23 @@ class TvPlaybackDecoderPolicyTest {
             ),
         ).videoRanges.getValue(PlaybackVideoCodec.HEVC)
 
+    private fun stereoSinkProfile(softwareAudioChannelCounts: Map<PlaybackAudioCodec, Int>): JellyfinDeviceProfileDto =
+        PlaybackDeviceProfileFactory.create(
+            name = "Stereo TV",
+            capabilities =
+                selectTvDecoderCapabilities(
+                    passthroughSnapshot(
+                        supported = setOf(PlaybackAudioCodec.AAC),
+                        channels = mapOf(PlaybackAudioCodec.AAC to 2),
+                        softwareAudioChannelCounts = softwareAudioChannelCounts,
+                    ),
+                ),
+        )
+
     private fun passthroughSnapshot(
         supported: Set<PlaybackAudioCodec>,
         channels: Map<PlaybackAudioCodec, Int>,
+        softwareAudioChannelCounts: Map<PlaybackAudioCodec, Int> = emptyMap(),
     ) = snapshot(
         videoSupport = PlaybackVideoCodec.entries.associateWith { CapabilitySupport.SUPPORTED },
         videoHardwareSupport = PlaybackVideoCodec.entries.associateWith { CapabilitySupport.UNSUPPORTED },
@@ -397,6 +488,7 @@ class TvPlaybackDecoderPolicyTest {
                 if (it in supported) CapabilitySupport.SUPPORTED else CapabilitySupport.UNSUPPORTED
             },
         maxAudioChannelCounts = channels,
+        softwareAudioChannelCounts = softwareAudioChannelCounts,
     )
 
     private fun JellyfinDeviceProfileDto.audioChannelLimit(codec: String): String =
@@ -414,6 +506,7 @@ class TvPlaybackDecoderPolicyTest {
         hdrSupport: Map<PlaybackVideoCodec, Set<PlaybackHdrFormat>> = emptyMap(),
         dolbyVisionProfiles: Set<Int> = emptySet(),
         displaySupportsDolbyVision: Boolean = false,
+        softwareAudioChannelCounts: Map<PlaybackAudioCodec, Int> = emptyMap(),
     ): PlaybackCapabilitySnapshot =
         PlaybackCapabilitySnapshot(
             videoSupport = videoSupport,
@@ -424,5 +517,6 @@ class TvPlaybackDecoderPolicyTest {
             hdrSupport = hdrSupport,
             dolbyVisionProfiles = dolbyVisionProfiles,
             displaySupportsDolbyVision = displaySupportsDolbyVision,
+            softwareAudioChannelCounts = softwareAudioChannelCounts,
         )
 }

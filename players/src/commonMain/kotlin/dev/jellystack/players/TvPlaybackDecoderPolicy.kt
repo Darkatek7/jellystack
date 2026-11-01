@@ -23,6 +23,7 @@ class PlaybackCapabilitySnapshot(
     dolbyVisionProfiles: Set<Int> = emptySet(),
     /** The connected display lists Dolby Vision; false when it does not or when that could not be read. */
     val displaySupportsDolbyVision: Boolean = false,
+    softwareAudioChannelCounts: Map<PlaybackAudioCodec, Int> = emptyMap(),
 ) {
     val videoSupport: Map<PlaybackVideoCodec, CapabilitySupport> = videoSupport.toMap()
     val videoHardwareSupport: Map<PlaybackVideoCodec, CapabilitySupport> = videoHardwareSupport.toMap()
@@ -37,6 +38,13 @@ class PlaybackCapabilitySnapshot(
 
     /** Dolby Vision profile numbers (5, 7, 8, 10, ...) a hardware Dolby Vision decoder can decode. */
     val dolbyVisionProfiles: Set<Int> = dolbyVisionProfiles.toSet()
+
+    /**
+     * Audio codecs the app's own software decoder (FFmpeg) can play, each with the most channels it should be
+     * asked for. They are Direct Play inputs on top of the platform evidence in [audioSupport], never server
+     * transcode targets: the server picks those, and a software decode is the last resort, not the preference.
+     */
+    val softwareAudioChannelCounts: Map<PlaybackAudioCodec, Int> = softwareAudioChannelCounts.toMap()
 
     fun videoSupport(codec: PlaybackVideoCodec): CapabilitySupport = videoSupport[codec] ?: CapabilitySupport.UNKNOWN
 
@@ -79,10 +87,11 @@ fun selectTvDecoderCapabilities(snapshot: PlaybackCapabilitySnapshot): PlaybackD
                 add(PlaybackVideoCodec.H264)
             }
         }
-    val directAudioCodecs =
+    val platformAudioCodecs =
         PlaybackAudioCodec.entries.filterTo(mutableSetOf()) {
             snapshot.audioSupport(it) == CapabilitySupport.SUPPORTED
         }
+    val directAudioCodecs = platformAudioCodecs + snapshot.softwareAudioChannelCounts.keys
 
     val hasContradictoryEvidence =
         ADVANCED_VIDEO_CODECS.any { codec ->
@@ -109,10 +118,11 @@ fun selectTvDecoderCapabilities(snapshot: PlaybackCapabilitySnapshot): PlaybackD
                 add(PlaybackVideoCodec.H264)
             }
         }
-    // Passthrough-only codecs cannot be an HLS encoder target: the server cannot encode them.
+    // Passthrough-only codecs cannot be an HLS encoder target: the server cannot encode them. Software-decoded
+    // codecs are no target either, so the transcode lists only ever follow the platform evidence.
     val transcodeAudioCodecs =
         buildSet {
-            addAll(directAudioCodecs - PASSTHROUGH_ONLY_AUDIO_CODECS)
+            addAll(platformAudioCodecs - PASSTHROUGH_ONLY_AUDIO_CODECS)
             if (
                 needsInteroperableFallback &&
                 snapshot.audioSupport(PlaybackAudioCodec.AAC) != CapabilitySupport.UNSUPPORTED
@@ -123,7 +133,9 @@ fun selectTvDecoderCapabilities(snapshot: PlaybackCapabilitySnapshot): PlaybackD
 
     val maxAudioChannelCounts =
         directAudioCodecs.associateWith { codec ->
-            val reported = snapshot.maxAudioChannelCounts[codec]?.takeIf { it > 0 }
+            val platformReported = snapshot.maxAudioChannelCounts[codec]?.takeIf { it > 0 }
+            val softwareReported = snapshot.softwareAudioChannelCounts[codec]?.takeIf { it > 0 }
+            val reported = listOfNotNull(platformReported, softwareReported).maxOrNull()
             minOf(reported ?: CONSERVATIVE_UNKNOWN_CHANNEL_COUNT, codec.safeMaximumChannelCount)
         }
 

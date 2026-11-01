@@ -55,6 +55,7 @@ import androidx.media3.common.MediaMetadata as Media3MediaMetadata
 class AndroidPlayerEngine(
     context: Context,
     preferHighestSupportedBitrate: Boolean = false,
+    private val softwareAudio: SoftwareAudioDecoding? = null,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
 ) : PlayerEngine {
     private val mediaAudioAttributes =
@@ -98,7 +99,7 @@ class AndroidPlayerEngine(
 
     private fun createExoPlayer(preferHighestSupportedBitrate: Boolean): ExoPlayer =
         ExoPlayer
-            .Builder(appContext, JellystackRenderersFactory(appContext, delays))
+            .Builder(appContext, JellystackRenderersFactory(appContext, delays, softwareAudio))
             .setLoadControl(PlaybackBufferSizing.loadControl(appContext))
             .build()
             .apply {

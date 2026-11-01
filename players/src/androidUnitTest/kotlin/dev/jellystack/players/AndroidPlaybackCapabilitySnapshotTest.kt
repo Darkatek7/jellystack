@@ -157,6 +157,72 @@ class AndroidPlaybackCapabilitySnapshotTest {
     }
 
     @Test
+    fun softwareDecoderAddsDtsAndTrueHdOnAStereoSinkAndDolbyDigitalOnlyWithoutAPlatformDecoder() {
+        val ffmpeg = SoftwareAudioDecoderProbe { true }
+        val withoutPlatformDolby =
+            AndroidRuntimePlaybackCapabilitySnapshotSource(
+                codecEntries = { listOf(fakeCodec(types = listOf("video/avc"), hardwareSupport = CapabilitySupport.SUPPORTED)) },
+                softwareAudioDecoderProbe = ffmpeg,
+            ).snapshot()
+        val withPlatformDolby =
+            AndroidRuntimePlaybackCapabilitySnapshotSource(
+                codecEntries = {
+                    listOf(
+                        fakeCodec(
+                            types = listOf("video/avc", "audio/ac3", "audio/eac3"),
+                            hardwareSupport = CapabilitySupport.SUPPORTED,
+                            channels = mapOf("audio/ac3" to 6, "audio/eac3" to 6),
+                        ),
+                    )
+                },
+                softwareAudioDecoderProbe = ffmpeg,
+            ).snapshot()
+
+        assertEquals(
+            mapOf(
+                PlaybackAudioCodec.DTS to 8,
+                PlaybackAudioCodec.TRUEHD to 8,
+                PlaybackAudioCodec.AC3 to 6,
+                PlaybackAudioCodec.EAC3 to 6,
+            ),
+            withoutPlatformDolby.softwareAudioChannelCounts,
+        )
+        assertEquals(
+            mapOf(PlaybackAudioCodec.DTS to 8, PlaybackAudioCodec.TRUEHD to 8),
+            withPlatformDolby.softwareAudioChannelCounts,
+        )
+        assertEquals(PlaybackCapabilityInspection.COMPLETE, withoutPlatformDolby.inspectionCompleteness)
+    }
+
+    @Test
+    fun codecIsOnlyDeclaredWhenEveryMimeTypeOfItIsDecodable() {
+        val dtsCoreOnly = SoftwareAudioDecoderProbe { it == "audio/vnd.dts" || it == "audio/true-hd" }
+        val snapshot =
+            AndroidRuntimePlaybackCapabilitySnapshotSource(
+                codecEntries = { listOf(fakeCodec(types = listOf("video/avc"), hardwareSupport = CapabilitySupport.SUPPORTED)) },
+                softwareAudioDecoderProbe = dtsCoreOnly,
+            ).snapshot()
+
+        assertEquals(mapOf(PlaybackAudioCodec.TRUEHD to 8), snapshot.softwareAudioChannelCounts)
+    }
+
+    @Test
+    fun missingOrBrokenSoftwareDecoderAddsNothingAndKeepsInspectionComplete() {
+        fun snapshot(probe: SoftwareAudioDecoderProbe) =
+            AndroidRuntimePlaybackCapabilitySnapshotSource(
+                codecEntries = { listOf(fakeCodec(types = listOf("video/avc"), hardwareSupport = CapabilitySupport.SUPPORTED)) },
+                softwareAudioDecoderProbe = probe,
+            ).snapshot()
+
+        val absent = snapshot(SoftwareAudioDecoderProbe.NONE)
+        val broken = snapshot { error("native library failed to load") }
+
+        assertTrue(absent.softwareAudioChannelCounts.isEmpty())
+        assertTrue(broken.softwareAudioChannelCounts.isEmpty())
+        assertEquals(PlaybackCapabilityInspection.COMPLETE, broken.inspectionCompleteness)
+    }
+
+    @Test
     fun failedPassthroughProbeIsUnknownEvidenceNotOptimisticPassthrough() {
         val source =
             AndroidRuntimePlaybackCapabilitySnapshotSource(

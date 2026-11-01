@@ -30,7 +30,8 @@ enum class PlaybackAudioCodec(
     /**
      * Jellyfin reports every DTS flavour (core, HD MA, HD HRA, :X) as `dts`, so DTS-HD is not a separate
      * codec on the wire; the channel ceiling of the entry tells core-only (6) from DTS-HD (8) sinks.
-     * Devices have no decoder for it: it is declared only when the audio output can take the bitstream.
+     * Devices have no decoder for it: it is declared only when the audio output can take the bitstream or the
+     * app ships a software decoder for it (FFmpeg on TV).
      */
     DTS("dts"),
 
