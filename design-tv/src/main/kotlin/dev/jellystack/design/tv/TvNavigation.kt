@@ -117,11 +117,13 @@ internal const val TV_SEARCH_JELLYFIN_RETRY_TARGET = "search:jellyfin:retry"
 internal const val TV_SEARCH_SEERR_RETRY_TARGET = "search:seerr:retry"
 internal const val TV_DISCOVER_CONNECT_TARGET = "discover:connect"
 internal const val TV_DISCOVER_EMPTY_TARGET = "discover:empty"
+internal const val TV_DISCOVER_EMPTY_ACTION_TARGET = "discover:empty:action"
 internal const val TV_DISCOVER_LOADING_TARGET = "discover:loading"
 internal const val TV_DISCOVER_RETRY_TARGET = "discover:retry"
 internal const val TV_LIBRARY_LOADING_TARGET = "library:loading"
 internal const val TV_LIBRARY_RETRY_TARGET = "library:retry"
 internal const val TV_LIBRARY_EMPTY_TARGET = "library:empty"
+internal const val TV_LIBRARY_EMPTY_ACTION_TARGET = "library:empty:action"
 
 internal fun tvHomeCardTargetId(
     rowId: String,
@@ -304,6 +306,8 @@ internal fun tvFocusTarget(
             targetId == TV_LIBRARY_LOADING_TARGET -> TvFocusAnchor("status", "loading", TvFocusDestination.BODY) to true
             targetId == TV_LIBRARY_EMPTY_TARGET -> TvFocusAnchor("status", "empty", TvFocusDestination.BODY) to true
             targetId == TV_LIBRARY_RETRY_TARGET -> TvFocusAnchor("status", "retry", TvFocusDestination.PRIMARY_ACTION) to false
+            targetId == TV_LIBRARY_EMPTY_ACTION_TARGET || targetId == TV_DISCOVER_EMPTY_ACTION_TARGET ->
+                TvFocusAnchor("status", "empty-action", TvFocusDestination.PRIMARY_ACTION) to false
             targetId == TV_SEARCH_QUERY_TARGET -> TvFocusAnchor("query", null, TvFocusDestination.PRIMARY_ACTION) to false
             targetId.startsWith("search:source:") ->
                 TvFocusAnchor("sources", targetId.removePrefix("search:source:"), TvFocusDestination.SECTION_ITEM) to false
@@ -337,6 +341,9 @@ internal class TvFocusMemory(
     initialSnapshots: Map<String, TvFocusSnapshot> = emptyMap(),
 ) {
     private val snapshots = initialSnapshots.toMutableMap()
+
+    /** The last focused card per row, for returning to it after a vertical move. Cleared with the snapshots. */
+    val rows = TvRowFocusMemory()
 
     fun remember(
         routeKey: String,
@@ -373,7 +380,16 @@ internal class TvFocusMemory(
 
     internal fun snapshot(): Map<String, TvFocusSnapshot> = snapshots.toMap()
 
-    internal fun clear() = snapshots.clear()
+    internal fun clear() {
+        snapshots.clear()
+        rows.clear()
+    }
+
+    /** Forgets where focus was on [routeKey], so the route opens on its default target the next time. */
+    internal fun forget(routeKey: String) {
+        snapshots.remove(routeKey)
+        rows.forgetRoute(routeKey)
+    }
 
     internal fun resolve(
         routeKey: String,

@@ -24,6 +24,9 @@ internal val TvSurfaceRaised = Color(0xFF222334)
 internal val TvText = Color(0xFFF4F1FF)
 internal val TvTextMuted = Color(0xFFB8B4C6)
 
+/** Text for a failed load or action; the one error colour of the TV UI. */
+internal val TvError = Color(0xFFFFA59E)
+
 @Immutable
 internal data class TvFocusAppearance(
     val reducedMotion: Boolean = false,

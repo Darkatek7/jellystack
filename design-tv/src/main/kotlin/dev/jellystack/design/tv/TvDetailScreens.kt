@@ -802,14 +802,7 @@ internal fun TvJellyfinDetailScreen(
     val currentDetail = detail
     if (currentItem == null || currentDetail == null) {
         error?.let { message ->
-            Column(
-                modifier = modifier.fillMaxSize(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
-            ) {
-                Text(message, color = TvTextMuted)
-                TvActionButton(strings.retry, onClick = { loadRevision += 1 }, primary = true)
-            }
+            TvDetailLoadError(message, strings.retry, onRetry = { loadRevision += 1 }, modifier = modifier)
         } ?: TvLoading(strings.loading, modifier)
         return
     }
@@ -1633,7 +1626,7 @@ private fun TvRequestDialog(
                 }
             }
             requestsState.message?.takeIf { it.kind.name == "ERROR" }?.let {
-                Text(it.detail ?: strings.requestFailed, color = Color(0xFFFFA59E), fontSize = 17.sp)
+                Text(it.detail ?: strings.requestFailed, color = TvError, fontSize = 17.sp)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 TvActionButton(

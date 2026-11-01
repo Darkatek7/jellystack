@@ -37,6 +37,37 @@ class TvHomeFocusCoordinatorTest {
     }
 
     @Test
+    fun moveLandsOnTheCardTheRowRemembersAndOnTheFirstWhenItIsGone() {
+        val remembered = mutableMapOf("landscape" to "landscape-3")
+        val coordinator =
+            TvHomeVerticalFocusCoordinator(rows) { row ->
+                row.itemIds.indexOf(remembered[row.id]).coerceAtLeast(0)
+            }
+
+        val down =
+            coordinator.beginMove(TvHomeFocusOrigin.Row("portrait", "portrait-1"), TvHomeVerticalDirection.DOWN)
+        remembered["landscape"] = "removed"
+        val afterRemoval =
+            coordinator.beginMove(TvHomeFocusOrigin.Row("portrait", "portrait-2"), TvHomeVerticalDirection.DOWN)
+
+        assertEquals(TvHomeFocusDestination.Row("landscape", 3, "landscape-3", 2), down?.destination)
+        assertEquals(TvHomeFocusDestination.Row("landscape", 3, "landscape-1", 0), afterRemoval?.destination)
+    }
+
+    @Test
+    fun pendingMoveKeepsTheRememberedCardWhenRowsRefreshAroundIt() {
+        val coordinator =
+            TvHomeVerticalFocusCoordinator(rows) { row -> row.itemIds.indexOf("landscape-2").coerceAtLeast(0) }
+        coordinator.beginMove(TvHomeFocusOrigin.Row("portrait", "portrait-1"), TvHomeVerticalDirection.DOWN)
+
+        val reloaded = listOf("new", "landscape-1", "landscape-2")
+        val reloadedRows = rows.map { if (it.id == "landscape") it.copy(itemIds = reloaded) else it }
+        val refreshed = coordinator.replaceRows(reloadedRows)
+
+        assertEquals(TvHomeFocusDestination.Row("landscape", 3, "landscape-2", 2), refreshed?.destination)
+    }
+
+    @Test
     fun upTargetsPreviousNonEmptyRowThenHeroFromFirstRow() {
         val coordinator = TvHomeVerticalFocusCoordinator(rows)
 

@@ -33,7 +33,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.testTag
@@ -67,7 +66,7 @@ internal fun TvCinematicBrowse(
     onCardClick: (TvCinematicCard) -> Unit,
     modifier: Modifier = Modifier,
     playback: TvCinematicCardPlayback? = null,
-    resetVerticalFocusToFirstCard: Boolean = false,
+    rememberRowFocusOnVerticalMove: Boolean = false,
     trailer: TvCinematicTrailer? = null,
 ) {
     val focusAppearance = LocalTvFocusAppearance.current
@@ -188,11 +187,12 @@ internal fun TvCinematicBrowse(
                             rowState = rowState,
                             playback = playback,
                             onVerticalMove = { direction ->
-                                resetVerticalFocusToFirstCard &&
+                                rememberRowFocusOnVerticalMove &&
                                     focusContext != null &&
-                                    scope.focusFirstCardOfNextRow(rows, row.id, direction, focusContext)
+                                    scope.focusRememberedCardOfNextRow(rows, row.id, direction, focusContext)
                             },
                             onCardFocused = { card ->
+                                focusContext?.focusMemory?.rows?.remember(focusContext.routeKey, row.id, card.id)
                                 handleCardFocused(TvFocusAnchor(row.id, card.id, TvFocusDestination.SECTION_ITEM), card)
                             },
                             onCardClick = handleCardClick,
@@ -209,8 +209,11 @@ internal fun tvCinematicMaterializationColumnIndex(
     headerCount: Int,
 ): Int = if (rowIndex == headerCount) 0 else rowIndex
 
-/** Up and Down land on the first card of the next row; false when there is no row in [direction]. */
-private fun CoroutineScope.focusFirstCardOfNextRow(
+/**
+ * Up and Down land on the card that last had focus in the next row, or its first card when that one is gone; false when
+ * there is no row in [direction]. The row's own list state keeps its scroll position.
+ */
+private fun CoroutineScope.focusRememberedCardOfNextRow(
     rows: List<TvCinematicRow>,
     rowId: String,
     direction: TvHomeVerticalDirection,
@@ -225,11 +228,14 @@ private fun CoroutineScope.focusFirstCardOfNextRow(
                     TvHomeVerticalDirection.DOWN -> 1
                 },
         )
-    val targetCard = targetRow?.cards?.firstOrNull() ?: return false
+    if (targetRow == null || targetRow.cards.isEmpty()) return false
+    val cardIds = targetRow.cards.map(TvCinematicCard::id)
+    val targetCardId =
+        cardIds[focusContext.focusMemory?.rows?.landingIndex(focusContext.routeKey, targetRow.id, cardIds) ?: 0]
     launch {
         focusContext.coordinator.restoreFocus(
             routeKey = focusContext.routeKey,
-            preferredTargetId = tvCinematicFocusTargetId(targetRow.id, targetCard.id),
+            preferredTargetId = tvCinematicFocusTargetId(targetRow.id, targetCardId),
             includeFallback = false,
             requestFocus = { requester -> runCatching { requester.requestFocus() }.getOrDefault(false) },
         )
@@ -314,7 +320,7 @@ internal fun tvCinematicFocusTargetId(
 
 @Composable
 private fun TvCinematicStatusAnchor(status: TvCinematicInlineStatus) {
-    val color = if (status.kind == TvCinematicStatusKind.ERROR) Color(0xFFFFB4AB) else TvTextMuted
+    val color = if (status.kind == TvCinematicStatusKind.ERROR) TvError else TvTextMuted
     Row(
         modifier = Modifier.fillMaxWidth().testTag("cinematic-status"),
         verticalAlignment = Alignment.CenterVertically,

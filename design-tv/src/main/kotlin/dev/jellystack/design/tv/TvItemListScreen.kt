@@ -21,13 +21,14 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -186,7 +187,7 @@ private fun LazyGridScope.tvItemListStatus(
         TvItemListState.Failed ->
             item(key = "item-list-error", span = { GridItemSpan(maxLineSpan) }) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(strings.messages.itemListLoadFailed, color = Color(0xFFFFA59E))
+                    Text(strings.messages.itemListLoadFailed, color = TvError)
                     TvActionButton(
                         strings.retry,
                         onRetry,
@@ -198,7 +199,11 @@ private fun LazyGridScope.tvItemListStatus(
         is TvItemListState.Ready ->
             if (content.items.isEmpty()) {
                 item(key = "item-list-empty", span = { GridItemSpan(maxLineSpan) }) {
-                    TvFocusPlaceholder(strings.noResults, TV_LIBRARY_EMPTY_TARGET)
+                    TvEmptyState(
+                        icon = Icons.Default.VideoLibrary,
+                        title = strings.emptyStates.nothingYet,
+                        hint = null,
+                    )
                 }
             }
     }

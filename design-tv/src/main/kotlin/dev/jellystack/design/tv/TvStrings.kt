@@ -387,6 +387,8 @@ internal data class TvStrings(
     val markUnplayed: String,
     val genre: String,
     val mediaType: String,
+    val mediaTypeLabels: TvMediaTypeStrings,
+    val emptyStates: TvEmptyStateStrings,
     val applyLabel: String,
     val messages: TvMessageStrings,
     val metadata: TvMetadataStrings,
@@ -679,6 +681,8 @@ internal data class TvStrings(
                 markUnplayed = "Mark unplayed",
                 genre = "Genre",
                 mediaType = "Media type",
+                mediaTypeLabels = englishMediaTypeStrings,
+                emptyStates = englishEmptyStateStrings,
                 applyLabel = "Apply",
                 messages = englishMessageStrings,
                 metadata =
@@ -977,6 +981,8 @@ internal data class TvStrings(
                 markUnplayed = "Als ungesehen markieren",
                 genre = "Genre",
                 mediaType = "Medientyp",
+                mediaTypeLabels = germanMediaTypeStrings,
+                emptyStates = germanEmptyStateStrings,
                 applyLabel = "Übernehmen",
                 messages = germanMessageStrings,
                 metadata =

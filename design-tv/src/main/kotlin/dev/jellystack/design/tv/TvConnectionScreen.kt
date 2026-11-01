@@ -250,8 +250,7 @@ internal fun TvConnectionScreen(
                     Text(
                         it,
                         color =
-                            androidx.compose.ui.graphics
-                                .Color(0xFFFFA59E),
+                        TvError,
                     )
                 }
                 // Wraps so longer labels (German "Neuen Code erstellen" next to "Abbrechen") keep their full text.

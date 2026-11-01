@@ -1300,6 +1300,10 @@ private fun TvAuthenticatedApp(
                 awaitFocusFrame = { withFrameNanos { } },
             )
         }
+    DisposableEffect(appStateHolder, focusCoordinator) {
+        appStateHolder.onRouteForgotten = focusCoordinator::forgetRemembered
+        onDispose { appStateHolder.onRouteForgotten = {} }
+    }
     val currentFocusRouteKey =
         currentRoute.focusRouteKey(
             if (currentRoute is TvRoute.Library) homeState.browsePath.map { it.id } else emptyList(),
@@ -1507,7 +1511,13 @@ private fun TvAuthenticatedApp(
                                                 container.itemListRoute()?.let(::push) ?: browseCoordinator.openContainer(container)
                                             },
                                             onLoadMore = browseCoordinator::loadNextPage,
-                                            onRetry = browseCoordinator::refreshSelectedLibrary,
+                                            onRetry = {
+                                                if (route.libraryId == null) {
+                                                    browseCoordinator.refreshLibraries()
+                                                } else {
+                                                    browseCoordinator.refreshSelectedLibrary()
+                                                }
+                                            },
                                             homeSections = homeSections,
                                             myListItems = myList.mapNotNull { it.jellyfinItem },
                                             collectionType = library?.collectionType,

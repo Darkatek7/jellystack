@@ -34,6 +34,9 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -54,7 +57,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.text.font.FontWeight
@@ -91,6 +93,9 @@ internal const val TV_HOME_HERO_HEIGHT_DP = 300
 /** Row title (24 dp), title spacing (8 dp), and row content padding (6 dp) above each home and browse card. */
 internal val TV_HOME_ROW_CARD_OFFSET = 38.dp
 internal const val TV_FOCUS_MATERIALIZATION_TIMEOUT_MS = 1_000L
+
+/** Placeholder cards shown while a grid loads: two rows of the four columns of the library list. */
+internal const val TV_SKELETON_GRID_CELLS = 8
 
 internal data class TvLazyFocusLocation(
     val verticalIndex: Int,
@@ -271,9 +276,14 @@ internal fun TvHomeScreen(
     ) { targetId ->
         homeFocusLocations[targetId]?.let { materializeTvLazyTarget(homeListState, rowListStates, it) } ?: false
     }
-    val verticalFocusCoordinator = remember { TvHomeVerticalFocusCoordinator(focusRows) }
+    val rowFocusMemory = focusMemory.rows
+    val verticalFocusCoordinator =
+        remember(rowFocusMemory) {
+            TvHomeVerticalFocusCoordinator(focusRows) { row -> rowFocusMemory.landingIndex("home", row.id, row.itemIds) }
+        }
     var pendingFocusMove by remember { mutableStateOf<TvHomeFocusMove?>(null) }
     LaunchedEffect(focusRows) {
+        rowFocusMemory.retainRows("home", focusRows.map { it.id })
         val reconciled = verticalFocusCoordinator.replaceRows(focusRows)
         if (reconciled != pendingFocusMove) pendingFocusMove = reconciled
     }
@@ -300,6 +310,10 @@ internal fun TvHomeScreen(
                     TvHomeFocusOrigin.Hero -> TvTrailerPreviewOwner.HERO
                     is TvHomeFocusOrigin.Row -> TvTrailerPreviewOwner.CARD
                 }
+            // The card being left is where Up and back Down return to.
+            (origin as? TvHomeFocusOrigin.Row)?.let { row ->
+                row.itemId?.let { itemId -> rowFocusMemory.remember("home", row.id, itemId) }
+            }
             val move =
                 verticalFocusCoordinator.beginMove(
                     origin = origin,
@@ -975,6 +989,7 @@ internal fun TvLibraryScreen(
         } else {
             state.libraryItems.map { tvLibraryTargetId(it.id) }
         }
+    // The empty state of this screen has an action, and focus belongs on it.
     val terminalTarget =
         tvLibraryTerminalFocusTarget(
             libraryId = route.libraryId,
@@ -982,7 +997,7 @@ internal fun TvLibraryScreen(
             isLibraryLoading = state.isLibraryLoading,
             isPageLoading = state.isPageLoading,
             hasError = state.libraryErrorMessage != null,
-        )
+        ).let { target -> if (target == TV_LIBRARY_EMPTY_TARGET) TV_LIBRARY_EMPTY_ACTION_TARGET else target }
     val locations = tvLibraryGridFocusLocations(itemTargetIds, terminalTarget)
     TvRouteFocusMaterializer(
         ownerId = "library-grid:$routeKey",
@@ -1067,11 +1082,17 @@ internal fun TvLibraryScreen(
                 )
             }
             if (state.libraries.isEmpty()) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    TvFocusPlaceholder(
-                        if (state.isInitialLoading) strings.loading else strings.noResults,
-                        TV_LIBRARY_EMPTY_TARGET,
-                    )
+                if (state.isInitialLoading) {
+                    tvSkeletonGridCells(strings.loading, TV_SKELETON_GRID_CELLS, keyPrefix = "libraries-skeleton")
+                } else {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        TvEmptyState(
+                            icon = Icons.Default.VideoLibrary,
+                            title = strings.emptyStates.noLibraries,
+                            hint = strings.emptyStates.librariesHint,
+                            action = TvEmptyStateAction(strings.retry, TV_LIBRARY_EMPTY_ACTION_TARGET, onRetry),
+                        )
+                    }
                 }
             }
         } else {
@@ -1107,7 +1128,9 @@ internal fun TvLibraryScreen(
                     focusToNavigationRailOnLeft = isTvGridLeftEdge(index, 4),
                 )
             }
-            if (state.isLibraryLoading || state.isPageLoading) {
+            if ((state.isLibraryLoading || state.isPageLoading) && state.libraryItems.isEmpty()) {
+                tvSkeletonGridCells(strings.loading, TV_SKELETON_GRID_CELLS, keyPrefix = "library-skeleton")
+            } else if (state.isLibraryLoading || state.isPageLoading) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Box(
                         modifier =
@@ -1126,7 +1149,7 @@ internal fun TvLibraryScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        Text(strings.libraryLoadFailed, color = Color(0xFFFFA59E), fontSize = 18.sp)
+                        Text(strings.libraryLoadFailed, color = TvError, fontSize = 18.sp)
                         TvActionButton(
                             strings.retry,
                             when (tvLibraryRetryAction(state.libraryErrorKind)) {
@@ -1144,7 +1167,12 @@ internal fun TvLibraryScreen(
                 }
             } else if (state.libraryItems.isEmpty()) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
-                    TvFocusPlaceholder(strings.noResults, TV_LIBRARY_EMPTY_TARGET)
+                    TvEmptyState(
+                        icon = Icons.Default.VideoLibrary,
+                        title = strings.emptyStates.nothingYet,
+                        hint = strings.emptyStates.libraryHint,
+                        action = TvEmptyStateAction(strings.retry, TV_LIBRARY_EMPTY_ACTION_TARGET, onRetry),
+                    )
                 }
             }
         }
@@ -1358,7 +1386,7 @@ internal fun TvDiscoverScreen(
                 !availability.hasRailFailures &&
                 firstPopulatedRail == null
             ) {
-                put(TV_DISCOVER_EMPTY_TARGET, TvLazyFocusLocation(outerIndex))
+                put(TV_DISCOVER_EMPTY_ACTION_TARGET, TvLazyFocusLocation(outerIndex))
             }
         }
     val discoverFallback =
@@ -1374,7 +1402,7 @@ internal fun TvDiscoverScreen(
                         }
                     } ?: requestItems.firstOrNull()?.let {
                     tvDiscoverItemTargetId("requests", it.id.toString())
-                } ?: TV_DISCOVER_EMPTY_TARGET
+                } ?: TV_DISCOVER_EMPTY_ACTION_TARGET
         }
     TvRouteFocusMaterializer(
         ownerId = "discover-lists",
@@ -1427,7 +1455,7 @@ internal fun TvDiscoverScreen(
                     }
                 }
             TvDiscoverAvailability.Loading ->
-                item("loading") { TvFocusPlaceholder(strings.loading, TV_DISCOVER_LOADING_TARGET) }
+                item("loading") { TvSkeletonRows(strings.loading) }
             is TvDiscoverAvailability.Failure ->
                 item("error") {
                     TvSearchSourceFailure(
@@ -1513,20 +1541,16 @@ internal fun TvDiscoverScreen(
             !availability.hasRailFailures &&
             firstPopulatedRail == null
         ) {
-            item("empty") { TvFocusPlaceholder(strings.noResults, TV_DISCOVER_EMPTY_TARGET) }
+            item("empty") {
+                TvEmptyState(
+                    icon = Icons.Default.Explore,
+                    title = strings.emptyStates.nothingYet,
+                    hint = strings.emptyStates.discoverHint,
+                    action = TvEmptyStateAction(strings.retry, TV_DISCOVER_EMPTY_ACTION_TARGET, ::retryAndRestoreFocus),
+                )
+            }
         }
     }
-}
-
-@Composable
-internal fun TvFocusPlaceholder(
-    label: String,
-    @Suppress("UNUSED_PARAMETER") focusTargetId: String,
-) {
-    TvStatusAnchor(
-        label = label,
-        modifier = Modifier.height(112.dp),
-    )
 }
 
 internal data class TvSeerrCardArtwork(

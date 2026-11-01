@@ -22,6 +22,8 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -469,7 +471,19 @@ private fun TvLibraryAllTitles(
                     onClick = { item.open(onOpenItem, onOpenContainer) },
                 )
             }
-            if (state.isLibraryLoading || state.isPageLoading) {
+            if ((state.isLibraryLoading || state.isPageLoading) && state.libraryItems.isEmpty()) {
+                tvSkeletonGridCells(
+                    label = strings.loading,
+                    count = columns * 2,
+                    format =
+                        if (cardShape == TvLibraryCardShape.PORTRAIT) {
+                            TvMediaCardFormat.POSTER
+                        } else {
+                            TvMediaCardFormat.LANDSCAPE
+                        },
+                    keyPrefix = "all-titles-skeleton",
+                )
+            } else if (state.isLibraryLoading || state.isPageLoading) {
                 item(key = "all-titles-loading", span = { GridItemSpan(maxLineSpan) }) {
                     Box(Modifier.fillMaxWidth().height(96.dp), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = TvPurple)
@@ -481,15 +495,18 @@ private fun TvLibraryAllTitles(
                         Text(
                             strings.libraryLoadFailed,
                             color =
-                                androidx.compose.ui.graphics
-                                    .Color(0xFFFFA59E),
+                            TvError,
                         )
                         TvActionButton(strings.retry, onRetry, modifier = Modifier.width(220.dp), focusTargetId = TV_LIBRARY_RETRY_TARGET)
                     }
                 }
             } else if (state.libraryItems.isEmpty()) {
                 item(key = "all-titles-empty", span = { GridItemSpan(maxLineSpan) }) {
-                    TvFocusPlaceholder(strings.noResults, TV_LIBRARY_EMPTY_TARGET)
+                    TvEmptyState(
+                        icon = Icons.Default.VideoLibrary,
+                        title = strings.noResults,
+                        hint = if (state.libraryBrowseQuery.isDefault) strings.emptyStates.libraryHint else strings.emptyStates.filterHint,
+                    )
                 }
             }
         }
@@ -617,6 +634,7 @@ private fun TvStrings.tvLibraryQueryLabels() =
         genre = genre,
         year = releaseYearSort,
         mediaType = mediaType,
+        mediaTypeNames = mediaTypeLabels,
         all = all,
         clear = clearFilters,
         apply = applyLabel,

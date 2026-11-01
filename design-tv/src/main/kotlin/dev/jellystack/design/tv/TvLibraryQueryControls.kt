@@ -45,6 +45,7 @@ internal data class TvLibraryQueryLabels(
     val genre: String,
     val year: String,
     val mediaType: String,
+    val mediaTypeNames: TvMediaTypeStrings,
     val all: String,
     val clear: String,
     val apply: String,
@@ -136,7 +137,7 @@ internal fun TvLibraryQueryControls(
                 add(
                     TvLibraryQueryControl(
                         id = "type",
-                        label = "${labels.mediaType}: ${query.mediaTypes.firstOrNull()?.name ?: labels.all}",
+                        label = "${labels.mediaType}: ${query.mediaTypes.firstOrNull()?.label(labels.mediaTypeNames) ?: labels.all}",
                         selected = query.mediaTypes.isNotEmpty(),
                         onClick = { onQueryChanged(query.copy(mediaTypes = mediaTypes.nextSelection(query.mediaTypes))) },
                     ),
@@ -242,6 +243,15 @@ private fun LibraryBrowseSort.label(labels: TvLibraryQueryLabels): String =
         LibraryBrowseSort.TITLE -> labels.title
         LibraryBrowseSort.DATE_ADDED -> labels.dateAdded
         LibraryBrowseSort.RELEASE_YEAR -> labels.releaseYear
+    }
+
+private fun LibraryMediaType.label(names: TvMediaTypeStrings): String =
+    when (this) {
+        LibraryMediaType.MOVIE -> names.movie
+        LibraryMediaType.SERIES -> names.series
+        LibraryMediaType.EPISODE -> names.episode
+        LibraryMediaType.MUSIC_VIDEO -> names.musicVideo
+        LibraryMediaType.AUDIO -> names.audio
     }
 
 private fun LibraryPlayedFilter.label(labels: TvLibraryQueryLabels): String =

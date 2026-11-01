@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -314,9 +315,13 @@ private fun ColumnScope.TvSearchResults(
                 )
             }
         }
-        indices.empty?.let { item("empty") { TvStatusAnchor(strings.noResults) } }
+        indices.empty?.let { item("empty") { TvSearchEmpty(strings) } }
     }
 }
+
+@Composable
+private fun TvSearchEmpty(strings: TvStrings) =
+    TvEmptyState(icon = Icons.Default.Search, title = strings.noResults, hint = strings.emptyStates.searchHint)
 
 /** Positions of the result list's items; the header is not part of the list. */
 internal class TvSearchListIndices(

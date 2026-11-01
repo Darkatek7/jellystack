@@ -151,10 +151,10 @@ internal fun TvDetailHeroActions(
         }
     }
     if (state.trailerError) {
-        Text(strings.trailerOpenFailed, color = Color(0xFFFFA59E), fontSize = 16.sp)
+        Text(strings.trailerOpenFailed, color = TvError, fontSize = 16.sp)
     }
     if (state.actionFailed) {
-        Text(strings.diagnostics.actionFailed, color = Color(0xFFFFA59E), fontSize = 16.sp)
+        Text(strings.diagnostics.actionFailed, color = TvError, fontSize = 16.sp)
     }
 }
 
@@ -171,7 +171,7 @@ internal fun TvSeerrDetailMetaLine(
                 CircularProgressIndicator(Modifier.size(18.dp), color = TvPurple, strokeWidth = 2.dp)
                 Text(strings.messages.loadingDetails, color = TvTextMuted, fontSize = 19.sp)
             }
-        TvSeerrDetailStatus.FAILED -> Text(strings.detailLoadFailed, color = Color(0xFFFFA59E), fontSize = 19.sp)
+        TvSeerrDetailStatus.FAILED -> Text(strings.detailLoadFailed, color = TvError, fontSize = 19.sp)
         TvSeerrDetailStatus.READY ->
             Text(genres.take(4).joinToString(TV_CARD_SEPARATOR), color = TvTextMuted, fontSize = 19.sp)
     }

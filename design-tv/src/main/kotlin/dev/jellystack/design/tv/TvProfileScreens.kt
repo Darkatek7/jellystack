@@ -387,7 +387,7 @@ internal fun TvProfilePinScreen(
             } else {
                 "●".repeat(pin.length) + "○".repeat((TV_PIN_LENGTH - pin.length).coerceAtLeast(0))
             },
-            color = if (locked) Color(0xFFFFB4AB) else TvText,
+            color = if (locked) TvError else TvText,
             fontSize = 28.sp,
             modifier =
                 Modifier.semantics {
