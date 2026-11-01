@@ -1,5 +1,19 @@
 # Release Notes
 
+## 0.18.0 (TV)
+
+- Listen to music: artist and album pages, track lists, shuffle, and a now-playing screen. The next track starts by itself.
+- Watch Live TV: a channel list with what is on now and next. It appears when your Jellyfin server has channels.
+- Open a page for a person or a collection, and start a whole collection with Play all.
+- Scroll Home and Discover far more smoothly on Fire TV, with fewer image loads while moving through a row.
+- See Continue Watching and Next Up in the Watch Next row of Android TV and Google TV, and turn it off in Settings if you prefer. Not on Fire TV.
+- Choose Jellystack library artwork as the Android TV and Google TV screensaver. It is off until you pick it.
+- Set the picture to Fit, Zoom, or Stretch, and adjust audio and subtitle delay while watching.
+- Match the display's refresh rate to the video in Settings. Off by default. Fire TV offers apps fewer modes, so 24p titles stay as they are there.
+- Play DTS and TrueHD without a server transcode when the device has no decoder for them. This makes the app about 6 MB larger.
+- Get more titles in Direct Play, because Jellyfin now learns what the output really handles, and fall back to the next decoder when one fails to start.
+- Return to the card you left when you move back into a row, and get clearer loading, empty, and error screens.
+
 ## 0.17.3 (TV)
 
 - Start about a quarter faster on Fire TV, with less memory use and an app about a quarter of its old size.
