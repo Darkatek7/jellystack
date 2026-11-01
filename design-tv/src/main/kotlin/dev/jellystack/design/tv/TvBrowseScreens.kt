@@ -712,6 +712,7 @@ internal fun TvJellyfinRow(
     bleedStart: Dp = TvLayoutTokens.ContentStart,
     onVerticalMove: (JellyfinItem, TvHomeVerticalDirection) -> Unit = { _, _ -> },
 ) {
+    val focusKeeper = rememberTvRowFocusKeeper(listState, remember(items) { items.map { it.id } })
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         TvSectionTitle(title)
         LazyRow(
@@ -748,10 +749,16 @@ internal fun TvJellyfinRow(
                             TvMediaCardArtworkFit.CROP
                         },
                     onFocused = {
+                        focusKeeper.onFocused(item.id)
                         focusMemory.remember(routeKey, title, item.id, horizontalIndex = index)
                         onPreviewFocus(item, targetId)
                     },
-                    onFocusChanged = { focused -> if (!focused) onPreviewBlur(item, targetId) },
+                    onFocusChanged = { focused ->
+                        if (!focused) {
+                            focusKeeper.onBlurred(item.id)
+                            onPreviewBlur(item, targetId)
+                        }
+                    },
                     modifier =
                         Modifier
                             .tvScreenEntryFocus(screenEntry && index == 0, targetId)
@@ -829,6 +836,7 @@ private fun TvHomeSectionRow(
     onVerticalMove: (String, JellyfinItem?, TvHomeVerticalDirection) -> Unit = { _, _, _ -> },
 ) {
     val rowId = "plugin:${section.id}"
+    val focusKeeper = rememberTvRowFocusKeeper(listState, remember(section.items) { section.items.map { it.id } })
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         TvSectionTitle(section.title)
         LazyRow(
@@ -868,10 +876,16 @@ private fun TvHomeSectionRow(
                             TvMediaCardArtworkFit.CROP
                         },
                     onFocused = {
+                        focusKeeper.onFocused(item.id)
                         focusMemory.remember("home", section.id, item.id, horizontalIndex = index)
                         previewItem?.let { onPreviewFocus(it, targetId) }
                     },
-                    onFocusChanged = { focused -> if (!focused) previewItem?.let { onPreviewBlur(it, targetId) } },
+                    onFocusChanged = { focused ->
+                        if (!focused) {
+                            focusKeeper.onBlurred(item.id)
+                            previewItem?.let { onPreviewBlur(it, targetId) }
+                        }
+                    },
                     modifier =
                         Modifier
                             .tvScreenEntryFocus(screenEntry && index == 0, targetId)
