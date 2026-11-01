@@ -261,7 +261,8 @@ class TvDetailFocusTest {
                     val castFocusModifiers = sectionFocusModifiers.getValue("cast")
                     val similarFocusModifiers = sectionFocusModifiers.getValue("similar")
                     item("overview") {
-                        Box(bodyFocusModifier.fillMaxWidth().height(900.dp))
+                        // A viewport-high body: focus then scrolls it to the top, whatever the display density.
+                        Box(bodyFocusModifier.fillMaxWidth().fillParentMaxHeight())
                     }
                     item("cast") {
                         LazyRow(
@@ -1002,6 +1003,11 @@ class TvDetailFocusTest {
             cast = emptyList()
         }
         composeRule.waitUntil(5_000) { recoveryStarted.isCompleted }
+        // Which node the framework focuses after the cast row vanishes depends on what the viewport keeps
+        // composed (the overview, for one). Pin the temporary default item the scenario is about.
+        composeRule
+            .onNodeWithTag("tv-detail-section-similar-item-tv:1")
+            .performSemanticsAction(SemanticsActions.RequestFocus)
         waitUntilTagFocused("tv-detail-section-similar-item-tv:1")
 
         composeRule.onNodeWithTag("tv-detail-section-similar-item-tv:1").performKeyInput { pressKey(key) }

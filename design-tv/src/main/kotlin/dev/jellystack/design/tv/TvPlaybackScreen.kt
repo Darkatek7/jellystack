@@ -264,8 +264,11 @@ internal fun TvPlaybackScreen(
         }
     }
     // Without a video nothing else takes focus, and Back (cancel while preparing) needs a focused player.
+    // With a video the effect above owns focus (controls or player); this one must not take it back.
     LaunchedEffect(overlay) {
-        if (overlay == TvPlayerOverlay.PREPARING || overlay == TvPlayerOverlay.NONE) playerFocusRequester.requestFocus()
+        if (overlay == TvPlayerOverlay.PREPARING || (overlay == TvPlayerOverlay.NONE && active == null)) {
+            playerFocusRequester.requestFocus()
+        }
     }
     // A failed start behind a video that keeps playing (an episode switch) has nothing to report.
     LaunchedEffect(active != null, startState) {
