@@ -6,7 +6,7 @@ What gets built next, in order. There are no dates: a release ships when its exi
 
 Music, Live TV, person and collection pages, Watch Next, a library screensaver, picture size, audio and subtitle delay, refresh-rate matching, DTS and TrueHD without a transcode, and a much smoother Home and Discover on Fire TV.
 
-Left to do: merge #50, upload the signed files, tag, and sync the website. The crash on Android 7 (#42) is fixed in #50 but has not been run on an Android 7 device.
+Left to do: upload the signed files, tag, and sync the website. The fix for the crash on Android 7 (#42) has not been run on an Android 7 device.
 
 Fire TV 4K Max, the numbers later releases must not fall behind:
 
