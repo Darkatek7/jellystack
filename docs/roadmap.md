@@ -6,7 +6,7 @@ What gets built next, in order. There are no dates: a release ships when its exi
 
 Music, Live TV, person and collection pages, Watch Next, a library screensaver, picture size, audio and subtitle delay, refresh-rate matching, DTS and TrueHD without a transcode, and a much smoother Home and Discover on Fire TV.
 
-Left to do: merge #47, #50, #51 and #52 in that order, rebuild the signed files from `main`, upload, tag, and sync the website.
+Left to do: merge #50, upload the signed files, tag, and sync the website. The crash on Android 7 (#42) is fixed in #50 but has not been run on an Android 7 device.
 
 Fire TV 4K Max, the numbers later releases must not fall behind:
 
@@ -63,6 +63,7 @@ These land with whichever release touches the code. Details are in [tech-debt.md
 - Move routing and wiring out of `TvJellystackRoot.kt`.
 - Replace inline dp values with shared gutter tokens.
 - Make `detekt` analyse KMP source sets.
+- Upgrade Kotlin and Compose as one tested change.
 
 ## Later, in no fixed order
 
