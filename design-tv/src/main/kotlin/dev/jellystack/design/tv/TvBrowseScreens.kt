@@ -318,8 +318,10 @@ internal fun TvHomeScreen(
     var carouselState by remember { mutableStateOf(TvHomeCarouselState()) }
     val candidateIds = heroCandidates.map { it.actionItem.id }
     val spotlightIndex = heroCandidates.indexOfFirst { it.actionItem.id == carouselState.selectedId }.takeIf { it >= 0 } ?: 0
-    var focusedStageItem by remember { mutableStateOf<JellyfinItem?>(null) }
-    var focusedStagePresentationId by remember { mutableStateOf<String?>(null) }
+    // The stage follows a focused card only after focus rested on it; the trailer for that card starts then, too.
+    val stageDwell =
+        rememberTvHomeStageDwell { target -> onPreviewFocus(TvTrailerPreviewOwner.CARD, target.item, target.presentationId) }
+    val stagedCard = stageDwell.staged
     LaunchedEffect(candidateIds) {
         val selectedId = reconcileTvHomeCarouselSelection(candidateIds, carouselState.selectedId)
         if (selectedId != carouselState.selectedId) {
@@ -332,7 +334,7 @@ internal fun TvHomeScreen(
             enabled = spotlightAutoAdvance,
             candidateCount = candidateIds.size,
             reducedMotion = LocalTvFocusAppearance.current.reducedMotion,
-            cardStaged = focusedStageItem != null,
+            cardStaged = stagedCard != null,
             trailerActive = trailerPreviewState is TvTrailerPreviewState.Armed || trailerPreviewState is TvTrailerPreviewState.Playing,
         )
     LaunchedEffect(autoAdvanceHero, candidateIds, carouselState.selectedId, heroInteractions) {
@@ -346,18 +348,18 @@ internal fun TvHomeScreen(
     val openNavigationRail = LocalTvNavigationRailOpener.current
     val heroModel =
         heroCandidates.getOrNull(spotlightIndex)?.let { candidate ->
-            val stageItem = focusedStageItem ?: candidate.actionItem
+            val stageItem = stagedCard?.item ?: candidate.actionItem
             TvHomeHeroModel(
                 stageItem = stageItem,
                 stagePresentationId =
-                    focusedStagePresentationId
+                    stagedCard?.presentationId
                         ?: (trailerPreviewState as? TvTrailerPreviewState.Playing)
                             ?.request
                             ?.takeIf { it.target.itemId == stageItem.id }
                             ?.presentationId,
                 mode = heroPresentation.mode,
                 page = TvHomeHeroPage(index = spotlightIndex, count = heroCandidates.size),
-                showCarouselContext = focusedStageItem == null,
+                showCarouselContext = stagedCard == null,
                 imageBaseUrl = state.imageBaseUrl,
                 imageAccessToken = state.imageAccessToken,
             )
@@ -396,11 +398,8 @@ internal fun TvHomeScreen(
                             onPlay = { onPlayItem(heroModel.stageItem) },
                             onDetails = { onItem(heroModel.stageItem) },
                             onVerticalMove = { direction -> onVerticalMove(TvHomeFocusOrigin.Hero, direction, null) },
-                            onHeroFocused = {
-                                // The hero shows its own spotlight again, so Play and Details act on it.
-                                focusedStageItem = null
-                                focusedStagePresentationId = null
-                            },
+                            // The hero shows its own spotlight again at once, so Play and Details act on it.
+                            onHeroFocused = stageDwell::onSpotlightFocused,
                             onCarouselMove = { direction ->
                                 val move = moveTvHomeCarouselManually(candidateIds, carouselState, direction)
                                 if (move.openNavigationRail) openNavigationRail?.invoke() else carouselState = move.state
@@ -455,12 +454,9 @@ internal fun TvHomeScreen(
                                 focusMemory = focusMemory,
                                 listState = rowListStates.getValue("my-list"),
                                 onEntry = onMyListEntry,
-                                onPreviewFocus = { item, presentationId ->
-                                    focusedStageItem = item
-                                    focusedStagePresentationId = presentationId
-                                    onPreviewFocus(TvTrailerPreviewOwner.CARD, item, presentationId)
-                                },
+                                onPreviewFocus = stageDwell::onCardFocused,
                                 onPreviewBlur = { item, presentationId ->
+                                    stageDwell.onCardBlurred(item, presentationId)
                                     onPreviewBlur(TvTrailerPreviewOwner.CARD, item, presentationId)
                                 },
                                 onVerticalMove = { entry, direction ->
@@ -491,12 +487,9 @@ internal fun TvHomeScreen(
                                     focusMemory = focusMemory,
                                     onItem = onItem,
                                     onSeerrItem = onSeerrItem,
-                                    onPreviewFocus = { item, presentationId ->
-                                        focusedStageItem = item
-                                        focusedStagePresentationId = presentationId
-                                        onPreviewFocus(TvTrailerPreviewOwner.CARD, item, presentationId)
-                                    },
+                                    onPreviewFocus = stageDwell::onCardFocused,
                                     onPreviewBlur = { item, presentationId ->
+                                        stageDwell.onCardBlurred(item, presentationId)
                                         onPreviewBlur(TvTrailerPreviewOwner.CARD, item, presentationId)
                                     },
                                     onHomeLibrary = onHomeLibrary,
@@ -519,12 +512,9 @@ internal fun TvHomeScreen(
                                         strings,
                                         focusMemory,
                                         onItem,
-                                        onPreviewFocus = { item, presentationId ->
-                                            focusedStageItem = item
-                                            focusedStagePresentationId = presentationId
-                                            onPreviewFocus(TvTrailerPreviewOwner.CARD, item, presentationId)
-                                        },
+                                        onPreviewFocus = stageDwell::onCardFocused,
                                         onPreviewBlur = { item, presentationId ->
+                                            stageDwell.onCardBlurred(item, presentationId)
                                             onPreviewBlur(TvTrailerPreviewOwner.CARD, item, presentationId)
                                         },
                                         listState = rowListStates.getValue("continue"),
@@ -546,12 +536,9 @@ internal fun TvHomeScreen(
                                         strings,
                                         focusMemory,
                                         onItem,
-                                        onPreviewFocus = { item, presentationId ->
-                                            focusedStageItem = item
-                                            focusedStagePresentationId = presentationId
-                                            onPreviewFocus(TvTrailerPreviewOwner.CARD, item, presentationId)
-                                        },
+                                        onPreviewFocus = stageDwell::onCardFocused,
                                         onPreviewBlur = { item, presentationId ->
+                                            stageDwell.onCardBlurred(item, presentationId)
                                             onPreviewBlur(TvTrailerPreviewOwner.CARD, item, presentationId)
                                         },
                                         listState = rowListStates.getValue("next"),
