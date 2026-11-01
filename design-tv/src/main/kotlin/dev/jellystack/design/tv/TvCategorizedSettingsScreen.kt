@@ -83,6 +83,7 @@ internal fun TvSettingsScreen(
     profileId: String? = null,
     profilePreferencesRepository: ProfilePreferencesRepository? = null,
     profileRepository: HouseholdProfileRepository? = null,
+    watchNextAvailable: Boolean = false,
 ) {
     val scope = rememberCoroutineScope()
     val servers by serverRepository.observeServers().collectAsStateWithLifecycle()
@@ -138,10 +139,10 @@ internal fun TvSettingsScreen(
             TvSettingsCategoryPage(
                 category = category,
                 title = strings.settingsAppearance,
-                targetIds = tvSettingsControlKeys(category).map(::tvSettingsControlTargetId),
+                targetIds = tvSettingsControlKeys(category, watchNextAvailable).map(::tvSettingsControlTargetId),
                 modifier = modifier,
             ) {
-                TvAppearanceSettings(settings, repository, strings, ::showChoices)
+                TvAppearanceSettings(settings, repository, strings, ::showChoices, watchNextAvailable)
             }
         TvSettingsCategory.PLAYBACK ->
             TvSettingsCategoryPage(
@@ -399,6 +400,7 @@ private fun TvAppearanceSettings(
     repository: AppSettingsRepository,
     strings: TvStrings,
     showChoices: (String, List<TvChoiceOption>) -> Unit,
+    watchNextAvailable: Boolean = false,
 ) {
     TvSettingsGrid {
         TvSettingTile(
@@ -421,6 +423,16 @@ private fun TvAppearanceSettings(
             checked = settings.useServerHomeSections,
         ) {
             repository.setUseServerHomeSections(!settings.useServerHomeSections)
+        }
+        if (watchNextAvailable) {
+            TvSettingTile(
+                strings.watchNextRow,
+                if (settings.watchNextEnabled) strings.on else strings.off,
+                focusTargetId = tvSettingsControlTargetId("watch-next"),
+                checked = settings.watchNextEnabled,
+            ) {
+                repository.setWatchNextEnabled(!settings.watchNextEnabled)
+            }
         }
     }
 }

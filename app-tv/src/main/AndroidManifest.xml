@@ -3,6 +3,12 @@
     xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Required by the TV provider ("android.media.tv" declares it as writePermission, protection level normal). -->
+    <uses-permission android:name="com.android.providers.tv.permission.WRITE_EPG_DATA" />
+    <!-- Merged from androidx.tvprovider; deprecated and no longer enforced by the TV provider. -->
+    <uses-permission
+        android:name="com.android.providers.tv.permission.READ_EPG_DATA"
+        tools:node="remove" />
     <uses-permission
         android:name="android.permission.READ_PHONE_STATE"
         tools:node="remove" />
@@ -24,6 +30,7 @@
         android:required="false" />
 
     <queries>
+        <provider android:authorities="android.media.tv" />
         <intent>
             <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
         </intent>
@@ -50,6 +57,24 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
+            <!-- Watch Next cards: jellystack://item/{id}?s={server hash}; validated in the app before use.
+                 The launcher parses the program's intent URI "safely", which adds BROWSABLE. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="jellystack"
+                    android:host="item" />
+            </intent-filter>
         </activity>
+
+        <!-- Read-only poster art for the Watch Next row; the launcher reads it in its own process. The file
+             names are unguessable, and the files hold artwork only (no tokens, no server addresses). -->
+        <provider
+            android:name=".watchnext.WatchNextArtProvider"
+            android:authorities="${applicationId}.watchnext.art"
+            android:exported="true"
+            android:grantUriPermissions="false" />
     </application>
 </manifest>

@@ -35,6 +35,8 @@ val verifyTvReleaseManifestPermissions by tasks.registering {
             setOf(
                 "android.permission.INTERNET",
                 "android.permission.ACCESS_NETWORK_STATE",
+                // Writing the app's own Watch Next programs; merged from androidx.tvprovider, see docs/permissions.md.
+                "com.android.providers.tv.permission.WRITE_EPG_DATA",
                 "app.jellystack.mobile.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
             )
         check((permissions - allowed).isEmpty()) {
@@ -147,6 +149,7 @@ dependencies {
     implementation(libs.androidx.media3.ui)
     implementation(libs.androidx.media3.session)
     implementation(libs.jellyfin.media3.ffmpeg.decoder)
+    implementation(libs.androidx.tvprovider)
     implementation(libs.sqldelight.android)
     implementation(libs.multiplatform.settings)
     implementation(libs.coroutines.android)

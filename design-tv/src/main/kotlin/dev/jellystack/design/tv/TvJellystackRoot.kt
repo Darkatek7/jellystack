@@ -139,6 +139,7 @@ fun TvJellystackRoot(
     modifier: Modifier = Modifier,
     coldLaunch: Boolean = true,
     voiceSearch: TvVoiceSearchPort = UnsupportedTvVoiceSearch,
+    integrations: TvPlatformIntegrations = TvPlatformIntegrations(),
     onExitConfirmed: () -> Unit = {},
 ) {
     val koin = remember { JellystackDI.koin }
@@ -162,6 +163,7 @@ fun TvJellystackRoot(
             stopPlayback = stopPlayback,
             coldLaunch = coldLaunch,
             voiceSearch = voiceSearch,
+            integrations = integrations,
             onExitConfirmed = onExitConfirmed,
             modifier = modifier,
         )
@@ -182,6 +184,7 @@ private fun TvProfileHost(
     stopPlayback: () -> Unit,
     coldLaunch: Boolean,
     voiceSearch: TvVoiceSearchPort,
+    integrations: TvPlatformIntegrations,
     onExitConfirmed: () -> Unit,
     modifier: Modifier,
 ) {
@@ -472,6 +475,10 @@ private fun TvProfileHost(
         }
     }
 
+    TvDeepLinkSignedOutEffect(
+        inbox = integrations.deepLinks,
+        signedOut = loadedProfiles != null && (profiles.isEmpty() || reconnectProfile != null),
+    )
     TvProfileGateEffect(
         enabled = activatedProfileId != null && !pickerVisible,
         profileCount = profiles.size,
@@ -730,6 +737,7 @@ private fun TvProfileHost(
                         }
                     },
                     voiceSearch = voiceSearch,
+                    integrations = integrations,
                     onExitConfirmed = onExitConfirmed,
                 )
         }
@@ -780,6 +788,7 @@ private fun TvAuthenticatedApp(
     onOpenProfiles: () -> Unit = {},
     onAuthenticationExpired: () -> Unit = {},
     voiceSearch: TvVoiceSearchPort = UnsupportedTvVoiceSearch,
+    integrations: TvPlatformIntegrations = TvPlatformIntegrations(),
     onExitConfirmed: () -> Unit = {},
 ) {
     val koin = remember { JellystackDI.koin }
@@ -1228,6 +1237,23 @@ private fun TvAuthenticatedApp(
         }
     }
 
+    TvWatchNextSyncEffect(
+        publisher = integrations.watchNext,
+        enabled = deviceSettings.watchNextEnabled,
+        account =
+            TvWatchNextAccount(
+                serverKey = authenticatedEnvironmentIdentity.serverConnectionId,
+                principalId = authenticatedEnvironmentIdentity.principalId,
+                profileId = activeProfileId,
+            ),
+        home = homeState,
+    )
+    TvDeepLinkOpenEffect(integrations.deepLinks, authenticatedEnvironmentIdentity.serverConnectionId) { itemId ->
+        if (appStateHolder.state.currentRoute == TvRoute.Player) stopPlayback()
+        selectTopLevel(TvRoute.Home)
+        push(TvRoute.JellyfinDetail(itemId))
+    }
+
     val itemLists = remember(accountGeneration) { TvItemListCoordinator(scope, browseRepository.itemListLoader()) }
     val itemListStates by itemLists.states.collectAsStateWithLifecycle()
     val currentRoute = appUiState.currentRoute
@@ -1554,6 +1580,7 @@ private fun TvAuthenticatedApp(
                                             profileId = activeProfileId,
                                             profilePreferencesRepository = profilePreferencesRepository,
                                             profileRepository = profileRepository,
+                                            watchNextAvailable = integrations.watchNext.supported,
                                         )
                                     is TvRoute.JellyfinDetail ->
                                         TvJellyfinDetailScreen(

@@ -127,6 +127,8 @@ data class AppSettings(
      * player is open. Off by default because a display mode change blanks the screen for a moment.
      */
     val matchRefreshRate: Boolean = false,
+    /** Android TV only: publish Continue Watching and Next Up to the system Watch Next row. */
+    val watchNextEnabled: Boolean = true,
 )
 
 data class AppPlatformCapabilities(

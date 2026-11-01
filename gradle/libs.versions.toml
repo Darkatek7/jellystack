@@ -33,6 +33,7 @@ media3 = "1.10.1"
 media3-ffmpeg-jellyfin = "1.9.0+1"
 play-services-cast = "21.4.0"
 androidx-media = "1.7.0"
+androidx-tvprovider = "1.1.0"
 androidx-mediarouter = "1.6.0"
 androidx-biometric = "1.1.0"
 screenshot = "0.0.1-alpha15"
@@ -106,6 +107,7 @@ androidx-test-uiautomator = { module = "androidx.test.uiautomator:uiautomator", 
 androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version = "2.10.0" }
 google-cast-framework = { module = "com.google.android.gms:play-services-cast-framework", version.ref = "play-services-cast" }
 androidx-media = { module = "androidx.media:media", version.ref = "androidx-media" }
+androidx-tvprovider = { module = "androidx.tvprovider:tvprovider", version.ref = "androidx-tvprovider" }
 androidx-mediarouter = { module = "androidx.mediarouter:mediarouter", version.ref = "androidx-mediarouter" }
 androidx-biometric = { module = "androidx.biometric:biometric", version.ref = "androidx-biometric" }
 
