@@ -280,7 +280,7 @@ private fun TvTrackListStatus(
                     )
                 }
             content.state is TvItemListState.Ready && content.items.isEmpty() ->
-                TvFocusPlaceholder(strings.noResults, TV_LIBRARY_EMPTY_TARGET)
+                TvEmptyState(icon = Icons.Default.MusicNote, title = strings.emptyStates.nothingYet, hint = null)
         }
     }
 }
