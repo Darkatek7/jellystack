@@ -158,6 +158,29 @@ class JellyfinBrowseRepositoryTest {
         }
 
     @Test
+    fun personItemsFallBackToOneEpisodePerSeriesWithoutTitles() =
+        runTest {
+            val requests = mutableListOf<Pair<String, Map<String, String>>>()
+            val episodes =
+                listOf("e1" to "show-a", "e2" to "show-a", "e3" to "show-b").joinToString(",") { (id, series) ->
+                    """{"Id":"$id","Name":"$id","Type":"Episode","MediaType":"Video","SeriesId":"$series"}"""
+                }
+            val listRepository =
+                listRepository(requests, "") { parameters ->
+                    if (parameters["IncludeItemTypes"] == "Episode") {
+                        """{"Items":[$episodes],"TotalRecordCount":3}"""
+                    } else {
+                        """{"Items":[],"TotalRecordCount":0}"""
+                    }
+                }
+
+            val items = listRepository.personItems("person-1")
+
+            assertEquals(listOf("Movie,Series", "Episode"), requests.map { it.second["IncludeItemTypes"] })
+            assertEquals(listOf("e1", "e3"), items.map { it.id })
+        }
+
+    @Test
     fun collectionItemsListTheDirectChildrenOfTheCollection() =
         runTest {
             val requests = mutableListOf<Pair<String, Map<String, String>>>()
@@ -196,14 +219,16 @@ class JellyfinBrowseRepositoryTest {
     private fun listRepository(
         requests: MutableList<Pair<String, Map<String, String>>>,
         body: String,
+        bodyFor: (Map<String, String>) -> String = { body },
     ): JellyfinBrowseRepository {
         val listEngine =
             MockEngine { request ->
-                requests += request.url.encodedPath to
+                val parameters =
                     request.url.parameters
                         .entries()
                         .associate { it.key to it.value.first() }
-                respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()))
+                requests += request.url.encodedPath to parameters
+                respond(bodyFor(parameters), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()))
             }
         val listClient = NetworkClientFactory.create(ClientConfig(engine = listEngine, installLogging = false))
         return JellyfinBrowseRepository(

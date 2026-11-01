@@ -37,6 +37,7 @@ private const val FILTER_ERROR_PHRASE = "No media found with the specified filte
 
 /** The most entries a person page, collection, or playlist lists; one request, no paging. */
 const val ITEM_LIST_LIMIT = 500
+private const val PERSON_EPISODE_ITEM_TYPE = "Episode"
 private const val PERSON_ITEM_TYPES = "Movie,Series"
 
 private fun detailCacheKey(
@@ -892,20 +893,30 @@ class JellyfinBrowseRepository(
         limit: Int = ITEM_LIST_LIMIT,
     ): List<JellyfinItem> {
         val environment = environmentProvider.current() ?: return emptyList()
-        val response =
-            apiFor(environment).fetchLibraryItems(
+        val titles = personItemsOfTypes(environment, personId, PERSON_ITEM_TYPES, limit)
+        if (titles.isNotEmpty()) return titles
+        // Series metadata often lists a voice cast only on the episodes; one entry per series is enough here.
+        return personItemsOfTypes(environment, personId, PERSON_EPISODE_ITEM_TYPE, limit).distinctBy { it.seriesId ?: it.id }
+    }
+
+    private suspend fun personItemsOfTypes(
+        environment: JellyfinEnvironment,
+        personId: String,
+        itemTypes: String,
+        limit: Int,
+    ): List<JellyfinItem> =
+        apiFor(environment)
+            .fetchLibraryItems(
                 userId = environment.userId,
                 libraryId = "",
                 startIndex = 0,
                 limit = limit.coerceIn(1, ITEM_LIST_LIMIT),
-                includeItemTypes = PERSON_ITEM_TYPES,
+                includeItemTypes = itemTypes,
                 recursive = true,
                 personIds = listOf(personId),
                 sortBy = "ProductionYear,SortName",
                 sortOrder = "Descending",
-            )
-        return response.cacheAndMap(environment)
-    }
+            ).cacheAndMap(environment)
 
     /** The direct children of a collection (BoxSet) in release order, with the user's watched state. */
     suspend fun collectionItems(
