@@ -178,11 +178,15 @@ class JellyfinBrowseCoordinatorTest {
                 coordinator.bootstrap(forceRefresh = false)
                 firstStarted.await()
                 coordinator.bootstrap(forceRefresh = false)
-                awaitState(coordinator) { !it.isHomeLoading && it.libraries == newLibraries }
+                awaitState(coordinator) { state ->
+                    !state.isHomeLoading &&
+                        state.libraries == newLibraries &&
+                        state.libraryItems.map { it.id } == listOf("new-item")
+                }
 
                 releaseFirst.complete(Unit)
                 firstReturned.await()
-                delay(100)
+                waitForOlderWork()
 
                 assertEquals(newLibraries, coordinator.state.value.libraries)
                 assertEquals("new", coordinator.state.value.selectedLibraryId)
@@ -237,7 +241,7 @@ class JellyfinBrowseCoordinatorTest {
 
                 releaseFirst.complete(Unit)
                 firstReturned.await()
-                delay(100)
+                waitForOlderWork()
 
                 assertEquals(newLibraries, coordinator.state.value.libraries)
                 assertNull(coordinator.state.value.homeErrorMessage)
@@ -288,7 +292,7 @@ class JellyfinBrowseCoordinatorTest {
 
                 releaseFirst.complete(Unit)
                 firstReturned.await()
-                delay(100)
+                waitForOlderWork()
 
                 assertEquals(newLibraries, coordinator.state.value.libraries)
                 assertNull(coordinator.state.value.homeErrorMessage)
@@ -1653,6 +1657,12 @@ class JellyfinBrowseCoordinatorTest {
     private suspend fun awaitInitialLoad(coordinator: JellyfinBrowseCoordinator): JellyfinHomeState =
         awaitState(coordinator) {
             it.selectedLibraryId != null && !it.isInitialLoading && !it.isLibraryLoading
+        }
+
+    /** The coordinator runs on a real dispatcher, and delay() inside runTest would only skip virtual time. */
+    private suspend fun waitForOlderWork() =
+        withContext(Dispatchers.Default) {
+            delay(100)
         }
 
     private suspend fun awaitState(

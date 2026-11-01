@@ -35,7 +35,7 @@ Requirements: JDK 17 and Android SDK API 36 (Xcode on macOS for the experimental
 ./gradlew :app-tv:assembleDebug
 ```
 
-See [Building](docs/building.md) for the full verification gate, tests, and screenshot workflow, and [Architecture](docs/architecture.md) for module boundaries.
+See [Building](docs/building.md) for the full verification gate, tests, and screenshot workflow, and [Architecture](docs/architecture.md) for module boundaries. The plan for upcoming releases is in the [Roadmap](docs/roadmap.md).
 
 The TV app uses a separate GMS-free application module while sharing Jellyfin, Seerr, settings, and playback logic with mobile. See [Android TV and Fire TV](docs/android-tv.md) for emulator setup, remote controls, builds, testing, and store submission.
 
