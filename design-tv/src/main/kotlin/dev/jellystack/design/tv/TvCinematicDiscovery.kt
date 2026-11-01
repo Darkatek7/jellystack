@@ -42,10 +42,15 @@ internal fun TvCinematicDiscoverContent(
         if (focusedKey != effectiveFocusedKey) focusedKey = effectiveFocusedKey
     }
     val focusedRow = effectiveFocusedKey?.let { key -> rows.firstOrNull { row -> row.cards.any { it.id == key } } }
+    val hero = remember(strings.discover) { TvCinematicHero(title = strings.discover, eyebrow = strings.discover) }
+    val inlineStatus =
+        remember(hasPartialFailure, strings.discoverLoadFailed) {
+            if (hasPartialFailure) TvCinematicInlineStatus(strings.discoverLoadFailed, TvCinematicStatusKind.ERROR) else null
+        }
     TvCinematicBrowse(
         state =
             TvCinematicBrowseState(
-                hero = TvCinematicHero(title = strings.discover, eyebrow = strings.discover),
+                hero = hero,
                 rows = rows,
                 focusedAnchor =
                     if (focusedRow != null && effectiveFocusedKey != null) {
@@ -53,12 +58,7 @@ internal fun TvCinematicDiscoverContent(
                     } else {
                         null
                     },
-                inlineStatus =
-                    if (hasPartialFailure) {
-                        TvCinematicInlineStatus(strings.discoverLoadFailed, TvCinematicStatusKind.ERROR)
-                    } else {
-                        null
-                    },
+                inlineStatus = inlineStatus,
             ),
         onCardFocused = { anchor, card ->
             focusedKey = card.id

@@ -41,10 +41,12 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
@@ -1284,7 +1286,13 @@ internal fun TvDiscoverScreen(
                 JellyseerrRecommendationRail.entries.filter { rail -> state.rails[rail]?.items?.isNotEmpty() == true }
             }.orEmpty()
     val requestItems = (requests as? JellyseerrRequestsState.Ready)?.requests.orEmpty()
-    val cinematicRows = ready?.let { buildTvDiscoverRows(it, requestItems, strings, isSaved) }
+    // Rebuilt when the recommendations, requests or strings change, or when a title is saved or removed: isSaved reads
+    // state, so the derived value follows it. A focus change in the rows does not come through here.
+    val currentIsSaved by rememberUpdatedState(isSaved)
+    val cinematicRows =
+        remember(ready, requestItems, strings) {
+            derivedStateOf { ready?.let { buildTvDiscoverRows(it, requestItems, strings, currentIsSaved) } }
+        }.value
     val cinematicTargetId = cinematicRows?.initialTargetId
     if (cinematicRows != null && cinematicTargetId != null) {
         TvCinematicDiscoverContent(
