@@ -15,8 +15,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -91,40 +89,8 @@ internal fun TvTrailerArtworkCover(
 /** Keeps text and rows readable over full-screen artwork; shared by every screen with a full-bleed backdrop. */
 @Composable
 internal fun TvHomeBackdropScrims() {
-    Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(colorStops = TV_HOME_BACKDROP_SIDE_SCRIM)))
-    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(colorStops = TV_HOME_BACKDROP_BOTTOM_SCRIM)))
-    // Keeps the clock and the page dots readable when the artwork is bright in that corner.
-    Box(
-        Modifier.fillMaxSize().drawBehind {
-            drawRect(
-                Brush.radialGradient(
-                    colors = listOf(TvBackground.copy(alpha = 0.62f), Color.Transparent),
-                    center = Offset(size.width, 0f),
-                    radius = size.minDimension * 0.75f,
-                ),
-            )
-        },
-    )
+    Box(Modifier.fillMaxSize().tvBakedScrim(TvScrim.HOME_BACKDROP))
 }
-
-// Dark behind the hero text and the open rail, clear on the right where the artwork shows.
-private val TV_HOME_BACKDROP_SIDE_SCRIM =
-    arrayOf(
-        0f to TvBackground.copy(alpha = 0.96f),
-        0.3f to TvBackground.copy(alpha = 0.84f),
-        0.58f to TvBackground.copy(alpha = 0.38f),
-        0.82f to Color.Transparent,
-    )
-
-// A light veil under the clock, then dark from the rows down so row titles stay readable on bright artwork.
-private val TV_HOME_BACKDROP_BOTTOM_SCRIM =
-    arrayOf(
-        0f to TvBackground.copy(alpha = 0.34f),
-        0.22f to Color.Transparent,
-        0.5f to TvBackground.copy(alpha = 0.3f),
-        0.64f to TvBackground.copy(alpha = 0.88f),
-        1f to TvBackground,
-    )
 
 /** The placeholder stays underneath, so a backdrop that is missing or fails to load still leaves a backdrop. */
 @Composable
