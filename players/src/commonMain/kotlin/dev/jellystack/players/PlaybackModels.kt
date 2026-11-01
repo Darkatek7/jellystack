@@ -159,6 +159,12 @@ enum class SubtitleFormat {
     VTT,
     PGS,
     SUP,
+
+    /**
+     * DVD (VobSub), DVB and XSUB bitmaps. Neither the `.sup` decoder nor Media3 renders them, so Jellyfin burns
+     * them into the video instead of the app ever fetching them.
+     */
+    BITMAP_BURN_IN,
     ASS,
     SSA,
     UNKNOWN,
@@ -166,7 +172,11 @@ enum class SubtitleFormat {
 
 /** Bitmap subtitles cannot be converted to text by Jellyfin; they are burned in or rendered from the container. */
 internal val SubtitleFormat.isImageBased: Boolean
-    get() = this == SubtitleFormat.PGS || this == SubtitleFormat.SUP
+    get() = this == SubtitleFormat.PGS || this == SubtitleFormat.SUP || this == SubtitleFormat.BITMAP_BURN_IN
+
+/** The server has to burn this subtitle into the video; selecting it rules out Direct Play and video copy. */
+internal val SubtitleFormat.requiresServerBurnIn: Boolean
+    get() = this == SubtitleFormat.BITMAP_BURN_IN
 
 data class SubtitleTrack(
     val id: String,
@@ -383,7 +393,8 @@ internal fun JellyfinMediaStream.toSubtitleTrack(): SubtitleTrack? {
             "srt", "subrip" -> SubtitleFormat.SRT
             "webvtt", "vtt" -> SubtitleFormat.VTT
             "pgs", "pgssub", "hdmv_pgs_subtitle" -> SubtitleFormat.PGS
-            "sup", "dvdsub", "dvd_subtitle", "dvbsub", "dvb_subtitle", "xsub", "vobsub" -> SubtitleFormat.SUP
+            "sup" -> SubtitleFormat.SUP
+            "dvdsub", "dvd_subtitle", "dvbsub", "dvb_subtitle", "xsub", "vobsub" -> SubtitleFormat.BITMAP_BURN_IN
             "ass" -> SubtitleFormat.ASS
             "ssa" -> SubtitleFormat.SSA
             else -> SubtitleFormat.UNKNOWN

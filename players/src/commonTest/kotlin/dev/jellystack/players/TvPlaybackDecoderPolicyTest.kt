@@ -1,5 +1,6 @@
 package dev.jellystack.players
 
+import dev.jellystack.network.jellyfin.JellyfinDeviceProfileDto
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -219,11 +220,200 @@ class TvPlaybackDecoderPolicyTest {
         )
     }
 
+    @Test
+    fun passthroughOnlyCodecsAreDirectPlayedInMkvButNeverOfferedAsTranscodeTargets() {
+        val profile =
+            PlaybackDeviceProfileFactory.create(
+                name = "Soundbar TV",
+                capabilities =
+                    selectTvDecoderCapabilities(
+                        passthroughSnapshot(
+                            supported =
+                                setOf(
+                                    PlaybackAudioCodec.AAC,
+                                    PlaybackAudioCodec.EAC3,
+                                    PlaybackAudioCodec.DTS,
+                                    PlaybackAudioCodec.TRUEHD,
+                                ),
+                            channels =
+                                mapOf(
+                                    PlaybackAudioCodec.AAC to 2,
+                                    PlaybackAudioCodec.EAC3 to 6,
+                                    PlaybackAudioCodec.DTS to 8,
+                                    PlaybackAudioCodec.TRUEHD to 8,
+                                ),
+                        ),
+                    ),
+            )
+
+        val mkvAudio =
+            profile.directPlayProfiles
+                .single { it.container == "mkv" }
+                .audioCodec
+                .split(',')
+        assertTrue("dts" in mkvAudio && "truehd" in mkvAudio, mkvAudio.toString())
+        profile.directPlayProfiles.filter { it.container != "mkv" }.forEach { direct ->
+            assertFalse("dts" in direct.audioCodec || "truehd" in direct.audioCodec, direct.toString())
+        }
+        profile.transcodingProfiles.forEach { transcode ->
+            assertFalse("dts" in transcode.audioCodec || "truehd" in transcode.audioCodec, transcode.toString())
+        }
+        assertEquals("eac3,aac", profile.transcodingProfiles.first().audioCodec)
+        assertEquals("6", profile.transcodingProfiles.first().maxAudioChannels)
+        assertEquals("8", profile.audioChannelLimit("dts"))
+        assertEquals("8", profile.audioChannelLimit("truehd"))
+    }
+
+    @Test
+    fun coreOnlyDtsSinkKeepsTheDtsChannelLimitAtFiveDotOne() {
+        val profile =
+            PlaybackDeviceProfileFactory.create(
+                name = "Core DTS soundbar",
+                capabilities =
+                    selectTvDecoderCapabilities(
+                        passthroughSnapshot(
+                            supported = setOf(PlaybackAudioCodec.AAC, PlaybackAudioCodec.DTS),
+                            channels = mapOf(PlaybackAudioCodec.AAC to 2, PlaybackAudioCodec.DTS to 6),
+                        ),
+                    ),
+            )
+
+        assertEquals("6", profile.audioChannelLimit("dts"))
+    }
+
+    @Test
+    fun stereoOnlySinkNeverGetsDtsOrTrueHd() {
+        val profile =
+            PlaybackDeviceProfileFactory.create(
+                name = "Stereo TV",
+                capabilities =
+                    selectTvDecoderCapabilities(
+                        passthroughSnapshot(
+                            supported = setOf(PlaybackAudioCodec.AAC),
+                            channels = mapOf(PlaybackAudioCodec.AAC to 2),
+                        ),
+                    ),
+            )
+
+        assertTrue(profile.directPlayProfiles.none { "dts" in it.audioCodec || "truehd" in it.audioCodec })
+        assertTrue(profile.codecProfiles.none { it.codec == "dts" || it.codec == "truehd" })
+    }
+
+    @Test
+    fun dolbyVisionProfile5IsNotDirectPlayedWithoutADolbyVisionDecoder() {
+        val ranges = hevcRanges(hdr = setOf(PlaybackHdrFormat.HDR10, PlaybackHdrFormat.HLG), displaySupportsDolbyVision = true)
+
+        assertFalse(PlaybackVideoRange.DOVI in ranges)
+        assertFalse(PlaybackVideoRange.DOVI_WITH_EL in ranges)
+    }
+
+    @Test
+    fun dolbyVisionProfile8WithHdr10BaseLayerDirectPlaysOnHdrHevcHardware() {
+        val ranges = hevcRanges(hdr = setOf(PlaybackHdrFormat.HDR10), displaySupportsDolbyVision = false)
+
+        assertEquals(
+            setOf(
+                PlaybackVideoRange.SDR,
+                PlaybackVideoRange.DOVI_WITH_SDR,
+                PlaybackVideoRange.HDR10,
+                PlaybackVideoRange.HDR10_PLUS,
+                PlaybackVideoRange.DOVI_WITH_HDR10,
+                PlaybackVideoRange.DOVI_WITH_HDR10_PLUS,
+            ),
+            ranges,
+        )
+        assertFalse(PlaybackVideoRange.HLG in ranges)
+    }
+
+    @Test
+    fun pureDolbyVisionNeedsADecoderAndADisplayThatListsDolbyVision() {
+        val hdr = setOf(PlaybackHdrFormat.HDR10, PlaybackHdrFormat.HLG)
+
+        assertTrue(PlaybackVideoRange.DOVI in hevcRanges(hdr, setOf(5, 8), displaySupportsDolbyVision = true))
+        assertFalse(PlaybackVideoRange.DOVI in hevcRanges(hdr, setOf(5, 8), displaySupportsDolbyVision = false))
+        assertFalse(PlaybackVideoRange.DOVI in hevcRanges(hdr, setOf(8), displaySupportsDolbyVision = true))
+    }
+
+    @Test
+    fun profile7EnhancementLayerNeedsItsOwnDolbyVisionDecoderLikeProfile5() {
+        val hdr = setOf(PlaybackHdrFormat.HDR10)
+
+        assertTrue(PlaybackVideoRange.DOVI_WITH_EL in hevcRanges(hdr, setOf(7, 8), displaySupportsDolbyVision = true))
+        assertFalse(PlaybackVideoRange.DOVI_WITH_EL in hevcRanges(hdr, setOf(8), displaySupportsDolbyVision = true))
+    }
+
+    @Test
+    fun eightBitOnlyHevcDecoderPlaysOnlySdrBaseLayers() {
+        val ranges = hevcRanges(hdr = emptySet(), displaySupportsDolbyVision = true)
+
+        assertEquals(setOf(PlaybackVideoRange.SDR, PlaybackVideoRange.DOVI_WITH_SDR), ranges)
+    }
+
+    @Test
+    fun decoderWithoutProfileEvidenceLeavesVideoRangeUnrestricted() {
+        val capabilities =
+            selectTvDecoderCapabilities(
+                snapshot(
+                    videoSupport =
+                        mapOf(
+                            PlaybackVideoCodec.HEVC to CapabilitySupport.SUPPORTED,
+                            PlaybackVideoCodec.H264 to CapabilitySupport.SUPPORTED,
+                        ),
+                    videoHardwareSupport = mapOf(PlaybackVideoCodec.HEVC to CapabilitySupport.SUPPORTED),
+                ),
+            )
+
+        assertTrue(capabilities.videoRanges.isEmpty())
+        assertTrue(PlaybackDeviceProfileFactory.create("TV", capabilities).codecProfiles.none { it.type == "Video" })
+    }
+
+    private fun hevcRanges(
+        hdr: Set<PlaybackHdrFormat>,
+        dolbyVisionProfiles: Set<Int> = emptySet(),
+        displaySupportsDolbyVision: Boolean,
+    ): Set<PlaybackVideoRange> =
+        selectTvDecoderCapabilities(
+            snapshot(
+                videoSupport =
+                    mapOf(
+                        PlaybackVideoCodec.HEVC to CapabilitySupport.SUPPORTED,
+                        PlaybackVideoCodec.H264 to CapabilitySupport.SUPPORTED,
+                    ),
+                videoHardwareSupport = mapOf(PlaybackVideoCodec.HEVC to CapabilitySupport.SUPPORTED),
+                hdrSupport = mapOf(PlaybackVideoCodec.HEVC to hdr),
+                dolbyVisionProfiles = dolbyVisionProfiles,
+                displaySupportsDolbyVision = displaySupportsDolbyVision,
+            ),
+        ).videoRanges.getValue(PlaybackVideoCodec.HEVC)
+
+    private fun passthroughSnapshot(
+        supported: Set<PlaybackAudioCodec>,
+        channels: Map<PlaybackAudioCodec, Int>,
+    ) = snapshot(
+        videoSupport = PlaybackVideoCodec.entries.associateWith { CapabilitySupport.SUPPORTED },
+        videoHardwareSupport = PlaybackVideoCodec.entries.associateWith { CapabilitySupport.UNSUPPORTED },
+        audioSupport =
+            PlaybackAudioCodec.entries.associateWith {
+                if (it in supported) CapabilitySupport.SUPPORTED else CapabilitySupport.UNSUPPORTED
+            },
+        maxAudioChannelCounts = channels,
+    )
+
+    private fun JellyfinDeviceProfileDto.audioChannelLimit(codec: String): String =
+        codecProfiles
+            .single { it.codec == codec }
+            .conditions
+            .single { it.property == "AudioChannels" }
+            .value
+
     private fun snapshot(
         videoSupport: Map<PlaybackVideoCodec, CapabilitySupport> = emptyMap(),
         videoHardwareSupport: Map<PlaybackVideoCodec, CapabilitySupport> = emptyMap(),
         audioSupport: Map<PlaybackAudioCodec, CapabilitySupport> = emptyMap(),
         maxAudioChannelCounts: Map<PlaybackAudioCodec, Int> = emptyMap(),
+        hdrSupport: Map<PlaybackVideoCodec, Set<PlaybackHdrFormat>> = emptyMap(),
+        dolbyVisionProfiles: Set<Int> = emptySet(),
+        displaySupportsDolbyVision: Boolean = false,
     ): PlaybackCapabilitySnapshot =
         PlaybackCapabilitySnapshot(
             videoSupport = videoSupport,
@@ -231,5 +421,8 @@ class TvPlaybackDecoderPolicyTest {
             audioSupport = audioSupport,
             maxAudioChannelCounts = maxAudioChannelCounts,
             inspectionCompleteness = PlaybackCapabilityInspection.COMPLETE,
+            hdrSupport = hdrSupport,
+            dolbyVisionProfiles = dolbyVisionProfiles,
+            displaySupportsDolbyVision = displaySupportsDolbyVision,
         )
 }

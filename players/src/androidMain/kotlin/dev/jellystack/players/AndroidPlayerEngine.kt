@@ -9,8 +9,6 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
-import androidx.media3.common.C.COLOR_TRANSFER_HLG
-import androidx.media3.common.C.COLOR_TRANSFER_ST2084
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
@@ -579,12 +577,7 @@ class AndroidPlayerEngine(
             height = video?.height?.takeIf { it > 0 },
             videoBitrate = video?.bitrate?.takeIf { it > 0 },
             frameRate = video?.frameRate?.takeIf { it > 0f },
-            hdr =
-                when (transfer) {
-                    COLOR_TRANSFER_ST2084 -> "HDR10/PQ"
-                    COLOR_TRANSFER_HLG -> "HLG"
-                    else -> null
-                },
+            hdr = hdrStatsLabel(video?.sampleMimeType, video?.codecs, transfer),
             bufferedDurationMs = player.totalBufferedDuration.coerceAtLeast(0L),
             droppedFrames = player.videoDecoderCounters?.droppedBufferCount,
         )
@@ -787,6 +780,7 @@ class AndroidPlayerEngine(
                 SubtitleFormat.PGS,
                 SubtitleFormat.SUP,
                 -> mime == MimeTypes.APPLICATION_PGS || codecsOrEmpty == MimeTypes.APPLICATION_PGS
+                SubtitleFormat.BITMAP_BURN_IN -> false
                 SubtitleFormat.UNKNOWN -> true
             }
         }

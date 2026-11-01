@@ -75,7 +75,7 @@ class MainActivity : AppCompatActivity() {
                 playbackSourceResolver =
                     JellyfinPlaybackSourceResolver(
                         playbackInfoService = NetworkJellyfinPlaybackInfoService(),
-                        deviceProfileProvider = AndroidTvPlaybackDeviceProfileProvider(),
+                        deviceProfileProvider = AndroidTvPlaybackDeviceProfileProvider(applicationContext),
                         clientVersion = BuildConfig.VERSION_NAME,
                     ),
                 playerEngine = playerEngine,
@@ -155,7 +155,7 @@ class MainActivity : AppCompatActivity() {
             playbackSourceResolver =
                 JellyfinPlaybackSourceResolver(
                     playbackInfoService = playbackInfoService,
-                    deviceProfileProvider = AndroidTvPlaybackDeviceProfileProvider(),
+                    deviceProfileProvider = AndroidTvPlaybackDeviceProfileProvider(applicationContext),
                     clientVersion = BuildConfig.VERSION_NAME,
                 ),
             playerEngine = trailerPreviewEngine,

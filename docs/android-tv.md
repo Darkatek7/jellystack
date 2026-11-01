@@ -57,12 +57,19 @@ Test at minimum:
 
 Playback requests Direct Play first. Jellyfin approves it only when container, video codec and the selected audio track fit the device profile; otherwise the server returns its own stream and transcodes unsupported audio to the best codec the TV reported (EAC3, then AC3, AAC, MP3), copying video and any supported audio bit-identically. Switching to a track the TV cannot decode asks the server for a new stream. If audio output does not start, playback falls back once to server-selected stereo AAC HLS. Check Stats for Nerds and the debug log line `Playback decision` when testing DTS or TrueHD sources.
 
+DTS and TrueHD are never encoder targets (the server cannot encode them), so they only appear as Direct Play inputs in Matroska, and only when the audio output route takes them as a bitstream. The profile is built from a fresh probe for every playback: Media3's `AudioCapabilities` (the logic ExoPlayer's audio sink uses, including the system surround-sound setting, HDMI/ARC and the AudioManager direct profiles on API 29+) decides which of AC3, EAC3, DTS and TrueHD pass through and with how many channels, and that is merged with the decoder list. A TV on stereo PCM or Bluetooth gets none of them, so those tracks are transcoded; a soundbar plugged in later changes the next playback, not the one running. DTS has one ceiling for all flavours (6 for core-only sinks, 8 with DTS-HD), because Jellyfin reports every DTS variant as `dts`.
+
+## Video range and Dolby Vision
+
+Direct Play of HEVC and AV1 is limited with a `VideoRangeType` condition on the codec profile (not required, so a stream the server cannot classify is not blocked). Hardware decoder profile levels give HDR10 and HLG (a `Main10` decoder counts as both; the display is not consulted, the device tone-maps). Dolby Vision streams with an HDR10, HLG or SDR base layer (`DOVIWithHDR10`, `DOVIWithHLG`, `DOVIWithSDR`, `DOVIWithHDR10Plus`) play as that base layer on any such decoder, because Media3 falls back to the plain HEVC/AV1 decoder for Dolby Vision profile 8 and AV1 profile 10. Pure profile 5 (`DOVI`) and profile 7 (`DOVIWithEL`) have no such fallback, so they are only direct-played with a hardware Dolby Vision decoder for that profile on a display that lists Dolby Vision; otherwise the server transcodes them. A decoder that reports no profile levels leaves the codec unrestricted. Stats for Nerds shows `Dolby Vision P<profile>` for Dolby Vision tracks.
+
+Bitmap subtitles: PGS is rendered by the player. DVD (VobSub), DVB and XSUB subtitles are never fetched as `.sup`; selecting one, also during Direct Play, renegotiates with the server, which burns it into a transcoded stream.
+
 ## Video playback
 
 - Decoder fallback is enabled: if the preferred (usually hardware) decoder fails to start, Media3 tries the next decoder before the error reaches the server-side fallback chain.
 - Picture size (Fit, Zoom, Stretch) is in the player's More panel and is remembered across titles and app restarts.
 - Settings > Playback > Match refresh rate (off by default) switches the display, while the player is open, to a mode with the same resolution and a refresh rate that is an integer multiple of the video frame rate (for example 23.976 fps on 23.976, 47.95 or 119.88 Hz). The frame rate is the one of the Media3 video format. The mode is requested through the window's `preferredDisplayModeId`, because Fire TV runs Android 11 and Media3's frame-rate strategy needs Android 12. The previous preference is restored when the player closes. Switching blanks the screen briefly, and Home trailers never switch. Verify on each Fire TV and Google TV model that the display actually changes mode.
-
 ## Remote controls
 
 - Navigation rail: hidden while the content has focus; Left at the content's left edge or Back slides it in

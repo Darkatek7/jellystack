@@ -121,9 +121,17 @@ class JellyfinPlaybackSourceResolver(
                 ?.trim()
                 ?.takeIf(String::isNotEmpty)
                 ?: PlaybackVideoCodec.H264.jellyfinName
+        // Subtitles the player can render itself are sideloaded; a missing method would make the server burn them
+        // in. Bitmap (PGS) subtitles only qualify for devices whose profile accepts them as external streams.
+        val externalPgsSupported = deviceProfile.acceptsExternalPgsSubtitles
+        val selectedSubtitleFormat = selection.subtitleTracks.firstOrNull { it.streamIndex == subtitleStreamIndex }?.format
+        val deliverSubtitleExternally =
+            selectedSubtitleFormat?.let { format -> !format.requiresServerBurnIn && (!format.isImageBased || externalPgsSupported) } == true
+        // Burning in needs a video transcode: neither Direct Play nor copying the video can carry the subtitle.
+        val burnsInSubtitle = selectedSubtitleFormat?.requiresServerBurnIn == true
         val canCopyVideoIntoPreferredHls =
-            canRemuxVideoOnServer && (selectedVideoCodec == null || copyTranscodeProfile != null)
-        val allowDirectPlayback = isAuto && !forceAnyTranscoding
+            canRemuxVideoOnServer && !burnsInSubtitle && (selectedVideoCodec == null || copyTranscodeProfile != null)
+        val allowDirectPlayback = isAuto && !forceAnyTranscoding && !burnsInSubtitle
         val audioTarget =
             resolveAudioTranscodeTarget(
                 deviceProfile = deviceProfile,
@@ -133,14 +141,6 @@ class JellyfinPlaybackSourceResolver(
                 preferSourceCodec = usesBestAudioTarget && !forceStereoAac && !options.forceTranscoding,
             )
         val allowAudioStreamCopy = !options.forceTranscoding && !forceStereoAac
-        // Subtitles the player can render itself are sideloaded; a missing method would make the server burn them
-        // in. Bitmap (PGS) subtitles only qualify for devices whose profile accepts them as external streams.
-        val externalPgsSupported = deviceProfile.acceptsExternalPgsSubtitles
-        val deliverSubtitleExternally =
-            selection.subtitleTracks
-                .firstOrNull { it.streamIndex == subtitleStreamIndex }
-                ?.format
-                ?.let { format -> !format.isImageBased || externalPgsSupported } == true
         val fallbackVideoBitrate =
             autoTranscodeVideoBitrate(
                 sourceVideoBitrate = selection.videoBitrate,
@@ -526,7 +526,7 @@ class JellyfinPlaybackSourceResolver(
             // Jellyfin cannot convert bitmap subtitles to text. They are rendered from the container on direct
             // play and handed over as the raw .sup next to a transcode when the device accepts that; otherwise
             // the server burns them in.
-            if (track.format.isImageBased && !sideloadImageBased) return@mapNotNull null
+            if (track.format.requiresServerBurnIn || (track.format.isImageBased && !sideloadImageBased)) return@mapNotNull null
             val streamIndex = track.streamIndex ?: return@mapNotNull null
             val format = subtitleFormat(track.format)
             val path = "$baseUrl/Videos/${request.mediaId}/$mediaSourceId/Subtitles/$streamIndex/stream.${format.extension}"
@@ -574,7 +574,10 @@ class JellyfinPlaybackSourceResolver(
                 SubtitleFormatDescriptor("sup", "sup", PGS_MIME_TYPE)
             SubtitleFormat.ASS, SubtitleFormat.SSA ->
                 SubtitleFormatDescriptor("vtt", "vtt", "text/vtt")
-            SubtitleFormat.UNKNOWN -> SubtitleFormatDescriptor("vtt", "vtt", "text/vtt")
+            // Never requested: buildSubtitleStreams skips tracks the server has to burn in.
+            SubtitleFormat.BITMAP_BURN_IN,
+            SubtitleFormat.UNKNOWN,
+            -> SubtitleFormatDescriptor("vtt", "vtt", "text/vtt")
         }
 
     private fun playbackHeaders(): Map<String, String> =

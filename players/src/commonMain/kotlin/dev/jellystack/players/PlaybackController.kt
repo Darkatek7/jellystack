@@ -713,7 +713,8 @@ class PlaybackController(
             applySubtitleTrackLocally(subtitle)
             return
         }
-        if (current.source.mode == PlaybackMode.HLS) {
+        // A subtitle only the server can burn in needs a new negotiation even while Direct Play is running.
+        if (current.source.mode == PlaybackMode.HLS || subtitle?.format?.requiresServerBurnIn == true) {
             switchHlsSubtitleTrack(current, subtitle)
             return
         }

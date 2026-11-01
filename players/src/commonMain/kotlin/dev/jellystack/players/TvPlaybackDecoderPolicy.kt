@@ -19,11 +19,24 @@ class PlaybackCapabilitySnapshot(
     audioSupport: Map<PlaybackAudioCodec, CapabilitySupport>,
     maxAudioChannelCounts: Map<PlaybackAudioCodec, Int>,
     val inspectionCompleteness: PlaybackCapabilityInspection,
+    hdrSupport: Map<PlaybackVideoCodec, Set<PlaybackHdrFormat>> = emptyMap(),
+    dolbyVisionProfiles: Set<Int> = emptySet(),
+    /** The connected display lists Dolby Vision; false when it does not or when that could not be read. */
+    val displaySupportsDolbyVision: Boolean = false,
 ) {
     val videoSupport: Map<PlaybackVideoCodec, CapabilitySupport> = videoSupport.toMap()
     val videoHardwareSupport: Map<PlaybackVideoCodec, CapabilitySupport> = videoHardwareSupport.toMap()
     val audioSupport: Map<PlaybackAudioCodec, CapabilitySupport> = audioSupport.toMap()
     val maxAudioChannelCounts: Map<PlaybackAudioCodec, Int> = maxAudioChannelCounts.toMap()
+
+    /**
+     * HDR formats the hardware decoders of a codec can decode. A codec without an entry has no evidence
+     * (decoder reported no profiles), which leaves it unrestricted in the profile.
+     */
+    val hdrSupport: Map<PlaybackVideoCodec, Set<PlaybackHdrFormat>> = hdrSupport.mapValues { it.value.toSet() }
+
+    /** Dolby Vision profile numbers (5, 7, 8, 10, ...) a hardware Dolby Vision decoder can decode. */
+    val dolbyVisionProfiles: Set<Int> = dolbyVisionProfiles.toSet()
 
     fun videoSupport(codec: PlaybackVideoCodec): CapabilitySupport = videoSupport[codec] ?: CapabilitySupport.UNKNOWN
 
@@ -96,9 +109,10 @@ fun selectTvDecoderCapabilities(snapshot: PlaybackCapabilitySnapshot): PlaybackD
                 add(PlaybackVideoCodec.H264)
             }
         }
+    // Passthrough-only codecs cannot be an HLS encoder target: the server cannot encode them.
     val transcodeAudioCodecs =
         buildSet {
-            addAll(directAudioCodecs)
+            addAll(directAudioCodecs - PASSTHROUGH_ONLY_AUDIO_CODECS)
             if (
                 needsInteroperableFallback &&
                 snapshot.audioSupport(PlaybackAudioCodec.AAC) != CapabilitySupport.UNSUPPORTED
@@ -137,6 +151,7 @@ fun selectTvDecoderCapabilities(snapshot: PlaybackCapabilitySnapshot): PlaybackD
         supportsPgsSubtitles = true,
         // Hardware AV1 plays a server remux as well as Direct Play, so an audio-only transcode keeps the video.
         hlsFmp4VideoCopyCodecs = directVideoCodecs.filterTo(mutableSetOf()) { it == PlaybackVideoCodec.AV1 },
+        videoRanges = tvVideoRanges(snapshot, directVideoCodecs),
     )
 }
 
@@ -148,6 +163,8 @@ private val ADVANCED_VIDEO_CODECS =
     )
 
 private const val CONSERVATIVE_UNKNOWN_CHANNEL_COUNT = 2
+
+private val PASSTHROUGH_ONLY_AUDIO_CODECS = setOf(PlaybackAudioCodec.DTS, PlaybackAudioCodec.TRUEHD)
 
 private val TV_TRANSCODE_AUDIO_PREFERENCE =
     listOf(
@@ -171,5 +188,7 @@ private val PlaybackAudioCodec.safeMaximumChannelCount: Int
             PlaybackAudioCodec.OPUS,
             PlaybackAudioCodec.VORBIS,
             PlaybackAudioCodec.FLAC,
+            PlaybackAudioCodec.DTS,
+            PlaybackAudioCodec.TRUEHD,
             -> 8
         }
