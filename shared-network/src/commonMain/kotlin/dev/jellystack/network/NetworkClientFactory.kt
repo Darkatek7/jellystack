@@ -17,7 +17,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.isSuccess
-import io.ktor.serialization.kotlinx.json.json
+import io.ktor.serialization.kotlinx.KotlinxSerializationConverter
 import kotlinx.coroutines.CancellationException
 import kotlinx.io.IOException
 import kotlinx.serialization.json.Json
@@ -44,7 +44,7 @@ object NetworkClientFactory {
     fun create(config: ClientConfig = ClientConfig()): HttpClient {
         val block: HttpClientConfig<*>.() -> Unit = {
             install(ContentNegotiation) {
-                json(config.json)
+                register(ContentType.Application.Json, OffMainContentConverter(KotlinxSerializationConverter(config.json)))
             }
             install(HttpTimeout) {
                 requestTimeoutMillis = config.requestTimeoutMillis

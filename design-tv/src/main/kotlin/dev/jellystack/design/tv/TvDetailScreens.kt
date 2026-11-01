@@ -761,7 +761,7 @@ internal fun TvJellyfinDetailScreen(
     val visibleEpisodes = activeSeason?.episodes ?: episodes
     LaunchedEffect(route.itemId, initialItem, loadRevision) {
         error = null
-        val detailWasCached = runSuspendCatching { repository.cachedItemDetail(route.itemId) != null }.getOrDefault(false)
+        val detailWasCached = runSuspendCatching { repository.hasCachedItemDetail(route.itemId) }.getOrDefault(false)
         runSuspendCatching {
             val loaded =
                 loadTvJellyfinDetailBase(

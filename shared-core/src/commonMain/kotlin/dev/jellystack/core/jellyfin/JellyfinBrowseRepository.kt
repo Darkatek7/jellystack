@@ -21,6 +21,9 @@ import dev.jellystack.network.jellyfin.JellyfinMediaSourceDto
 import dev.jellystack.network.jellyfin.JellyfinMediaStreamDto
 import io.ktor.client.plugins.ResponseException
 import io.ktor.client.statement.bodyAsText
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 import kotlinx.serialization.decodeFromString
@@ -150,6 +153,8 @@ class JellyfinBrowseRepository(
     private val detailStore: JellyfinItemDetailStore,
     private val apiFactory: JellyfinBrowseApiFactory,
     private val clock: Clock = Clock.System,
+    /** Runs JSON encode/decode of cached blobs; pure work only, never repository state. */
+    private val computeDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : OfflinePlaybackProgressReporter,
     JellyfinBrowseRepositoryApi {
     private val cachedApis = mutableMapOf<String, JellyfinBrowseApi>()
@@ -758,14 +763,15 @@ class JellyfinBrowseRepository(
         val detailCacheKey = detailCacheKey(environment.serverKey, itemId)
         val cached = detailStore.get(detailCacheKey)
         if (!forceRefresh && cached != null) {
-            return cached.toDomain()
+            return withContext(computeDispatcher) { cached.toDomain() }
         }
         val api = apiFor(environment)
         val dto = api.fetchItemDetail(environment.userId, itemId)
+        val encodedDetail = withContext(computeDispatcher) { NetworkJson.default.encodeToString(dto) }
         detailStore.upsert(
             JellyfinItemDetailRecord(
                 itemId = detailCacheKey,
-                json = NetworkJson.default.encodeToString(dto),
+                json = encodedDetail,
                 updatedAt = now,
             ),
         )
@@ -789,13 +795,19 @@ class JellyfinBrowseRepository(
                 ),
             )
         }
-        return dto.toDomain()
+        return withContext(computeDispatcher) { dto.toDomain() }
     }
 
     suspend fun cachedItemDetail(itemId: String): JellyfinItemDetail? {
         val environment = environmentProvider.current() ?: return null
         val record = detailStore.get(detailCacheKey(environment.serverKey, itemId)) ?: return null
-        return record.toDomain()
+        return withContext(computeDispatcher) { record.toDomain() }
+    }
+
+    /** Whether [cachedItemDetail] would find something; avoids reading and decoding the stored blob. */
+    suspend fun hasCachedItemDetail(itemId: String): Boolean {
+        val environment = environmentProvider.current() ?: return false
+        return detailStore.exists(detailCacheKey(environment.serverKey, itemId))
     }
 
     suspend fun setPlayedStatus(
@@ -810,16 +822,20 @@ class JellyfinBrowseRepository(
             return getItemDetail(itemId, forceRefresh = true)
         }
 
-        val cachedDto = NetworkJson.default.decodeFromString<JellyfinItemDetailDto>(cachedRecord.json)
-        val mergedUserData =
-            returnedUserData.copy(
-                isFavorite = cachedDto.userData?.isFavorite ?: returnedUserData.isFavorite,
-                played = returnedUserData.played ?: played,
-            )
-        val updatedDto = cachedDto.copy(userData = mergedUserData)
+        val (updatedDto, mergedUserData, updatedJson) =
+            withContext(computeDispatcher) {
+                val cachedDto = NetworkJson.default.decodeFromString<JellyfinItemDetailDto>(cachedRecord.json)
+                val merged =
+                    returnedUserData.copy(
+                        isFavorite = cachedDto.userData?.isFavorite ?: returnedUserData.isFavorite,
+                        played = returnedUserData.played ?: played,
+                    )
+                val updated = cachedDto.copy(userData = merged)
+                Triple(updated, merged, NetworkJson.default.encodeToString(updated))
+            }
         detailStore.upsert(
             cachedRecord.copy(
-                json = NetworkJson.default.encodeToString(updatedDto),
+                json = updatedJson,
                 updatedAt = now,
             ),
         )
@@ -838,7 +854,7 @@ class JellyfinBrowseRepository(
                 ),
             )
         }
-        return updatedDto.toDomain()
+        return withContext(computeDispatcher) { updatedDto.toDomain() }
     }
 
     suspend fun fetchLocalTrailers(itemId: String): List<JellyfinItem> {

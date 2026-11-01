@@ -8,6 +8,7 @@ import dev.jellystack.core.profile.MediaIdentityProvider
 import dev.jellystack.core.profile.MediaProviderIds
 import dev.jellystack.core.profile.ProfileConnectionBinding
 import dev.jellystack.core.profile.SavedMediaRecord
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -65,7 +66,7 @@ class SqlDelightProfileStoreTest {
     @Test
     fun jellyfinProviderIdsRoundTripThroughTheCanonicalItemCache() =
         runTest {
-            val store = SqlDelightJellyfinItemStore(database.jellyfinItemsQueries)
+            val store = SqlDelightJellyfinItemStore(database.jellyfinItemsQueries, Dispatchers.Unconfined)
             val record = jellyfinRecord()
 
             store.upsert(listOf(record))
@@ -90,7 +91,7 @@ class SqlDelightProfileStoreTest {
     @Test
     fun jellyfinFavoritesAreIsolatedByManagedConnectionIdentity() =
         runTest {
-            val favorites = JellyfinFavoritesStore(database)
+            val favorites = JellyfinFavoritesStore(database, Dispatchers.Unconfined)
             val first = favorites.scoped("connection-a")
             val second = favorites.scoped("connection-b")
 
@@ -107,7 +108,7 @@ class SqlDelightProfileStoreTest {
     @Test
     fun legacyFavoritesArePromotedOnceIntoTheExactManagedConnection() =
         runTest {
-            val favorites = JellyfinFavoritesStore(database)
+            val favorites = JellyfinFavoritesStore(database, Dispatchers.Unconfined)
             favorites.replaceAll(setOf("legacy-item"))
 
             val promoted = favorites.scoped("connection-a")
