@@ -10,6 +10,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.jellystack.core.di.JellystackDI
+import dev.jellystack.core.logging.JellystackLog
 import dev.jellystack.core.profile.HouseholdProfile
 import dev.jellystack.core.profile.HouseholdProfileRepository
 import dev.jellystack.core.profile.ProfileConnectionBinding
@@ -40,6 +41,7 @@ internal fun TvAddProfileScreen(
     val serverRepository = remember(koin) { koin.get<ServerRepository>() }
     val autoLinkCoordinator = remember(koin) { koin.get<ProfileSeerrAutoLinkCoordinator>() }
     var settingUp by remember { mutableStateOf(false) }
+    var setupFailed by remember { mutableStateOf(false) }
     val bindingsFlow = remember(profileRepository) { profileRepository.observeBindings() }
     val bindings: List<ProfileConnectionBinding>? by bindingsFlow.collectAsStateWithLifecycle(initialValue = null)
     // Resolved once when the bindings arrive, so later server changes never reset what the user typed.
@@ -58,6 +60,7 @@ internal fun TvAddProfileScreen(
         strings = strings,
         onConnected = { connected ->
             settingUp = true
+            setupFailed = false
             scope.launch {
                 val profile =
                     try {
@@ -65,6 +68,8 @@ internal fun TvAddProfileScreen(
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (_: Throwable) {
+                        JellystackLog.e("Could not set up the new profile")
+                        setupFailed = true
                         settingUp = false
                         return@launch
                     }
@@ -75,5 +80,6 @@ internal fun TvAddProfileScreen(
         refreshExistingAccount = true,
         initialDisplayName = prefill?.name ?: "Jellyfin",
         initialBaseUrl = prefill?.baseUrl.orEmpty(),
+        notice = if (setupFailed) strings.jellyfinConnectionFailed else null,
     )
 }

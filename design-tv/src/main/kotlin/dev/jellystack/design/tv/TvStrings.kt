@@ -436,8 +436,8 @@ internal data class TvStrings(
                 newCode = "Create a new code",
                 cancel = "Cancel",
                 quickConnectHelp =
-                    "Open your Jellyfin profile on another device, choose Quick Connect, " +
-                        "and enter this code.",
+                    "On another device, sign in to Jellyfin with the account for this TV, " +
+                        "choose Quick Connect, and enter this code.",
                 enterCode = "Waiting for approval",
                 noResults = "No results",
                 overview = "Overview",
