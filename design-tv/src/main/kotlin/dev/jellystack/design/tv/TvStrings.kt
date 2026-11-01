@@ -41,6 +41,7 @@ internal data class TvPlayerStrings(
     val videoScaleFit: String,
     val videoScaleZoom: String,
     val videoScaleStretch: String,
+    val sync: TvPlayerSyncStrings,
 )
 
 /** Labels of the settings screens. */
@@ -599,6 +600,7 @@ internal data class TvStrings(
                         videoScaleFit = "Fit",
                         videoScaleZoom = "Zoom (crop)",
                         videoScaleStretch = "Stretch",
+                        sync = TvPlayerSyncStrings.ENGLISH,
                     ),
                 seasonNumber = "Season %d",
                 specials = "Specials",
@@ -893,6 +895,7 @@ internal data class TvStrings(
                         videoScaleFit = "Einpassen",
                         videoScaleZoom = "Zoom (zuschneiden)",
                         videoScaleStretch = "Strecken",
+                        sync = TvPlayerSyncStrings.GERMAN,
                     ),
                 seasonNumber = "Staffel %d",
                 specials = "Spezialfolgen",

@@ -9,6 +9,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.Renderer
+import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.SingleSampleMediaSource
@@ -67,10 +68,20 @@ internal fun ResolvedSubtitle.toSubtitleConfiguration(): SubtitleConfiguration =
 @UnstableApi
 internal class JellystackRenderersFactory(
     context: Context,
+    private val delays: PlaybackDelays = PlaybackDelays(),
 ) : DefaultRenderersFactory(context) {
     init {
         setEnableDecoderFallback(true)
     }
+
+    override fun buildAudioSink(
+        context: Context,
+        enableFloatOutput: Boolean,
+        enableAudioOutputPlaybackParams: Boolean,
+    ): AudioSink? =
+        super
+            .buildAudioSink(context, enableFloatOutput, enableAudioOutputPlaybackParams)
+            ?.let { DelayedAudioSink(it, delays) }
 
     override fun buildTextRenderers(
         context: Context,
@@ -81,7 +92,7 @@ internal class JellystackRenderersFactory(
     ) {
         val renderer = TextRenderer(output, outputLooper, JellystackSubtitleDecoderFactory)
         renderer.experimentalSetLegacyDecodingEnabled(true)
-        out.add(renderer)
+        out.add(DelayedTextRenderer(renderer, delays))
     }
 }
 

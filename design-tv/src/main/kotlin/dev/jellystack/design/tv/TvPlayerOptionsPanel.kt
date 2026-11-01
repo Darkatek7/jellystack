@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.AspectRatio
+import androidx.compose.material.icons.filled.AvTimer
 import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
@@ -201,6 +202,7 @@ internal fun TvPlayerOptionsPanel(
     chapterSummary: String? = null,
     videoScale: VideoScale = VideoScale.FIT,
     onVideoScaleSelected: (VideoScale) -> Unit = {},
+    delays: TvPlaybackDelays? = null,
 ) {
     val firstFocus = remember(navigation.current) { FocusRequester() }
     val audioFocus = remember { FocusRequester() }
@@ -208,6 +210,7 @@ internal fun TvPlayerOptionsPanel(
     val qualityFocus = remember { FocusRequester() }
     val speedFocus = remember { FocusRequester() }
     val videoScaleFocus = remember { FocusRequester() }
+    val syncAdjustmentFocus = remember { FocusRequester() }
     val statsFocus = remember { FocusRequester() }
     val syncFocus = remember { FocusRequester() }
     val chaptersFocus = remember { FocusRequester() }
@@ -219,6 +222,7 @@ internal fun TvPlayerOptionsPanel(
             TvPlayerPanel.QUALITY -> qualityFocus
             TvPlayerPanel.SPEED -> speedFocus
             TvPlayerPanel.VIDEO_SCALE -> videoScaleFocus
+            TvPlayerPanel.SYNC -> syncAdjustmentFocus
             TvPlayerPanel.SYNCPLAY -> syncFocus
             else -> statsFocus
         }
@@ -308,6 +312,18 @@ internal fun TvPlayerOptionsPanel(
                             { onOpenFromMore(TvPlayerPanel.VIDEO_SCALE) },
                             Modifier.focusRequester(videoScaleFocus),
                         )
+                    }
+                    delays?.let { delays ->
+                        item {
+                            TvPlayerOptionRow(
+                                Icons.Default.AvTimer,
+                                strings.player.sync.adjustment,
+                                delays.summary(strings),
+                                !delays.isDefault,
+                                { onOpenFromMore(TvPlayerPanel.SYNC) },
+                                Modifier.focusRequester(syncAdjustmentFocus),
+                            )
+                        }
                     }
                     item {
                         TvPlayerOptionRow(
@@ -439,6 +455,12 @@ internal fun TvPlayerOptionsPanel(
                             { onVideoScaleSelected(scale) },
                             if (index == 0) Modifier.focusRequester(firstFocus) else Modifier,
                         )
+                    }
+                }
+            TvPlayerPanel.SYNC ->
+                delays?.let {
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        tvPlayerDelayRows(it, state.subtitleTrack != null, strings, Modifier.focusRequester(firstFocus))
                     }
                 }
             TvPlayerPanel.SYNCPLAY ->
@@ -617,6 +639,13 @@ private fun VideoScale.label(strings: TvStrings): String =
         VideoScale.STRETCH -> strings.player.videoScaleStretch
     }
 
+/** The non-zero delays, such as `Audio +150 ms · Subtitles -50 ms`. */
+private fun TvPlaybackDelays.summary(strings: TvStrings): String =
+    listOfNotNull(
+        "${strings.audio} ${formatDelayMs(audioMs)}".takeIf { audioMs != 0 },
+        "${strings.subtitles} ${formatDelayMs(subtitleMs)}".takeIf { subtitleMs != 0 },
+    ).joinToString(" · ").ifEmpty { strings.player.sync.adjustmentNone }
+
 private fun Float.cleanSpeed(): String = if (this % 1f == 0f) toInt().toString() else toString()
 
 private fun SyncPlayErrorCode.message(strings: TvStrings): String =
@@ -635,6 +664,7 @@ private fun TvPlayerPanel.title(strings: TvStrings): String =
         TvPlayerPanel.QUALITY -> strings.quality
         TvPlayerPanel.SPEED -> strings.playbackSpeed
         TvPlayerPanel.VIDEO_SCALE -> strings.player.videoScale
+        TvPlayerPanel.SYNC -> strings.player.sync.adjustment
         TvPlayerPanel.SYNCPLAY -> strings.syncPlay
         TvPlayerPanel.CHAPTERS -> strings.player.chapters
         TvPlayerPanel.EPISODES -> strings.episodes

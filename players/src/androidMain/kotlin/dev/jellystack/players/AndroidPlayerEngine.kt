@@ -74,6 +74,7 @@ class AndroidPlayerEngine(
     private var pendingSubtitleSelectionConfirmationId: String? = null
     private var videoSurface: PlayerView? = null
     private var videoScale: VideoScale = VideoScale.FIT
+    private val delays = PlaybackDelays()
     private var subtitleTextSize: SubtitleTextSize = SubtitleTextSize.SYSTEM
     private var subtitleBackground: SubtitleBackground = SubtitleBackground.SYSTEM
     private var subtitleBottomPaddingFraction: Float = SubtitleView.DEFAULT_BOTTOM_PADDING_FRACTION
@@ -97,7 +98,7 @@ class AndroidPlayerEngine(
 
     private fun createExoPlayer(preferHighestSupportedBitrate: Boolean): ExoPlayer =
         ExoPlayer
-            .Builder(appContext, JellystackRenderersFactory(appContext))
+            .Builder(appContext, JellystackRenderersFactory(appContext, delays))
             .setLoadControl(PlaybackBufferSizing.loadControl(appContext))
             .build()
             .apply {
@@ -296,6 +297,17 @@ class AndroidPlayerEngine(
         videoScale = scale
         videoSurface?.let(::applyVideoScale)
     }
+
+    override fun setAudioDelayMs(delayMs: Int) {
+        val previousUs = delays.audioUs
+        delays.setAudioMs(delayMs)
+        // The audio clock never runs backwards, so the picture would freeze until it caught up with a large reduction.
+        if (previousUs - delays.audioUs >= LARGE_AUDIO_DELAY_REDUCTION_US) {
+            exoPlayerIfCreated?.takeIf { it.playbackState == Player.STATE_READY }?.let { it.seekTo(it.currentPosition) }
+        }
+    }
+
+    override fun setSubtitleDelayMs(delayMs: Int) = delays.setSubtitleMs(delayMs)
 
     private fun applyVideoScale(playerView: PlayerView) {
         playerView.resizeMode =
@@ -787,6 +799,7 @@ class AndroidPlayerEngine(
     }
 
     private companion object {
+        const val LARGE_AUDIO_DELAY_REDUCTION_US = 500_000L
         const val MIN_SUBTITLE_BOTTOM_PADDING_FRACTION = 0f
         const val MAX_SUBTITLE_BOTTOM_PADDING_FRACTION = 1f
         private const val AUDIO_OUTPUT_TIMEOUT_MS = 1_500L

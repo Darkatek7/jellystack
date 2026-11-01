@@ -120,6 +120,15 @@ interface PlayerEngine {
      */
     fun setVideoScale(scale: VideoScale) = Unit
 
+    /**
+     * Delays the audio by [delayMs] against the picture (negative: earlier), within [PlaybackDelay]'s range.
+     * It belongs to the title being played: the caller sets it back to 0 for the next title. No-op by default.
+     */
+    fun setAudioDelayMs(delayMs: Int) = Unit
+
+    /** Delays the subtitles by [delayMs] (negative: earlier), with the same scope as [setAudioDelayMs]. */
+    fun setSubtitleDelayMs(delayMs: Int) = Unit
+
     fun release()
 }
 

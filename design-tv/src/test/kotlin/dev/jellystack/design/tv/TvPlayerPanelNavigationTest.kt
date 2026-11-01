@@ -30,4 +30,17 @@ class TvPlayerPanelNavigationTest {
 
         assertEquals(TvPlayerPanel.NONE, state.current)
     }
+
+    @Test
+    fun syncPanelReturnsToMoreAndRestoresItsRow() {
+        val state =
+            TvPlayerPanelNavigation
+                .closed()
+                .openMore()
+                .openFromMore(TvPlayerPanel.SYNC)
+                .back()
+
+        assertEquals(TvPlayerPanel.MORE, state.current)
+        assertEquals(TvPlayerPanel.SYNC, state.restoreFocusTo)
+    }
 }

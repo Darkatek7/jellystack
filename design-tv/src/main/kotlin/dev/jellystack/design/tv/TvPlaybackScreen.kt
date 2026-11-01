@@ -209,6 +209,7 @@ internal fun TvPlaybackScreen(
     LaunchedEffect(engine, videoScale) {
         engine.setVideoScale(videoScale)
     }
+    val delays = rememberTvPlaybackDelays(engine, playbackState)
     // This screen is the Player route only, so Home trailer previews never switch the display mode.
     TvDisplayModeMatching(
         enabled = matchRefreshRate,
@@ -523,6 +524,7 @@ internal fun TvPlaybackScreen(
                 onStatsToggled = controller::setStatsForNerdsEnabled,
                 videoScale = videoScale,
                 onVideoScaleSelected = onVideoScaleSelected,
+                delays = delays,
                 syncPlay = syncPlay,
                 modifier = Modifier.align(Alignment.CenterEnd),
                 chapterSummary =
