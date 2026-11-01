@@ -14,6 +14,7 @@
 - Get more titles in Direct Play, because Jellyfin now learns what the output really handles, and fall back to the next decoder when one fails to start.
 - Return to the card you left when you move back into a row, and get clearer loading, empty, and error screens.
 - Add another account with fewer presses: the sign-in form goes straight to Connect when the server address is known, and the keyboard only opens after you press OK on a field. If the account that approved the code already has a profile, the app now says so.
+- Start on Android 7 devices, such as older Fire TV sticks, which crashed right after launch.
 
 ## 0.17.3 (TV)
 

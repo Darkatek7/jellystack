@@ -53,7 +53,7 @@ android {
         applicationId = "app.jellystack.mobile"
         minSdk = 24
         targetSdk = 36
-        versionCode = 35
+        versionCode = 36
         versionName = "0.18.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -106,6 +106,8 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // kotlinx-datetime needs java.time, which Android only ships from API 26 while minSdk is 24.
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
@@ -136,6 +138,7 @@ tasks.named("check").configure {
 }
 
 dependencies {
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
     implementation(projects.sharedCore)
     implementation(projects.sharedNetwork)
     implementation(projects.sharedDatabase)

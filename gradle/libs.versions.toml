@@ -22,6 +22,7 @@ napier = "2.7.1"
 serialization = "1.7.3"
 sqldelight = "2.0.2"
 kotlinx-datetime = "0.6.1"
+desugar-jdk-libs = "2.1.5"
 compose-material-icons = "1.7.0"
 kotlin = "2.2.10"
 coil3 = "3.0.0"
@@ -77,6 +78,7 @@ sqldelight-coroutines = { module = "app.cash.sqldelight:coroutines-extensions", 
 sqldelight-android = { module = "app.cash.sqldelight:android-driver", version.ref = "sqldelight" }
 sqldelight-native = { module = "app.cash.sqldelight:native-driver", version.ref = "sqldelight" }
 sqldelight-driver-jvm = { module = "app.cash.sqldelight:sqlite-driver", version.ref = "sqldelight" }
+desugar-jdk-libs = { module = "com.android.tools:desugar_jdk_libs", version.ref = "desugar-jdk-libs" }
 kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinx-datetime" }
 compose-material-icons = { module = "org.jetbrains.compose.material:material-icons-extended", version.ref = "compose-material-icons" }
 compose-material = { module = "org.jetbrains.compose.material:material", version.ref = "compose" }
