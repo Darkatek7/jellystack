@@ -32,7 +32,18 @@ internal class TvFocusCoordinator<T : Any>(
         var count: Int,
         var fallback: Boolean,
         var focusTarget: TvFocusTarget?,
+        var horizontalCenter: (() -> Float)? = null,
     )
+
+    /**
+     * The registered target with the latest position. Positions change while a row scrolls, so they are read on demand
+     * from [TargetRegistration.horizontalCenter] instead of being re-registered with every layout pass.
+     */
+    private fun TargetRegistration.currentFocusTarget(): TvFocusTarget? {
+        val target = focusTarget ?: return null
+        val center = horizontalCenter?.invoke()?.takeIf(Float::isFinite) ?: return target
+        return target.copy(horizontalCenter = center)
+    }
 
     private data class Registration<T>(
         val targets: LinkedHashMap<T, TargetRegistration> = linkedMapOf(),
@@ -92,6 +103,24 @@ internal class TvFocusCoordinator<T : Any>(
         }
     }
 
+    /**
+     * Lets [target]'s registration report its current [horizontalCenter] to focus restoration. The center changes while
+     * a row scrolls, so it is read on demand and never re-registered.
+     */
+    fun trackHorizontalCenter(
+        routeKey: Any,
+        targetId: Any,
+        target: T,
+        horizontalCenter: () -> Float,
+    ) {
+        routes[routeKey]
+            ?.attached
+            ?.get(targetId)
+            ?.targets
+            ?.get(target)
+            ?.horizontalCenter = horizontalCenter
+    }
+
     fun unregister(
         routeKey: Any,
         target: T,
@@ -128,7 +157,7 @@ internal class TvFocusCoordinator<T : Any>(
             route.rememberedId = targetId
             onUserMovement()
         }
-        return focusTargets(routeKey).firstOrNull { it.targetId == targetId } ?: registration.focusTarget
+        return focusTargets(routeKey).firstOrNull { it.targetId == targetId } ?: registration.currentFocusTarget()
     }
 
     fun focusTargets(routeKey: Any): List<TvFocusTarget> {
@@ -137,7 +166,7 @@ internal class TvFocusCoordinator<T : Any>(
                 ?.attached
                 ?.mapNotNull { (targetId, registration) ->
                     registration.targets.values
-                        .firstNotNullOfOrNull { it.focusTarget }
+                        .firstNotNullOfOrNull { it.currentFocusTarget() }
                         ?.takeIf { it.targetId == targetId }
                 }.orEmpty()
         val attachedById = attachedTargets.associateBy(TvFocusTarget::targetId)

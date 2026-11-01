@@ -31,6 +31,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -293,6 +294,15 @@ internal fun TvSelectedLibraryScreen(
             }
         val trailerPlaying =
             focusedItem?.let { item -> trailerPreviewState.showsTvStagePreview(item.id, focusedPresentationId) } == true
+        val currentOnPlayItem by rememberUpdatedState(onPlayItem)
+        val playback =
+            remember(allKnownItems, strings.play, strings.continueLabel, strings.details) {
+                TvCinematicCardPlayback(
+                    labels = TvCinematicHintLabels(play = strings.play, resume = strings.continueLabel, details = strings.details),
+                    canPlay = { card -> allKnownItems[card.id]?.isBrowseContainer() == false },
+                    onPlay = { card -> allKnownItems[card.id]?.let(currentOnPlayItem) },
+                )
+            }
         TvCinematicBrowse(
             state =
                 TvCinematicBrowseState(
@@ -321,12 +331,7 @@ internal fun TvSelectedLibraryScreen(
                     allKnownItems[card.id]?.open(onOpenItem, onOpenContainer)
                 }
             },
-            playback =
-                TvCinematicCardPlayback(
-                    labels = TvCinematicHintLabels(play = strings.play, resume = strings.continueLabel, details = strings.details),
-                    canPlay = { card -> allKnownItems[card.id]?.isBrowseContainer() == false },
-                    onPlay = { card -> allKnownItems[card.id]?.let(onPlayItem) },
-                ),
+            playback = playback,
             trailer =
                 trailerPreviewEngine?.takeIf { trailerPlaying }?.let { engine ->
                     TvCinematicTrailer(engine, strings.trailer, previewSoundEnabled, previewProgress ?: TvNoTrailerProgress)

@@ -17,26 +17,23 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 
 /**
  * While a trailer plays on the home stage and the remote rests for [TV_HOME_IMMERSIVE_DELAY_MS], the home UI fades
- * out and the trailer has the screen. [interaction] counts key presses: each one brings the UI back at once and
- * starts the wait again, and the key still acts as usual.
+ * out and the trailer has the screen. Each key press in [interactions] brings the UI back at once and starts the wait
+ * again, and the key still acts as usual.
  *
  * Returns how much of the home UI shows: 1 normally, 0 while the trailer has the screen.
  */
 @Composable
 internal fun rememberTvHomeUiAlpha(
     trailerPlaying: Boolean,
-    interaction: Int,
+    interactions: TvInteractionCounter,
 ): State<Float> {
     var immersive by remember { mutableStateOf(false) }
-    LaunchedEffect(trailerPlaying, interaction) {
-        immersive = false
-        if (trailerPlaying) {
-            delay(TV_HOME_IMMERSIVE_DELAY_MS)
-            immersive = true
-        }
+    LaunchedEffect(trailerPlaying, interactions) {
+        interactions.runImmersiveWaits(trailerPlaying) { immersive = it }
     }
     val fadeMs =
         when {
@@ -45,6 +42,18 @@ internal fun rememberTvHomeUiAlpha(
             else -> TV_HOME_UI_FADE_IN_MS
         }
     return animateFloatAsState(if (immersive) 0f else 1f, tween(fadeMs), label = "tv-home-ui-alpha")
+}
+
+/** Shows the UI, and with a [trailerPlaying] trailer hides it again after the remote rested; every key starts over. */
+internal suspend fun TvInteractionCounter.runImmersiveWaits(
+    trailerPlaying: Boolean,
+    setImmersive: (Boolean) -> Unit,
+) = changes.collectLatest {
+    setImmersive(false)
+    if (trailerPlaying) {
+        delay(TV_HOME_IMMERSIVE_DELAY_MS)
+        setImmersive(true)
+    }
 }
 
 /** Draws [content] at [alpha] and leaves it out while it is fully transparent. */

@@ -41,10 +41,12 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
@@ -77,6 +79,7 @@ import dev.jellystack.core.profile.MediaIdentity
 import dev.jellystack.core.profile.MyListEntry
 import dev.jellystack.players.AndroidPlayerEngine
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
@@ -323,7 +326,7 @@ internal fun TvHomeScreen(
             carouselState = carouselState.copy(selectedId = selectedId)
         }
     }
-    var heroInteraction by remember { mutableStateOf(0) }
+    val heroInteractions = remember { TvInteractionCounter() }
     val autoAdvanceHero =
         shouldAutoAdvanceTvHomeHero(
             enabled = spotlightAutoAdvance,
@@ -332,10 +335,13 @@ internal fun TvHomeScreen(
             cardStaged = focusedStageItem != null,
             trailerActive = trailerPreviewState is TvTrailerPreviewState.Armed || trailerPreviewState is TvTrailerPreviewState.Playing,
         )
-    LaunchedEffect(autoAdvanceHero, candidateIds, carouselState.selectedId, heroInteraction) {
+    LaunchedEffect(autoAdvanceHero, candidateIds, carouselState.selectedId, heroInteractions) {
         if (!autoAdvanceHero) return@LaunchedEffect
-        delay(TV_HOME_HERO_AUTO_ADVANCE_MS)
-        carouselState = carouselState.copy(selectedId = nextTvHomeAutoAdvanceId(candidateIds, carouselState.selectedId))
+        // A key press starts the wait again.
+        heroInteractions.changes.collectLatest {
+            delay(TV_HOME_HERO_AUTO_ADVANCE_MS)
+            carouselState = carouselState.copy(selectedId = nextTvHomeAutoAdvanceId(candidateIds, carouselState.selectedId))
+        }
     }
     val openNavigationRail = LocalTvNavigationRailOpener.current
     val heroModel =
@@ -359,7 +365,7 @@ internal fun TvHomeScreen(
     val stageTrailerPlaying =
         heroModel != null &&
             trailerPreviewState.showsTvHomeStagePreview(heroModel.stageItem.id, heroModel.stagePresentationId)
-    val homeUiAlpha = rememberTvHomeUiAlpha(stageTrailerPlaying, heroInteraction)
+    val homeUiAlpha = rememberTvHomeUiAlpha(stageTrailerPlaying, heroInteractions)
     val heroTrailer =
         TvHomeHeroTrailer(
             state = trailerPreviewState,
@@ -375,7 +381,7 @@ internal fun TvHomeScreen(
     Box(
         modifier.fillMaxSize().onPreviewKeyEvent {
             // Any remote input restarts the spotlight timer and brings the home UI back over a trailer.
-            heroInteraction += 1
+            heroInteractions.record()
             false
         },
     ) {
@@ -706,6 +712,7 @@ internal fun TvJellyfinRow(
     bleedStart: Dp = TvLayoutTokens.ContentStart,
     onVerticalMove: (JellyfinItem, TvHomeVerticalDirection) -> Unit = { _, _ -> },
 ) {
+    val focusKeeper = rememberTvRowFocusKeeper(listState, remember(items) { items.map { it.id } })
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         TvSectionTitle(title)
         LazyRow(
@@ -742,10 +749,16 @@ internal fun TvJellyfinRow(
                             TvMediaCardArtworkFit.CROP
                         },
                     onFocused = {
+                        focusKeeper.onFocused(item.id)
                         focusMemory.remember(routeKey, title, item.id, horizontalIndex = index)
                         onPreviewFocus(item, targetId)
                     },
-                    onFocusChanged = { focused -> if (!focused) onPreviewBlur(item, targetId) },
+                    onFocusChanged = { focused ->
+                        if (!focused) {
+                            focusKeeper.onBlurred(item.id)
+                            onPreviewBlur(item, targetId)
+                        }
+                    },
                     modifier =
                         Modifier
                             .tvScreenEntryFocus(screenEntry && index == 0, targetId)
@@ -823,6 +836,7 @@ private fun TvHomeSectionRow(
     onVerticalMove: (String, JellyfinItem?, TvHomeVerticalDirection) -> Unit = { _, _, _ -> },
 ) {
     val rowId = "plugin:${section.id}"
+    val focusKeeper = rememberTvRowFocusKeeper(listState, remember(section.items) { section.items.map { it.id } })
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         TvSectionTitle(section.title)
         LazyRow(
@@ -862,10 +876,16 @@ private fun TvHomeSectionRow(
                             TvMediaCardArtworkFit.CROP
                         },
                     onFocused = {
+                        focusKeeper.onFocused(item.id)
                         focusMemory.remember("home", section.id, item.id, horizontalIndex = index)
                         previewItem?.let { onPreviewFocus(it, targetId) }
                     },
-                    onFocusChanged = { focused -> if (!focused) previewItem?.let { onPreviewBlur(it, targetId) } },
+                    onFocusChanged = { focused ->
+                        if (!focused) {
+                            focusKeeper.onBlurred(item.id)
+                            previewItem?.let { onPreviewBlur(it, targetId) }
+                        }
+                    },
                     modifier =
                         Modifier
                             .tvScreenEntryFocus(screenEntry && index == 0, targetId)
@@ -1280,7 +1300,13 @@ internal fun TvDiscoverScreen(
                 JellyseerrRecommendationRail.entries.filter { rail -> state.rails[rail]?.items?.isNotEmpty() == true }
             }.orEmpty()
     val requestItems = (requests as? JellyseerrRequestsState.Ready)?.requests.orEmpty()
-    val cinematicRows = ready?.let { buildTvDiscoverRows(it, requestItems, strings, isSaved) }
+    // Rebuilt when the recommendations, requests or strings change, or when a title is saved or removed: isSaved reads
+    // state, so the derived value follows it. A focus change in the rows does not come through here.
+    val currentIsSaved by rememberUpdatedState(isSaved)
+    val cinematicRows =
+        remember(ready, requestItems, strings) {
+            derivedStateOf { ready?.let { buildTvDiscoverRows(it, requestItems, strings, currentIsSaved) } }
+        }.value
     val cinematicTargetId = cinematicRows?.initialTargetId
     if (cinematicRows != null && cinematicTargetId != null) {
         TvCinematicDiscoverContent(

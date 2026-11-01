@@ -25,7 +25,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -104,11 +103,25 @@ internal fun TvCinematicBrowse(
     val focusContext = LocalTvFocusContext.current
     val columnState = rememberLazyListState()
     val rowStates = remember { mutableStateMapOf<String, LazyListState>() }
-    val rowHeaderCount = if (state.inlineStatus != null) 1 else 0
+    // The list below depends on these parts of the state only. The focused card changes the state on every move; the
+    // rows must not recompose for it, so they get handlers that stay the same and read the latest callbacks.
+    val rows = state.rows
+    val inlineStatus = state.inlineStatus
+    val currentOnCardFocused by rememberUpdatedState(onCardFocused)
+    val currentOnCardClick by rememberUpdatedState(onCardClick)
+    val handleCardFocused: (TvFocusAnchor, TvCinematicCard) -> Unit =
+        remember(backdropController) {
+            { anchor, card ->
+                backdropController.focus(card)
+                currentOnCardFocused(anchor, card)
+            }
+        }
+    val handleCardClick: (TvCinematicCard) -> Unit = remember { { card -> currentOnCardClick(card) } }
+    val rowHeaderCount = if (inlineStatus != null) 1 else 0
     val targetLocations =
-        remember(state.rows, rowHeaderCount) {
+        remember(rows, rowHeaderCount) {
             buildMap {
-                state.rows.forEachIndexed { rowIndex, row ->
+                rows.forEachIndexed { rowIndex, row ->
                     row.cards.forEachIndexed { cardIndex, card ->
                         put(tvCinematicFocusTargetId(row.id, card.id), Triple(row.id, rowHeaderCount + rowIndex, cardIndex))
                     }
@@ -131,12 +144,12 @@ internal fun TvCinematicBrowse(
         rowState != null
     }
 
-    var interaction by remember { mutableIntStateOf(0) }
-    val uiAlpha = rememberTvHomeUiAlpha(trailerPlaying = trailer != null, interaction = interaction)
+    val interactions = remember { TvInteractionCounter() }
+    val uiAlpha = rememberTvHomeUiAlpha(trailerPlaying = trailer != null, interactions = interactions)
     Box(
         modifier.fillMaxSize().background(TvBackground).onPreviewKeyEvent {
             // Any remote input brings the UI back over a playing trailer.
-            interaction += 1
+            interactions.record()
             false
         },
     ) {
@@ -160,10 +173,10 @@ internal fun TvCinematicBrowse(
                 contentPadding = TvHomeRowsPadding,
                 verticalArrangement = Arrangement.spacedBy(20.dp),
             ) {
-                state.inlineStatus?.let { status ->
+                inlineStatus?.let { status ->
                     item(key = "cinematic-status") { TvCinematicStatusAnchor(status) }
                 }
-                items(items = state.rows, key = TvCinematicRow::id) { row ->
+                items(items = rows, key = TvCinematicRow::id) { row ->
                     val rowState = rememberLazyListState()
                     DisposableEffect(row.id, rowState) {
                         rowStates[row.id] = rowState
@@ -177,14 +190,12 @@ internal fun TvCinematicBrowse(
                             onVerticalMove = { direction ->
                                 resetVerticalFocusToFirstCard &&
                                     focusContext != null &&
-                                    scope.focusFirstCardOfNextRow(state.rows, row.id, direction, focusContext)
+                                    scope.focusFirstCardOfNextRow(rows, row.id, direction, focusContext)
                             },
                             onCardFocused = { card ->
-                                val anchor = TvFocusAnchor(row.id, card.id, TvFocusDestination.SECTION_ITEM)
-                                backdropController.focus(card)
-                                onCardFocused(anchor, card)
+                                handleCardFocused(TvFocusAnchor(row.id, card.id, TvFocusDestination.SECTION_ITEM), card)
                             },
-                            onCardClick = onCardClick,
+                            onCardClick = handleCardClick,
                         )
                     }
                 }

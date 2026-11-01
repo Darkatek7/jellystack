@@ -998,7 +998,9 @@ private fun TvAuthenticatedApp(
                 resolveIdentity = browseRepository::cachedItem,
             )
     }
-    val playbackState by playbackController.state.collectAsStateWithLifecycle()
+    // Held without reading it here: it changes with every position tick, only the player route reads the value.
+    val playbackStates = playbackController.state
+    val playbackStateHolder = playbackStates.collectAsStateWithLifecycle()
     val syncPlayState by syncPlay.state.collectAsStateWithLifecycle()
     val playbackIdentity =
         activeJellyfinServer?.let { server ->
@@ -1021,7 +1023,7 @@ private fun TvAuthenticatedApp(
         signal = remember(koin) { koin.get<AuthExpirySignal>() },
         environmentProvider = environmentProvider,
         sessionRepository = sessionRepository,
-        playback = playbackState,
+        playbackStates = playbackStates,
         syncPlayError = syncPlayState.error,
     )
     LaunchedEffect(sessionState) {
@@ -1094,7 +1096,7 @@ private fun TvAuthenticatedApp(
     val playbackCoordinators =
         rememberTvJellyfinPlaybackCoordinators(
             identity = playbackIdentity,
-            playbackState = playbackState,
+            playbackStates = playbackStates,
             controller = playbackController,
             router = playbackCommandRouter,
             sources =
@@ -1117,7 +1119,7 @@ private fun TvAuthenticatedApp(
 
     TvPlayerRoutePopEffect(
         onPlayerRoute = appUiState.currentRoute == TvRoute.Player,
-        playback = playbackState,
+        playback = { playbackStateHolder.value },
         start = playbackLauncher.startState,
         onPop = appStateHolder::popPlayerRoute,
     )
@@ -1180,9 +1182,9 @@ private fun TvAuthenticatedApp(
     LaunchedEffect(settings.trailerPreviewDelayMillis) {
         trailerPreviewCoordinator.setFocusDelayMillis(settings.trailerPreviewDelayMillis.toLong())
     }
-    LaunchedEffect(playbackState) {
-        if (playbackState is PlaybackState.Active || playbackState is PlaybackState.Preparing) {
-            trailerPreviewCoordinator.clearFocus()
+    LaunchedEffect(playbackStates) {
+        playbackStates.collect { state ->
+            if (state is PlaybackState.Active || state is PlaybackState.Preparing) trailerPreviewCoordinator.clearFocus()
         }
     }
     LaunchedEffect(accountGeneration, serverRepository.currentServers()) { trailerPreviewCoordinator.invalidateCache() }
@@ -1294,58 +1296,20 @@ private fun TvAuthenticatedApp(
         )
     var showExitConfirmation by rememberSaveable(activeProfileGeneration) { mutableStateOf(false) }
     TvAppBackHandler(backDispatcher) { showExitConfirmation = true }
-    val focusRegistrationRevision = focusCoordinator.registrationRevision
-    LaunchedEffect(
-        showRail,
-        appUiState.railExpanded,
-        currentFocusRouteKey,
-        appUiState.isForeground,
-        focusContentAuthoritativelyLoaded,
-        focusRegistrationRevision,
-        semanticRestorationSession,
-    ) {
-        if (!showRail || !appUiState.isForeground) return@LaunchedEffect
-        if (appUiState.railExpanded) {
-            val railRestoration =
-                railRestorationSession.restoreOnce(
-                    coordinator = focusCoordinator,
-                    routeKey = TV_FOCUS_RAIL_ROUTE,
-                    preferredTargetId = tvRailTargetId(currentRoute),
-                    requestFocus = { requester -> runCatching { requester.requestFocus() }.getOrDefault(false) },
-                )
-            if (railRestoration is TvFocusRestoration.Failed) {
-                appStateHolder.closeRail()
-                focusCoordinator.onUserMovement()
-                focusCoordinator.restoreFocus(
-                    routeKey = currentFocusRouteKey,
-                    requestFocus = { requester -> runCatching { requester.requestFocus() }.getOrDefault(false) },
-                )
-            }
-        } else {
-            // A missing content target must not turn route restoration (including Back) into a rail opener.
-            semanticRestorationSession.cancelAfterInteraction(focusCoordinator.currentInteractionRevision)
-            if (!semanticRestorationSession.isPending) return@LaunchedEffect
-            val semanticTargetId =
-                semanticRestorationSession.preferredTargetId(
-                    availableTargets = focusCoordinator.focusTargets(currentFocusRouteKey),
-                    contentAuthoritativelyLoaded = focusContentAuthoritativelyLoaded,
-                ) ?: return@LaunchedEffect
-            val restoration =
-                focusCoordinator.restoreFocus(
-                    routeKey = currentFocusRouteKey,
-                    preferredTargetId = semanticTargetId,
-                    includeFallback = false,
-                    requiredInteractionRevision = semanticRestorationSession.interactionRevision,
-                    requestFocus = { requester -> runCatching { requester.requestFocus() }.getOrDefault(false) },
-                )
-            when (restoration) {
-                is TvFocusRestoration.Focused -> semanticRestorationSession.complete()
-                TvFocusRestoration.Cancelled ->
-                    semanticRestorationSession.cancelAfterInteraction(focusCoordinator.currentInteractionRevision)
-                TvFocusRestoration.Failed -> Unit
-            }
-        }
-    }
+    TvRootFocusRestoration(
+        focusCoordinator = focusCoordinator,
+        appStateHolder = appStateHolder,
+        focus =
+            TvRootFocusState(
+                currentRoute = currentRoute,
+                routeKey = currentFocusRouteKey,
+                showRail = showRail,
+                railExpanded = appUiState.railExpanded,
+                isForeground = appUiState.isForeground,
+                contentAuthoritativelyLoaded = focusContentAuthoritativelyLoaded,
+            ),
+        sessions = TvRootFocusSessions(semanticRestorationSession, railRestorationSession),
+    )
     LaunchedEffect(appUiState.railExpanded, currentRoute) {
         if (appUiState.railExpanded || !currentRoute.allowsTrailerPreview()) trailerPreviewCoordinator.clearFocus()
     }
@@ -1380,10 +1344,14 @@ private fun TvAuthenticatedApp(
                 }
             },
         ) {
+            val reducedMotion = LocalTvFocusAppearance.current.reducedMotion
+            val screenTransition = remember(reducedMotion) { tvScreenTransition<TvRoute>(reducedMotion) }
             NavDisplay(
                 backStack = appUiState.backStack,
                 onBack = { backDispatcher.dispatch() },
                 modifier = Modifier.fillMaxSize(),
+                transitionSpec = screenTransition,
+                popTransitionSpec = screenTransition,
                 entryProvider =
                     rememberLatestNavEntryProvider { route ->
                         NavEntry(route) {
@@ -1608,7 +1576,7 @@ private fun TvAuthenticatedApp(
                                             controller = playbackController,
                                             engine = playerEngine,
                                             syncPlay = syncPlay,
-                                            playbackState = playbackState,
+                                            playbackState = playbackStateHolder.value,
                                             startState = playbackLauncher.startState,
                                             syncState = syncPlayState,
                                             segmentState = segmentState,

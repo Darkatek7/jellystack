@@ -10,6 +10,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.flowWithLifecycle
 import dev.jellystack.core.jellyfin.JellyfinBrowseRepository
 import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
 import dev.jellystack.core.preferences.AppSettings
@@ -28,6 +29,7 @@ import dev.jellystack.players.PlaybackSegmentModeProvider
 import dev.jellystack.players.PlaybackStartPolicy
 import dev.jellystack.players.PlaybackState
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.Flow
 
 internal data class TvJellyfinPlaybackIdentity(
     val serverKey: String,
@@ -46,9 +48,61 @@ internal fun rememberTvPlaybackCoordinators(
     playbackState: PlaybackState,
     createSegmentCoordinator: (CoroutineScope) -> PlaybackSegmentCoordinator,
     createContinuationCoordinator: (CoroutineScope) -> PlaybackContinuationCoordinator,
-    createExtrasCoordinator: (CoroutineScope) -> PlaybackExtrasCoordinator = { scope ->
-        PlaybackExtrasCoordinator(scope, JellyfinPlaybackExtrasService { JellyfinPlaybackExtrasResult.Unavailable })
-    },
+    createExtrasCoordinator: (CoroutineScope) -> PlaybackExtrasCoordinator = ::defaultTvExtrasCoordinator,
+): TvPlaybackCoordinators {
+    val coordinators =
+        rememberTvPlaybackCoordinatorHolder(
+            identity,
+            createSegmentCoordinator,
+            createContinuationCoordinator,
+            createExtrasCoordinator,
+        )
+    LaunchedEffect(playbackState, coordinators) { coordinators.onPlaybackState(playbackState) }
+    return coordinators
+}
+
+/**
+ * Like the overload above, but follows [playbackStates] inside an effect. Playback state changes with every position
+ * tick, so the caller must not read it in composition just to hand it to the coordinators.
+ */
+@Composable
+internal fun rememberTvPlaybackCoordinators(
+    identity: TvJellyfinPlaybackIdentity?,
+    playbackStates: Flow<PlaybackState>,
+    createSegmentCoordinator: (CoroutineScope) -> PlaybackSegmentCoordinator,
+    createContinuationCoordinator: (CoroutineScope) -> PlaybackContinuationCoordinator,
+    createExtrasCoordinator: (CoroutineScope) -> PlaybackExtrasCoordinator = ::defaultTvExtrasCoordinator,
+): TvPlaybackCoordinators {
+    val coordinators =
+        rememberTvPlaybackCoordinatorHolder(
+            identity,
+            createSegmentCoordinator,
+            createContinuationCoordinator,
+            createExtrasCoordinator,
+        )
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(playbackStates, coordinators, lifecycle) {
+        // Same as collecting the state with the lifecycle: nothing is delivered while the app is stopped.
+        playbackStates.flowWithLifecycle(lifecycle).collect(coordinators::onPlaybackState)
+    }
+    return coordinators
+}
+
+private fun TvPlaybackCoordinators.onPlaybackState(playbackState: PlaybackState) {
+    segment.onPlaybackState(playbackState)
+    continuation.onPlaybackState(playbackState)
+    extras.onPlaybackState(playbackState)
+}
+
+private fun defaultTvExtrasCoordinator(scope: CoroutineScope): PlaybackExtrasCoordinator =
+    PlaybackExtrasCoordinator(scope, JellyfinPlaybackExtrasService { JellyfinPlaybackExtrasResult.Unavailable })
+
+@Composable
+private fun rememberTvPlaybackCoordinatorHolder(
+    identity: TvJellyfinPlaybackIdentity?,
+    createSegmentCoordinator: (CoroutineScope) -> PlaybackSegmentCoordinator,
+    createContinuationCoordinator: (CoroutineScope) -> PlaybackContinuationCoordinator,
+    createExtrasCoordinator: (CoroutineScope) -> PlaybackExtrasCoordinator,
 ): TvPlaybackCoordinators {
     val scope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -61,11 +115,6 @@ internal fun rememberTvPlaybackCoordinators(
             )
         }
 
-    LaunchedEffect(playbackState, coordinators) {
-        coordinators.segment.onPlaybackState(playbackState)
-        coordinators.continuation.onPlaybackState(playbackState)
-        coordinators.extras.onPlaybackState(playbackState)
-    }
     DisposableEffect(lifecycleOwner, coordinators) {
         val lifecycle = lifecycleOwner.lifecycle
         val observer =
@@ -110,7 +159,7 @@ internal class TvPlaybackCoordinatorSources(
 @Composable
 internal fun rememberTvJellyfinPlaybackCoordinators(
     identity: TvJellyfinPlaybackIdentity?,
-    playbackState: PlaybackState,
+    playbackStates: Flow<PlaybackState>,
     controller: PlaybackController,
     router: TvPlaybackCommandRouter,
     sources: TvPlaybackCoordinatorSources,
@@ -123,7 +172,7 @@ internal fun rememberTvJellyfinPlaybackCoordinators(
     DisposableEffect(httpClient) { onDispose(httpClient::close) }
     return rememberTvPlaybackCoordinators(
         identity = identity,
-        playbackState = playbackState,
+        playbackStates = playbackStates,
         createSegmentCoordinator = { scope ->
             PlaybackSegmentCoordinator(
                 scope = scope,
