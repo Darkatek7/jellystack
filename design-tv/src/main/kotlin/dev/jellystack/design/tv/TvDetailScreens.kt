@@ -1522,7 +1522,7 @@ private fun TvRequestDialog(
     // The first choice gets focus; without choices the send action does.
     val firstFocus = rememberTvDialogInitialFocus()
     val showVersions = canStandard && can4k
-    val showSeasons = mediaType == JellyseerrMediaType.TV && seasons.isNotEmpty()
+    val showSeasons = capabilities.canSelectSeasons && mediaType == JellyseerrMediaType.TV && seasons.isNotEmpty()
     val showProfiles = capabilities.canUseAdvancedRequests && profiles.isNotEmpty()
 
     Dialog(onDismissRequest = onDismiss) {
@@ -1643,7 +1643,10 @@ private fun TvRequestDialog(
                             when {
                                 mediaType != JellyseerrMediaType.TV -> null
                                 // Seasons another request already covers must not be sent again.
-                                allSeasons && onlyListedSeasons -> JellyseerrCreateSelection.Seasons(seasons.sorted())
+                                allSeasons && onlyListedSeasons && capabilities.canSelectSeasons ->
+                                    JellyseerrCreateSelection.Seasons(
+                                        seasons.sorted(),
+                                    )
                                 allSeasons -> JellyseerrCreateSelection.AllSeasons
                                 else -> JellyseerrCreateSelection.Seasons(selectedSeasons.sorted())
                             },

@@ -56,6 +56,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import dev.jellystack.core.jellyseerr.RequestProviderType
 import dev.jellystack.core.preferences.AppLanguage
 import dev.jellystack.core.preferences.AppSettings
 import dev.jellystack.core.preferences.AppSettingsRepository
@@ -230,10 +231,14 @@ internal fun TvSeerrConnectDialog(
     strings: TvStrings,
     existingServerId: String?,
     initialUrl: String,
+    initialProvider: RequestProviderType = RequestProviderType.SEERR,
     onDismiss: () -> Unit,
     onConnected: suspend (ManagedServer) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    var provider by remember(initialProvider) { mutableStateOf(initialProvider) }
+    var apiKey by remember { mutableStateOf("") }
+    var saving by remember { mutableStateOf(false) }
     var url by remember(existingServerId, initialUrl) { mutableStateOf(initialUrl) }
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -241,6 +246,7 @@ internal fun TvSeerrConnectDialog(
     var needsCredentials by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val urlFocus = remember { FocusRequester() }
+    val apiKeyFocus = remember { FocusRequester() }
     val jellyfinMethodFocus = remember { FocusRequester() }
     val seerrMethodFocus = remember { FocusRequester() }
     val usernameFocus = remember { FocusRequester() }
@@ -251,7 +257,13 @@ internal fun TvSeerrConnectDialog(
             Modifier.width(620.dp).background(TvSurfaceRaised, RoundedCornerShape(26.dp)).padding(30.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Text(strings.connectSeerr, color = TvText, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+            Text(strings.requestProvider.connect, color = TvText, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+            tvRequestProviderChoice(provider, !saving, {
+                provider = it
+                apiKey = ""
+                password = ""
+                error = null
+            })
             OutlinedTextField(
                 url,
                 { url = it },
@@ -263,10 +275,21 @@ internal fun TvSeerrConnectDialog(
                         .fillMaxWidth()
                         .focusRequester(urlFocus)
                         .focusProperties {
-                            down = if (needsCredentials) jellyfinMethodFocus else connectFocus
+                            down = requestConnectionNextFocus(provider, needsCredentials, apiKeyFocus, jellyfinMethodFocus, connectFocus)
                         },
             )
-            if (needsCredentials) {
+            if (provider == RequestProviderType.MEDIARIUM) {
+                tvMediariumKeyField(
+                    apiKey,
+                    !saving,
+                    strings,
+                    Modifier.focusRequester(apiKeyFocus).focusProperties {
+                        up = urlFocus
+                        down = connectFocus
+                    },
+                ) { apiKey = it }
+            }
+            if (needsCredentials && provider == RequestProviderType.SEERR) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     TvActionButton(
                         strings.jellyfinAccount,
@@ -334,17 +357,34 @@ internal fun TvSeerrConnectDialog(
                     strings.connect,
                     primary = true,
                     modifier = Modifier.focusRequester(connectFocus),
+                    enabled = !saving && (provider == RequestProviderType.SEERR || apiKey.isNotBlank()),
                     onClick = {
                         scope.launch {
-                            val input =
-                                SeerrServerInput(
-                                    name = "Seerr",
-                                    baseUrl = url,
-                                    serverId = existingServerId,
-                                    appVersion = appVersion,
-                                )
-                            if (!needsCredentials) {
-                                when (val result = coordinator.connectSeerrAutomatically(input)) {
+                            saving = true
+                            try {
+                                val attempt =
+                                    TvRequestConnectionAttempt(
+                                        provider = provider,
+                                        server =
+                                            SeerrServerInput(
+                                                name = if (provider == RequestProviderType.MEDIARIUM) "Mediarium" else "Seerr",
+                                                baseUrl = url,
+                                                serverId = existingServerId.takeIf { provider == initialProvider },
+                                                appVersion = appVersion,
+                                            ),
+                                        apiKey = apiKey,
+                                        needsCredentials = needsCredentials,
+                                        credentials =
+                                            if (useJellyfin) {
+                                                SeerrLoginCredentials.Jellyfin(
+                                                    username,
+                                                    password,
+                                                )
+                                            } else {
+                                                SeerrLoginCredentials.Local(username, password)
+                                            },
+                                    )
+                                when (val result = connectTvRequestProvider(coordinator, attempt)) {
                                     is SeerrConnectionResult.Connected -> onConnected(result.server)
                                     is SeerrConnectionResult.CredentialsRequired -> {
                                         needsCredentials = true
@@ -353,21 +393,10 @@ internal fun TvSeerrConnectDialog(
                                     }
                                     is SeerrConnectionResult.ConnectionFailed -> error = result.reason
                                 }
-                            } else {
-                                val connection =
-                                    runCatching {
-                                        coordinator.connectSeerrManually(
-                                            input,
-                                            if (useJellyfin) {
-                                                SeerrLoginCredentials.Jellyfin(username, password)
-                                            } else {
-                                                SeerrLoginCredentials.Local(username, password)
-                                            },
-                                        )
-                                    }
-                                connection.getOrNull()?.let { onConnected(it) }
-                                connection.exceptionOrNull()?.let { error = it.message }
+                                apiKey = ""
                                 password = ""
+                            } finally {
+                                saving = false
                             }
                         }
                     },
@@ -377,7 +406,7 @@ internal fun TvSeerrConnectDialog(
         }
     }
     LaunchedEffect(needsCredentials) {
-        if (needsCredentials) jellyfinMethodFocus.requestFocus() else urlFocus.requestFocus()
+        requestConnectionInitialFocus(needsCredentials, jellyfinMethodFocus, urlFocus).requestFocus()
     }
 }
 

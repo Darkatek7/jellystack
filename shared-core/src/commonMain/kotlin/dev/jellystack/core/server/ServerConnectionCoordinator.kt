@@ -64,6 +64,20 @@ class ServerConnectionCoordinator(
     private val serverRepository: ServerRepository,
     private val jellyseerrAuthenticator: JellyseerrAuthenticator,
 ) {
+    suspend fun connectMediarium(
+        input: SeerrServerInput,
+        apiKey: String,
+    ): ManagedServer =
+        serverRepository.register(
+            ServerRegistration(
+                id = input.serverId,
+                type = ServerType.MEDIARIUM,
+                name = input.name.trim().ifBlank { "Mediarium" },
+                baseUrl = input.baseUrl,
+                credentials = CredentialInput.ApiKey(apiKey.trim()),
+            ),
+        )
+
     suspend fun connectJellyfin(input: JellyfinConnectionInput): ManagedServer {
         val registration =
             ServerRegistration(

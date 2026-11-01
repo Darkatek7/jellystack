@@ -1,5 +1,6 @@
 package dev.jellystack.core.server
 
+import dev.jellystack.core.coroutines.runSuspendCatching
 import dev.jellystack.core.security.SecretValue
 import io.github.aakira.napier.Napier
 import kotlinx.coroutines.flow.Flow
@@ -31,6 +32,19 @@ class ServerRepository(
 
     fun observeServers(): StateFlow<List<ManagedServer>> = servers.asStateFlow()
 
+    fun activeRequestServer(): ManagedServer? = activeServer(activeServerPreferences.requestProviderType())
+
+    fun observeActiveRequestServer(): Flow<ManagedServer?> =
+        combine(
+            servers,
+            activeServerPreferences.observeRequestProviderType(),
+            activeServerPreferences.observeActiveServerId(ServerType.JELLYSEERR),
+            activeServerPreferences.observeActiveServerId(ServerType.MEDIARIUM),
+        ) { current, type, seerrId, mediariumId ->
+            val id = if (type == ServerType.MEDIARIUM) mediariumId else seerrId
+            current.firstOrNull { it.type == type && it.id == id } ?: current.firstOrNull { it.type == type }
+        }
+
     fun observeActiveServer(type: ServerType): Flow<ManagedServer?> =
         combine(servers, activeServerPreferences.observeActiveServerId(type)) { currentServers, activeId ->
             currentServers.firstOrNull { it.type == type && it.id == activeId }
@@ -57,11 +71,12 @@ class ServerRepository(
             throw InvalidServerConfiguration("Server $serverId is ${server.type.name}, not ${type.name}")
         }
         activeServerPreferences.setActiveServerId(type, serverId)
+        if (type.isRequestProvider) activeServerPreferences.selectRequestProvider(type)
     }
 
     suspend fun findServer(serverId: String): ManagedServer? =
         store.get(serverId)?.let { record ->
-            runCatching { record.toManagedServer() }
+            runSuspendCatching { record.toManagedServer() }
                 .onFailure { error ->
                     Napier.e(
                         message = "Failed to load server $serverId",
@@ -148,6 +163,7 @@ class ServerRepository(
             val removedType = store.get(id)?.type
             store.delete(id)
             credentialVault.removeJellyfinPassword(id)
+            credentialVault.removeMediariumApiKey(id)
             refreshServers()
             if (removedType != null && activeServerPreferences.activeServerId(removedType) == id) {
                 activeServerPreferences.setActiveServerId(removedType, null)
@@ -183,7 +199,7 @@ class ServerRepository(
         val validServers = mutableListOf<ManagedServer>()
         records.forEach { record ->
             val managed =
-                runCatching { record.toManagedServer() }
+                runSuspendCatching { record.toManagedServer() }
                     .onFailure { error ->
                         Napier.e(
                             message = "Dropping corrupted server entry ${record.id}",
@@ -267,7 +283,12 @@ class ServerRepository(
                 createdAt = existingById?.createdAt ?: existingAtUrl?.createdAt ?: now,
                 updatedAt = now,
             )
-        store.upsert(record)
+        if (type == ServerType.MEDIARIUM) {
+            credentialVault.saveMediariumApiKey(record.id, requireNotNull(record.apiKey))
+            store.upsert(record.copy(apiKey = null))
+        } else {
+            store.upsert(record)
+        }
         return record
     }
 
@@ -313,7 +334,7 @@ class ServerRepository(
                 )
         }
 
-    private fun ServerRecord.toManagedServer(): ManagedServer {
+    private suspend fun ServerRecord.toManagedServer(): ManagedServer {
         val storedCredential =
             when (type) {
                 ServerType.JELLYFIN ->
@@ -322,6 +343,11 @@ class ServerRepository(
                         deviceId = deviceId,
                         accessToken = accessToken ?: throw IllegalStateException("Missing access token"),
                         userId = userId ?: throw IllegalStateException("Missing user id"),
+                    )
+                ServerType.MEDIARIUM ->
+                    StoredCredential.ApiKey(
+                        apiKey = credentialVault.readMediariumApiKey(id)?.reveal(),
+                        userId = userId,
                     )
                 ServerType.SONARR,
                 ServerType.RADARR,

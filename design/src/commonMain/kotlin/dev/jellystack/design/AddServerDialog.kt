@@ -37,6 +37,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import dev.jellystack.core.jellyseerr.RequestProviderType
 import dev.jellystack.core.server.JellyfinQuickConnectState
 import dev.jellystack.core.server.JellyfinSignInMethod
 import dev.jellystack.core.server.ManagedServer
@@ -50,6 +51,7 @@ import jellystack_mobile.design.generated.resources.Res
 import jellystack_mobile.design.generated.resources.base_url
 import jellystack_mobile.design.generated.resources.cancel
 import jellystack_mobile.design.generated.resources.connect_jellyfin
+import jellystack_mobile.design.generated.resources.connect_mediarium
 import jellystack_mobile.design.generated.resources.connect_seerr
 import jellystack_mobile.design.generated.resources.connect_server
 import jellystack_mobile.design.generated.resources.email
@@ -59,6 +61,7 @@ import jellystack_mobile.design.generated.resources.onboarding_url_error
 import jellystack_mobile.design.generated.resources.password
 import jellystack_mobile.design.generated.resources.password_optional
 import jellystack_mobile.design.generated.resources.quick_connect_description
+import jellystack_mobile.design.generated.resources.request_provider
 import jellystack_mobile.design.generated.resources.seerr_automatic_login
 import jellystack_mobile.design.generated.resources.seerr_connect_jellyfin_first
 import jellystack_mobile.design.generated.resources.server_name
@@ -134,7 +137,7 @@ internal fun AddServerDialog(
                             }
                         },
                         enabled = !isSaving,
-                        label = { Text("Seerr") },
+                        label = { Text(stringResource(Res.string.request_provider)) },
                     )
                 }
                 OutlinedTextField(
@@ -277,7 +280,10 @@ internal fun AddServerDialog(
                         }
                     }
                     ServerFormType.SEERR -> {
-                        if (state.automaticSeerrLogin) {
+                        RequestProviderSelector(state, isSaving, onValueChange)
+                        if (state.requestProvider == RequestProviderType.MEDIARIUM) {
+                            MediariumKeyField(state.apiKey, !isSaving) { onValueChange(state.copy(apiKey = it)) }
+                        } else if (state.automaticSeerrLogin) {
                             Text(
                                 text =
                                     if (availableJellyfinServers.isNotEmpty()) {
@@ -415,7 +421,16 @@ internal fun AddServerDialog(
                         val label =
                             when (state.type) {
                                 ServerFormType.JELLYFIN -> stringResource(Res.string.connect_jellyfin)
-                                ServerFormType.SEERR -> stringResource(Res.string.connect_seerr)
+                                ServerFormType.SEERR ->
+                                    stringResource(
+                                        if (state.requestProvider ==
+                                            RequestProviderType.MEDIARIUM
+                                        ) {
+                                            Res.string.connect_mediarium
+                                        } else {
+                                            Res.string.connect_seerr
+                                        },
+                                    )
                             }
                         Text(label)
                     }

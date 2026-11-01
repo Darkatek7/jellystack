@@ -9,6 +9,7 @@ data class JellyseerrEnvironment(
     val apiKey: String?,
     val sessionCookie: String?,
     val apiUserId: Int? = null,
+    val provider: RequestProviderType = RequestProviderType.SEERR,
 )
 
 enum class JellyseerrMediaType {
@@ -125,6 +126,8 @@ data class JellyseerrRequestSummary(
     val seasons: List<JellyseerrSeasonStatus>,
     val posterPath: String?,
     val backdropPath: String?,
+    val canManageAtProvider: Boolean = true,
+    val provider: RequestProviderType = RequestProviderType.SEERR,
 )
 
 data class JellyseerrRequestCounts(
@@ -375,10 +378,13 @@ data class JellyseerrProfile(
     val id: Int,
     val displayName: String?,
     val permissions: Int,
+    val providerCapabilities: JellyseerrRequestCapabilities? = null,
 ) {
-    fun canManageRequests(): Boolean = permissions.hasPermission(JellyseerrPermission.MANAGE_REQUESTS)
+    fun canManageRequests(): Boolean =
+        providerCapabilities?.canManageRequests ?: permissions.hasPermission(JellyseerrPermission.MANAGE_REQUESTS)
 
-    fun requestCapabilities(): JellyseerrRequestCapabilities = JellyseerrRequestCapabilities.fromPermissions(permissions)
+    fun requestCapabilities(): JellyseerrRequestCapabilities =
+        providerCapabilities ?: JellyseerrRequestCapabilities.fromPermissions(permissions)
 }
 
 data class JellyseerrRequestCapabilities(
@@ -388,6 +394,7 @@ data class JellyseerrRequestCapabilities(
     val canRequest4kTv: Boolean,
     val canUseAdvancedRequests: Boolean,
     val canManageRequests: Boolean,
+    val canSelectSeasons: Boolean = true,
 ) {
     fun canRequest(
         mediaType: JellyseerrMediaType,
@@ -544,6 +551,9 @@ sealed interface JellyseerrRecommendationsState {
 }
 
 sealed interface JellyseerrCreateResult {
+    /** Directly added by the provider; there is no approval request ID. */
+    data object AddedToProvider : JellyseerrCreateResult
+
     data class Success(
         val request: JellyseerrRequestSummary,
     ) : JellyseerrCreateResult

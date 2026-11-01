@@ -20,18 +20,17 @@ class ServerRepositoryJellyseerrEnvironmentProvider(
 ) : JellyseerrEnvironmentProvider {
     override suspend fun current(): JellyseerrEnvironment? {
         profileEnvironmentProvider?.let { return it.seerr() }
-        return repository
-            .activeServer(ServerType.JELLYSEERR)
-            ?.toEnvironment()
+        return repository.activeRequestServer()?.toEnvironment()
     }
 
     override fun observe(): Flow<JellyseerrEnvironment?> =
         profileEnvironmentProvider?.observeSeerr()
-            ?: repository.observeActiveServer(ServerType.JELLYSEERR).map { server -> server?.toEnvironment() }
+            ?: repository.observeActiveRequestServer().map { it?.toEnvironment() }
 }
 
 private fun ManagedServer.toEnvironment(): JellyseerrEnvironment? {
     val credential = credentials as? StoredCredential.ApiKey ?: return null
+    if (type == ServerType.MEDIARIUM && credential.apiKey.isNullOrBlank()) return null
     return JellyseerrEnvironment(
         serverId = id,
         serverName = name,
@@ -39,5 +38,6 @@ private fun ManagedServer.toEnvironment(): JellyseerrEnvironment? {
         apiKey = credential.apiKey,
         sessionCookie = credential.sessionCookie,
         apiUserId = credential.userId?.toIntOrNull(),
+        provider = if (type == ServerType.MEDIARIUM) RequestProviderType.MEDIARIUM else RequestProviderType.SEERR,
     )
 }

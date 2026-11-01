@@ -27,6 +27,24 @@ import kotlin.test.assertNull
 
 class ProfileSeerrAutoLinkCoordinatorTest {
     @Test
+    fun mediariumPrefillNeverReceivesJellyfinAutoLoginCredentials() =
+        runTest {
+            val fixture = fixture()
+            fixture.servers.register(
+                ServerRegistration(
+                    type = ServerType.MEDIARIUM,
+                    name = "Mediarium",
+                    baseUrl = "https://media.example.com",
+                    credentials = CredentialInput.ApiKey("fictional-key", userId = "3"),
+                ),
+            )
+            val jellyfin = fixture.registerJellyfin("fictional-user")
+            val profile = fixture.coordinator.openOrCreateProfile(jellyfin, APP_VERSION)
+            assertNull(fixture.profiles.binding(profile.id)?.seerrConnectionId)
+            assertEquals(emptyList(), fixture.authenticator.usernames)
+        }
+
+    @Test
     fun newProfileIsSignedInToTheHouseholdSeerrWithItsOwnAccount() =
         runTest {
             val fixture = fixture()

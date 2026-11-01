@@ -82,6 +82,7 @@ internal data class TvMessageStrings(
     val playlistLabel: String,
     val music: TvMusicStrings,
     val liveTv: TvLiveTvStrings,
+    val requestProvider: TvRequestProviderStrings,
     val accountHasProfileFormat: String,
     private val voiceSearchUnavailable: String,
     private val voiceSearchNoSpeech: String,
@@ -403,6 +404,9 @@ internal data class TvStrings(
     val locale: Locale
         get() = messages.locale
 
+    val requestProvider: TvRequestProviderStrings
+        get() = messages.requestProvider
+
     fun itemCount(count: Long): String = "$count ${if (count == 1L) itemSingular else itemPlural}"
 
     companion object {
@@ -488,7 +492,7 @@ internal data class TvStrings(
                 discoverLoadFailed = "Discover could not be loaded.",
                 searchHint = "Search Jellyfin and Seerr",
                 all = "All",
-                connectSeerrPrompt = "Connect Seerr in Settings to discover and request media.",
+                connectSeerrPrompt = "Connect Seerr or Mediarium in Settings to discover and request media.",
                 requests = "Requests",
                 cannotRequest = "Your Seerr account cannot request this media type.",
                 request = "Request",
@@ -726,6 +730,7 @@ private val englishMessageStrings =
         playlistLabel = "Playlist",
         music = TvMusicStrings.ENGLISH,
         liveTv = TvLiveTvStrings.ENGLISH,
+        requestProvider = TvRequestProviderStrings("Mediarium API key", "Connect request provider"),
         accountHasProfileFormat =
             "%s already has a profile. To add another account, approve the code with that account.",
         voiceSearchUnavailable = "Voice search is not available on this device.",

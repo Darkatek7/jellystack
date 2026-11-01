@@ -111,6 +111,7 @@ import dev.jellystack.core.jellyseerr.JellyseerrRequestFilter
 import dev.jellystack.core.jellyseerr.JellyseerrRequestsCoordinator
 import dev.jellystack.core.jellyseerr.JellyseerrRequestsState
 import dev.jellystack.core.jellyseerr.JellyseerrSearchItem
+import dev.jellystack.core.jellyseerr.RequestProviderType
 import dev.jellystack.core.logging.JellystackLog
 import dev.jellystack.core.logging.TelemetryTracker
 import dev.jellystack.core.preferences.AppLanguage
@@ -139,6 +140,7 @@ import dev.jellystack.core.server.ServerConnectionCoordinator
 import dev.jellystack.core.server.ServerRepository
 import dev.jellystack.core.server.ServerType
 import dev.jellystack.core.server.StoredCredential
+import dev.jellystack.core.server.isRequestProvider
 import dev.jellystack.design.admin.AdminScreen
 import dev.jellystack.design.biometric.rememberBiometricPlatformState
 import dev.jellystack.design.cast.BindCastSnapshotProvider
@@ -799,8 +801,8 @@ fun JellystackRoot(
         remember(serverRepository) { serverRepository.observeActiveServer(ServerType.JELLYFIN) }
             .collectAsState(initial = serverRepository.activeServer(ServerType.JELLYFIN))
     val activeSeerrServer by
-        remember(serverRepository) { serverRepository.observeActiveServer(ServerType.JELLYSEERR) }
-            .collectAsState(initial = serverRepository.activeServer(ServerType.JELLYSEERR))
+        remember(serverRepository) { serverRepository.observeActiveRequestServer() }
+            .collectAsState(initial = serverRepository.activeRequestServer())
     LaunchedEffect(activeJellyfinServer?.id) {
         sessionRepository.refresh()
     }
@@ -1973,7 +1975,9 @@ fun JellystackRoot(
                                     serverId = form.serverId,
                                     appVersion = appVersion,
                                 )
-                            if (form.automaticSeerrLogin) {
+                            if (form.requestProvider == RequestProviderType.MEDIARIUM) {
+                                connectedServerId = serverConnectionCoordinator.connectMediarium(input, form.apiKey).id
+                            } else if (form.automaticSeerrLogin) {
                                 when (val result = serverConnectionCoordinator.connectSeerrAutomatically(input)) {
                                     is SeerrConnectionResult.Connected -> {
                                         connectedServerId = result.server.id
@@ -2035,6 +2039,18 @@ fun JellystackRoot(
                                 settingsConnectionHealth =
                                     settingsConnectionHealth +
                                     (connectedServer.id to SettingsConnectionHealth.Ready)
+                            }
+                            connectedServerId?.let { id ->
+                                serverRepository.setActiveServer(
+                                    if (form.requestProvider ==
+                                        RequestProviderType.MEDIARIUM
+                                    ) {
+                                        ServerType.MEDIARIUM
+                                    } else {
+                                        ServerType.JELLYSEERR
+                                    },
+                                    id,
+                                )
                             }
                             jellyseerrCoordinator.refresh()
                             recommendationsCoordinator.refreshAll()
@@ -3108,14 +3124,14 @@ fun JellystackRoot(
                                 managedServers
                                     .filter { server ->
                                         server.type == ServerType.JELLYFIN ||
-                                            server.type == ServerType.JELLYSEERR
+                                            server.type.isRequestProvider
                                     }.map { server ->
                                         server.toSettingsConnectionUi(
                                             isActive =
                                                 server.id ==
                                                     when (server.type) {
                                                         ServerType.JELLYFIN -> activeJellyfinServer?.id
-                                                        ServerType.JELLYSEERR -> activeSeerrServer?.id
+                                                        ServerType.JELLYSEERR, ServerType.MEDIARIUM -> activeSeerrServer?.id
                                                         ServerType.SONARR,
                                                         ServerType.RADARR,
                                                         -> null
@@ -3200,7 +3216,7 @@ fun JellystackRoot(
                                                         when (server.type) {
                                                             ServerType.JELLYFIN ->
                                                                 browseCoordinator.bootstrap(forceRefresh = true)
-                                                            ServerType.JELLYSEERR -> {
+                                                            ServerType.JELLYSEERR, ServerType.MEDIARIUM -> {
                                                                 jellyseerrCoordinator.refresh()
                                                                 recommendationsCoordinator.refreshAll()
                                                             }
@@ -3221,14 +3237,23 @@ fun JellystackRoot(
                                                     }
                                                 }
                                             }
-                                    is SettingsAction.AddConnection ->
+                                    is SettingsAction.AddConnection -> {
                                         openAddServerDialog(
-                                            if (action.type == ServerType.JELLYFIN) {
+                                            if (action.type ==
+                                                ServerType.JELLYFIN
+                                            ) {
                                                 ServerFormType.JELLYFIN
                                             } else {
                                                 ServerFormType.SEERR
                                             },
                                         )
+                                        if (action.type ==
+                                            ServerType.MEDIARIUM
+                                        ) {
+                                            serverFormState =
+                                                serverFormState.copy(requestProvider = RequestProviderType.MEDIARIUM, name = "Mediarium")
+                                        }
+                                    }
                                     is SettingsAction.EditConnection ->
                                         managedServers
                                             .firstOrNull { it.id == action.id }
@@ -3259,6 +3284,14 @@ fun JellystackRoot(
                                                                 ServerFormState(
                                                                     serverId = server.id,
                                                                     type = ServerFormType.SEERR,
+                                                                    requestProvider =
+                                                                        if (server.type ==
+                                                                            ServerType.MEDIARIUM
+                                                                        ) {
+                                                                            RequestProviderType.MEDIARIUM
+                                                                        } else {
+                                                                            RequestProviderType.SEERR
+                                                                        },
                                                                     name = server.name,
                                                                     baseUrl = server.baseUrl,
                                                                     useJellyfinLogin = true,
@@ -3452,7 +3485,7 @@ fun JellystackRoot(
     }
 }
 
-private fun ServerFormState.withoutSecrets(): ServerFormState = copy(password = "")
+private fun ServerFormState.withoutSecrets(): ServerFormState = copy(password = "", apiKey = "")
 
 @Composable
 private fun JellyseerrMessage.localizedText(): String {

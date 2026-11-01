@@ -5,6 +5,7 @@ import dev.jellystack.core.jellyseerr.JellyseerrEnvironment
 import dev.jellystack.core.server.ManagedServer
 import dev.jellystack.core.server.ServerType
 import dev.jellystack.core.server.StoredCredential
+import dev.jellystack.core.server.isRequestProvider
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
@@ -74,7 +75,7 @@ class ProfileEnvironmentProvider private constructor(
     suspend fun seerr(): JellyseerrEnvironment? {
         val profileId = activeProfileId() ?: return null
         val connectionId = bindingResolver(profileId)?.seerrConnectionId ?: return null
-        val server = serverResolver(connectionId)?.takeIf { it.id == connectionId && it.type == ServerType.JELLYSEERR } ?: return null
+        val server = serverResolver(connectionId)?.takeIf { it.id == connectionId && it.type.isRequestProvider } ?: return null
         val credential = server.credentials as? StoredCredential.ApiKey ?: return null
         if (credential.apiKey.isNullOrBlank() && credential.sessionCookie.isNullOrBlank()) return null
         return JellyseerrEnvironment(
@@ -84,6 +85,14 @@ class ProfileEnvironmentProvider private constructor(
             apiKey = credential.apiKey,
             sessionCookie = credential.sessionCookie,
             apiUserId = credential.userId?.toIntOrNull(),
+            provider =
+                if (server.type ==
+                    ServerType.MEDIARIUM
+                ) {
+                    dev.jellystack.core.jellyseerr.RequestProviderType.MEDIARIUM
+                } else {
+                    dev.jellystack.core.jellyseerr.RequestProviderType.SEERR
+                },
         )
     }
 

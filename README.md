@@ -20,6 +20,8 @@ Jellystack is a privacy-focused Jellyfin and Seerr client with a native Android 
 
 Android is the stable, published platform. The shared Kotlin Multiplatform code and iOS host remain experimental; iOS is not currently distributed as a supported release.
 
+For native Mediarium requests without Seerr, see [Mediarium configuration and limitations](docs/mediarium.md).
+
 ## Privacy
 
 Jellystack connects directly to servers configured by the user. Server credentials and tokens are stored in the platform-protected credential store. The app has no analytics SDK, automatic log upload, advertising, or developer-operated media proxy.

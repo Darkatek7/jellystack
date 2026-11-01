@@ -2,6 +2,7 @@ package dev.jellystack.core.profile
 
 import dev.jellystack.core.server.ManagedServer
 import dev.jellystack.core.server.ServerType
+import dev.jellystack.core.server.isRequestProvider
 
 /** The connections one household profile uses, resolved from its binding instead of "first server of a type". */
 data class ProfileConnections(
@@ -22,13 +23,13 @@ fun resolveProfileConnections(
 ): ProfileConnections {
     val binding = bindings.firstOrNull { it.profileId == profileId }
     val jellyfin = servers.firstOrNull { it.id == binding?.jellyfinConnectionId && it.type == ServerType.JELLYFIN }
-    val seerr = servers.firstOrNull { it.id == binding?.seerrConnectionId && it.type == ServerType.JELLYSEERR }
+    val seerr = servers.firstOrNull { it.id == binding?.seerrConnectionId && it.type.isRequestProvider }
     val sharedSeerr = seerr != null && bindings.any { it.profileId != profileId && it.seerrConnectionId == seerr.id }
     return ProfileConnections(
         jellyfin = jellyfin,
         seerr = seerr,
         seerrReconnectId = seerr?.id?.takeUnless { sharedSeerr },
-        seerrPrefill = seerr ?: servers.latestOf(ServerType.JELLYSEERR),
+        seerrPrefill = seerr ?: servers.filter { it.type.isRequestProvider }.maxByOrNull { it.updatedAt },
     )
 }
 

@@ -7,6 +7,21 @@ import dev.jellystack.core.security.secretValue
 class ServerCredentialVault(
     private val secureStore: SecureStore,
 ) {
+    suspend fun saveMediariumApiKey(
+        serverId: String,
+        apiKey: String,
+    ) {
+        secureStore.write(mediariumKey(serverId), secretValue(apiKey))
+    }
+
+    suspend fun readMediariumApiKey(serverId: String): SecretValue? = secureStore.read(mediariumKey(serverId))
+
+    suspend fun removeMediariumApiKey(serverId: String) {
+        secureStore.remove(mediariumKey(serverId))
+    }
+
+    private fun mediariumKey(serverId: String): String = "servers.$serverId.mediarium.apiKey"
+
     suspend fun saveJellyfinPassword(
         serverId: String,
         password: String,

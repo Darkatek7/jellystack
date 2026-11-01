@@ -81,7 +81,7 @@ class HouseholdProfileRepository(
                     jellyfinConnectionId = jellyfinConnectionId,
                     seerrConnectionId =
                         activeServerPreferences
-                            .activeServerId(ServerType.JELLYSEERR)
+                            .activeServerId(activeServerPreferences.requestProviderType())
                             ?.takeIf(String::isNotBlank),
                 )
             store.createProfileWithBinding(profile, binding)

@@ -921,4 +921,13 @@ internal fun jellyfinUserImageUrl(
 internal fun tmdbImageUrl(
     path: String?,
     backdrop: Boolean = false,
-): String? = path?.takeIf { it.isNotBlank() }?.let { "https://image.tmdb.org/t/p/${if (backdrop) "w1280" else "w500"}$it" }
+): String? =
+    path?.takeIf { it.isNotBlank() }?.let {
+        if (it.startsWith("https://") ||
+            it.startsWith("http://")
+        ) {
+            it
+        } else {
+            "https://image.tmdb.org/t/p/${if (backdrop) "w1280" else "w500"}$it"
+        }
+    }

@@ -239,7 +239,7 @@ internal fun RequestConfiguration(
                     )
                 }
             }
-            if (item.mediaType == JellyseerrMediaType.TV) {
+            if (item.mediaType == JellyseerrMediaType.TV && capabilities.canSelectSeasons) {
                 item {
                     Text(
                         stringResource(Res.string.request_seasons_title),

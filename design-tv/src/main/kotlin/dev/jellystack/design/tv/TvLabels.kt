@@ -21,6 +21,7 @@ internal fun ServerType.tvBrandLabel(): String =
     when (this) {
         ServerType.JELLYFIN -> TV_BRAND_JELLYFIN
         ServerType.JELLYSEERR -> TV_BRAND_SEERR
+        ServerType.MEDIARIUM -> "Mediarium"
         ServerType.SONARR -> "Sonarr"
         ServerType.RADARR -> "Radarr"
     }

@@ -1,5 +1,6 @@
 package dev.jellystack.design
 
+import dev.jellystack.core.jellyseerr.RequestProviderType
 import dev.jellystack.core.server.JellyfinSignInMethod
 import dev.jellystack.core.server.ServerAddressValidation
 import dev.jellystack.core.server.validateServerAddress
@@ -12,6 +13,8 @@ internal data class ServerFormState(
     val username: String = "",
     val email: String = "",
     val password: String = "",
+    val apiKey: String = "",
+    val requestProvider: RequestProviderType = RequestProviderType.SEERR,
     val jellyfinSignInMethod: JellyfinSignInMethod = JellyfinSignInMethod.QUICK_CONNECT,
     val useJellyfinLogin: Boolean = false,
     val automaticSeerrLogin: Boolean = false,
@@ -42,16 +45,12 @@ internal data class ServerFormState(
                             )
                     ServerFormType.SEERR ->
                         baseUrl.isNotBlank() &&
-                            (
+                            if (requestProvider == RequestProviderType.MEDIARIUM) {
+                                apiKey.isNotBlank()
+                            } else {
                                 automaticSeerrLogin ||
-                                    (
-                                        (
-                                            useJellyfinLogin &&
-                                                username.isNotBlank() &&
-                                                (!requiresSeerrPassword || password.isNotBlank())
-                                        ) ||
-                                            (!useJellyfinLogin && email.isNotBlank() && password.isNotBlank())
-                                    )
-                            )
+                                    (useJellyfinLogin && username.isNotBlank() && (!requiresSeerrPassword || password.isNotBlank())) ||
+                                    (!useJellyfinLogin && email.isNotBlank() && password.isNotBlank())
+                            }
                 }
 }
