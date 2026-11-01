@@ -37,6 +37,13 @@ enum class TvGoldenFixture {
     PLAYER_UP_NEXT,
     HOME_HERO,
     DETAIL_HERO,
+    LIBRARY_GRID,
+    EMPTY_STATE,
+    ERROR_STATE,
+    SKELETON_ROWS,
+    DETAIL_LOAD_ERROR,
+    NAVIGATION_RAIL_OPEN,
+    RESUME_DIALOG,
 }
 
 /** Screenshot-test entry point; production code never calls it. */
@@ -47,8 +54,12 @@ fun JellystackTvGoldenFixture(
     modifier: Modifier = Modifier,
 ) {
     val strings = TvStrings.current(language)
-    if (fixture in GOLDEN_PLAYER_FIXTURES) {
-        JellystackTvTheme { GoldenPlayer(strings, fixture, modifier) }
+    if (fixture in GOLDEN_PLAYER_FIXTURES || fixture in GOLDEN_STATE_FIXTURES) {
+        if (fixture in GOLDEN_STATE_FIXTURES) {
+            GoldenStateFixture(fixture, strings, modifier)
+        } else {
+            JellystackTvTheme { GoldenPlayer(strings, fixture, modifier) }
+        }
         return
     }
     if (fixture == TvGoldenFixture.HOME_HERO || fixture == TvGoldenFixture.DETAIL_HERO) {
@@ -79,6 +90,13 @@ fun JellystackTvGoldenFixture(
                 TvGoldenFixture.PLAYER_SCRUB,
                 TvGoldenFixture.PLAYER_UP_NEXT,
                 TvGoldenFixture.DETAIL_HERO,
+                TvGoldenFixture.LIBRARY_GRID,
+                TvGoldenFixture.EMPTY_STATE,
+                TvGoldenFixture.ERROR_STATE,
+                TvGoldenFixture.SKELETON_ROWS,
+                TvGoldenFixture.DETAIL_LOAD_ERROR,
+                TvGoldenFixture.NAVIGATION_RAIL_OPEN,
+                TvGoldenFixture.RESUME_DIALOG,
                 -> Unit
             }
         }

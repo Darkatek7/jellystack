@@ -80,6 +80,17 @@ data class JellyfinItemDetail(
     val logoImageTag: String? = null,
     val people: List<JellyfinPerson> = emptyList(),
     val parentBackdropImageTags: List<String> = emptyList(),
+    /** Music tracks: the album the track is on and who made it. */
+    val music: JellyfinTrackInfo? = null,
+)
+
+/** What a music track says about itself beyond its title. */
+data class JellyfinTrackInfo(
+    val albumName: String?,
+    val albumId: String?,
+    val albumPrimaryImageTag: String?,
+    /** The track's artists, else the album artist. */
+    val artist: String?,
 )
 
 data class JellyfinPerson(

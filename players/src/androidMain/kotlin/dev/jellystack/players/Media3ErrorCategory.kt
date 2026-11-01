@@ -26,6 +26,18 @@ internal fun media3ErrorCategory(
         else -> PlayerErrorCategory.MEDIA
     }
 
+/**
+ * A live stream the player fell behind (paused too long, or slow to load) is not a failure: the playlist has dropped the
+ * segments it wanted. Media3 recovers by jumping to the live edge and preparing again. Bounded, so a stream that stays
+ * behind ends in an error instead of looping; the count restarts once the player is ready.
+ */
+internal fun shouldRestartAtLiveEdge(
+    errorCode: Int,
+    restartsSinceReady: Int,
+): Boolean = errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW && restartsSinceReady < MAX_LIVE_EDGE_RESTARTS
+
+internal const val MAX_LIVE_EDGE_RESTARTS = 3
+
 @UnstableApi
 private fun Throwable.httpResponseCode(): Int? {
     var current: Throwable? = this

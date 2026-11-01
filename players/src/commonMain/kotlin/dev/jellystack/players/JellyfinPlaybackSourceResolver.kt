@@ -23,11 +23,15 @@ class JellyfinPlaybackSourceResolver(
         startPositionMs: Long,
         options: PlaybackSourceOptions,
     ): ResolvedPlaybackSource =
-        if (request.mediaKind == PlaybackMediaKind.AUDIO) {
-            resolveAudio(request, selection, environment, startPositionMs, options)
-        } else {
-            resolveVideo(request, selection, environment, startPositionMs, options)
+        when {
+            request.isLive -> liveChannelResolver.resolve(request, environment)
+            request.mediaKind == PlaybackMediaKind.AUDIO -> resolveAudio(request, selection, environment, startPositionMs, options)
+            else -> resolveVideo(request, selection, environment, startPositionMs, options)
         }
+
+    private val liveChannelResolver by lazy {
+        LiveChannelSourceResolver(playbackInfoService, deviceProfileProvider, playbackHeaders())
+    }
 
     override fun canPlayAudioCodecLocally(codec: String?): Boolean {
         if (!deviceProfileProvider.usesBestAvailableAudioTranscodeTarget()) return true

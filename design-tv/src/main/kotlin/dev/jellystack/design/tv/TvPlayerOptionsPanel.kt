@@ -467,7 +467,7 @@ internal fun TvPlayerOptionsPanel(
             TvPlayerPanel.SYNCPLAY ->
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     syncState.error?.let { error ->
-                        item { Text(error.message(strings), color = Color(0xFFFFA59E), fontSize = 16.sp) }
+                        item { Text(error.message(strings), color = TvError, fontSize = 16.sp) }
                     }
                     if (!syncState.canJoin) {
                         item {

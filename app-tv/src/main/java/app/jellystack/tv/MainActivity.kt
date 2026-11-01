@@ -1,6 +1,7 @@
 package app.jellystack.tv
 
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.WindowManager
@@ -10,6 +11,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.util.UnstableApi
 import androidx.navigationevent.setViewTreeNavigationEventDispatcherOwner
+import app.jellystack.tv.watchnext.WatchNextFactory
 import com.russhwolf.settings.SharedPreferencesSettings
 import dev.jellystack.core.di.JellystackDI
 import dev.jellystack.core.jellyfin.JellyfinBrowseRepository
@@ -21,7 +23,10 @@ import dev.jellystack.core.preferences.StreamingQualityPreference
 import dev.jellystack.core.preferences.SubtitleMode
 import dev.jellystack.core.profile.ActiveProfileRepository
 import dev.jellystack.core.profile.ProfilePreferencesRepository
+import dev.jellystack.design.tv.TvDeepLinkInbox
 import dev.jellystack.design.tv.TvJellystackRoot
+import dev.jellystack.design.tv.TvPlatformIntegrations
+import dev.jellystack.design.tv.TvWatchNextPublisher
 import dev.jellystack.players.AndroidPlaybackSessionBridge
 import dev.jellystack.players.AndroidPlayerEngine
 import dev.jellystack.players.AndroidTvPlaybackDeviceProfileProvider
@@ -47,6 +52,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var trailerPreviewController: PlaybackController
     private lateinit var platformActions: TvPlatformActionCoordinator<KeyEvent>
     private lateinit var voiceSearch: AndroidTvVoiceSearch
+    private lateinit var watchNext: TvWatchNextPublisher
+    private val deepLinks = TvDeepLinkInbox()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -66,6 +73,9 @@ class MainActivity : AppCompatActivity() {
         val activeProfileRepository = koin.get<ActiveProfileRepository>()
         val profilePreferencesRepository = koin.get<ProfilePreferencesRepository>()
         val browseRepository = koin.get<JellyfinBrowseRepository>()
+        watchNext = WatchNextFactory.create(applicationContext, koin.get<JellyfinEnvironmentProvider>())
+        // A restored activity still holds the intent it was started with; only a fresh start may act on it.
+        if (savedInstanceState == null) offerDeepLink(intent)
         val playbackSettings =
             SharedPreferencesSettings(
                 getSharedPreferences("jellystack_playback", Context.MODE_PRIVATE),
@@ -103,32 +113,8 @@ class MainActivity : AppCompatActivity() {
                 seekBackMs = { settingsRepository.settings.value.seekBackSeconds * 1_000L },
                 seekForwardMs = { settingsRepository.settings.value.seekForwardSeconds * 1_000L },
             )
-        platformActions =
-            TvPlatformActionCoordinator(
-                object : TvPlatformActions<KeyEvent> {
-                    override fun setKeepScreenOn(enabled: Boolean) {
-                        if (enabled) {
-                            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                        } else {
-                            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                        }
-                    }
-
-                    override fun markPlaybackStarted() = playbackBridge.markPlaybackStarted()
-
-                    override fun handleMediaKey(event: KeyEvent): Boolean = playbackBridge.handleMediaKeyEvent(event)
-
-                    override fun stopTrailer() = trailerPreviewController.stop(saveProgress = false)
-
-                    override fun stopPlayback() = playbackBridge.stopPlayback()
-
-                    override fun releaseTrailer() = trailerPreviewController.release()
-
-                    override fun releaseBridge() = playbackBridge.release()
-
-                    override fun releasePlayback() = playbackController.release()
-                },
-            )
+        platformActions = createPlatformActions()
+        lifecycleScope.launch { clearWatchNextOnProfileChange(activeProfileRepository) }
         lifecycleScope.launch {
             val activity = playbackController.state.map(PlaybackState::screenActivity)
             launch { activity.map { it != TvScreenActivity.IDLE }.collect(platformActions::onPlaybackActivityChanged) }
@@ -144,10 +130,38 @@ class MainActivity : AppCompatActivity() {
                 stopPlayback = playbackBridge::stopPlayback,
                 coldLaunch = coldLaunch,
                 voiceSearch = voiceSearch,
+                integrations = TvPlatformIntegrations(watchNext = watchNext, deepLinks = deepLinks),
                 onExitConfirmed = ::finish,
             )
         }
     }
+
+    private fun createPlatformActions() =
+        TvPlatformActionCoordinator(
+            object : TvPlatformActions<KeyEvent> {
+                override fun setKeepScreenOn(enabled: Boolean) {
+                    if (enabled) {
+                        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    } else {
+                        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    }
+                }
+
+                override fun markPlaybackStarted() = playbackBridge.markPlaybackStarted()
+
+                override fun handleMediaKey(event: KeyEvent): Boolean = playbackBridge.handleMediaKeyEvent(event)
+
+                override fun stopTrailer() = trailerPreviewController.stop(saveProgress = false)
+
+                override fun stopPlayback() = playbackBridge.stopPlayback()
+
+                override fun releaseTrailer() = trailerPreviewController.release()
+
+                override fun releaseBridge() = playbackBridge.release()
+
+                override fun releasePlayback() = playbackController.release()
+            },
+        )
 
     private fun createTrailerPreviewController(settingsRepository: AppSettingsRepository): PlaybackController {
         // The engine builds its ExoPlayer on the first trailer, so a session that never previews one pays nothing.
@@ -178,6 +192,28 @@ class MainActivity : AppCompatActivity() {
                     )
                 },
         )
+    }
+
+    /** A profile switch or sign-out removes the previous profile cards from the system row. */
+    private suspend fun clearWatchNextOnProfileChange(profiles: ActiveProfileRepository) {
+        var previous: String? = null
+        var first = true
+        profiles.profileId.collect { current ->
+            if (!first && previous != null && previous != current) watchNext.clear()
+            first = false
+            previous = current
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        offerDeepLink(intent)
+    }
+
+    /** Hands a Watch Next card link to the app; the inbox ignores anything that is not a valid item link. */
+    private fun offerDeepLink(intent: Intent?) {
+        if (intent?.action == Intent.ACTION_VIEW) deepLinks.offer(intent.dataString)
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {

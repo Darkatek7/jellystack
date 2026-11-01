@@ -119,6 +119,30 @@ class TvPlaybackSegmentIntegrationTest {
     }
 
     @Test
+    fun upNextOfAPlayedListOffersPlayNextInsteadOfTheNextEpisode() {
+        val queued = PlaybackContinuationTarget("movie-2", "Movie 2", fromQueue = true) {}
+        val segmentState = PlaybackSegmentState(mediaId = "movie-1")
+
+        val nearTheEnd =
+            tvPlaybackActionModels(
+                segmentState,
+                PlaybackContinuationState(mediaId = "movie-1", nextTarget = queued),
+                context = TvPlaybackActionContext(isEpisode = true, phase = PlaybackPhase.Ready, upNextDue = true),
+                strings = strings(),
+            )
+        val ended =
+            tvPlaybackActionModels(
+                segmentState,
+                PlaybackContinuationState(mediaId = "movie-1", nextTarget = queued),
+                context = TvPlaybackActionContext(isEpisode = true, phase = PlaybackPhase.Ended, upNextDue = false),
+                strings = strings(),
+            )
+
+        assertEquals(listOf("Play next", "Watch credits"), nearTheEnd.map { it.label })
+        assertEquals(listOf("Play next"), ended.map { it.label })
+    }
+
+    @Test
     fun endedEpisodeKeepsOnlyTheUpNextCardWithItsCountdown() {
         val segmentState =
             PlaybackSegmentState(

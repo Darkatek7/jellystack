@@ -48,6 +48,33 @@ sealed interface TvRoute : NavKey {
         val tvdbId: Int? = null,
     ) : TvRoute
 
+    /** The titles a person appears in; opened from a cast card. */
+    @Serializable
+    data class Person(
+        val id: String,
+        val name: String,
+    ) : TvRoute
+
+    /** The entries of a collection or playlist; opened from the card of one, wherever it is shown. */
+    @Serializable
+    data class Collection(
+        val id: String,
+        val name: String,
+        val isPlaylist: Boolean = false,
+    ) : TvRoute
+
+    /** The tracks of an album, or the albums of an artist; opened from the card of one, wherever it is shown. */
+    @Serializable
+    data class Music(
+        val id: String,
+        val name: String,
+        val isAlbum: Boolean,
+    ) : TvRoute
+
+    /** The channels of the server's Live TV; opened from its library card, only when the server has channels. */
+    @Serializable
+    data object LiveTv : TvRoute
+
     @Serializable
     data object Player : TvRoute
 }
@@ -74,6 +101,10 @@ internal fun TvRoute.focusRouteKey(libraryPath: List<String> = emptyList()): Str
         is TvRoute.Settings -> "settings:${TvSettingsCategory.fromRouteSection(section)?.routeKey ?: "root"}"
         is TvRoute.JellyfinDetail -> "jellyfin-detail:$itemId"
         is TvRoute.SeerrDetail -> "seerr-detail:${mediaType.name}:$tmdbId"
+        is TvRoute.Person -> "person:$id"
+        is TvRoute.Collection -> "collection:$id"
+        is TvRoute.Music -> "music:$id"
+        TvRoute.LiveTv -> "live-tv"
         TvRoute.Player -> "player"
     }
 
@@ -91,11 +122,13 @@ internal const val TV_SEARCH_JELLYFIN_RETRY_TARGET = "search:jellyfin:retry"
 internal const val TV_SEARCH_SEERR_RETRY_TARGET = "search:seerr:retry"
 internal const val TV_DISCOVER_CONNECT_TARGET = "discover:connect"
 internal const val TV_DISCOVER_EMPTY_TARGET = "discover:empty"
+internal const val TV_DISCOVER_EMPTY_ACTION_TARGET = "discover:empty:action"
 internal const val TV_DISCOVER_LOADING_TARGET = "discover:loading"
 internal const val TV_DISCOVER_RETRY_TARGET = "discover:retry"
 internal const val TV_LIBRARY_LOADING_TARGET = "library:loading"
 internal const val TV_LIBRARY_RETRY_TARGET = "library:retry"
 internal const val TV_LIBRARY_EMPTY_TARGET = "library:empty"
+internal const val TV_LIBRARY_EMPTY_ACTION_TARGET = "library:empty:action"
 
 internal fun tvHomeCardTargetId(
     rowId: String,
@@ -278,6 +311,8 @@ internal fun tvFocusTarget(
             targetId == TV_LIBRARY_LOADING_TARGET -> TvFocusAnchor("status", "loading", TvFocusDestination.BODY) to true
             targetId == TV_LIBRARY_EMPTY_TARGET -> TvFocusAnchor("status", "empty", TvFocusDestination.BODY) to true
             targetId == TV_LIBRARY_RETRY_TARGET -> TvFocusAnchor("status", "retry", TvFocusDestination.PRIMARY_ACTION) to false
+            targetId == TV_LIBRARY_EMPTY_ACTION_TARGET || targetId == TV_DISCOVER_EMPTY_ACTION_TARGET ->
+                TvFocusAnchor("status", "empty-action", TvFocusDestination.PRIMARY_ACTION) to false
             targetId == TV_SEARCH_QUERY_TARGET -> TvFocusAnchor("query", null, TvFocusDestination.PRIMARY_ACTION) to false
             targetId.startsWith("search:source:") ->
                 TvFocusAnchor("sources", targetId.removePrefix("search:source:"), TvFocusDestination.SECTION_ITEM) to false
@@ -311,6 +346,9 @@ internal class TvFocusMemory(
     initialSnapshots: Map<String, TvFocusSnapshot> = emptyMap(),
 ) {
     private val snapshots = initialSnapshots.toMutableMap()
+
+    /** The last focused card per row, for returning to it after a vertical move. Cleared with the snapshots. */
+    val rows = TvRowFocusMemory()
 
     fun remember(
         routeKey: String,
@@ -347,7 +385,16 @@ internal class TvFocusMemory(
 
     internal fun snapshot(): Map<String, TvFocusSnapshot> = snapshots.toMap()
 
-    internal fun clear() = snapshots.clear()
+    internal fun clear() {
+        snapshots.clear()
+        rows.clear()
+    }
+
+    /** Forgets where focus was on [routeKey], so the route opens on its default target the next time. */
+    internal fun forget(routeKey: String) {
+        snapshots.remove(routeKey)
+        rows.forgetRoute(routeKey)
+    }
 
     internal fun resolve(
         routeKey: String,

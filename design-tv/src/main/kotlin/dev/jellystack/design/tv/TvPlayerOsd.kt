@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -81,7 +82,11 @@ internal data class TvPlayerOsdModel(
     val canShowEpisodes: Boolean = false,
     val canPlayNext: Boolean = false,
     val promptActions: List<TvPlaybackActionModel> = emptyList(),
-)
+    /** A Live TV channel: the label that replaces the seek bar and the seek buttons, which have nothing to act on. */
+    val liveLabel: String? = null,
+) {
+    val isLive: Boolean get() = liveLabel != null
+}
 
 internal data class TvPlayerOsdActions(
     val onSeekTo: (Long) -> Unit,
@@ -127,21 +132,32 @@ internal fun TvPlayerControls(
             onAction = actions.onPromptAction,
             modifier = Modifier.fillMaxWidth().testTag(TV_PLAYBACK_ACTIONS_CONTROLS_TAG),
         )
-        TvPlayerTimeline(model, actions, strings, interaction, Modifier.testTag(TV_PLAYBACK_TIMELINE_TAG))
+        if (model.liveLabel != null) {
+            Text(model.liveLabel, color = TvText, fontSize = TvTextSize.Body, fontWeight = FontWeight.Bold)
+        } else {
+            TvPlayerTimeline(model, actions, strings, interaction, Modifier.testTag(TV_PLAYBACK_TIMELINE_TAG))
+        }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            TvPlayerTrackChips(model, actions, strings, Modifier.weight(1f))
+            // A channel carries no tracks to choose from here.
+            if (model.isLive) {
+                Spacer(Modifier.weight(1f))
+            } else {
+                TvPlayerTrackChips(model, actions, strings, Modifier.weight(1f))
+            }
             Row(
                 Modifier.padding(horizontal = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(18.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TvPlayerIconButton(
-                    tvSeekBackIcon(model.seekBackSeconds),
-                    "${strings.seekBack} ${model.seekBackSeconds}",
-                    { actions.onSeekTo(model.seekTarget(-model.seekBackSeconds)) },
-                    size = 64.dp,
-                    iconSize = 34.dp,
-                )
+                if (!model.isLive) {
+                    TvPlayerIconButton(
+                        tvSeekBackIcon(model.seekBackSeconds),
+                        "${strings.seekBack} ${model.seekBackSeconds}",
+                        { actions.onSeekTo(model.seekTarget(-model.seekBackSeconds)) },
+                        size = 64.dp,
+                        iconSize = 34.dp,
+                    )
+                }
                 TvPlayerIconButton(
                     if (model.isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
                     if (model.isPaused) strings.play else strings.pause,
@@ -158,13 +174,15 @@ internal fun TvPlayerControls(
                     size = 78.dp,
                     iconSize = 42.dp,
                 )
-                TvPlayerIconButton(
-                    tvSeekForwardIcon(model.seekForwardSeconds),
-                    "${strings.seekForward} ${model.seekForwardSeconds}",
-                    { actions.onSeekTo(model.seekTarget(model.seekForwardSeconds)) },
-                    size = 64.dp,
-                    iconSize = 34.dp,
-                )
+                if (!model.isLive) {
+                    TvPlayerIconButton(
+                        tvSeekForwardIcon(model.seekForwardSeconds),
+                        "${strings.seekForward} ${model.seekForwardSeconds}",
+                        { actions.onSeekTo(model.seekTarget(model.seekForwardSeconds)) },
+                        size = 64.dp,
+                        iconSize = 34.dp,
+                    )
+                }
             }
             Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End)) {
                 if (model.canShowEpisodes) {

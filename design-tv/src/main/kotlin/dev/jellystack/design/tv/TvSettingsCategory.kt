@@ -23,9 +23,13 @@ internal fun tvSettingsRoute(category: TvSettingsCategory): TvRoute.Settings = T
 
 internal fun tvConnectionsSettingsRoute(): TvRoute.Settings = tvSettingsRoute(TvSettingsCategory.CONNECTIONS)
 
-internal fun tvSettingsControlKeys(category: TvSettingsCategory): List<String> =
+internal fun tvSettingsControlKeys(
+    category: TvSettingsCategory,
+    watchNextAvailable: Boolean = false,
+): List<String> =
     when (category) {
-        TvSettingsCategory.APPEARANCE -> listOf("language", "home-sections")
+        TvSettingsCategory.APPEARANCE ->
+            listOf("language", "home-sections") + if (watchNextAvailable) listOf("watch-next") else emptyList()
         TvSettingsCategory.PLAYBACK ->
             listOf(
                 "quality",

@@ -139,6 +139,187 @@ class JellyfinBrowseRepositoryTest {
         }
 
     @Test
+    fun personItemsAskForTheMoviesAndSeriesOfThePersonAcrossAllLibraries() =
+        runTest {
+            val requests = mutableListOf<Pair<String, Map<String, String>>>()
+            val listRepository =
+                listRepository(requests, """{"Items":[${movieJson("film-2")},${movieJson("film-1")}],"TotalRecordCount":2}""")
+
+            val items = listRepository.personItems("person-1")
+
+            val (path, parameters) = requests.single()
+            assertEquals("/Items", path)
+            assertEquals("person-1", parameters["PersonIds"])
+            assertEquals("Movie,Series", parameters["IncludeItemTypes"])
+            assertEquals("true", parameters["Recursive"])
+            assertNull(parameters["ParentId"])
+            assertEquals(listOf("film-2", "film-1"), items.map { it.id })
+            assertNotNull(itemStore.get("film-1"))
+        }
+
+    @Test
+    fun personItemsFallBackToOneEpisodePerSeriesWithoutTitles() =
+        runTest {
+            val requests = mutableListOf<Pair<String, Map<String, String>>>()
+            val episodes =
+                listOf("e1" to "show-a", "e2" to "show-a", "e3" to "show-b").joinToString(",") { (id, series) ->
+                    """{"Id":"$id","Name":"$id","Type":"Episode","MediaType":"Video","SeriesId":"$series"}"""
+                }
+            val listRepository =
+                listRepository(requests, "") { parameters ->
+                    if (parameters["IncludeItemTypes"] == "Episode") {
+                        """{"Items":[$episodes],"TotalRecordCount":3}"""
+                    } else {
+                        """{"Items":[],"TotalRecordCount":0}"""
+                    }
+                }
+
+            val items = listRepository.personItems("person-1")
+
+            assertEquals(listOf("Movie,Series", "Episode"), requests.map { it.second["IncludeItemTypes"] })
+            assertEquals(listOf("e1", "e3"), items.map { it.id })
+        }
+
+    @Test
+    fun collectionItemsListTheDirectChildrenOfTheCollection() =
+        runTest {
+            val requests = mutableListOf<Pair<String, Map<String, String>>>()
+            val listRepository = listRepository(requests, """{"Items":[${movieJson("part-1")}],"TotalRecordCount":1}""")
+
+            val items = listRepository.collectionItems("box-1")
+
+            val (path, parameters) = requests.single()
+            assertEquals("/Items", path)
+            assertEquals("box-1", parameters["ParentId"])
+            assertEquals("false", parameters["Recursive"])
+            assertNull(parameters["IncludeItemTypes"])
+            assertEquals(listOf("part-1"), items.map { it.id })
+        }
+
+    @Test
+    fun playlistItemsKeepTheOrderOfThePlaylist() =
+        runTest {
+            val requests = mutableListOf<Pair<String, Map<String, String>>>()
+            val listRepository =
+                listRepository(
+                    requests,
+                    """{"Items":[${movieJson("third")},${movieJson("first")},${movieJson("second")}],"TotalRecordCount":3}""",
+                )
+
+            val items = listRepository.playlistItems("playlist-1")
+
+            val (path, parameters) = requests.single()
+            assertEquals("/Playlists/playlist-1/Items", path)
+            assertEquals(environment.userId, parameters["UserId"])
+            assertEquals(listOf("third", "first", "second"), items.map { it.id })
+        }
+
+    @Test
+    fun albumTracksAreAskedForInDiscAndTrackOrderBelowTheAlbum() =
+        runTest {
+            val requests = mutableListOf<Pair<String, Map<String, String>>>()
+            val listRepository = listRepository(requests, """{"Items":[${trackJson("t2")},${trackJson("t1")}],"TotalRecordCount":2}""")
+
+            val tracks = listRepository.albumTracks("album-1")
+
+            val (path, parameters) = requests.single()
+            assertEquals("/Items", path)
+            assertEquals("album-1", parameters["ParentId"])
+            assertEquals("Audio", parameters["IncludeItemTypes"])
+            assertEquals("true", parameters["Recursive"])
+            assertEquals("ParentIndexNumber,IndexNumber,SortName", parameters["SortBy"])
+            assertEquals("Ascending", parameters["SortOrder"])
+            assertEquals(listOf("t2", "t1"), tracks.map { it.id })
+            assertNotNull(itemStore.get("t1"))
+        }
+
+    @Test
+    fun artistAlbumsAreTheAlbumsTheArtistMadeNewestFirstAcrossAllLibraries() =
+        runTest {
+            val requests = mutableListOf<Pair<String, Map<String, String>>>()
+            val listRepository = listRepository(requests, """{"Items":[${albumJson("al-2")},${albumJson("al-1")}],"TotalRecordCount":2}""")
+
+            val albums = listRepository.artistAlbums("artist-1")
+
+            val (_, parameters) = requests.single()
+            assertEquals("artist-1", parameters["AlbumArtistIds"])
+            assertEquals("MusicAlbum", parameters["IncludeItemTypes"])
+            assertEquals("true", parameters["Recursive"])
+            assertEquals("ProductionYear,SortName", parameters["SortBy"])
+            assertEquals("Descending", parameters["SortOrder"])
+            assertNull(parameters["ParentId"])
+            assertEquals(listOf("al-2", "al-1"), albums.map { it.id })
+        }
+
+    @Test
+    fun artistTracksAreAskedForAlbumByAlbumEachInTrackOrder() =
+        runTest {
+            val requests = mutableListOf<Pair<String, Map<String, String>>>()
+            val listRepository = listRepository(requests, """{"Items":[${trackJson("t1")}],"TotalRecordCount":1}""")
+
+            listRepository.artistTracks("artist-1")
+
+            val (_, parameters) = requests.single()
+            assertEquals("artist-1", parameters["AlbumArtistIds"])
+            assertEquals("Audio", parameters["IncludeItemTypes"])
+            assertEquals("Album,ParentIndexNumber,IndexNumber,SortName", parameters["SortBy"])
+        }
+
+    @Test
+    fun aTracksDetailKnowsItsArtistsAlbumAndCover() =
+        runTest {
+            val requests = mutableListOf<Pair<String, Map<String, String>>>()
+            val listRepository = listRepository(requests, TRACK_DETAIL_JSON)
+
+            val music = listRepository.getItemDetail("t1")?.music
+
+            assertEquals(JellyfinTrackInfo("First Light", "album-1", "album-tag", "Example Band, Guest Singer"), music)
+        }
+
+    @Test
+    fun aTrackWithOnlyAnAlbumArtistShowsThatArtistAndAMovieHasNoMusicInfo() =
+        runTest {
+            val requests = mutableListOf<Pair<String, Map<String, String>>>()
+            val onlyAlbumArtist = """{"Id":"t1","Name":"Opening Theme","Album":"First Light","AlbumArtist":"Example Band"}"""
+            assertEquals("Example Band", listRepository(requests, onlyAlbumArtist).getItemDetail("t1")?.music?.artist)
+
+            val movie = listRepository(requests, """{"Id":"m1","Name":"Film"}""").getItemDetail("m1")
+            assertNull(movie?.music)
+        }
+
+    private fun trackJson(id: String) =
+        """{"Id":"$id","Name":"$id","Type":"Audio","MediaType":"Audio","IndexNumber":1,"ParentIndexNumber":1}"""
+
+    private fun albumJson(id: String) = """{"Id":"$id","Name":"$id","Type":"MusicAlbum"}"""
+
+    private fun movieJson(id: String) = """{"Id":"$id","Name":"$id","Type":"Movie","MediaType":"Video"}"""
+
+    private fun listRepository(
+        requests: MutableList<Pair<String, Map<String, String>>>,
+        body: String,
+        bodyFor: (Map<String, String>) -> String = { body },
+    ): JellyfinBrowseRepository {
+        val listEngine =
+            MockEngine { request ->
+                val parameters =
+                    request.url.parameters
+                        .entries()
+                        .associate { it.key to it.value.first() }
+                requests += request.url.encodedPath to parameters
+                respond(bodyFor(parameters), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()))
+            }
+        val listClient = NetworkClientFactory.create(ClientConfig(engine = listEngine, installLogging = false))
+        return JellyfinBrowseRepository(
+            environmentProvider,
+            libraryStore,
+            itemStore,
+            detailStore,
+            { env -> JellyfinBrowseApi(listClient, env.baseUrl, env.accessToken, env.deviceId) },
+            clock = FixedClock,
+        )
+    }
+
+    @Test
     fun stopStreamingPlaybackReportsExactPositionWithoutForcingCompletion() =
         runTest {
             var stopPayload: String? = null
@@ -201,6 +382,90 @@ class JellyfinBrowseRepositoryTest {
             assertEquals(375_000_000L, payload.getValue("PositionTicks").jsonPrimitive.long)
             assertEquals(0, playedRequestCount)
         }
+
+    @Test
+    fun stoppingALiveChannelClosesItsStreamAndTouchesNeitherPositionNorWatchedState() =
+        runTest {
+            val paths = mutableListOf<String>()
+            var stopPayload: String? = null
+            var closedStreamId: String? = null
+            val repository =
+                liveReportingRepository { request ->
+                    paths += request.url.encodedPath
+                    when (request.url.encodedPath) {
+                        "/Sessions/Playing/Stopped" -> stopPayload = (request.body as TextContent).text
+                        "/LiveStreams/Close" -> closedStreamId = request.url.parameters["LiveStreamId"]
+                    }
+                }
+
+            repository.stopStreamingPlayback(LIVE_CONTEXT, positionMs = 42_000L, completed = true)
+
+            val payload = Json.parseToJsonElement(requireNotNull(stopPayload)).jsonObject
+            assertEquals("live-1", payload.getValue("LiveStreamId").jsonPrimitive.content)
+            assertFalse("PositionTicks" in payload)
+            assertEquals("live-1", closedStreamId)
+            assertEquals(listOf("/Sessions/Playing/Stopped", "/LiveStreams/Close"), paths)
+        }
+
+    @Test
+    fun aLiveStreamIsClosedEvenWhenTheStopReportCannotBeSent() =
+        runTest {
+            var closedStreamId: String? = null
+            val repository =
+                liveReportingRepository { request ->
+                    check(request.url.encodedPath != "/Sessions/Playing/Stopped") { "server unreachable" }
+                    if (request.url.encodedPath == "/LiveStreams/Close") closedStreamId = request.url.parameters["LiveStreamId"]
+                }
+
+            repository.stopStreamingPlayback(LIVE_CONTEXT, positionMs = null, completed = false)
+
+            assertEquals("live-1", closedStreamId)
+        }
+
+    @Test
+    fun liveStartAndProgressReportsCarryNoPositionAndWriteNoUserData() =
+        runTest {
+            val paths = mutableListOf<String>()
+            val payloads = mutableMapOf<String, kotlinx.serialization.json.JsonObject>()
+            val repository =
+                liveReportingRepository { request ->
+                    paths += request.url.encodedPath
+                    (request.body as? TextContent)?.let { payloads[request.url.encodedPath] = Json.parseToJsonElement(it.text).jsonObject }
+                }
+
+            repository.startStreamingPlayback(LIVE_CONTEXT, positionMs = 0L)
+            repository.reportStreamingProgress(LIVE_CONTEXT, positionMs = 90_000L)
+
+            assertEquals(listOf("/Sessions/Playing", "/Sessions/Playing/Progress"), paths)
+            payloads.values.forEach { payload ->
+                assertFalse("PositionTicks" in payload)
+                assertEquals("live-1", payload.getValue("LiveStreamId").jsonPrimitive.content)
+            }
+            assertEquals(
+                "false",
+                payloads
+                    .getValue("/Sessions/Playing")
+                    .getValue("CanSeek")
+                    .jsonPrimitive.content,
+            )
+        }
+
+    private fun liveReportingRepository(onRequest: (io.ktor.client.request.HttpRequestData) -> Unit): JellyfinBrowseRepository {
+        val engine =
+            MockEngine { request ->
+                onRequest(request)
+                respond("", HttpStatusCode.NoContent, headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()))
+            }
+        val client = NetworkClientFactory.create(ClientConfig(engine = engine, installLogging = false, maxRetries = 0))
+        return JellyfinBrowseRepository(
+            environmentProvider,
+            InMemoryLibraryStore(),
+            InMemoryItemStore(),
+            InMemoryDetailStore(),
+            { env -> JellyfinBrowseApi(client, env.baseUrl, env.accessToken, env.deviceId, "Test", env.deviceName, "1.0") },
+            clock = FixedClock,
+        )
+    }
 
     @Test
     fun loadLibraryPageDoesNotRequestAdditionalLibraries() =
@@ -1101,6 +1366,30 @@ class JellyfinBrowseRepositoryTest {
     }
 
     companion object {
+        private val LIVE_CONTEXT =
+            StreamingProgressContext(
+                mediaId = "channel-1",
+                mediaSourceId = "source-1",
+                playSessionId = "play-session-1",
+                audioStreamIndex = null,
+                subtitleStreamIndex = null,
+                strategy = StreamingPlayStrategy.TRANSCODED,
+                isLive = true,
+                liveStreamId = "live-1",
+            )
+
+        private const val TRACK_DETAIL_JSON = """
+            {
+              "Id": "t1",
+              "Name": "Opening Theme",
+              "Album": "First Light",
+              "AlbumId": "album-1",
+              "AlbumPrimaryImageTag": "album-tag",
+              "AlbumArtist": "Example Band",
+              "Artists": ["Example Band", "Guest Singer"]
+            }
+        """
+
         private fun detailJson(name: String): String = """{"Id":"shared","Name":"$name","Type":"Movie","MediaSources":[]}"""
 
         private const val LIBRARIES_JSON = """

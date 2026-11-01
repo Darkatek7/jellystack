@@ -72,6 +72,19 @@ class SeriesPlaybackTargetResolverTest {
         assertEquals(SeriesPlaybackReason.RESTART, target?.reason)
     }
 
+    @Test
+    fun `play order lists numbered seasons before specials and leaves out missing episodes`() {
+        val episodes =
+            listOf(
+                episode("special", season = 0, number = 1),
+                episode("s2e1", season = 2, number = 1),
+                episode("missing", season = 1, number = 2, locationType = "Virtual"),
+                episode("s1e1", season = 1, number = 1, played = 100.0),
+            )
+
+        assertEquals(listOf("s1e1", "s2e1", "special"), resolver.playOrder(episodes, emptySet()).map { it.id })
+    }
+
     private fun episode(
         id: String,
         season: Int?,

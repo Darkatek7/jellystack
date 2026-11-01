@@ -228,6 +228,189 @@ class JellyfinBrowseApiTest {
         }
 
     @Test
+    fun personFilmographyQueryFiltersByPersonAcrossTheWholeLibrary() =
+        runTest {
+            var parameters: Map<String, List<String>> = emptyMap()
+            val engine =
+                MockEngine { request ->
+                    parameters =
+                        request.url.parameters
+                            .entries()
+                            .associate { it.key to it.value }
+                    respond(
+                        """{"Items":[{"Id":"film-1","Name":"Film","Type":"Movie"}],"TotalRecordCount":1}""",
+                        HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                    )
+                }
+            val client = NetworkClientFactory.create(ClientConfig(engine = engine, installLogging = false))
+            val api = JellyfinBrowseApi(client, baseUrl = "https://example.test", accessToken = "dummy-access-token")
+
+            val page =
+                api.fetchLibraryItems(
+                    userId = "u-1",
+                    libraryId = "",
+                    startIndex = 0,
+                    limit = 50,
+                    includeItemTypes = "Movie,Series",
+                    recursive = true,
+                    personIds = listOf("person-1", "person-2"),
+                )
+
+            assertEquals(listOf("person-1,person-2"), parameters["PersonIds"])
+            assertEquals(listOf("Movie,Series"), parameters["IncludeItemTypes"])
+            assertEquals(listOf("true"), parameters["Recursive"])
+            assertNull(parameters["ParentId"])
+            assertEquals(listOf("film-1"), page.items.map { it.id })
+            client.close()
+        }
+
+    @Test
+    fun albumTracksQuerySortsByDiscThenTrackNumberBelowTheAlbum() =
+        runTest {
+            var parameters: Map<String, List<String>> = emptyMap()
+            val engine =
+                MockEngine { request ->
+                    parameters =
+                        request.url.parameters
+                            .entries()
+                            .associate { it.key to it.value }
+                    respond(
+                        """{"Items":[{"Id":"t1","Name":"Opening Theme","Type":"Audio","IndexNumber":1,"ParentIndexNumber":1}],"TotalRecordCount":1}""",
+                        HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                    )
+                }
+            val client = NetworkClientFactory.create(ClientConfig(engine = engine, installLogging = false))
+            val api = JellyfinBrowseApi(client, baseUrl = "https://example.test", accessToken = "dummy-access-token")
+
+            val page =
+                api.fetchLibraryItems(
+                    userId = "u-1",
+                    libraryId = "album-1",
+                    startIndex = 0,
+                    limit = 500,
+                    includeItemTypes = "Audio",
+                    recursive = true,
+                    sortBy = "ParentIndexNumber,IndexNumber,SortName",
+                )
+
+            assertEquals(listOf("album-1"), parameters["ParentId"])
+            assertEquals(listOf("ParentIndexNumber,IndexNumber,SortName"), parameters["SortBy"])
+            assertEquals(listOf("Ascending"), parameters["SortOrder"])
+            assertEquals(listOf("Audio"), parameters["IncludeItemTypes"])
+            assertEquals(1, page.items.single().indexNumber)
+            assertEquals(1, page.items.single().parentIndexNumber)
+            client.close()
+        }
+
+    @Test
+    fun albumArtistFilterSendsTheArtistIdsAndIsOmittedOtherwise() =
+        runTest {
+            val seen = mutableListOf<Map<String, List<String>>>()
+            val engine =
+                MockEngine { request ->
+                    seen +=
+                        request.url.parameters
+                            .entries()
+                            .associate { it.key to it.value }
+                    respond(
+                        """{"Items":[],"TotalRecordCount":0}""",
+                        HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                    )
+                }
+            val client = NetworkClientFactory.create(ClientConfig(engine = engine, installLogging = false))
+            val api = JellyfinBrowseApi(client, baseUrl = "https://example.test", accessToken = "dummy-access-token")
+
+            api.fetchLibraryItems("u-1", "", 0, 50, includeItemTypes = "MusicAlbum", albumArtistIds = listOf("artist-1"))
+            api.fetchLibraryItems("u-1", "lib-1", 0, 50)
+
+            assertEquals(listOf("artist-1"), seen[0]["AlbumArtistIds"])
+            assertNull(seen[1]["AlbumArtistIds"])
+            client.close()
+        }
+
+    @Test
+    fun trackDetailDecodesArtistsAlbumAndAlbumCover() =
+        runTest {
+            val engine =
+                MockEngine {
+                    respond(
+                        """{"Id":"t1","Name":"Opening Theme","Album":"First Light","AlbumId":"album-1","AlbumPrimaryImageTag":"tag","AlbumArtist":"Example Band","Artists":["Example Band"]}""",
+                        HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                    )
+                }
+            val client = NetworkClientFactory.create(ClientConfig(engine = engine, installLogging = false))
+            val api = JellyfinBrowseApi(client, baseUrl = "https://example.test", accessToken = "dummy-access-token")
+
+            val detail = api.fetchItemDetail("u-1", "t1")
+
+            assertEquals("First Light", detail.album)
+            assertEquals("album-1", detail.albumId)
+            assertEquals("tag", detail.albumPrimaryImageTag)
+            assertEquals(listOf("Example Band"), detail.artists)
+            client.close()
+        }
+
+    @Test
+    fun queriesWithoutPersonsNeverSendThePersonFilter() =
+        runTest {
+            var parameters: Map<String, List<String>> = emptyMap()
+            val engine =
+                MockEngine { request ->
+                    parameters =
+                        request.url.parameters
+                            .entries()
+                            .associate { it.key to it.value }
+                    respond(
+                        """{"Items":[],"TotalRecordCount":0}""",
+                        HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                    )
+                }
+            val client = NetworkClientFactory.create(ClientConfig(engine = engine, installLogging = false))
+            val api = JellyfinBrowseApi(client, baseUrl = "https://example.test", accessToken = "dummy-access-token")
+
+            api.fetchLibraryItems(userId = "u-1", libraryId = "library-1", startIndex = 0, limit = 30)
+
+            assertNull(parameters["PersonIds"])
+            client.close()
+        }
+
+    @Test
+    fun playlistItemsUseThePlaylistEndpointWithUserAndPaging() =
+        runTest {
+            var requestedPath = ""
+            var parameters: Map<String, List<String>> = emptyMap()
+            val engine =
+                MockEngine { request ->
+                    requestedPath = request.url.encodedPath
+                    parameters =
+                        request.url.parameters
+                            .entries()
+                            .associate { it.key to it.value }
+                    respond(
+                        """{"Items":[{"Id":"b","Name":"B","Type":"Movie"},{"Id":"a","Name":"A","Type":"Episode"}],"TotalRecordCount":2}""",
+                        HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                    )
+                }
+            val client = NetworkClientFactory.create(ClientConfig(engine = engine, installLogging = false))
+            val api = JellyfinBrowseApi(client, baseUrl = "https://example.test/jellyfin", accessToken = "dummy-access-token")
+
+            val response = api.fetchPlaylistItems(userId = "u-1", playlistId = "playlist-9", startIndex = 20, limit = 100)
+
+            assertEquals("/jellyfin/Playlists/playlist-9/Items", requestedPath)
+            assertEquals(listOf("u-1"), parameters["UserId"])
+            assertEquals(listOf("20"), parameters["StartIndex"])
+            assertEquals(listOf("100"), parameters["Limit"])
+            assertEquals(listOf("b", "a"), response.items.map { it.id })
+            client.close()
+        }
+
+    @Test
     fun fetchItemDetailRequestsRichMetadataFields() =
         runTest {
             var requestedFields = ""

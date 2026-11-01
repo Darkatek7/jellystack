@@ -160,6 +160,11 @@ internal class TvFocusCoordinator<T : Any>(
         return focusTargets(routeKey).firstOrNull { it.targetId == targetId } ?: registration.currentFocusTarget()
     }
 
+    /** Forgets which target of [routeKey] had focus last; the registrations stay with the composables that made them. */
+    fun forgetRemembered(routeKey: Any) {
+        routes[routeKey]?.rememberedId = null
+    }
+
     fun focusTargets(routeKey: Any): List<TvFocusTarget> {
         val attachedTargets =
             routes[routeKey]

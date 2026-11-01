@@ -90,6 +90,9 @@ class AndroidPlayerEngine(
     private var audioOutputUnavailableReported = false
     private var audioOutputWatchdog: Job? = null
 
+    /** Restarts at the live edge since the player was last ready; see [shouldRestartAtLiveEdge]. */
+    private var liveEdgeRestarts = 0
+
     // Created on first use: an engine that never plays (the TV trailer preview before its first trailer) holds
     // no codecs, playback thread or buffer.
     private val exoPlayerHolder = lazy(LazyThreadSafetyMode.NONE) { createExoPlayer(preferHighestSupportedBitrate) }
@@ -122,6 +125,7 @@ class AndroidPlayerEngine(
                                     startPolling()
                                 }
                                 Player.STATE_READY -> {
+                                    liveEdgeRestarts = 0
                                     eventFlow.tryEmit(PlayerEvent.Ready)
                                     publishSnapshot()
                                     scheduleFirstFrameWatchdog()
@@ -150,6 +154,14 @@ class AndroidPlayerEngine(
                         }
 
                         override fun onPlayerError(error: PlaybackException) {
+                            if (shouldRestartAtLiveEdge(error.errorCode, liveEdgeRestarts)) {
+                                liveEdgeRestarts += 1
+                                exoPlayerIfCreated?.run {
+                                    seekToDefaultPosition()
+                                    prepare()
+                                }
+                                return
+                            }
                             // Only the error code and exception types: messages can carry server URLs.
                             JellystackLog.e(
                                 "Player error ${error.errorCodeName} cause=${error.cause?.javaClass?.simpleName} " +
@@ -388,6 +400,7 @@ class AndroidPlayerEngine(
         firstFrameState.value = false
         expectsAudioOutput = audioTrack != null || source.audioStreamIndex != null
         audioOutputUnavailableReported = false
+        liveEdgeRestarts = 0
         pendingAudioTrack = audioTrack
         pendingSubtitleTrack = subtitleTrack
         serverSelectedAudioStreamIndex = source.audioStreamIndex.takeIf { source.mode == PlaybackMode.HLS }
@@ -441,7 +454,8 @@ class AndroidPlayerEngine(
             exoPlayer.stop()
             exoPlayer.setMediaSource(mediaSource)
             exoPlayer.prepare()
-            exoPlayer.seekTo(startPositionMs)
+            // A live stream starts at its live edge; the position of the last session would jump into old segments.
+            if (!source.isLive) exoPlayer.seekTo(startPositionMs)
             applyAudioTrack(audioTrack)
             applySubtitleTrack(subtitleTrack)
         }
@@ -821,7 +835,7 @@ private fun sessionMedia3Metadata(
         .Builder()
         .setTitle(metadata.title ?: "")
         .setArtist(metadata.sessionArtistLine())
-        .setAlbumTitle(metadata.seriesName?.takeIf(String::isNotBlank))
+        .setAlbumTitle((metadata.seriesName ?: metadata.albumName)?.takeIf(String::isNotBlank))
         .apply {
             artworkUrl
                 ?.takeIf(String::isNotBlank)

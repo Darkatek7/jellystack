@@ -71,6 +71,6 @@ internal fun TvCinematicDiscoverContent(
             )
         },
         onCardClick = { card -> discover.item(card.id)?.let(onItem) },
-        resetVerticalFocusToFirstCard = true,
+        rememberRowFocusOnVerticalMove = true,
     )
 }
