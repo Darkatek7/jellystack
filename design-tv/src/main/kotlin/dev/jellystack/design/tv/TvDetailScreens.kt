@@ -78,6 +78,7 @@ import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
 import dev.jellystack.core.jellyfin.JellyfinHomeState
 import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.JellyfinItemDetail
+import dev.jellystack.core.jellyfin.JellyfinPerson
 import dev.jellystack.core.jellyfin.mediaFeatures
 import dev.jellystack.core.jellyfin.withProgressOf
 import dev.jellystack.core.jellyseerr.JellyseerrCreateSelection
@@ -738,6 +739,7 @@ internal fun TvJellyfinDetailScreen(
     trailerResolver: DetailTrailerResolver,
     strings: TvStrings,
     onOpenItem: (JellyfinItem) -> Unit,
+    onOpenPerson: (JellyfinPerson) -> Unit,
     onPlaybackStarted: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -800,14 +802,7 @@ internal fun TvJellyfinDetailScreen(
     val currentDetail = detail
     if (currentItem == null || currentDetail == null) {
         error?.let { message ->
-            Column(
-                modifier = modifier.fillMaxSize(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
-            ) {
-                Text(message, color = TvTextMuted)
-                TvActionButton(strings.retry, onClick = { loadRevision += 1 }, primary = true)
-            }
+            TvDetailLoadError(message, strings.retry, onRetry = { loadRevision += 1 }, modifier = modifier)
         } ?: TvLoading(strings.loading, modifier)
         return
     }
@@ -948,6 +943,7 @@ internal fun TvJellyfinDetailScreen(
             bodyFocusModifier = bodyFocusModifier,
             sectionFocusModifiers = sectionFocusModifiers,
             onOpenItem = onOpenItem,
+            onOpenPerson = onOpenPerson,
             onSelectSeason = { chosenSeasonIndex = it },
         )
     }
@@ -961,6 +957,7 @@ internal fun LazyListScope.tvJellyfinDetailSections(
     sectionFocusModifiers: Map<String, TvDetailSectionFocusModifiers>,
     onOpenItem: (JellyfinItem) -> Unit,
     onSelectSeason: (Int) -> Unit,
+    onOpenPerson: (JellyfinPerson) -> Unit = {},
 ) {
     uiState.sections.forEach { section ->
         when (section) {
@@ -1062,7 +1059,7 @@ internal fun LazyListScope.tvJellyfinDetailSections(
                                             "Primary",
                                             TvArtworkSize.PORTRAIT_CARD.maxWidth,
                                         ),
-                                    onClick = null,
+                                    onClick = { onOpenPerson(person) },
                                     modifier = focusModifiers.itemModifier(person.id),
                                     providedFocusRequester = focusModifiers.itemFocusRequester(person.id),
                                 )
@@ -1629,7 +1626,7 @@ private fun TvRequestDialog(
                 }
             }
             requestsState.message?.takeIf { it.kind.name == "ERROR" }?.let {
-                Text(it.detail ?: strings.requestFailed, color = Color(0xFFFFA59E), fontSize = 17.sp)
+                Text(it.detail ?: strings.requestFailed, color = TvError, fontSize = 17.sp)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 TvActionButton(

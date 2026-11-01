@@ -223,7 +223,7 @@ internal sealed interface TvHomeFocusDestination {
     data class Row(
         val id: String,
         val lazyColumnIndex: Int,
-        val firstItemId: String,
+        val itemId: String,
         val horizontalIndex: Int,
     ) : TvHomeFocusDestination
 }
@@ -256,6 +256,8 @@ internal class TvHomeFocusTargetRegistry<T : Any>(
 
 internal class TvHomeVerticalFocusCoordinator(
     rows: List<TvHomeFocusRow>,
+    /** Index of the card a move into a row lands on; the first card unless the row remembers another. */
+    private val landingIndex: (TvHomeFocusRow) -> Int = { 0 },
 ) {
     private var rows = rows.nonEmptyRows()
     private var nextRequestId = 0L
@@ -306,7 +308,7 @@ internal class TvHomeVerticalFocusCoordinator(
                 is TvHomeFocusDestination.Row -> {
                     val row = rows.firstOrNull { it.id == destination.id }
                     val targetIndex =
-                        row?.itemIds?.indexOf(destination.firstItemId)?.takeIf { it >= 0 }
+                        row?.itemIds?.indexOf(destination.itemId)?.takeIf { it >= 0 }
                             ?: destination.horizontalIndex
                     row
                         ?.itemIds
@@ -334,18 +336,20 @@ internal class TvHomeVerticalFocusCoordinator(
     ): TvHomeFocusDestination? =
         when (origin) {
             TvHomeFocusOrigin.Hero ->
-                if (direction == TvHomeVerticalDirection.DOWN) rows.firstOrNull()?.destination() else null
+                if (direction == TvHomeVerticalDirection.DOWN) rows.firstOrNull()?.landingDestination() else null
             is TvHomeFocusOrigin.Row -> {
                 val currentIndex = rows.indexOfFirst { it.id == origin.id }
                 if (currentIndex < 0) {
                     null
                 } else if (direction == TvHomeVerticalDirection.UP) {
-                    rows.getOrNull(currentIndex - 1)?.destination() ?: TvHomeFocusDestination.HeroPrimary
+                    rows.getOrNull(currentIndex - 1)?.landingDestination() ?: TvHomeFocusDestination.HeroPrimary
                 } else {
-                    rows.getOrNull(currentIndex + 1)?.destination()
+                    rows.getOrNull(currentIndex + 1)?.landingDestination()
                 }
             }
         }
+
+    private fun TvHomeFocusRow.landingDestination(): TvHomeFocusDestination.Row = destination(landingIndex(this))
 
     private fun TvHomeFocusMove.reconcile(rows: List<TvHomeFocusRow>): TvHomeFocusMove? {
         val rowDestination = destination as? TvHomeFocusDestination.Row ?: return this
@@ -360,7 +364,7 @@ internal class TvHomeVerticalFocusCoordinator(
             rows.firstOrNull { it.id == destination.id }
                 ?: rows.minByOrNull { kotlin.math.abs(it.lazyColumnIndex - destination.lazyColumnIndex) }
                 ?: return null
-        return copy(destination = row.destination())
+        return copy(destination = row.landingDestination())
     }
 }
 
@@ -371,7 +375,7 @@ private fun TvHomeFocusRow.destination(horizontalIndex: Int = 0): TvHomeFocusDes
     return TvHomeFocusDestination.Row(
         id = id,
         lazyColumnIndex = lazyColumnIndex,
-        firstItemId = itemIds[resolvedHorizontalIndex],
+        itemId = itemIds[resolvedHorizontalIndex],
         horizontalIndex = resolvedHorizontalIndex,
     )
 }

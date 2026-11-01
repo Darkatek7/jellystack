@@ -328,7 +328,7 @@ internal fun TvSeerrConnectDialog(
                             },
                 )
             }
-            error?.let { Text(it, color = Color(0xFFFFA59E)) }
+            error?.let { Text(it, color = TvError) }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 TvActionButton(
                     strings.connect,

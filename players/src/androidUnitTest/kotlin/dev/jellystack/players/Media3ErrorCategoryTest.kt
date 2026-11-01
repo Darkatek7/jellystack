@@ -3,6 +3,8 @@ package dev.jellystack.players
 import androidx.media3.common.PlaybackException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class Media3ErrorCategoryTest {
     @Test
@@ -44,5 +46,15 @@ class Media3ErrorCategoryTest {
         ).forEach { code ->
             assertEquals(PlayerErrorCategory.MEDIA, media3ErrorCategory(code, httpResponseCode = null), "code $code")
         }
+    }
+
+    @Test
+    fun fallingBehindTheLiveWindowRestartsAtTheLiveEdgeAFewTimesThenFails() {
+        val behind = PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW
+
+        assertTrue(shouldRestartAtLiveEdge(behind, restartsSinceReady = 0))
+        assertTrue(shouldRestartAtLiveEdge(behind, restartsSinceReady = MAX_LIVE_EDGE_RESTARTS - 1))
+        assertFalse(shouldRestartAtLiveEdge(behind, restartsSinceReady = MAX_LIVE_EDGE_RESTARTS))
+        assertFalse(shouldRestartAtLiveEdge(PlaybackException.ERROR_CODE_DECODING_FAILED, restartsSinceReady = 0))
     }
 }

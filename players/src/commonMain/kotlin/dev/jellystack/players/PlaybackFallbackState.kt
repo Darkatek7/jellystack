@@ -96,12 +96,19 @@ private fun PlaybackSession.fallbackOptions(
         preferFmp4Hls = preferFmp4Hls,
     )
 
-private fun Throwable?.isAudioDecoderFailure(): Boolean {
+/**
+ * True when a failure came from an audio decoder: Media3 names the failing renderer in the message of its
+ * renderer exception (`MediaCodecAudioRenderer`, `FfmpegAudioRenderer`), and the FFmpeg extension raises its own
+ * `FfmpegDecoderException`.
+ */
+internal fun Throwable?.isAudioDecoderFailure(): Boolean {
     var current = this
     while (current != null) {
         val description = "${current::class.simpleName.orEmpty()} ${current.message.orEmpty()}".lowercase()
         if (
             "mediacodecaudiorenderer" in description ||
+            "ffmpegaudiorenderer" in description ||
+            "ffmpegdecoderexception" in description ||
             "audio renderer" in description ||
             "audio decoder" in description
         ) {

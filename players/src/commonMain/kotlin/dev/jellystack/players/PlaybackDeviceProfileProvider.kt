@@ -26,6 +26,17 @@ enum class PlaybackAudioCodec(
     OPUS("opus"),
     VORBIS("vorbis"),
     FLAC("flac"),
+
+    /**
+     * Jellyfin reports every DTS flavour (core, HD MA, HD HRA, :X) as `dts`, so DTS-HD is not a separate
+     * codec on the wire; the channel ceiling of the entry tells core-only (6) from DTS-HD (8) sinks.
+     * Devices have no decoder for it: it is declared only when the audio output can take the bitstream or the
+     * app ships a software decoder for it (FFmpeg on TV).
+     */
+    DTS("dts"),
+
+    /** Passthrough only, like [DTS]. */
+    TRUEHD("truehd"),
 }
 
 data class PlaybackDecoderCapabilities(
@@ -62,6 +73,12 @@ data class PlaybackDecoderCapabilities(
      * [videoCodecs] are ignored.
      */
     val hlsFmp4VideoCopyCodecs: Set<PlaybackVideoCodec> = emptySet(),
+    /**
+     * Jellyfin `VideoRangeType` values the decoder can show correctly, per direct-play codec. A codec without
+     * an entry is unrestricted. Sources of any other range type are not direct-played, so the server transcodes
+     * them (for example a Dolby Vision profile 5 stream on hardware without a Dolby Vision decoder).
+     */
+    val videoRanges: Map<PlaybackVideoCodec, Set<PlaybackVideoRange>> = emptyMap(),
 )
 
 fun interface PlaybackDeviceProfileProvider {
@@ -77,6 +94,7 @@ fun interface PlaybackDeviceProfileProvider {
 }
 
 internal const val PGS_SUBTITLE_FORMAT = "pgssub"
+internal const val VIDEO_CODEC_PROFILE_TYPE = "Video"
 internal const val SUBTITLE_METHOD_EMBED = "Embed"
 internal const val SUBTITLE_METHOD_EXTERNAL = "External"
 
@@ -265,6 +283,26 @@ object PlaybackDeviceProfileFactory {
                                                 condition = "LessThanEqual",
                                                 property = "AudioChannels",
                                                 value = maxChannels.toString(),
+                                            ),
+                                        ),
+                                ),
+                            )
+                        }
+                    }
+                    capabilities.videoRanges.forEach { (codec, ranges) ->
+                        if (codec in directCodecs && ranges.isNotEmpty()) {
+                            add(
+                                JellyfinCodecProfileDto(
+                                    type = VIDEO_CODEC_PROFILE_TYPE,
+                                    codec = codec.jellyfinName,
+                                    conditions =
+                                        listOf(
+                                            // Not required: a stream the server cannot classify is not blocked by this.
+                                            JellyfinProfileConditionDto(
+                                                condition = "EqualsAny",
+                                                property = "VideoRangeType",
+                                                value = ranges.sortedBy { it.ordinal }.joinToString("|") { it.jellyfinName },
+                                                isRequired = false,
                                             ),
                                         ),
                                 ),

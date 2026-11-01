@@ -77,3 +77,48 @@ fun TvDetailHero() = JellystackTvGoldenFixture(TvGoldenFixture.DETAIL_HERO)
 @Preview(name = "German 150% 1080p", device = TV_1080P, locale = "de", fontScale = 1.5f)
 @Composable
 fun TvDetailHeroGermanLarge() = JellystackTvGoldenFixture(TvGoldenFixture.DETAIL_HERO, AppLanguage.GERMAN)
+
+@PreviewTest
+@Preview(name = "1080p", device = TV_1080P)
+@Composable
+fun TvLibraryGrid() = JellystackTvGoldenFixture(TvGoldenFixture.LIBRARY_GRID)
+
+@PreviewTest
+@Preview(name = "1080p", device = TV_1080P)
+@Composable
+fun TvEmptyState() = JellystackTvGoldenFixture(TvGoldenFixture.EMPTY_STATE)
+
+@PreviewTest
+@Preview(name = "German 150% 1080p", device = TV_1080P, locale = "de", fontScale = 1.5f)
+@Composable
+fun TvEmptyStateGermanLarge() = JellystackTvGoldenFixture(TvGoldenFixture.EMPTY_STATE, AppLanguage.GERMAN)
+
+@PreviewTest
+@Preview(name = "1080p", device = TV_1080P)
+@Composable
+fun TvErrorState() = JellystackTvGoldenFixture(TvGoldenFixture.ERROR_STATE)
+
+@PreviewTest
+@Preview(name = "1080p", device = TV_1080P)
+@Composable
+fun TvSkeletonRows() = JellystackTvGoldenFixture(TvGoldenFixture.SKELETON_ROWS)
+
+@PreviewTest
+@Preview(name = "1080p", device = TV_1080P)
+@Composable
+fun TvDetailLoadError() = JellystackTvGoldenFixture(TvGoldenFixture.DETAIL_LOAD_ERROR)
+
+@PreviewTest
+@Preview(name = "1080p", device = TV_1080P)
+@Composable
+fun TvNavigationRailOpen() = JellystackTvGoldenFixture(TvGoldenFixture.NAVIGATION_RAIL_OPEN)
+
+@PreviewTest
+@Preview(name = "1080p", device = TV_1080P)
+@Composable
+fun TvResumeDialog() = JellystackTvGoldenFixture(TvGoldenFixture.RESUME_DIALOG)
+
+@PreviewTest
+@Preview(name = "German 150% 1080p", device = TV_1080P, locale = "de", fontScale = 1.5f)
+@Composable
+fun TvResumeDialogGermanLarge() = JellystackTvGoldenFixture(TvGoldenFixture.RESUME_DIALOG, AppLanguage.GERMAN)

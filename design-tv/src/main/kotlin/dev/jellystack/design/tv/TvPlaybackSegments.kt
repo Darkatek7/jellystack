@@ -191,7 +191,7 @@ internal fun tvPlaybackActionModels(
             )
         }
         if (context.upNextDue && nextTarget != null) {
-            add(tvUpNextAction(nextTarget, strings.player.playNextEpisode, strings))
+            add(tvUpNextAction(nextTarget, nextTarget.playNextLabel(strings), strings))
             add(
                 TvPlaybackActionModel(
                     id = "tv-player-action:watch-credits:${nextTarget.mediaId}",
@@ -203,6 +203,10 @@ internal fun tvPlaybackActionModels(
     }
 }
 
+/** An episode of a series is "next episode"; an entry of a played list can be anything. */
+private fun PlaybackContinuationTarget.playNextLabel(strings: TvStrings): String =
+    if (fromQueue) strings.player.playNext else strings.player.playNextEpisode
+
 /** After the end the card stays and carries the autoplay countdown, which can be cancelled. */
 private fun tvEndedUpNextActions(
     nextTarget: PlaybackContinuationTarget?,
@@ -210,7 +214,7 @@ private fun tvEndedUpNextActions(
     strings: TvStrings,
 ): List<TvPlaybackActionModel> {
     nextTarget ?: return emptyList()
-    val label = countdownSeconds?.let(strings.messages::playingIn) ?: strings.player.playNextEpisode
+    val label = countdownSeconds?.let(strings.messages::playingIn) ?: nextTarget.playNextLabel(strings)
     return listOfNotNull(
         tvUpNextAction(nextTarget, label, strings),
         countdownSeconds?.let {

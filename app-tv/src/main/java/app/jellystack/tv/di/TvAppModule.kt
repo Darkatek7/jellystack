@@ -33,6 +33,7 @@ import dev.jellystack.database.jellyfinLibraryStore
 import dev.jellystack.database.jellyseerrRecommendationStore
 import dev.jellystack.database.profileStore
 import dev.jellystack.database.serverStore
+import dev.jellystack.design.tv.TvScreensaverSource
 import kotlinx.coroutines.flow.merge
 import org.koin.android.ext.koin.androidContext
 import org.koin.dsl.module
@@ -115,4 +116,6 @@ val tvAppModule =
                 connectionCoordinator = get(),
             )
         }
+        // The system screensaver (JellystackDreamService); reads the cache only.
+        factory { TvScreensaverSource(browse = get(), activeProfiles = get(), pins = get()) }
     }

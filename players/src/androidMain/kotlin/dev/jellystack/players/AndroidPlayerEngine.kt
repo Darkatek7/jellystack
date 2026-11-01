@@ -9,8 +9,6 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
-import androidx.media3.common.C.COLOR_TRANSFER_HLG
-import androidx.media3.common.C.COLOR_TRANSFER_ST2084
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
@@ -26,12 +24,14 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
 import dev.jellystack.core.logging.JellystackLog
 import dev.jellystack.core.preferences.SubtitleBackground
 import dev.jellystack.core.preferences.SubtitleTextSize
+import dev.jellystack.core.preferences.VideoScale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -55,6 +55,7 @@ import androidx.media3.common.MediaMetadata as Media3MediaMetadata
 class AndroidPlayerEngine(
     context: Context,
     preferHighestSupportedBitrate: Boolean = false,
+    private val softwareAudio: SoftwareAudioDecoding? = null,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
 ) : PlayerEngine {
     private val mediaAudioAttributes =
@@ -73,6 +74,8 @@ class AndroidPlayerEngine(
     private var pendingSubtitleTrack: SubtitleTrack? = null
     private var pendingSubtitleSelectionConfirmationId: String? = null
     private var videoSurface: PlayerView? = null
+    private var videoScale: VideoScale = VideoScale.FIT
+    private val delays = PlaybackDelays()
     private var subtitleTextSize: SubtitleTextSize = SubtitleTextSize.SYSTEM
     private var subtitleBackground: SubtitleBackground = SubtitleBackground.SYSTEM
     private var subtitleBottomPaddingFraction: Float = SubtitleView.DEFAULT_BOTTOM_PADDING_FRACTION
@@ -87,6 +90,9 @@ class AndroidPlayerEngine(
     private var audioOutputUnavailableReported = false
     private var audioOutputWatchdog: Job? = null
 
+    /** Restarts at the live edge since the player was last ready; see [shouldRestartAtLiveEdge]. */
+    private var liveEdgeRestarts = 0
+
     // Created on first use: an engine that never plays (the TV trailer preview before its first trailer) holds
     // no codecs, playback thread or buffer.
     private val exoPlayerHolder = lazy(LazyThreadSafetyMode.NONE) { createExoPlayer(preferHighestSupportedBitrate) }
@@ -96,7 +102,7 @@ class AndroidPlayerEngine(
 
     private fun createExoPlayer(preferHighestSupportedBitrate: Boolean): ExoPlayer =
         ExoPlayer
-            .Builder(appContext, JellystackRenderersFactory(appContext))
+            .Builder(appContext, JellystackRenderersFactory(appContext, delays, softwareAudio))
             .setLoadControl(PlaybackBufferSizing.loadControl(appContext))
             .build()
             .apply {
@@ -119,6 +125,7 @@ class AndroidPlayerEngine(
                                     startPolling()
                                 }
                                 Player.STATE_READY -> {
+                                    liveEdgeRestarts = 0
                                     eventFlow.tryEmit(PlayerEvent.Ready)
                                     publishSnapshot()
                                     scheduleFirstFrameWatchdog()
@@ -147,6 +154,14 @@ class AndroidPlayerEngine(
                         }
 
                         override fun onPlayerError(error: PlaybackException) {
+                            if (shouldRestartAtLiveEdge(error.errorCode, liveEdgeRestarts)) {
+                                liveEdgeRestarts += 1
+                                exoPlayerIfCreated?.run {
+                                    seekToDefaultPosition()
+                                    prepare()
+                                }
+                                return
+                            }
                             // Only the error code and exception types: messages can carry server URLs.
                             JellystackLog.e(
                                 "Player error ${error.errorCodeName} cause=${error.cause?.javaClass?.simpleName} " +
@@ -284,8 +299,36 @@ class AndroidPlayerEngine(
             playerView.player = exoPlayer
         }
         videoSurface = playerView
+        applyVideoScale(playerView)
         applySubtitleAppearance(playerView)
         applySubtitleBottomPadding(playerView)
+    }
+
+    // Kept here, not on the view, so the choice survives the PlayerView being recreated (Compose AndroidView
+    // factory runs again after configuration changes or route re-entry).
+    override fun setVideoScale(scale: VideoScale) {
+        videoScale = scale
+        videoSurface?.let(::applyVideoScale)
+    }
+
+    override fun setAudioDelayMs(delayMs: Int) {
+        val previousUs = delays.audioUs
+        delays.setAudioMs(delayMs)
+        // The audio clock never runs backwards, so the picture would freeze until it caught up with a large reduction.
+        if (previousUs - delays.audioUs >= LARGE_AUDIO_DELAY_REDUCTION_US) {
+            exoPlayerIfCreated?.takeIf { it.playbackState == Player.STATE_READY }?.let { it.seekTo(it.currentPosition) }
+        }
+    }
+
+    override fun setSubtitleDelayMs(delayMs: Int) = delays.setSubtitleMs(delayMs)
+
+    private fun applyVideoScale(playerView: PlayerView) {
+        playerView.resizeMode =
+            when (videoScale) {
+                VideoScale.FIT -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                VideoScale.ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                VideoScale.STRETCH -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+            }
     }
 
     fun releaseVideoSurface(view: View) {
@@ -357,6 +400,7 @@ class AndroidPlayerEngine(
         firstFrameState.value = false
         expectsAudioOutput = audioTrack != null || source.audioStreamIndex != null
         audioOutputUnavailableReported = false
+        liveEdgeRestarts = 0
         pendingAudioTrack = audioTrack
         pendingSubtitleTrack = subtitleTrack
         serverSelectedAudioStreamIndex = source.audioStreamIndex.takeIf { source.mode == PlaybackMode.HLS }
@@ -410,7 +454,8 @@ class AndroidPlayerEngine(
             exoPlayer.stop()
             exoPlayer.setMediaSource(mediaSource)
             exoPlayer.prepare()
-            exoPlayer.seekTo(startPositionMs)
+            // A live stream starts at its live edge; the position of the last session would jump into old segments.
+            if (!source.isLive) exoPlayer.seekTo(startPositionMs)
             applyAudioTrack(audioTrack)
             applySubtitleTrack(subtitleTrack)
         }
@@ -559,12 +604,7 @@ class AndroidPlayerEngine(
             height = video?.height?.takeIf { it > 0 },
             videoBitrate = video?.bitrate?.takeIf { it > 0 },
             frameRate = video?.frameRate?.takeIf { it > 0f },
-            hdr =
-                when (transfer) {
-                    COLOR_TRANSFER_ST2084 -> "HDR10/PQ"
-                    COLOR_TRANSFER_HLG -> "HLG"
-                    else -> null
-                },
+            hdr = hdrStatsLabel(video?.sampleMimeType, video?.codecs, transfer),
             bufferedDurationMs = player.totalBufferedDuration.coerceAtLeast(0L),
             droppedFrames = player.videoDecoderCounters?.droppedBufferCount,
         )
@@ -767,12 +807,14 @@ class AndroidPlayerEngine(
                 SubtitleFormat.PGS,
                 SubtitleFormat.SUP,
                 -> mime == MimeTypes.APPLICATION_PGS || codecsOrEmpty == MimeTypes.APPLICATION_PGS
+                SubtitleFormat.BITMAP_BURN_IN -> false
                 SubtitleFormat.UNKNOWN -> true
             }
         }
     }
 
     private companion object {
+        const val LARGE_AUDIO_DELAY_REDUCTION_US = 500_000L
         const val MIN_SUBTITLE_BOTTOM_PADDING_FRACTION = 0f
         const val MAX_SUBTITLE_BOTTOM_PADDING_FRACTION = 1f
         private const val AUDIO_OUTPUT_TIMEOUT_MS = 1_500L
@@ -793,7 +835,7 @@ private fun sessionMedia3Metadata(
         .Builder()
         .setTitle(metadata.title ?: "")
         .setArtist(metadata.sessionArtistLine())
-        .setAlbumTitle(metadata.seriesName?.takeIf(String::isNotBlank))
+        .setAlbumTitle((metadata.seriesName ?: metadata.albumName)?.takeIf(String::isNotBlank))
         .apply {
             artworkUrl
                 ?.takeIf(String::isNotBlank)

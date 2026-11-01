@@ -20,8 +20,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -34,9 +36,18 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -70,6 +81,7 @@ internal fun TvConnectionScreen(
     refreshExistingAccount: Boolean = false,
     initialDisplayName: String = "Jellyfin",
     initialBaseUrl: String = "",
+    notice: String? = null,
 ) {
     val scope = rememberCoroutineScope()
     var method by remember { mutableStateOf(JellyfinSignInMethod.QUICK_CONNECT) }
@@ -78,7 +90,7 @@ internal fun TvConnectionScreen(
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var state by remember { mutableStateOf<JellyfinQuickConnectState?>(null) }
-    var error by remember { mutableStateOf<String?>(null) }
+    var error by remember(notice) { mutableStateOf(notice) }
     var connectJob by remember { mutableStateOf<Job?>(null) }
     val quickConnectInProgress =
         state is JellyfinQuickConnectState.Starting ||
@@ -146,6 +158,8 @@ internal fun TvConnectionScreen(
                 Modifier
                     .weight(1.15f)
                     .background(TvSurface, RoundedCornerShape(28.dp))
+                    // A long message must push the buttons down rather than squash them.
+                    .verticalScroll(rememberScrollState())
                     .padding(horizontal = 34.dp, vertical = layout.cardVerticalPadding),
                 verticalArrangement = Arrangement.spacedBy(layout.itemSpacing),
             ) {
@@ -250,8 +264,7 @@ internal fun TvConnectionScreen(
                     Text(
                         it,
                         color =
-                            androidx.compose.ui.graphics
-                                .Color(0xFFFFA59E),
+                        TvError,
                     )
                 }
                 // Wraps so longer labels (German "Neuen Code erstellen" next to "Abbrechen") keep their full text.
@@ -321,11 +334,14 @@ internal fun TvConnectionScreen(
             state = null
         }
     }
-    LaunchedEffect(contentMode, method) {
-        if (contentMode.showWaitingInstructions) {
-            waitingActionFocus.requestFocus()
-        } else if (contentMode.showEditableFields) {
-            quickMethodFocus.requestFocus()
+    LaunchedEffect(contentMode, method, initialBaseUrl) {
+        when {
+            contentMode.showWaitingInstructions -> waitingActionFocus.requestFocus()
+            !contentMode.showEditableFields -> Unit
+            method == JellyfinSignInMethod.PASSWORD -> passwordMethodFocus.requestFocus()
+            // Quick Connect needs nothing but the address, so a known address goes straight to the one useful action.
+            baseUrl.isNotBlank() -> connectFocus.requestFocus()
+            else -> quickMethodFocus.requestFocus()
         }
     }
     DisposableEffect(Unit) {
@@ -345,16 +361,43 @@ private fun TvTextField(
     height: Dp = 64.dp,
     modifier: Modifier = Modifier,
 ) {
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    // Read-only until OK is pressed: this value-based text field opens the keyboard as soon as it becomes editable
+    // while focused, so the remote can walk through the form without dismissing the keyboard at every field.
+    var editing by remember { mutableStateOf(false) }
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
         label = { Text(label) },
+        readOnly = !editing,
         singleLine = true,
         visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
         keyboardOptions = KeyboardOptions(keyboardType = if (password) KeyboardType.Password else KeyboardType.Uri),
         colors = tvOutlinedTextFieldColors(),
         // A minimum, not a fixed height: TV text sizes need more room than the phone defaults.
-        modifier = modifier.fillMaxWidth().heightIn(min = height),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .heightIn(min = height)
+                .onFocusChanged { if (!it.hasFocus) editing = false }
+                // Compose only reacts to D-pad events from non-virtual devices inside a text field. Handling them here
+                // works for every remote and keyboard; left/right still move the cursor.
+                .onPreviewKeyEvent { event ->
+                    if (event.type != KeyEventType.KeyDown) {
+                        false
+                    } else {
+                        when (event.key) {
+                            Key.DirectionUp -> focusManager.moveFocus(FocusDirection.Up)
+                            Key.DirectionDown -> focusManager.moveFocus(FocusDirection.Down)
+                            Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+                                if (editing) keyboardController?.show() else editing = true
+                                true
+                            }
+                            else -> false
+                        }
+                    }
+                },
     )
 }
 

@@ -25,6 +25,8 @@ data class PlaybackRequest(
     val preferredSubtitleTrackId: String? = null,
     val startPolicy: PlaybackStartPolicy = PlaybackStartPolicy.INHERIT,
     val metadata: PlaybackMetadata? = null,
+    /** A Live TV channel: no duration, no resume point, nothing to seek in, and nothing to continue with. */
+    val isLive: Boolean = false,
 ) {
     companion object {
         fun from(
@@ -58,6 +60,10 @@ data class PlaybackRequest(
                         episodeNumber = item.indexNumber,
                         artworkUrl = null,
                         primaryImageTag = detail.primaryImageTag ?: item.primaryImageTag,
+                        artist = detail.music?.artist,
+                        albumName = detail.music?.albumName,
+                        albumId = detail.music?.albumId,
+                        albumPrimaryImageTag = detail.music?.albumPrimaryImageTag,
                     ),
             )
     }
@@ -80,7 +86,7 @@ fun PlaybackRequest.artworkUrl(baseUrl: String?): String? {
 
 /** "Series · S1 · E2" style artist line; null when there is nothing beyond the title. */
 internal fun PlaybackMetadata.sessionArtistLine(): String? {
-    val series = seriesName?.takeIf(String::isNotBlank) ?: return null
+    val series = seriesName?.takeIf(String::isNotBlank) ?: return artist?.takeIf(String::isNotBlank)
     val season = seasonNumber
     val episode = episodeNumber
     return if (season != null && episode != null) {
@@ -121,6 +127,11 @@ data class PlaybackMetadata(
     val primaryImageTag: String?,
     val seasonNumber: Int? = null,
     val episodeNumber: Int? = null,
+    /** Music tracks: who made the track, and the album it is on with that album's cover. */
+    val artist: String? = null,
+    val albumName: String? = null,
+    val albumId: String? = null,
+    val albumPrimaryImageTag: String? = null,
 )
 
 enum class PlaybackMode {
@@ -159,6 +170,12 @@ enum class SubtitleFormat {
     VTT,
     PGS,
     SUP,
+
+    /**
+     * DVD (VobSub), DVB and XSUB bitmaps. Neither the `.sup` decoder nor Media3 renders them, so Jellyfin burns
+     * them into the video instead of the app ever fetching them.
+     */
+    BITMAP_BURN_IN,
     ASS,
     SSA,
     UNKNOWN,
@@ -166,7 +183,11 @@ enum class SubtitleFormat {
 
 /** Bitmap subtitles cannot be converted to text by Jellyfin; they are burned in or rendered from the container. */
 internal val SubtitleFormat.isImageBased: Boolean
-    get() = this == SubtitleFormat.PGS || this == SubtitleFormat.SUP
+    get() = this == SubtitleFormat.PGS || this == SubtitleFormat.SUP || this == SubtitleFormat.BITMAP_BURN_IN
+
+/** The server has to burn this subtitle into the video; selecting it rules out Direct Play and video copy. */
+internal val SubtitleFormat.requiresServerBurnIn: Boolean
+    get() = this == SubtitleFormat.BITMAP_BURN_IN
 
 data class SubtitleTrack(
     val id: String,
@@ -210,7 +231,9 @@ data class PlaybackSession(
     val playbackSpeed: Float = 1f,
     val statsForNerdsEnabled: Boolean = false,
     val runtimeStats: PlaybackRuntimeStats = PlaybackRuntimeStats(),
-)
+) {
+    val isLive: Boolean get() = request.isLive
+}
 
 data class PlaybackProgress(
     val mediaId: String,
@@ -351,6 +374,9 @@ sealed interface PlaybackState {
     }
 }
 
+/** Whether the session plays a Live TV channel; see [PlaybackRequest.isLive]. */
+val PlaybackState.Active.isLive: Boolean get() = source.isLive
+
 sealed interface PlaybackNotice {
     data object AudioTrackSelectionFailed : PlaybackNotice
 
@@ -383,7 +409,8 @@ internal fun JellyfinMediaStream.toSubtitleTrack(): SubtitleTrack? {
             "srt", "subrip" -> SubtitleFormat.SRT
             "webvtt", "vtt" -> SubtitleFormat.VTT
             "pgs", "pgssub", "hdmv_pgs_subtitle" -> SubtitleFormat.PGS
-            "sup", "dvdsub", "dvd_subtitle", "dvbsub", "dvb_subtitle", "xsub", "vobsub" -> SubtitleFormat.SUP
+            "sup" -> SubtitleFormat.SUP
+            "dvdsub", "dvd_subtitle", "dvbsub", "dvb_subtitle", "xsub", "vobsub" -> SubtitleFormat.BITMAP_BURN_IN
             "ass" -> SubtitleFormat.ASS
             "ssa" -> SubtitleFormat.SSA
             else -> SubtitleFormat.UNKNOWN

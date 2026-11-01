@@ -22,6 +22,7 @@ napier = "2.7.1"
 serialization = "1.7.3"
 sqldelight = "2.0.2"
 kotlinx-datetime = "0.6.1"
+desugar-jdk-libs = "2.1.5"
 compose-material-icons = "1.7.0"
 kotlin = "2.2.10"
 coil3 = "3.0.0"
@@ -29,6 +30,8 @@ androidx-appcompat = "1.7.0"
 multiplatform-settings = "1.1.1"
 sqlite-jdbc = "3.45.3.0"
 media3 = "1.10.1"
+# Precompiled FFmpeg audio extension from the Jellyfin project (GPL-3.0), built against Media3 1.9.0. TV only.
+media3-ffmpeg-jellyfin = "1.9.0+1"
 play-services-cast = "21.4.0"
 androidx-media = "1.7.0"
 androidx-mediarouter = "1.6.0"
@@ -75,6 +78,7 @@ sqldelight-coroutines = { module = "app.cash.sqldelight:coroutines-extensions", 
 sqldelight-android = { module = "app.cash.sqldelight:android-driver", version.ref = "sqldelight" }
 sqldelight-native = { module = "app.cash.sqldelight:native-driver", version.ref = "sqldelight" }
 sqldelight-driver-jvm = { module = "app.cash.sqldelight:sqlite-driver", version.ref = "sqldelight" }
+desugar-jdk-libs = { module = "com.android.tools:desugar_jdk_libs", version.ref = "desugar-jdk-libs" }
 kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinx-datetime" }
 compose-material-icons = { module = "org.jetbrains.compose.material:material-icons-extended", version.ref = "compose-material-icons" }
 compose-material = { module = "org.jetbrains.compose.material:material", version.ref = "compose" }
@@ -94,6 +98,7 @@ androidx-media3-exoplayer = { module = "androidx.media3:media3-exoplayer", versi
 androidx-media3-hls = { module = "androidx.media3:media3-exoplayer-hls", version.ref = "media3" }
 androidx-media3-ui = { module = "androidx.media3:media3-ui", version.ref = "media3" }
 androidx-media3-session = { module = "androidx.media3:media3-session", version.ref = "media3" }
+jellyfin-media3-ffmpeg-decoder = { module = "org.jellyfin.media3:media3-ffmpeg-decoder", version.ref = "media3-ffmpeg-jellyfin" }
 androidx-tv-material = { module = "androidx.tv:tv-material", version.ref = "tv-material" }
 androidx-navigation3-runtime = { module = "androidx.navigation3:navigation3-runtime", version.ref = "navigation3" }
 androidx-navigation3-ui = { module = "androidx.navigation3:navigation3-ui", version.ref = "navigation3" }

@@ -157,6 +157,8 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // kotlinx-datetime needs java.time, which Android only ships from API 26 while minSdk is 24.
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
@@ -178,6 +180,7 @@ kotlin {
 }
 
 dependencies {
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
     implementation(projects.sharedCore)
     implementation(projects.sharedNetwork)
     implementation(projects.sharedDatabase)

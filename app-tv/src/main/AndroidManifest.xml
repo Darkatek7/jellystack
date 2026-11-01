@@ -3,6 +3,8 @@
     xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Required by the TV provider ("android.media.tv" declares it as writePermission, protection level normal). -->
+    <uses-permission android:name="com.android.providers.tv.permission.WRITE_EPG_DATA" />
     <uses-permission
         android:name="android.permission.READ_PHONE_STATE"
         tools:node="remove" />
@@ -24,6 +26,7 @@
         android:required="false" />
 
     <queries>
+        <provider android:authorities="android.media.tv" />
         <intent>
             <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
         </intent>
@@ -50,6 +53,42 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
+            <!-- Watch Next cards: jellystack://item/{id}?s={server hash}; validated in the app before use.
+                 The launcher parses the program's intent URI "safely", which adds BROWSABLE. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="jellystack"
+                    android:host="item" />
+            </intent-filter>
         </activity>
+
+        <!-- Read-only poster art for the Watch Next row; the launcher reads it in its own process. The file
+             names are unguessable, and the files hold artwork only (no tokens, no server addresses). -->
+        <provider
+            android:name=".watchnext.WatchNextArtProvider"
+            android:authorities="${applicationId}.watchnext.art"
+            android:exported="true"
+            android:grantUriPermissions="false" />
+
+        <!-- System screensaver with backdrops from the active profile's cached library. Only the system may bind it
+             (BIND_DREAM_SERVICE is a service permission, not a uses-permission, so the permission allowlist check
+             does not see it). Inert until the user picks it in the TV's Screen saver setting. -->
+        <service
+            android:name=".dream.JellystackDreamService"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/dream_label"
+            android:permission="android.permission.BIND_DREAM_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.dreams.DreamService" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.dream"
+                android:resource="@xml/jellystack_dream" />
+        </service>
     </application>
 </manifest>

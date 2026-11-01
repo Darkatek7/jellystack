@@ -68,6 +68,8 @@ class JellyfinBrowseApi(
         isPlayed: Boolean? = null,
         genres: List<String> = emptyList(),
         years: List<Int> = emptyList(),
+        personIds: List<String> = emptyList(),
+        albumArtistIds: List<String> = emptyList(),
     ): JellyfinItemsResponse =
         client
             .request {
@@ -89,6 +91,28 @@ class JellyfinBrowseApi(
                 isPlayed?.let { parameter("IsPlayed", it) }
                 genres.takeIf(List<String>::isNotEmpty)?.let { parameter("Genres", it.joinToString("|")) }
                 years.takeIf(List<Int>::isNotEmpty)?.let { parameter("Years", it.joinToString(",")) }
+                personIds.takeIf(List<String>::isNotEmpty)?.let { parameter("PersonIds", it.joinToString(",")) }
+                albumArtistIds.takeIf(List<String>::isNotEmpty)?.let { parameter("AlbumArtistIds", it.joinToString(",")) }
+            }.body()
+
+    /** The entries of a playlist in the order the playlist keeps them. */
+    suspend fun fetchPlaylistItems(
+        userId: String,
+        playlistId: String,
+        startIndex: Int = 0,
+        limit: Int,
+    ): JellyfinItemsResponse =
+        client
+            .request {
+                method = HttpMethod.Get
+                configure("/Playlists/$playlistId/Items")
+                parameter("UserId", userId)
+                parameter("StartIndex", startIndex)
+                parameter("Limit", limit)
+                parameter("Fields", REQUIRED_FIELDS)
+                parameter("ImageTypeLimit", 1)
+                parameter("EnableImageTypes", "Primary,Backdrop,Thumb,Logo")
+                parameter("EnableUserData", true)
             }.body()
 
     suspend fun fetchLatestItems(
@@ -345,6 +369,15 @@ class JellyfinBrowseApi(
         }
     }
 
+    /** Closes a Live TV stream a PlaybackInfo call with `AutoOpenLiveStream` opened; a failure is the caller's to ignore. */
+    suspend fun closeLiveStream(liveStreamId: String) {
+        client.request {
+            method = HttpMethod.Post
+            configure("/LiveStreams/Close")
+            parameter("LiveStreamId", liveStreamId)
+        }
+    }
+
     companion object {
         const val DEFAULT_INCLUDE_ITEM_TYPES = "Movie,Series,Episode,BoxSet,MusicAlbum,MusicArtist"
         private const val REQUIRED_FIELDS =
@@ -528,6 +561,17 @@ data class JellyfinItemDetailDto(
     val userData: JellyfinItemUserData? = null,
     @SerialName("ProviderIds")
     val providerIds: Map<String, String>? = null,
+    /** Music tracks: the album and its artists. */
+    @SerialName("Album")
+    val album: String? = null,
+    @SerialName("AlbumId")
+    val albumId: String? = null,
+    @SerialName("AlbumPrimaryImageTag")
+    val albumPrimaryImageTag: String? = null,
+    @SerialName("AlbumArtist")
+    val albumArtist: String? = null,
+    @SerialName("Artists")
+    val artists: List<String>? = null,
 )
 
 @Serializable

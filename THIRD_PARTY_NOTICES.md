@@ -12,6 +12,7 @@ Major components include:
 - Coil — Apache-2.0
 - Napier — Apache-2.0
 - Multiplatform Settings — Apache-2.0
+- Jellyfin Media3 FFmpeg decoder (`org.jellyfin.media3:media3-ffmpeg-decoder`, FFmpeg audio decoding on Android TV only) — GPL-3.0
 - Google Cast SDK / Google Play services — Google APIs Terms of Service and applicable SDK terms
 
 This summary is not a substitute for the license files distributed with each dependency. Generate the declared dependency report with:

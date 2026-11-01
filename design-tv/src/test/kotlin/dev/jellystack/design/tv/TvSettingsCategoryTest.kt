@@ -39,6 +39,10 @@ class TvSettingsCategoryTest {
             tvSettingsControlKeys(TvSettingsCategory.APPEARANCE),
         )
         assertEquals(
+            listOf("language", "home-sections", "watch-next"),
+            tvSettingsControlKeys(TvSettingsCategory.APPEARANCE, watchNextAvailable = true),
+        )
+        assertEquals(
             listOf(
                 "quality",
                 "autoplay",
@@ -47,6 +51,7 @@ class TvSettingsCategoryTest {
                 "seek-forward",
                 "playback-speed",
                 "stats",
+                "match-refresh-rate",
                 "trailer-previews",
                 "trailer-preview-sound",
             ),

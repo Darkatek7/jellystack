@@ -7,6 +7,8 @@ internal enum class TvPlayerPanel {
     SUBTITLES,
     QUALITY,
     SPEED,
+    VIDEO_SCALE,
+    SYNC,
     SYNCPLAY,
     CHAPTERS,
     EPISODES,

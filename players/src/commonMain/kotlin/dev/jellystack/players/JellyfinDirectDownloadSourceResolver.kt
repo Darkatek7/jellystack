@@ -104,6 +104,7 @@ class JellyfinDirectDownloadSourceResolver(
             SubtitleFormat.VTT -> SubtitleDescriptor("vtt", "vtt", "text/vtt")
             SubtitleFormat.PGS,
             SubtitleFormat.SUP,
+            SubtitleFormat.BITMAP_BURN_IN,
             SubtitleFormat.ASS,
             SubtitleFormat.SSA,
             SubtitleFormat.UNKNOWN,
