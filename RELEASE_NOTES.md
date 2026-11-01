@@ -1,5 +1,20 @@
 # Release Notes
 
+## 0.17.3 (TV)
+
+- Start about a quarter faster on Fire TV, with less memory use and an app about a quarter of its old size.
+- Press Play on a series or season to start the episode in progress or the next unwatched one, instead of getting a decoder error.
+- Open Discover without a crash when Seerr lists several requests for one title, and keep Home working with duplicate sections, nameless items, or blank titles.
+- See the player right away with a loading screen, cancel a start with Back, and get Retry when a start fails.
+- Keep the same stream through a short Wi-Fi drop instead of switching to a transcode, and stop right away with a clear error when the server rejects the session.
+- Return to the sign-in screen when a Jellyfin session has expired, instead of looping on the profile.
+- Leave the player when playback stops from outside it, such as the Home button, a media stop, or a SyncPlay stop, instead of staying on a black screen.
+- Let the screen saver start after ten minutes of pause.
+- Send voice and remote media commands through the same playback logic as the on-screen buttons, and show a pause caused by another app as paused.
+- Reconnect SyncPlay after a connection drop, and open the player when the group starts a queue from another device.
+- Stop the server transcode when a trailer preview ends, and fix crashes from marking titles watched while offline.
+- See the app version, the last crash, and a recent log under Settings > Diagnostics. Nothing leaves the device.
+
 ## 0.17.2 (TV)
 
 - Play with real Direct Play and surround passthrough; when Jellyfin has to transcode, it picks the best audio the TV supports (E-AC3 or AC3 5.1) and switches to stereo only when no sound arrives.
