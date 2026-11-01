@@ -9,6 +9,13 @@ SELECT *
 FROM jellyfin_item_details
 WHERE item_id = ?;
 
+existsByItem:
+SELECT EXISTS(
+    SELECT 1
+    FROM jellyfin_item_details
+    WHERE item_id = ?
+);
+
 insertOrReplace:
 INSERT OR REPLACE INTO jellyfin_item_details (
     item_id,

@@ -9,48 +9,64 @@ import dev.jellystack.core.jellyfin.JellyfinLibraryStore
 import dev.jellystack.core.profile.MediaIdentity
 import dev.jellystack.core.profile.MediaIdentityProvider
 import dev.jellystack.core.profile.MediaProviderIds
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.Instant
 
 class SqlDelightJellyfinLibraryStore(
     private val queries: JellyfinLibrariesQueries,
+    private val dispatcher: CoroutineDispatcher,
 ) : JellyfinLibraryStore {
     override suspend fun replaceAll(
         serverId: String,
         libraries: List<JellyfinLibraryRecord>,
     ) {
-        queries.deleteByServer(serverId)
-        libraries.forEach { record ->
-            queries.insertOrReplace(
-                id = record.id,
-                server_id = record.serverId,
-                name = record.name,
-                collection_type = record.collectionType,
-                primary_image_tag = record.primaryImageTag,
-                item_count = record.itemCount,
-                created_at = record.createdAt.toEpochMilliseconds(),
-                updated_at = record.updatedAt.toEpochMilliseconds(),
-            )
+        withContext(dispatcher) {
+            queries.transaction {
+                queries.deleteByServer(serverId)
+                libraries.forEach { record ->
+                    queries.insertOrReplace(
+                        id = record.id,
+                        server_id = record.serverId,
+                        name = record.name,
+                        collection_type = record.collectionType,
+                        primary_image_tag = record.primaryImageTag,
+                        item_count = record.itemCount,
+                        created_at = record.createdAt.toEpochMilliseconds(),
+                        updated_at = record.updatedAt.toEpochMilliseconds(),
+                    )
+                }
+            }
         }
     }
 
     override suspend fun list(serverId: String): List<JellyfinLibraryRecord> =
-        queries.selectAllByServer(serverId).executeAsList().map { it.toRecord() }
+        withContext(dispatcher) {
+            queries.selectAllByServer(serverId).executeAsList().map { it.toRecord() }
+        }
 }
 
 class SqlDelightJellyfinItemStore(
     private val queries: JellyfinItemsQueries,
+    private val dispatcher: CoroutineDispatcher,
 ) : JellyfinItemStore {
     override suspend fun replaceForLibrary(
         serverId: String,
         libraryId: String,
         items: List<JellyfinItemRecord>,
     ) {
-        queries.deleteByServerAndLibrary(serverId, libraryId)
-        upsert(items)
+        withContext(dispatcher) {
+            queries.transaction {
+                queries.deleteByServerAndLibrary(serverId, libraryId)
+                items.forEach(::insert)
+            }
+        }
     }
 
     override suspend fun upsert(items: List<JellyfinItemRecord>) {
-        items.forEach { record -> insert(record) }
+        withContext(dispatcher) {
+            queries.transaction { items.forEach(::insert) }
+        }
     }
 
     override suspend fun listByLibrary(
@@ -58,7 +74,10 @@ class SqlDelightJellyfinItemStore(
         libraryId: String,
         limit: Long,
         offset: Long,
-    ): List<JellyfinItemRecord> = queries.selectByLibrary(serverId, libraryId, limit, offset).executeAsList().map { it.toRecord() }
+    ): List<JellyfinItemRecord> =
+        withContext(dispatcher) {
+            queries.selectByLibrary(serverId, libraryId, limit, offset).executeAsList().map { it.toRecord() }
+        }
 
     override suspend fun replaceForParent(
         serverId: String,
@@ -66,8 +85,12 @@ class SqlDelightJellyfinItemStore(
         parentId: String,
         items: List<JellyfinItemRecord>,
     ) {
-        queries.deleteByServerLibraryAndParent(serverId, libraryId, parentId)
-        upsert(items)
+        withContext(dispatcher) {
+            queries.transaction {
+                queries.deleteByServerLibraryAndParent(serverId, libraryId, parentId)
+                items.forEach(::insert)
+            }
+        }
     }
 
     override suspend fun listByParent(
@@ -76,278 +99,291 @@ class SqlDelightJellyfinItemStore(
         parentId: String,
         limit: Long,
         offset: Long,
-    ): List<JellyfinItemRecord> = queries.selectByParent(serverId, libraryId, parentId, limit, offset).executeAsList().map { it.toRecord() }
+    ): List<JellyfinItemRecord> =
+        withContext(dispatcher) {
+            queries.selectByParent(serverId, libraryId, parentId, limit, offset).executeAsList().map { it.toRecord() }
+        }
 
     override suspend fun listRecentShows(
         serverId: String,
         libraryId: String?,
         limit: Long,
     ): List<JellyfinItemRecord> =
-        queries
-            .selectRecentShows(serverId, libraryId, limit) {
-                    id,
-                    server_id,
-                    library_id,
-                    name,
-                    sort_name,
-                    overview,
-                    type,
-                    media_type,
-                    location_type,
-                    tmdb_id,
-                    tvdb_id,
-                    taglines,
-                    parent_id,
-                    primary_image_tag,
-                    thumb_image_tag,
-                    backdrop_image_tag,
-                    series_id,
-                    series_primary_image_tag,
-                    series_thumb_image_tag,
-                    series_backdrop_image_tag,
-                    parent_logo_image_tag,
-                    run_time_ticks,
-                    position_ticks,
-                    played_percentage,
-                    production_year,
-                    premiere_date,
-                    community_rating,
-                    official_rating,
-                    index_number,
-                    parent_index_number,
-                    series_name,
-                    season_id,
-                    episode_title,
-                    last_played,
-                    date_created,
-                    updated_at,
-                    played,
-                ->
-                mapItemRecord(
-                    id = id,
-                    serverId = server_id,
-                    libraryId = library_id,
-                    name = name,
-                    sortName = sort_name,
-                    overview = overview,
-                    type = type,
-                    mediaType = media_type,
-                    locationType = location_type,
-                    tmdbId = tmdb_id,
-                    tvdbId = tvdb_id,
-                    taglines = taglines,
-                    parentId = parent_id,
-                    primaryImageTag = primary_image_tag,
-                    thumbImageTag = thumb_image_tag,
-                    backdropImageTag = backdrop_image_tag,
-                    seriesId = series_id,
-                    seriesPrimaryImageTag = series_primary_image_tag,
-                    seriesThumbImageTag = series_thumb_image_tag,
-                    seriesBackdropImageTag = series_backdrop_image_tag,
-                    parentLogoImageTag = parent_logo_image_tag,
-                    runTimeTicks = run_time_ticks,
-                    positionTicks = position_ticks,
-                    playedPercentage = played_percentage,
-                    productionYear = production_year,
-                    premiereDate = premiere_date,
-                    communityRating = community_rating,
-                    officialRating = official_rating,
-                    indexNumber = index_number,
-                    parentIndexNumber = parent_index_number,
-                    seriesName = series_name,
-                    seasonId = season_id,
-                    episodeTitle = episode_title,
-                    lastPlayed = last_played,
-                    dateCreated = date_created,
-                    updatedAt = updated_at,
-                    played = played,
-                )
-            }.executeAsList()
+        withContext(dispatcher) {
+            queries
+                .selectRecentShows(serverId, libraryId, limit) {
+                        id,
+                        server_id,
+                        library_id,
+                        name,
+                        sort_name,
+                        overview,
+                        type,
+                        media_type,
+                        location_type,
+                        tmdb_id,
+                        tvdb_id,
+                        taglines,
+                        parent_id,
+                        primary_image_tag,
+                        thumb_image_tag,
+                        backdrop_image_tag,
+                        series_id,
+                        series_primary_image_tag,
+                        series_thumb_image_tag,
+                        series_backdrop_image_tag,
+                        parent_logo_image_tag,
+                        run_time_ticks,
+                        position_ticks,
+                        played_percentage,
+                        production_year,
+                        premiere_date,
+                        community_rating,
+                        official_rating,
+                        index_number,
+                        parent_index_number,
+                        series_name,
+                        season_id,
+                        episode_title,
+                        last_played,
+                        date_created,
+                        updated_at,
+                        played,
+                    ->
+                    mapItemRecord(
+                        id = id,
+                        serverId = server_id,
+                        libraryId = library_id,
+                        name = name,
+                        sortName = sort_name,
+                        overview = overview,
+                        type = type,
+                        mediaType = media_type,
+                        locationType = location_type,
+                        tmdbId = tmdb_id,
+                        tvdbId = tvdb_id,
+                        taglines = taglines,
+                        parentId = parent_id,
+                        primaryImageTag = primary_image_tag,
+                        thumbImageTag = thumb_image_tag,
+                        backdropImageTag = backdrop_image_tag,
+                        seriesId = series_id,
+                        seriesPrimaryImageTag = series_primary_image_tag,
+                        seriesThumbImageTag = series_thumb_image_tag,
+                        seriesBackdropImageTag = series_backdrop_image_tag,
+                        parentLogoImageTag = parent_logo_image_tag,
+                        runTimeTicks = run_time_ticks,
+                        positionTicks = position_ticks,
+                        playedPercentage = played_percentage,
+                        productionYear = production_year,
+                        premiereDate = premiere_date,
+                        communityRating = community_rating,
+                        officialRating = official_rating,
+                        indexNumber = index_number,
+                        parentIndexNumber = parent_index_number,
+                        seriesName = series_name,
+                        seasonId = season_id,
+                        episodeTitle = episode_title,
+                        lastPlayed = last_played,
+                        dateCreated = date_created,
+                        updatedAt = updated_at,
+                        played = played,
+                    )
+                }.executeAsList()
+        }
 
     override suspend fun listRecentMovies(
         serverId: String,
         libraryId: String?,
         limit: Long,
     ): List<JellyfinItemRecord> =
-        queries
-            .selectRecentMovies(serverId, libraryId, limit) {
-                    id,
-                    server_id,
-                    library_id,
-                    name,
-                    sort_name,
-                    overview,
-                    type,
-                    media_type,
-                    location_type,
-                    tmdb_id,
-                    tvdb_id,
-                    taglines,
-                    parent_id,
-                    primary_image_tag,
-                    thumb_image_tag,
-                    backdrop_image_tag,
-                    series_id,
-                    series_primary_image_tag,
-                    series_thumb_image_tag,
-                    series_backdrop_image_tag,
-                    parent_logo_image_tag,
-                    run_time_ticks,
-                    position_ticks,
-                    played_percentage,
-                    production_year,
-                    premiere_date,
-                    community_rating,
-                    official_rating,
-                    index_number,
-                    parent_index_number,
-                    series_name,
-                    season_id,
-                    episode_title,
-                    last_played,
-                    date_created,
-                    updated_at,
-                    played,
-                ->
-                mapItemRecord(
-                    id = id,
-                    serverId = server_id,
-                    libraryId = library_id,
-                    name = name,
-                    sortName = sort_name,
-                    overview = overview,
-                    type = type,
-                    mediaType = media_type,
-                    locationType = location_type,
-                    tmdbId = tmdb_id,
-                    tvdbId = tvdb_id,
-                    taglines = taglines,
-                    parentId = parent_id,
-                    primaryImageTag = primary_image_tag,
-                    thumbImageTag = thumb_image_tag,
-                    backdropImageTag = backdrop_image_tag,
-                    seriesId = series_id,
-                    seriesPrimaryImageTag = series_primary_image_tag,
-                    seriesThumbImageTag = series_thumb_image_tag,
-                    seriesBackdropImageTag = series_backdrop_image_tag,
-                    parentLogoImageTag = parent_logo_image_tag,
-                    runTimeTicks = run_time_ticks,
-                    positionTicks = position_ticks,
-                    playedPercentage = played_percentage,
-                    productionYear = production_year,
-                    premiereDate = premiere_date,
-                    communityRating = community_rating,
-                    officialRating = official_rating,
-                    indexNumber = index_number,
-                    parentIndexNumber = parent_index_number,
-                    seriesName = series_name,
-                    seasonId = season_id,
-                    episodeTitle = episode_title,
-                    lastPlayed = last_played,
-                    dateCreated = date_created,
-                    updatedAt = updated_at,
-                    played = played,
-                )
-            }.executeAsList()
+        withContext(dispatcher) {
+            queries
+                .selectRecentMovies(serverId, libraryId, limit) {
+                        id,
+                        server_id,
+                        library_id,
+                        name,
+                        sort_name,
+                        overview,
+                        type,
+                        media_type,
+                        location_type,
+                        tmdb_id,
+                        tvdb_id,
+                        taglines,
+                        parent_id,
+                        primary_image_tag,
+                        thumb_image_tag,
+                        backdrop_image_tag,
+                        series_id,
+                        series_primary_image_tag,
+                        series_thumb_image_tag,
+                        series_backdrop_image_tag,
+                        parent_logo_image_tag,
+                        run_time_ticks,
+                        position_ticks,
+                        played_percentage,
+                        production_year,
+                        premiere_date,
+                        community_rating,
+                        official_rating,
+                        index_number,
+                        parent_index_number,
+                        series_name,
+                        season_id,
+                        episode_title,
+                        last_played,
+                        date_created,
+                        updated_at,
+                        played,
+                    ->
+                    mapItemRecord(
+                        id = id,
+                        serverId = server_id,
+                        libraryId = library_id,
+                        name = name,
+                        sortName = sort_name,
+                        overview = overview,
+                        type = type,
+                        mediaType = media_type,
+                        locationType = location_type,
+                        tmdbId = tmdb_id,
+                        tvdbId = tvdb_id,
+                        taglines = taglines,
+                        parentId = parent_id,
+                        primaryImageTag = primary_image_tag,
+                        thumbImageTag = thumb_image_tag,
+                        backdropImageTag = backdrop_image_tag,
+                        seriesId = series_id,
+                        seriesPrimaryImageTag = series_primary_image_tag,
+                        seriesThumbImageTag = series_thumb_image_tag,
+                        seriesBackdropImageTag = series_backdrop_image_tag,
+                        parentLogoImageTag = parent_logo_image_tag,
+                        runTimeTicks = run_time_ticks,
+                        positionTicks = position_ticks,
+                        playedPercentage = played_percentage,
+                        productionYear = production_year,
+                        premiereDate = premiere_date,
+                        communityRating = community_rating,
+                        officialRating = official_rating,
+                        indexNumber = index_number,
+                        parentIndexNumber = parent_index_number,
+                        seriesName = series_name,
+                        seasonId = season_id,
+                        episodeTitle = episode_title,
+                        lastPlayed = last_played,
+                        dateCreated = date_created,
+                        updatedAt = updated_at,
+                        played = played,
+                    )
+                }.executeAsList()
+        }
 
     override suspend fun listContinueWatching(
         serverId: String,
         limit: Long,
     ): List<JellyfinItemRecord> =
-        queries
-            .selectContinueWatching(serverId, limit) {
-                    id,
-                    server_id,
-                    library_id,
-                    name,
-                    sort_name,
-                    overview,
-                    type,
-                    media_type,
-                    location_type,
-                    tmdb_id,
-                    tvdb_id,
-                    taglines,
-                    parent_id,
-                    primary_image_tag,
-                    thumb_image_tag,
-                    backdrop_image_tag,
-                    series_id,
-                    series_primary_image_tag,
-                    series_thumb_image_tag,
-                    series_backdrop_image_tag,
-                    parent_logo_image_tag,
-                    run_time_ticks,
-                    position_ticks,
-                    played_percentage,
-                    production_year,
-                    premiere_date,
-                    community_rating,
-                    official_rating,
-                    index_number,
-                    parent_index_number,
-                    series_name,
-                    season_id,
-                    episode_title,
-                    last_played,
-                    date_created,
-                    updated_at,
-                    played,
-                ->
-                mapItemRecord(
-                    id = id,
-                    serverId = server_id,
-                    libraryId = library_id,
-                    name = name,
-                    sortName = sort_name,
-                    overview = overview,
-                    type = type,
-                    mediaType = media_type,
-                    locationType = location_type,
-                    tmdbId = tmdb_id,
-                    tvdbId = tvdb_id,
-                    taglines = taglines,
-                    parentId = parent_id,
-                    primaryImageTag = primary_image_tag,
-                    thumbImageTag = thumb_image_tag,
-                    backdropImageTag = backdrop_image_tag,
-                    seriesId = series_id,
-                    seriesPrimaryImageTag = series_primary_image_tag,
-                    seriesThumbImageTag = series_thumb_image_tag,
-                    seriesBackdropImageTag = series_backdrop_image_tag,
-                    parentLogoImageTag = parent_logo_image_tag,
-                    runTimeTicks = run_time_ticks,
-                    positionTicks = position_ticks,
-                    playedPercentage = played_percentage,
-                    productionYear = production_year,
-                    premiereDate = premiere_date,
-                    communityRating = community_rating,
-                    officialRating = official_rating,
-                    indexNumber = index_number,
-                    parentIndexNumber = parent_index_number,
-                    seriesName = series_name,
-                    seasonId = season_id,
-                    episodeTitle = episode_title,
-                    lastPlayed = last_played,
-                    dateCreated = date_created,
-                    updatedAt = updated_at,
-                    played = played,
-                )
-            }.executeAsList()
+        withContext(dispatcher) {
+            queries
+                .selectContinueWatching(serverId, limit) {
+                        id,
+                        server_id,
+                        library_id,
+                        name,
+                        sort_name,
+                        overview,
+                        type,
+                        media_type,
+                        location_type,
+                        tmdb_id,
+                        tvdb_id,
+                        taglines,
+                        parent_id,
+                        primary_image_tag,
+                        thumb_image_tag,
+                        backdrop_image_tag,
+                        series_id,
+                        series_primary_image_tag,
+                        series_thumb_image_tag,
+                        series_backdrop_image_tag,
+                        parent_logo_image_tag,
+                        run_time_ticks,
+                        position_ticks,
+                        played_percentage,
+                        production_year,
+                        premiere_date,
+                        community_rating,
+                        official_rating,
+                        index_number,
+                        parent_index_number,
+                        series_name,
+                        season_id,
+                        episode_title,
+                        last_played,
+                        date_created,
+                        updated_at,
+                        played,
+                    ->
+                    mapItemRecord(
+                        id = id,
+                        serverId = server_id,
+                        libraryId = library_id,
+                        name = name,
+                        sortName = sort_name,
+                        overview = overview,
+                        type = type,
+                        mediaType = media_type,
+                        locationType = location_type,
+                        tmdbId = tmdb_id,
+                        tvdbId = tvdb_id,
+                        taglines = taglines,
+                        parentId = parent_id,
+                        primaryImageTag = primary_image_tag,
+                        thumbImageTag = thumb_image_tag,
+                        backdropImageTag = backdrop_image_tag,
+                        seriesId = series_id,
+                        seriesPrimaryImageTag = series_primary_image_tag,
+                        seriesThumbImageTag = series_thumb_image_tag,
+                        seriesBackdropImageTag = series_backdrop_image_tag,
+                        parentLogoImageTag = parent_logo_image_tag,
+                        runTimeTicks = run_time_ticks,
+                        positionTicks = position_ticks,
+                        playedPercentage = played_percentage,
+                        productionYear = production_year,
+                        premiereDate = premiere_date,
+                        communityRating = community_rating,
+                        officialRating = official_rating,
+                        indexNumber = index_number,
+                        parentIndexNumber = parent_index_number,
+                        seriesName = series_name,
+                        seasonId = season_id,
+                        episodeTitle = episode_title,
+                        lastPlayed = last_played,
+                        dateCreated = date_created,
+                        updatedAt = updated_at,
+                        played = played,
+                    )
+                }.executeAsList()
+        }
 
     override suspend fun replaceNextUp(
         serverId: String,
         itemIds: List<String>,
         updatedAt: Instant,
     ) {
-        queries.deleteNextUpByServer(serverId)
-        itemIds.forEachIndexed { index, itemId ->
-            queries.insertNextUp(
-                server_id = serverId,
-                item_id = itemId,
-                sort_order = index.toLong(),
-                updated_at = updatedAt.toEpochMilliseconds(),
-            )
+        withContext(dispatcher) {
+            queries.transaction {
+                queries.deleteNextUpByServer(serverId)
+                itemIds.forEachIndexed { index, itemId ->
+                    queries.insertNextUp(
+                        server_id = serverId,
+                        item_id = itemId,
+                        sort_order = index.toLong(),
+                        updated_at = updatedAt.toEpochMilliseconds(),
+                    )
+                }
+            }
         }
     }
 
@@ -355,95 +391,99 @@ class SqlDelightJellyfinItemStore(
         serverId: String,
         limit: Long,
     ): List<JellyfinItemRecord> =
-        queries
-            .selectNextUp(serverId, limit) {
-                    id,
-                    server_id,
-                    library_id,
-                    name,
-                    sort_name,
-                    overview,
-                    type,
-                    media_type,
-                    location_type,
-                    tmdb_id,
-                    tvdb_id,
-                    taglines,
-                    parent_id,
-                    primary_image_tag,
-                    thumb_image_tag,
-                    backdrop_image_tag,
-                    series_id,
-                    series_primary_image_tag,
-                    series_thumb_image_tag,
-                    series_backdrop_image_tag,
-                    parent_logo_image_tag,
-                    run_time_ticks,
-                    position_ticks,
-                    played_percentage,
-                    production_year,
-                    premiere_date,
-                    community_rating,
-                    official_rating,
-                    index_number,
-                    parent_index_number,
-                    series_name,
-                    season_id,
-                    episode_title,
-                    last_played,
-                    date_created,
-                    updated_at,
-                    played,
-                ->
-                mapItemRecord(
-                    id = id,
-                    serverId = server_id,
-                    libraryId = library_id,
-                    name = name,
-                    sortName = sort_name,
-                    overview = overview,
-                    type = type,
-                    mediaType = media_type,
-                    locationType = location_type,
-                    tmdbId = tmdb_id,
-                    tvdbId = tvdb_id,
-                    taglines = taglines,
-                    parentId = parent_id,
-                    primaryImageTag = primary_image_tag,
-                    thumbImageTag = thumb_image_tag,
-                    backdropImageTag = backdrop_image_tag,
-                    seriesId = series_id,
-                    seriesPrimaryImageTag = series_primary_image_tag,
-                    seriesThumbImageTag = series_thumb_image_tag,
-                    seriesBackdropImageTag = series_backdrop_image_tag,
-                    parentLogoImageTag = parent_logo_image_tag,
-                    runTimeTicks = run_time_ticks,
-                    positionTicks = position_ticks,
-                    playedPercentage = played_percentage,
-                    productionYear = production_year,
-                    premiereDate = premiere_date,
-                    communityRating = community_rating,
-                    officialRating = official_rating,
-                    indexNumber = index_number,
-                    parentIndexNumber = parent_index_number,
-                    seriesName = series_name,
-                    seasonId = season_id,
-                    episodeTitle = episode_title,
-                    lastPlayed = last_played,
-                    dateCreated = date_created,
-                    updatedAt = updated_at,
-                    played = played,
-                )
-            }.executeAsList()
+        withContext(dispatcher) {
+            queries
+                .selectNextUp(serverId, limit) {
+                        id,
+                        server_id,
+                        library_id,
+                        name,
+                        sort_name,
+                        overview,
+                        type,
+                        media_type,
+                        location_type,
+                        tmdb_id,
+                        tvdb_id,
+                        taglines,
+                        parent_id,
+                        primary_image_tag,
+                        thumb_image_tag,
+                        backdrop_image_tag,
+                        series_id,
+                        series_primary_image_tag,
+                        series_thumb_image_tag,
+                        series_backdrop_image_tag,
+                        parent_logo_image_tag,
+                        run_time_ticks,
+                        position_ticks,
+                        played_percentage,
+                        production_year,
+                        premiere_date,
+                        community_rating,
+                        official_rating,
+                        index_number,
+                        parent_index_number,
+                        series_name,
+                        season_id,
+                        episode_title,
+                        last_played,
+                        date_created,
+                        updated_at,
+                        played,
+                    ->
+                    mapItemRecord(
+                        id = id,
+                        serverId = server_id,
+                        libraryId = library_id,
+                        name = name,
+                        sortName = sort_name,
+                        overview = overview,
+                        type = type,
+                        mediaType = media_type,
+                        locationType = location_type,
+                        tmdbId = tmdb_id,
+                        tvdbId = tvdb_id,
+                        taglines = taglines,
+                        parentId = parent_id,
+                        primaryImageTag = primary_image_tag,
+                        thumbImageTag = thumb_image_tag,
+                        backdropImageTag = backdrop_image_tag,
+                        seriesId = series_id,
+                        seriesPrimaryImageTag = series_primary_image_tag,
+                        seriesThumbImageTag = series_thumb_image_tag,
+                        seriesBackdropImageTag = series_backdrop_image_tag,
+                        parentLogoImageTag = parent_logo_image_tag,
+                        runTimeTicks = run_time_ticks,
+                        positionTicks = position_ticks,
+                        playedPercentage = played_percentage,
+                        productionYear = production_year,
+                        premiereDate = premiere_date,
+                        communityRating = community_rating,
+                        officialRating = official_rating,
+                        indexNumber = index_number,
+                        parentIndexNumber = parent_index_number,
+                        seriesName = series_name,
+                        seasonId = season_id,
+                        episodeTitle = episode_title,
+                        lastPlayed = last_played,
+                        dateCreated = date_created,
+                        updatedAt = updated_at,
+                        played = played,
+                    )
+                }.executeAsList()
+        }
 
     override suspend fun clearContinueWatching(
         serverId: String,
         keepIds: Set<String>,
     ) {
-        if (keepIds.isEmpty()) {
-            queries.clearAllContinueWatching(serverId)
-        } else {
-            queries.clearContinueWatching(serverId, keepIds)
+        withContext(dispatcher) {
+            if (keepIds.isEmpty()) {
+                queries.clearAllContinueWatching(serverId)
+            } else {
+                queries.clearContinueWatching(serverId, keepIds)
+            }
         }
     }
 
@@ -451,191 +491,199 @@ class SqlDelightJellyfinItemStore(
         serverId: String,
         seriesId: String,
     ): List<JellyfinItemRecord> =
-        queries
-            .selectEpisodesForSeries(serverId, seriesId) {
-                    id,
-                    server_id,
-                    library_id,
-                    name,
-                    sort_name,
-                    overview,
-                    type,
-                    media_type,
-                    location_type,
-                    tmdb_id,
-                    tvdb_id,
-                    taglines,
-                    parent_id,
-                    primary_image_tag,
-                    thumb_image_tag,
-                    backdrop_image_tag,
-                    series_id,
-                    series_primary_image_tag,
-                    series_thumb_image_tag,
-                    series_backdrop_image_tag,
-                    parent_logo_image_tag,
-                    run_time_ticks,
-                    position_ticks,
-                    played_percentage,
-                    production_year,
-                    premiere_date,
-                    community_rating,
-                    official_rating,
-                    index_number,
-                    parent_index_number,
-                    series_name,
-                    season_id,
-                    episode_title,
-                    last_played,
-                    date_created,
-                    updated_at,
-                    played,
-                ->
-                mapItemRecord(
-                    id = id,
-                    serverId = server_id,
-                    libraryId = library_id,
-                    name = name,
-                    sortName = sort_name,
-                    overview = overview,
-                    type = type,
-                    mediaType = media_type,
-                    locationType = location_type,
-                    tmdbId = tmdb_id,
-                    tvdbId = tvdb_id,
-                    taglines = taglines,
-                    parentId = parent_id,
-                    primaryImageTag = primary_image_tag,
-                    thumbImageTag = thumb_image_tag,
-                    backdropImageTag = backdrop_image_tag,
-                    seriesId = series_id,
-                    seriesPrimaryImageTag = series_primary_image_tag,
-                    seriesThumbImageTag = series_thumb_image_tag,
-                    seriesBackdropImageTag = series_backdrop_image_tag,
-                    parentLogoImageTag = parent_logo_image_tag,
-                    runTimeTicks = run_time_ticks,
-                    positionTicks = position_ticks,
-                    playedPercentage = played_percentage,
-                    productionYear = production_year,
-                    premiereDate = premiere_date,
-                    communityRating = community_rating,
-                    officialRating = official_rating,
-                    indexNumber = index_number,
-                    parentIndexNumber = parent_index_number,
-                    seriesName = series_name,
-                    seasonId = season_id,
-                    episodeTitle = episode_title,
-                    lastPlayed = last_played,
-                    dateCreated = date_created,
-                    updatedAt = updated_at,
-                    played = played,
-                )
-            }.executeAsList()
+        withContext(dispatcher) {
+            queries
+                .selectEpisodesForSeries(serverId, seriesId) {
+                        id,
+                        server_id,
+                        library_id,
+                        name,
+                        sort_name,
+                        overview,
+                        type,
+                        media_type,
+                        location_type,
+                        tmdb_id,
+                        tvdb_id,
+                        taglines,
+                        parent_id,
+                        primary_image_tag,
+                        thumb_image_tag,
+                        backdrop_image_tag,
+                        series_id,
+                        series_primary_image_tag,
+                        series_thumb_image_tag,
+                        series_backdrop_image_tag,
+                        parent_logo_image_tag,
+                        run_time_ticks,
+                        position_ticks,
+                        played_percentage,
+                        production_year,
+                        premiere_date,
+                        community_rating,
+                        official_rating,
+                        index_number,
+                        parent_index_number,
+                        series_name,
+                        season_id,
+                        episode_title,
+                        last_played,
+                        date_created,
+                        updated_at,
+                        played,
+                    ->
+                    mapItemRecord(
+                        id = id,
+                        serverId = server_id,
+                        libraryId = library_id,
+                        name = name,
+                        sortName = sort_name,
+                        overview = overview,
+                        type = type,
+                        mediaType = media_type,
+                        locationType = location_type,
+                        tmdbId = tmdb_id,
+                        tvdbId = tvdb_id,
+                        taglines = taglines,
+                        parentId = parent_id,
+                        primaryImageTag = primary_image_tag,
+                        thumbImageTag = thumb_image_tag,
+                        backdropImageTag = backdrop_image_tag,
+                        seriesId = series_id,
+                        seriesPrimaryImageTag = series_primary_image_tag,
+                        seriesThumbImageTag = series_thumb_image_tag,
+                        seriesBackdropImageTag = series_backdrop_image_tag,
+                        parentLogoImageTag = parent_logo_image_tag,
+                        runTimeTicks = run_time_ticks,
+                        positionTicks = position_ticks,
+                        playedPercentage = played_percentage,
+                        productionYear = production_year,
+                        premiereDate = premiere_date,
+                        communityRating = community_rating,
+                        officialRating = official_rating,
+                        indexNumber = index_number,
+                        parentIndexNumber = parent_index_number,
+                        seriesName = series_name,
+                        seasonId = season_id,
+                        episodeTitle = episode_title,
+                        lastPlayed = last_played,
+                        dateCreated = date_created,
+                        updatedAt = updated_at,
+                        played = played,
+                    )
+                }.executeAsList()
+        }
 
     override suspend fun listEpisodesForSeason(
         serverId: String,
         seasonId: String,
     ): List<JellyfinItemRecord> =
-        queries
-            .selectEpisodesForSeason(serverId, seasonId) {
-                    id,
-                    server_id,
-                    library_id,
-                    name,
-                    sort_name,
-                    overview,
-                    type,
-                    media_type,
-                    location_type,
-                    tmdb_id,
-                    tvdb_id,
-                    taglines,
-                    parent_id,
-                    primary_image_tag,
-                    thumb_image_tag,
-                    backdrop_image_tag,
-                    series_id,
-                    series_primary_image_tag,
-                    series_thumb_image_tag,
-                    series_backdrop_image_tag,
-                    parent_logo_image_tag,
-                    run_time_ticks,
-                    position_ticks,
-                    played_percentage,
-                    production_year,
-                    premiere_date,
-                    community_rating,
-                    official_rating,
-                    index_number,
-                    parent_index_number,
-                    series_name,
-                    season_id,
-                    episode_title,
-                    last_played,
-                    date_created,
-                    updated_at,
-                    played,
-                ->
-                mapItemRecord(
-                    id = id,
-                    serverId = server_id,
-                    libraryId = library_id,
-                    name = name,
-                    sortName = sort_name,
-                    overview = overview,
-                    type = type,
-                    mediaType = media_type,
-                    locationType = location_type,
-                    tmdbId = tmdb_id,
-                    tvdbId = tvdb_id,
-                    taglines = taglines,
-                    parentId = parent_id,
-                    primaryImageTag = primary_image_tag,
-                    thumbImageTag = thumb_image_tag,
-                    backdropImageTag = backdrop_image_tag,
-                    seriesId = series_id,
-                    seriesPrimaryImageTag = series_primary_image_tag,
-                    seriesThumbImageTag = series_thumb_image_tag,
-                    seriesBackdropImageTag = series_backdrop_image_tag,
-                    parentLogoImageTag = parent_logo_image_tag,
-                    runTimeTicks = run_time_ticks,
-                    positionTicks = position_ticks,
-                    playedPercentage = played_percentage,
-                    productionYear = production_year,
-                    premiereDate = premiere_date,
-                    communityRating = community_rating,
-                    officialRating = official_rating,
-                    indexNumber = index_number,
-                    parentIndexNumber = parent_index_number,
-                    seriesName = series_name,
-                    seasonId = season_id,
-                    episodeTitle = episode_title,
-                    lastPlayed = last_played,
-                    dateCreated = date_created,
-                    updatedAt = updated_at,
-                    played = played,
-                )
-            }.executeAsList()
+        withContext(dispatcher) {
+            queries
+                .selectEpisodesForSeason(serverId, seasonId) {
+                        id,
+                        server_id,
+                        library_id,
+                        name,
+                        sort_name,
+                        overview,
+                        type,
+                        media_type,
+                        location_type,
+                        tmdb_id,
+                        tvdb_id,
+                        taglines,
+                        parent_id,
+                        primary_image_tag,
+                        thumb_image_tag,
+                        backdrop_image_tag,
+                        series_id,
+                        series_primary_image_tag,
+                        series_thumb_image_tag,
+                        series_backdrop_image_tag,
+                        parent_logo_image_tag,
+                        run_time_ticks,
+                        position_ticks,
+                        played_percentage,
+                        production_year,
+                        premiere_date,
+                        community_rating,
+                        official_rating,
+                        index_number,
+                        parent_index_number,
+                        series_name,
+                        season_id,
+                        episode_title,
+                        last_played,
+                        date_created,
+                        updated_at,
+                        played,
+                    ->
+                    mapItemRecord(
+                        id = id,
+                        serverId = server_id,
+                        libraryId = library_id,
+                        name = name,
+                        sortName = sort_name,
+                        overview = overview,
+                        type = type,
+                        mediaType = media_type,
+                        locationType = location_type,
+                        tmdbId = tmdb_id,
+                        tvdbId = tvdb_id,
+                        taglines = taglines,
+                        parentId = parent_id,
+                        primaryImageTag = primary_image_tag,
+                        thumbImageTag = thumb_image_tag,
+                        backdropImageTag = backdrop_image_tag,
+                        seriesId = series_id,
+                        seriesPrimaryImageTag = series_primary_image_tag,
+                        seriesThumbImageTag = series_thumb_image_tag,
+                        seriesBackdropImageTag = series_backdrop_image_tag,
+                        parentLogoImageTag = parent_logo_image_tag,
+                        runTimeTicks = run_time_ticks,
+                        positionTicks = position_ticks,
+                        playedPercentage = played_percentage,
+                        productionYear = production_year,
+                        premiereDate = premiere_date,
+                        communityRating = community_rating,
+                        officialRating = official_rating,
+                        indexNumber = index_number,
+                        parentIndexNumber = parent_index_number,
+                        seriesName = series_name,
+                        seasonId = season_id,
+                        episodeTitle = episode_title,
+                        lastPlayed = last_played,
+                        dateCreated = date_created,
+                        updatedAt = updated_at,
+                        played = played,
+                    )
+                }.executeAsList()
+        }
 
-    override suspend fun get(itemId: String): JellyfinItemRecord? = queries.selectById(itemId).executeAsOneOrNull()?.toRecord()
+    override suspend fun get(itemId: String): JellyfinItemRecord? =
+        withContext(dispatcher) {
+            queries.selectById(itemId).executeAsOneOrNull()?.toRecord()
+        }
 
     override suspend fun findByProviderIdentity(
         serverId: String,
         identity: MediaIdentity,
-    ): JellyfinItemRecord? {
-        val jellyfinType = if (identity.mediaType == "tv") "series" else identity.mediaType
-        val row =
-            when (identity.provider) {
-                MediaIdentityProvider.TMDB ->
-                    queries.selectByTmdbId(serverId, jellyfinType, identity.providerId).executeAsOneOrNull()
-                MediaIdentityProvider.TVDB ->
-                    queries.selectByTvdbId(serverId, jellyfinType, identity.providerId).executeAsOneOrNull()
-                MediaIdentityProvider.SOURCE_LOCAL -> queries.selectById(identity.providerId).executeAsOneOrNull()
-            }
-        return row
-            ?.takeIf { it.server_id == serverId && it.type.lowercase() == jellyfinType }
-            ?.toRecord()
-    }
+    ): JellyfinItemRecord? =
+        withContext(dispatcher) {
+            val jellyfinType = if (identity.mediaType == "tv") "series" else identity.mediaType
+            val row =
+                when (identity.provider) {
+                    MediaIdentityProvider.TMDB ->
+                        queries.selectByTmdbId(serverId, jellyfinType, identity.providerId).executeAsOneOrNull()
+                    MediaIdentityProvider.TVDB ->
+                        queries.selectByTvdbId(serverId, jellyfinType, identity.providerId).executeAsOneOrNull()
+                    MediaIdentityProvider.SOURCE_LOCAL -> queries.selectById(identity.providerId).executeAsOneOrNull()
+                }
+            row
+                ?.takeIf { it.server_id == serverId && it.type.lowercase() == jellyfinType }
+                ?.toRecord()
+        }
 
     private fun insert(record: JellyfinItemRecord) {
         queries.insertOrReplace(
@@ -682,15 +730,26 @@ class SqlDelightJellyfinItemStore(
 
 class SqlDelightJellyfinItemDetailStore(
     private val queries: JellyfinItemDetailsQueries,
+    private val dispatcher: CoroutineDispatcher,
 ) : JellyfinItemDetailStore {
-    override suspend fun get(itemId: String): JellyfinItemDetailRecord? = queries.selectByItem(itemId).executeAsOneOrNull()?.toRecord()
+    override suspend fun get(itemId: String): JellyfinItemDetailRecord? =
+        withContext(dispatcher) {
+            queries.selectByItem(itemId).executeAsOneOrNull()?.toRecord()
+        }
+
+    override suspend fun exists(itemId: String): Boolean =
+        withContext(dispatcher) {
+            queries.existsByItem(itemId).executeAsOne()
+        }
 
     override suspend fun upsert(record: JellyfinItemDetailRecord) {
-        queries.insertOrReplace(
-            item_id = record.itemId,
-            json = record.json,
-            updated_at = record.updatedAt.toEpochMilliseconds(),
-        )
+        withContext(dispatcher) {
+            queries.insertOrReplace(
+                item_id = record.itemId,
+                json = record.json,
+                updated_at = record.updatedAt.toEpochMilliseconds(),
+            )
+        }
     }
 }
 
@@ -878,8 +937,11 @@ private fun Jellyfin_item_details.toRecord(): JellyfinItemDetailRecord =
         updatedAt = Instant.fromEpochMilliseconds(updated_at),
     )
 
-fun JellystackDatabase.jellyfinLibraryStore(): JellyfinLibraryStore = SqlDelightJellyfinLibraryStore(jellyfinLibrariesQueries)
+fun JellystackDatabase.jellyfinLibraryStore(dispatcher: DatabaseDispatcher): JellyfinLibraryStore =
+    SqlDelightJellyfinLibraryStore(jellyfinLibrariesQueries, dispatcher.value)
 
-fun JellystackDatabase.jellyfinItemStore(): JellyfinItemStore = SqlDelightJellyfinItemStore(jellyfinItemsQueries)
+fun JellystackDatabase.jellyfinItemStore(dispatcher: DatabaseDispatcher): JellyfinItemStore =
+    SqlDelightJellyfinItemStore(jellyfinItemsQueries, dispatcher.value)
 
-fun JellystackDatabase.jellyfinItemDetailStore(): JellyfinItemDetailStore = SqlDelightJellyfinItemDetailStore(jellyfinItemDetailsQueries)
+fun JellystackDatabase.jellyfinItemDetailStore(dispatcher: DatabaseDispatcher): JellyfinItemDetailStore =
+    SqlDelightJellyfinItemDetailStore(jellyfinItemDetailsQueries, dispatcher.value)

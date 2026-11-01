@@ -1,23 +1,32 @@
 package dev.jellystack.database
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import dev.jellystack.core.jellyfin.JellyfinItemDetailRecord
 import dev.jellystack.core.jellyfin.JellyfinItemRecord
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.Instant
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class SqlDelightJellyfinItemStoreTest {
     private lateinit var driver: JdbcSqliteDriver
     private lateinit var store: SqlDelightJellyfinItemStore
+    private lateinit var detailStore: SqlDelightJellyfinItemDetailStore
 
     @BeforeTest
     fun setUp() {
         driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         JellystackDatabase.Schema.create(driver)
-        store = SqlDelightJellyfinItemStore(JellystackDatabase(driver).jellyfinItemsQueries)
+        val database = JellystackDatabase(driver)
+        store = SqlDelightJellyfinItemStore(database.jellyfinItemsQueries, Dispatchers.Unconfined)
+        detailStore = SqlDelightJellyfinItemDetailStore(database.jellyfinItemDetailsQueries, Dispatchers.Unconfined)
     }
 
     @AfterTest
@@ -38,6 +47,71 @@ class SqlDelightJellyfinItemStoreTest {
 
             assertEquals(listOf("episode-1", "episode-2"), store.listEpisodesForSeries("server", "series-1").map { it.id })
         }
+
+    @Test
+    fun upsertStoresEveryRowOfTheBatch() =
+        runTest {
+            store.upsert((1..5).map { seriesChild("episode-$it", type = "Episode", indexNumber = it.toLong()) })
+
+            assertEquals(5, store.listEpisodesForSeries("server", "series-1").size)
+        }
+
+    @Test
+    fun aBatchThatFailsHalfwayLeavesNoPartialRows() =
+        runTest {
+            val broken = seriesChild("broken", type = "Episode", indexNumber = 2L).copy(taglines = ThrowingTaglines)
+
+            assertFailsWith<IllegalStateException> {
+                store.upsert(listOf(seriesChild("episode-1", type = "Episode", indexNumber = 1L), broken))
+            }
+
+            assertNull(store.get("episode-1"))
+        }
+
+    @Test
+    fun aFailedReplacementKeepsTheRowsItWasReplacing() =
+        runTest {
+            store.upsert(listOf(seriesChild("old", type = "Episode", indexNumber = 1L)))
+            val broken = seriesChild("broken", type = "Episode", indexNumber = 2L).copy(taglines = ThrowingTaglines)
+
+            assertFailsWith<IllegalStateException> {
+                store.replaceForLibrary("server", "library", listOf(seriesChild("new", type = "Episode", indexNumber = 1L), broken))
+            }
+
+            assertEquals(listOf("old"), store.listEpisodesForSeries("server", "series-1").map { it.id })
+            assertNull(store.get("new"))
+        }
+
+    @Test
+    fun nextUpReplacementDropsEarlierEntriesAndKeepsTheNewOrder() =
+        runTest {
+            val first = seriesChild("episode-1", type = "Episode", indexNumber = 1L)
+            val second = seriesChild("episode-2", type = "Episode", indexNumber = 2L)
+            store.upsert(listOf(first, second))
+            store.replaceNextUp("server", listOf("episode-1"), Instant.fromEpochMilliseconds(1L))
+
+            store.replaceNextUp("server", listOf("episode-2", "episode-1"), Instant.fromEpochMilliseconds(2L))
+
+            assertEquals(listOf("episode-2", "episode-1"), store.listNextUp("server", limit = 10).map { it.id })
+        }
+
+    @Test
+    fun detailExistenceDoesNotNeedTheStoredJsonToBeValid() =
+        runTest {
+            assertFalse(detailStore.exists("server:item"))
+
+            detailStore.upsert(JellyfinItemDetailRecord("server:item", "not json", Instant.fromEpochMilliseconds(1L)))
+
+            assertTrue(detailStore.exists("server:item"))
+            assertFalse(detailStore.exists("server:other"))
+        }
+
+    /** Throws when the store looks at the taglines, which happens while the row is being written. */
+    private object ThrowingTaglines : AbstractList<String>() {
+        override val size: Int get() = throw IllegalStateException("tagline access failed")
+
+        override fun get(index: Int): String = throw IllegalStateException("tagline access failed")
+    }
 
     private fun seriesChild(
         id: String,

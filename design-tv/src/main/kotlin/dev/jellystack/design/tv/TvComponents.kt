@@ -635,16 +635,8 @@ private fun TvMediaCardText(
         modifier =
             modifier
                 .fillMaxWidth()
-                .background(
-                    Brush.verticalGradient(
-                        colorStops =
-                            arrayOf(
-                                0f to Color.Transparent,
-                                0.35f to Color.Black.copy(alpha = 0.55f),
-                                1f to Color.Black.copy(alpha = 0.9f),
-                            ),
-                    ),
-                ).padding(
+                .tvBakedScrim(TvScrim.MEDIA_CARD_TEXT)
+                .padding(
                     start = if (large) 14.dp else 10.dp,
                     end = if (large) 14.dp else 10.dp,
                     top = if (large) 28.dp else 18.dp,
