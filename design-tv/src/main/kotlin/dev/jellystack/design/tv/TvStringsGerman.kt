@@ -71,8 +71,8 @@ internal val TvStringsGerman: TvStrings =
         newCode = "Neuen Code erstellen",
         cancel = "Abbrechen",
         quickConnectHelp =
-            "Öffne dein Jellyfin-Profil auf einem anderen Gerät, wähle Quick Connect " +
-                "und gib diesen Code ein.",
+            "Melde dich auf einem anderen Gerät mit dem Konto für diesen Fernseher bei Jellyfin an, " +
+                "wähle Quick Connect und gib diesen Code ein.",
         enterCode = "Warte auf Freigabe",
         noResults = "Keine Ergebnisse",
         overview = "Übersicht",
