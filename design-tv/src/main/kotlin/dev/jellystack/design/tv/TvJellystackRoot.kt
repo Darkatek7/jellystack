@@ -1294,58 +1294,20 @@ private fun TvAuthenticatedApp(
         )
     var showExitConfirmation by rememberSaveable(activeProfileGeneration) { mutableStateOf(false) }
     TvAppBackHandler(backDispatcher) { showExitConfirmation = true }
-    val focusRegistrationRevision = focusCoordinator.registrationRevision
-    LaunchedEffect(
-        showRail,
-        appUiState.railExpanded,
-        currentFocusRouteKey,
-        appUiState.isForeground,
-        focusContentAuthoritativelyLoaded,
-        focusRegistrationRevision,
-        semanticRestorationSession,
-    ) {
-        if (!showRail || !appUiState.isForeground) return@LaunchedEffect
-        if (appUiState.railExpanded) {
-            val railRestoration =
-                railRestorationSession.restoreOnce(
-                    coordinator = focusCoordinator,
-                    routeKey = TV_FOCUS_RAIL_ROUTE,
-                    preferredTargetId = tvRailTargetId(currentRoute),
-                    requestFocus = { requester -> runCatching { requester.requestFocus() }.getOrDefault(false) },
-                )
-            if (railRestoration is TvFocusRestoration.Failed) {
-                appStateHolder.closeRail()
-                focusCoordinator.onUserMovement()
-                focusCoordinator.restoreFocus(
-                    routeKey = currentFocusRouteKey,
-                    requestFocus = { requester -> runCatching { requester.requestFocus() }.getOrDefault(false) },
-                )
-            }
-        } else {
-            // A missing content target must not turn route restoration (including Back) into a rail opener.
-            semanticRestorationSession.cancelAfterInteraction(focusCoordinator.currentInteractionRevision)
-            if (!semanticRestorationSession.isPending) return@LaunchedEffect
-            val semanticTargetId =
-                semanticRestorationSession.preferredTargetId(
-                    availableTargets = focusCoordinator.focusTargets(currentFocusRouteKey),
-                    contentAuthoritativelyLoaded = focusContentAuthoritativelyLoaded,
-                ) ?: return@LaunchedEffect
-            val restoration =
-                focusCoordinator.restoreFocus(
-                    routeKey = currentFocusRouteKey,
-                    preferredTargetId = semanticTargetId,
-                    includeFallback = false,
-                    requiredInteractionRevision = semanticRestorationSession.interactionRevision,
-                    requestFocus = { requester -> runCatching { requester.requestFocus() }.getOrDefault(false) },
-                )
-            when (restoration) {
-                is TvFocusRestoration.Focused -> semanticRestorationSession.complete()
-                TvFocusRestoration.Cancelled ->
-                    semanticRestorationSession.cancelAfterInteraction(focusCoordinator.currentInteractionRevision)
-                TvFocusRestoration.Failed -> Unit
-            }
-        }
-    }
+    TvRootFocusRestoration(
+        focusCoordinator = focusCoordinator,
+        appStateHolder = appStateHolder,
+        focus =
+            TvRootFocusState(
+                currentRoute = currentRoute,
+                routeKey = currentFocusRouteKey,
+                showRail = showRail,
+                railExpanded = appUiState.railExpanded,
+                isForeground = appUiState.isForeground,
+                contentAuthoritativelyLoaded = focusContentAuthoritativelyLoaded,
+            ),
+        sessions = TvRootFocusSessions(semanticRestorationSession, railRestorationSession),
+    )
     LaunchedEffect(appUiState.railExpanded, currentRoute) {
         if (appUiState.railExpanded || !currentRoute.allowsTrailerPreview()) trailerPreviewCoordinator.clearFocus()
     }
