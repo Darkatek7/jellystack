@@ -11,7 +11,9 @@ import dev.jellystack.network.generated.jellyfin.JellyfinAuthHttpException
 import dev.jellystack.network.generated.jellyseerr.JellyseerrStatusApi
 import dev.jellystack.network.generated.radarr.RadarrSystemApi
 import dev.jellystack.network.generated.sonarr.SonarrSystemApi
+import dev.jellystack.network.mediarium.MediariumApi
 import io.ktor.client.HttpClient
+import kotlinx.coroutines.CancellationException
 
 class ServerConnectivityChecker(
     private val clientFactory: (ClientConfig) -> HttpClient = { config -> NetworkClientFactory.create(config) },
@@ -24,7 +26,27 @@ class ServerConnectivityChecker(
             ServerType.SONARR -> pingSonarr(registration)
             ServerType.RADARR -> pingRadarr(registration)
             ServerType.JELLYSEERR -> pingJellyseerr(registration)
+            ServerType.MEDIARIUM -> pingMediarium(registration)
         }
+
+    private suspend fun pingMediarium(registration: ServerRegistration): ConnectivityResult {
+        val key = (registration.credentials as? CredentialInput.ApiKey)?.apiKey
+        if (key.isNullOrBlank()) return ConnectivityResult.Failure("Mediarium API key is required")
+        val client = clientFactory(ClientConfig(configure = { followRedirects = false }))
+        return try {
+            val account = MediariumApi(client, registration.baseUrl, key).account()
+            ConnectivityResult.Success(
+                message = "Connected to Mediarium",
+                credentials = StoredCredential.ApiKey(key, userId = account.id.toString()),
+            )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            ConnectivityResult.Failure("Mediarium connection failed", error)
+        } finally {
+            client.close()
+        }
+    }
 
     private suspend fun authenticateJellyfin(registration: ServerRegistration): ConnectivityResult {
         val creds =

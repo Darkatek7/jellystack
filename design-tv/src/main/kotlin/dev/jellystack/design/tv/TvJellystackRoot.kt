@@ -94,6 +94,7 @@ import dev.jellystack.core.server.ServerConnectionCoordinator
 import dev.jellystack.core.server.ServerRepository
 import dev.jellystack.core.server.ServerType
 import dev.jellystack.core.server.StoredCredential
+import dev.jellystack.core.server.isRequestProvider
 import dev.jellystack.players.AndroidPlayerEngine
 import dev.jellystack.players.PlaybackController
 import dev.jellystack.players.PlaybackQueue
@@ -236,7 +237,7 @@ private fun TvProfileHost(
         if (servers.any { it.type == ServerType.JELLYFIN }) {
             profileRepository.ensureLegacyDefaultProfile()
             profileRepository.repairLegacySingleProfileSeerrBinding(
-                servers.filter { it.type == ServerType.JELLYSEERR }.map { it.id },
+                servers.filter { it.type.isRequestProvider }.map { it.id },
             )
             val profile = profileRepository.listProfiles().singleOrNull()
             val binding = profile?.let { profileRepository.binding(it.id) }
@@ -299,8 +300,8 @@ private fun TvProfileHost(
             val seerrId = binding.seerrConnectionId
             if (seerrId == null) {
                 activeServerPreferences.setActiveServerId(ServerType.JELLYSEERR, null)
-            } else if (serverRepository.findServer(seerrId)?.type == ServerType.JELLYSEERR) {
-                serverRepository.setActiveServer(ServerType.JELLYSEERR, seerrId)
+            } else if (serverRepository.findServer(seerrId)?.type?.isRequestProvider == true) {
+                serverRepository.findServer(seerrId)?.let { serverRepository.setActiveServer(it.type, seerrId) }
             } else {
                 activeServerPreferences.setActiveServerId(ServerType.JELLYSEERR, null)
             }

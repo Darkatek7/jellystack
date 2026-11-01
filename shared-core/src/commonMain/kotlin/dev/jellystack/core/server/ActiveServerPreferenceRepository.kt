@@ -9,6 +9,24 @@ import kotlinx.coroutines.flow.map
 class ActiveServerPreferenceRepository(
     private val settings: Settings,
 ) {
+    private val requestType =
+        MutableStateFlow(
+            settings
+                .getStringOrNull("servers.requestProvider")
+                ?.let { runCatching { ServerType.fromStored(it) }.getOrNull() }
+                ?.takeIf { it.isRequestProvider } ?: ServerType.JELLYSEERR,
+        )
+
+    fun requestProviderType(): ServerType = requestType.value
+
+    fun observeRequestProviderType(): Flow<ServerType> = requestType
+
+    fun selectRequestProvider(type: ServerType) {
+        require(type.isRequestProvider)
+        settings.putString("servers.requestProvider", type.name)
+        requestType.value = type
+    }
+
     private val selections =
         MutableStateFlow(
             ServerType.entries.associateWith(::read),

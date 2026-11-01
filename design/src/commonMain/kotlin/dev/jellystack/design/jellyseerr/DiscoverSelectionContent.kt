@@ -581,6 +581,7 @@ internal fun canDeleteSeerrRequest(
     currentUserId: Int?,
 ): Boolean =
     request != null &&
+        request.canManageAtProvider &&
         (
             isAdmin ||
                 currentUserId != null &&

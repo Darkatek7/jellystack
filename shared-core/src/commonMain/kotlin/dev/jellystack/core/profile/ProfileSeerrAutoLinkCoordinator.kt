@@ -55,7 +55,7 @@ class ProfileSeerrAutoLinkCoordinator(
                 servers = serverRepository.currentServers(),
             )
         val jellyfin = connections.jellyfin?.takeIf { it.type == ServerType.JELLYFIN } ?: return null
-        val householdSeerr = connections.seerrPrefill ?: return null
+        val householdSeerr = connections.seerrPrefill?.takeIf { it.type == ServerType.JELLYSEERR } ?: return null
         val result =
             try {
                 connectionCoordinator.connectSeerrAutomatically(

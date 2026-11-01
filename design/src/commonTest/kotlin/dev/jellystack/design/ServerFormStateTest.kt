@@ -1,11 +1,25 @@
 package dev.jellystack.design
 
+import dev.jellystack.core.jellyseerr.RequestProviderType
 import dev.jellystack.core.server.JellyfinSignInMethod
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class ServerFormStateTest {
+    @Test
+    fun mediariumNeedsItsApiKeyEvenWhenAutomaticSeerrLoginIsEnabled() {
+        val state =
+            ServerFormState(
+                type = ServerFormType.SEERR,
+                baseUrl = "https://media.example.com",
+                requestProvider = RequestProviderType.MEDIARIUM,
+                automaticSeerrLogin = true,
+            )
+        assertFalse(state.isValid)
+        assertTrue(state.copy(apiKey = "fictional-key").isValid)
+    }
+
     @Test
     fun jellyseerrFormValidWithCredentials() {
         val state =

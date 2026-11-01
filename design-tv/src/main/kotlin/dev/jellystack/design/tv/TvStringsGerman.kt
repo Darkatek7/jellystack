@@ -15,6 +15,7 @@ private val germanMessageStrings =
         playlistLabel = "Wiedergabeliste",
         music = TvMusicStrings.GERMAN,
         liveTv = TvLiveTvStrings.GERMAN,
+        requestProvider = TvRequestProviderStrings("Mediarium-API-Schlüssel", "Anfrageanbieter verbinden"),
         accountHasProfileFormat = "%s hat schon ein Profil. Für ein weiteres Konto gib den Code mit diesem Konto frei.",
         voiceSearchUnavailable = "Die Sprachsuche ist auf diesem Gerät nicht verfügbar.",
         voiceSearchNoSpeech = "Es wurde keine Sprache erkannt. Versuche es erneut.",
@@ -123,7 +124,8 @@ internal val TvStringsGerman: TvStrings =
         discoverLoadFailed = "Entdecken konnte nicht geladen werden.",
         searchHint = "Jellyfin und Seerr durchsuchen",
         all = "Alle",
-        connectSeerrPrompt = "Verbinde Seerr in den Einstellungen, um Medien zu entdecken und anzufragen.",
+        connectSeerrPrompt =
+            "Verbinde Seerr oder Mediarium in den Einstellungen, um Medien zu entdecken und anzufragen.",
         requests = "Anfragen",
         cannotRequest = "Dein Seerr-Konto darf diesen Medientyp nicht anfragen.",
         request = "Anfragen",

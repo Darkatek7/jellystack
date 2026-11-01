@@ -16,6 +16,18 @@ class ProfileConnectionsTest {
     private val servers = listOf(firstJellyfin, secondJellyfin, firstSeerr, secondSeerr)
 
     @Test
+    fun mediariumBindingResolvesOnlyTheSelectedProfilesConnection() {
+        val mediarium = server("mediarium-a", ServerType.MEDIARIUM, updatedAt = 5)
+        val bindings =
+            listOf(
+                ProfileConnectionBinding("first", "jellyfin-a", "seerr-a"),
+                ProfileConnectionBinding("second", "jellyfin-b", "mediarium-a"),
+            )
+        assertEquals(mediarium, resolveProfileConnections("second", bindings, servers + mediarium).seerr)
+        assertEquals(firstSeerr, resolveProfileConnections("first", bindings, servers + mediarium).seerr)
+    }
+
+    @Test
     fun resolvesTheProfilesOwnServersInsteadOfTheFirstOfEachType() {
         val bindings =
             listOf(

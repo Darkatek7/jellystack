@@ -899,7 +899,7 @@ private fun ConnectionsCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        listOf(ServerType.JELLYFIN, ServerType.JELLYSEERR).forEachIndexed { index, type ->
+        listOf(ServerType.JELLYFIN, ServerType.JELLYSEERR, ServerType.MEDIARIUM).forEachIndexed { index, type ->
             if (index > 0) HorizontalDivider()
             Text(serviceLabel(type), style = MaterialTheme.typography.titleMedium)
             connections.filter { it.type == type }.forEach { connection ->
@@ -1476,6 +1476,7 @@ private fun serviceLabel(type: ServerType): String =
     when (type) {
         ServerType.JELLYFIN -> "Jellyfin"
         ServerType.JELLYSEERR -> "Seerr"
+        ServerType.MEDIARIUM -> "Mediarium"
         ServerType.SONARR -> "Sonarr"
         ServerType.RADARR -> "Radarr"
     }

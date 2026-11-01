@@ -14,6 +14,35 @@ import kotlin.test.assertTrue
 
 class ServerRepositoryTest {
     @Test
+    fun mediariumKeyLivesInTheVaultAndCanBeReloadedAndRemoved() =
+        runTest {
+            val store = InMemoryServerStore()
+            val secureStore = FakeSecureStore()
+            val settings = InMemorySettings()
+            val vault = ServerCredentialVault(secureStore)
+            val connectivity =
+                ServerConnectivity {
+                    ConnectivityResult.Success("ok", StoredCredential.ApiKey("fictional-key", userId = "3"))
+                }
+            val repository = ServerRepository(store, connectivity, vault, ActiveServerPreferenceRepository(settings))
+            val server =
+                repository.register(
+                    ServerRegistration(
+                        type = ServerType.MEDIARIUM,
+                        name = "Mediarium",
+                        baseUrl = "https://media.example.com",
+                        credentials = CredentialInput.ApiKey("fictional-key"),
+                    ),
+                )
+            assertNull(store.get(server.id)?.apiKey)
+            assertEquals("fictional-key", vault.readMediariumApiKey(server.id)?.reveal())
+            val reloaded = ServerRepository(store, connectivity, vault, ActiveServerPreferenceRepository(settings))
+            assertEquals(server, reloaded.findServer(server.id))
+            reloaded.remove(server.id)
+            assertNull(vault.readMediariumApiKey(server.id))
+        }
+
+    @Test
     fun authenticatedJellyfinRegistrationPersistsTokenAndRemovesOldPassword() =
         runTest {
             val firstCredential =

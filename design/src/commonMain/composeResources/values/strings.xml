@@ -509,4 +509,7 @@
     <string name="admin_notice_user_deleted">User deleted.</string>
     <string name="admin_request_declined">Request declined.</string>
     <string name="admin_request_action_failed">The request could not be updated.</string>
+    <string name="mediarium_api_key">Mediarium API key</string>
+    <string name="connect_mediarium">Connect Mediarium</string>
+    <string name="request_provider">Requests</string>
 </resources>
