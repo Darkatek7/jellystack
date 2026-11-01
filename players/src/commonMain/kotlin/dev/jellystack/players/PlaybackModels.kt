@@ -25,6 +25,8 @@ data class PlaybackRequest(
     val preferredSubtitleTrackId: String? = null,
     val startPolicy: PlaybackStartPolicy = PlaybackStartPolicy.INHERIT,
     val metadata: PlaybackMetadata? = null,
+    /** A Live TV channel: no duration, no resume point, nothing to seek in, and nothing to continue with. */
+    val isLive: Boolean = false,
 ) {
     companion object {
         fun from(
@@ -229,7 +231,9 @@ data class PlaybackSession(
     val playbackSpeed: Float = 1f,
     val statsForNerdsEnabled: Boolean = false,
     val runtimeStats: PlaybackRuntimeStats = PlaybackRuntimeStats(),
-)
+) {
+    val isLive: Boolean get() = request.isLive
+}
 
 data class PlaybackProgress(
     val mediaId: String,
@@ -369,6 +373,9 @@ sealed interface PlaybackState {
         override val sessionDeviceName: String = localDeviceName
     }
 }
+
+/** Whether the session plays a Live TV channel; see [PlaybackRequest.isLive]. */
+val PlaybackState.Active.isLive: Boolean get() = source.isLive
 
 sealed interface PlaybackNotice {
     data object AudioTrackSelectionFailed : PlaybackNotice

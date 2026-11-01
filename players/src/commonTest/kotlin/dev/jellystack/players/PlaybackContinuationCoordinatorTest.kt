@@ -50,6 +50,30 @@ class PlaybackContinuationCoordinatorTest {
         }
 
     @Test
+    fun aLiveChannelNeverResolvesOrStartsWhatComesNext() =
+        runTest {
+            var resolutions = 0
+            var plays = 0
+            val coordinator =
+                coordinator(
+                    mode = AutoplayNextMode.IMMEDIATE,
+                    resolve = { _, _ ->
+                        resolutions += 1
+                        target { plays += 1 }
+                    },
+                )
+
+            coordinator.onPlaybackState(active("channel-1", phase = PlaybackPhase.Ready, live = true))
+            runCurrent()
+            coordinator.onPlaybackState(active("channel-1", phase = PlaybackPhase.Ended, live = true))
+            runCurrent()
+
+            assertEquals(0, resolutions)
+            assertEquals(0, plays)
+            assertNull(coordinator.state.value.nextTarget)
+        }
+
+    @Test
     fun lastEpisodeHasNoTargetAndResolutionFailureLeavesPlaybackUnaffected() =
         runTest {
             val lastEpisode = coordinator(resolve = { _, _ -> null })
@@ -505,6 +529,7 @@ class PlaybackContinuationCoordinatorTest {
         phase: PlaybackPhase,
         seriesId: String? = "series",
         mediaKind: PlaybackMediaKind = PlaybackMediaKind.VIDEO,
+        live: Boolean = false,
     ): PlaybackState.Active =
         PlaybackState.LocalPlayback(
             mediaId = mediaId,
@@ -515,7 +540,7 @@ class PlaybackContinuationCoordinatorTest {
             audioTrack = null,
             subtitleTrack = null,
             isPaused = false,
-            source = testSource,
+            source = testSource.copy(isLive = live),
             qualityOptions = emptyList(),
             selectedQualityId = PlaybackQualityOption.AUTO_ID,
             metadata =

@@ -94,7 +94,7 @@ class PlaybackContinuationCoordinator(
         val seriesId = active.metadata?.seriesId
         val audio = active.mediaKind == PlaybackMediaKind.AUDIO
         // Only a list the user started continues with music; a lone track or an audiobook never queues on its own.
-        val eligible = if (audio) queued else seriesId != null || queued
+        val eligible = !active.isLive && (if (audio) queued else seriesId != null || queued)
         if (!eligible) {
             observeIneligibleActive(active.mediaId, active.phase)
             return

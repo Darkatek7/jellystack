@@ -50,6 +50,8 @@ class JellyfinPlaybackApi(
                 }
                 headers.appendJellyfinAuthorization(identity, accessToken)
                 parameter("UserId", userId)
+                // The query parameter is what jellyfin-web sends; a Live TV channel is opened by this call.
+                if (request.autoOpenLiveStream == true) parameter("AutoOpenLiveStream", true)
                 contentType(ContentType.Application.Json)
                 setBody(request)
             }.body()
@@ -69,6 +71,8 @@ data class JellyfinPlaybackInfoRequestDto(
     @SerialName("EnableTranscoding") val enableTranscoding: Boolean,
     @SerialName("AllowVideoStreamCopy") val allowVideoStreamCopy: Boolean,
     @SerialName("AllowAudioStreamCopy") val allowAudioStreamCopy: Boolean,
+    /** Live TV: have the server open the channel's live stream and return its `LiveStreamId`. */
+    @SerialName("AutoOpenLiveStream") val autoOpenLiveStream: Boolean? = null,
 )
 
 // NetworkJson leaves default values out of requests. Jellyfin has its own defaults for these fields
@@ -149,4 +153,7 @@ data class JellyfinPlaybackMediaSourceDto(
     @SerialName("TranscodingUrl") val transcodingUrl: String? = null,
     @SerialName("TranscodingContainer") val transcodingContainer: String? = null,
     @SerialName("TranscodingSubProtocol") val transcodingSubProtocol: String? = null,
+    /** Live TV: the open stream; it has to be closed with `/LiveStreams/Close` when playback ends. */
+    @SerialName("LiveStreamId") val liveStreamId: String? = null,
+    @SerialName("IsInfiniteStream") val isInfiniteStream: Boolean = false,
 )

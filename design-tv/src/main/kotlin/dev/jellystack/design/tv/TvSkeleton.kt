@@ -12,6 +12,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -26,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /** Alpha of the placeholders while content loads: a very slow pulse between these, or the middle without motion. */
@@ -132,6 +134,29 @@ internal fun LazyGridScope.tvSkeletonGridCells(
     }
 }
 
+/** Placeholder rows of a vertical list, with the row's height, announced once as [label]. */
+@Composable
+internal fun TvSkeletonListRows(
+    label: String,
+    rowHeight: Dp,
+    modifier: Modifier = Modifier,
+    count: Int = TV_SKELETON_LIST_ROWS,
+) {
+    val alpha = rememberTvSkeletonAlpha()
+    Column(modifier.tvStatusSemantics(label), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        repeat(count) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(rowHeight)
+                    .graphicsLayer { this.alpha = alpha.value }
+                    .background(TvSurfaceRaised, TvShapes.Control),
+            )
+        }
+    }
+}
+
+private const val TV_SKELETON_LIST_ROWS = 8
 private val TV_SKELETON_TITLE_HEIGHT = 24.dp
 private val TV_SKELETON_TITLE_BAR_HEIGHT = 16.dp
 private val TV_SKELETON_TITLE_WIDTH = 200.dp

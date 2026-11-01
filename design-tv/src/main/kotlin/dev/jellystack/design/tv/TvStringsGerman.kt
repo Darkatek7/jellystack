@@ -14,6 +14,7 @@ private val germanMessageStrings =
         collectionLabel = "Sammlung",
         playlistLabel = "Wiedergabeliste",
         music = TvMusicStrings.GERMAN,
+        liveTv = TvLiveTvStrings.GERMAN,
         voiceSearchUnavailable = "Die Sprachsuche ist auf diesem Gerät nicht verfügbar.",
         voiceSearchNoSpeech = "Es wurde keine Sprache erkannt. Versuche es erneut.",
         voiceSearchFailed = "Die Sprachsuche ist fehlgeschlagen. Versuche es erneut.",

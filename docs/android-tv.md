@@ -141,7 +141,25 @@ adb -s <serial> shell cmd dreams stop-dreaming
 adb -s <serial> shell settings put secure screensaver_components <previous value>   # restore
 ```
 
+`cmd dreams` needs root, which Google TV emulator images do not allow. There, start it through inactivity (emulator only; note the old values and restore them):
+
+```powershell
+adb -s <serial> shell settings put global stay_on_while_plugged_in 0
+adb -s <serial> shell settings put system screen_off_timeout 15000
+adb -s <serial> shell settings put secure screensaver_activate_on_sleep 1
+```
+
 Test with a profile that has loaded the home screen (so the cache is filled), after force-stopping the app (`am force-stop app.jellystack.mobile`) to cover a dead process, at the profile picker (expect the dark screen), and with a PIN profile.
+
+## Live TV
+
+`TvRoute.LiveTv` (`TvLiveTvScreen`) shows a channel list with now and next and a progress bar for the focused channel. The Live TV library card leads there and only appears when the server returns channels. There is no EPG grid, because a grid of programs draws too slowly on weak GPUs; programs load for visible channels only.
+
+- Playback: `PlaybackInfo` with `AutoOpenLiveStream` opens the stream and returns an HLS transcoding URL (`LiveChannelSourceResolver`). Playback starts at the live edge and restarts there after falling behind the live window, at most 3 times until the player is ready again. The OSD has no seek bar for a channel.
+- Reports carry no position and write no user data, nothing is marked played, and `/LiveStreams/Close` frees the tuner on stop.
+- A 403 or 404 from the channel list means no access or no Live TV, and the feature stays hidden.
+
+The local test server can serve fictional channels: add an `m3u` tuner host and an `xmltv` listing provider through the Jellyfin dashboard, with channel URLs pointing at the generated test movies.
 
 ## Google Play closed TV test
 

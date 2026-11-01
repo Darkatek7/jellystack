@@ -2,6 +2,7 @@ package dev.jellystack.design.tv
 
 import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.JellyfinItemDetail
+import dev.jellystack.core.livetv.LiveTvChannel
 import dev.jellystack.core.preferences.AppLanguage
 import dev.jellystack.core.preferences.AppSettings
 import dev.jellystack.core.preferences.ResumeMode
@@ -485,6 +486,34 @@ class TvPlaybackLauncherTest {
             runCurrent()
 
             assertEquals(listOf(1f, 1.5f), startedSettings.map { it.defaultPlaybackSpeed })
+        }
+
+    @Test
+    fun aLiveChannelStartsAtOnceAsALiveRequestWithoutLoadingDetailOrAskingToResume() =
+        runTest {
+            defaultPlaybackSpeed = 1.5f
+            var detailLoads = 0
+            val launcher =
+                launcher(
+                    ResumeMode.ASK,
+                    loadDetail = {
+                        detailLoads += 1
+                        detail()
+                    },
+                )
+
+            launcher.play(LiveTvChannel("channel-1", "12", "Example One", null).toPlayableItem())
+            runCurrent()
+
+            assertNull(launcher.pendingAsk)
+            assertEquals(0, detailLoads)
+            val request = started.single()
+            assertEquals("channel-1", request.mediaId)
+            assertEquals(true, request.isLive)
+            assertEquals(PlaybackStartPolicy.RESTART, request.startPolicy)
+            assertEquals(1f, startedSettings.single().defaultPlaybackSpeed)
+            assertEquals(1, startedRoutes)
+            assertEquals(TvPlaybackStartState.Idle, launcher.startState)
         }
 
     private fun tracks(vararg ids: String) = ids.map { track(it) }

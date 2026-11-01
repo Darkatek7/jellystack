@@ -20,6 +20,7 @@ import dev.jellystack.players.PlaybackRequest
 import dev.jellystack.players.PlaybackStartDecision
 import dev.jellystack.players.PlaybackStartPolicy
 import dev.jellystack.players.decidePlaybackStart
+import dev.jellystack.players.forLiveChannel
 import dev.jellystack.players.formatPlaybackTime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -148,7 +149,10 @@ internal class TvPlaybackLauncher(
     private var startJob: Job? = null
     private var lastAttempt: TvStartAttempt? = null
 
-    /** Plays [item]; [detail] skips the detail request when the caller already has it. */
+    /**
+     * Plays [item]; [detail] skips the detail request when the caller already has it. A Live TV channel starts from the
+     * live edge at once: it has no detail to load, never asks to resume, and plays at normal speed.
+     */
     fun play(
         item: JellyfinItem,
         detail: JellyfinItemDetail? = null,
@@ -158,8 +162,9 @@ internal class TvPlaybackLauncher(
             return
         }
         sources.queue.clear()
-        if (item.isEpisodeParent()) {
+        if (item.isEpisodeParent() || item.isLiveTvChannel()) {
             // The episode to play is only known once the episodes are loaded, so the resume rule runs in the start.
+            // A channel has no resume point: the start plays it from the live edge.
             pendingAsk = null
             start(TvStartAttempt(item, detail = null, policy = PlaybackStartPolicy.INHERIT))
             return
@@ -251,7 +256,9 @@ internal class TvPlaybackLauncher(
             scope.launch {
                 val outcome =
                     runSuspendCatching {
-                        if (attempt.item.isEpisodeParent() || attempt.item.opensAsItemList()) {
+                        if (attempt.item.isLiveTvChannel()) {
+                            beginLive(starter, currentSettings(), attempt.item)
+                        } else if (attempt.item.isEpisodeParent() || attempt.item.opensAsItemList()) {
                             runContainer(attempt.item, attempt.shuffle)
                         } else {
                             sources.begin(starter, currentSettings(), attempt)
@@ -323,6 +330,20 @@ private suspend fun TvPlaybackSources.begin(
     val normalSpeed = groupStart != null || target.item.isPlayableAudio()
     val settings = if (normalSpeed) appSettings.copy(defaultPlaybackSpeed = 1f) else appSettings
     return if (starter.start(request, settings)) {
+        TvStartOutcome.Started
+    } else {
+        TvStartOutcome.Failed(TvStartFailure.COULD_NOT_START, "no server connection")
+    }
+}
+
+/** Hands the request for the Live TV channel [channel] to [starter]; live video plays at normal speed. */
+private suspend fun beginLive(
+    starter: TvPlaybackStarter,
+    appSettings: AppSettings,
+    channel: JellyfinItem,
+): TvStartOutcome {
+    val request = PlaybackRequest.forLiveChannel(channel.id, channel.name, channel.primaryImageTag)
+    return if (starter.start(request, appSettings.copy(defaultPlaybackSpeed = 1f))) {
         TvStartOutcome.Started
     } else {
         TvStartOutcome.Failed(TvStartFailure.COULD_NOT_START, "no server connection")

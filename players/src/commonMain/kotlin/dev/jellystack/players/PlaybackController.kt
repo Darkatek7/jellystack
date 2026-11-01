@@ -148,7 +148,8 @@ class PlaybackController(
             val appSettings = playbackPreferencesProvider.currentSettings()
             val preferenceResolver = PlaybackPreferenceResolver(appSettings, playbackNetworkClassifier.currentNetworkClass())
             val restart =
-                request.startPolicy == PlaybackStartPolicy.RESTART ||
+                request.isLive ||
+                    request.startPolicy == PlaybackStartPolicy.RESTART ||
                     (request.startPolicy == PlaybackStartPolicy.INHERIT && appSettings.resumeMode == ResumeMode.RESTART)
             val savedStartingPosition =
                 if (restart) {
@@ -422,7 +423,7 @@ class PlaybackController(
                     }
                 }
             } else {
-                persistProgress(current.mediaId, current.positionMs)
+                if (!current.isLive) persistProgress(current.mediaId, current.positionMs)
                 if (current.stream.mode == PlaybackMode.LOCAL) {
                     scope.launch {
                         offlineProgressSyncer.onProgress(current.mediaId, current.positionMs, current.durationMs)
@@ -661,7 +662,7 @@ class PlaybackController(
     fun currentCastSnapshot(): CastSessionSnapshot? = session?.let { buildCastSnapshot(it) }
 
     fun seekTo(positionMs: Long) {
-        if (positionMs < 0) return
+        if (positionMs < 0 || session?.isLive == true) return
         session?.let {
             if (handoffPhase == HandoffPhase.RECOVERING) {
                 cancelRecoveryPromotion()
@@ -1379,7 +1380,8 @@ class PlaybackController(
             return
         }
         if (last == null || abs(progress.positionMs - last.positionMs) >= PROGRESS_WRITE_INTERVAL_MS) {
-            persist(progress)
+            // A live channel has no resume point; the stored position only paces the reports to the server.
+            if (session.isLive) lastPersisted = progress else persist(progress)
             if (session.source.mode == PlaybackMode.LOCAL) {
                 scope.launch {
                     offlineProgressSyncer.onProgress(session.mediaId, progress.positionMs, session.durationMs)
@@ -1431,6 +1433,8 @@ class PlaybackController(
             audioStreamIndex = audioIndex,
             subtitleStreamIndex = subtitleIndex,
             strategy = strategy,
+            isLive = session.isLive,
+            liveStreamId = session.source.liveStreamId,
         )
     }
 
@@ -1646,7 +1650,7 @@ class PlaybackController(
                                         launchStreamingStop(
                                             context = context,
                                             positionMs = it.positionMs,
-                                            completed = true,
+                                            completed = !it.isLive,
                                         )
                                     }
                                 }

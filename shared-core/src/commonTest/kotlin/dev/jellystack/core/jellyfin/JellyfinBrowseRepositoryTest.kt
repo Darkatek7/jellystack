@@ -384,6 +384,90 @@ class JellyfinBrowseRepositoryTest {
         }
 
     @Test
+    fun stoppingALiveChannelClosesItsStreamAndTouchesNeitherPositionNorWatchedState() =
+        runTest {
+            val paths = mutableListOf<String>()
+            var stopPayload: String? = null
+            var closedStreamId: String? = null
+            val repository =
+                liveReportingRepository { request ->
+                    paths += request.url.encodedPath
+                    when (request.url.encodedPath) {
+                        "/Sessions/Playing/Stopped" -> stopPayload = (request.body as TextContent).text
+                        "/LiveStreams/Close" -> closedStreamId = request.url.parameters["LiveStreamId"]
+                    }
+                }
+
+            repository.stopStreamingPlayback(LIVE_CONTEXT, positionMs = 42_000L, completed = true)
+
+            val payload = Json.parseToJsonElement(requireNotNull(stopPayload)).jsonObject
+            assertEquals("live-1", payload.getValue("LiveStreamId").jsonPrimitive.content)
+            assertFalse("PositionTicks" in payload)
+            assertEquals("live-1", closedStreamId)
+            assertEquals(listOf("/Sessions/Playing/Stopped", "/LiveStreams/Close"), paths)
+        }
+
+    @Test
+    fun aLiveStreamIsClosedEvenWhenTheStopReportCannotBeSent() =
+        runTest {
+            var closedStreamId: String? = null
+            val repository =
+                liveReportingRepository { request ->
+                    check(request.url.encodedPath != "/Sessions/Playing/Stopped") { "server unreachable" }
+                    if (request.url.encodedPath == "/LiveStreams/Close") closedStreamId = request.url.parameters["LiveStreamId"]
+                }
+
+            repository.stopStreamingPlayback(LIVE_CONTEXT, positionMs = null, completed = false)
+
+            assertEquals("live-1", closedStreamId)
+        }
+
+    @Test
+    fun liveStartAndProgressReportsCarryNoPositionAndWriteNoUserData() =
+        runTest {
+            val paths = mutableListOf<String>()
+            val payloads = mutableMapOf<String, kotlinx.serialization.json.JsonObject>()
+            val repository =
+                liveReportingRepository { request ->
+                    paths += request.url.encodedPath
+                    (request.body as? TextContent)?.let { payloads[request.url.encodedPath] = Json.parseToJsonElement(it.text).jsonObject }
+                }
+
+            repository.startStreamingPlayback(LIVE_CONTEXT, positionMs = 0L)
+            repository.reportStreamingProgress(LIVE_CONTEXT, positionMs = 90_000L)
+
+            assertEquals(listOf("/Sessions/Playing", "/Sessions/Playing/Progress"), paths)
+            payloads.values.forEach { payload ->
+                assertFalse("PositionTicks" in payload)
+                assertEquals("live-1", payload.getValue("LiveStreamId").jsonPrimitive.content)
+            }
+            assertEquals(
+                "false",
+                payloads
+                    .getValue("/Sessions/Playing")
+                    .getValue("CanSeek")
+                    .jsonPrimitive.content,
+            )
+        }
+
+    private fun liveReportingRepository(onRequest: (io.ktor.client.request.HttpRequestData) -> Unit): JellyfinBrowseRepository {
+        val engine =
+            MockEngine { request ->
+                onRequest(request)
+                respond("", HttpStatusCode.NoContent, headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()))
+            }
+        val client = NetworkClientFactory.create(ClientConfig(engine = engine, installLogging = false, maxRetries = 0))
+        return JellyfinBrowseRepository(
+            environmentProvider,
+            InMemoryLibraryStore(),
+            InMemoryItemStore(),
+            InMemoryDetailStore(),
+            { env -> JellyfinBrowseApi(client, env.baseUrl, env.accessToken, env.deviceId, "Test", env.deviceName, "1.0") },
+            clock = FixedClock,
+        )
+    }
+
+    @Test
     fun loadLibraryPageDoesNotRequestAdditionalLibraries() =
         runTest {
             val recordedParentIds = mutableListOf<String?>()
@@ -1282,6 +1366,18 @@ class JellyfinBrowseRepositoryTest {
     }
 
     companion object {
+        private val LIVE_CONTEXT =
+            StreamingProgressContext(
+                mediaId = "channel-1",
+                mediaSourceId = "source-1",
+                playSessionId = "play-session-1",
+                audioStreamIndex = null,
+                subtitleStreamIndex = null,
+                strategy = StreamingPlayStrategy.TRANSCODED,
+                isLive = true,
+                liveStreamId = "live-1",
+            )
+
         private const val TRACK_DETAIL_JSON = """
             {
               "Id": "t1",

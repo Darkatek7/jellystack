@@ -71,6 +71,10 @@ sealed interface TvRoute : NavKey {
         val isAlbum: Boolean,
     ) : TvRoute
 
+    /** The channels of the server's Live TV; opened from its library card, only when the server has channels. */
+    @Serializable
+    data object LiveTv : TvRoute
+
     @Serializable
     data object Player : TvRoute
 }
@@ -100,6 +104,7 @@ internal fun TvRoute.focusRouteKey(libraryPath: List<String> = emptyList()): Str
         is TvRoute.Person -> "person:$id"
         is TvRoute.Collection -> "collection:$id"
         is TvRoute.Music -> "music:$id"
+        TvRoute.LiveTv -> "live-tv"
         TvRoute.Player -> "player"
     }
 

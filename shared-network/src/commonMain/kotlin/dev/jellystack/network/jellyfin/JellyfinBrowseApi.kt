@@ -369,6 +369,15 @@ class JellyfinBrowseApi(
         }
     }
 
+    /** Closes a Live TV stream a PlaybackInfo call with `AutoOpenLiveStream` opened; a failure is the caller's to ignore. */
+    suspend fun closeLiveStream(liveStreamId: String) {
+        client.request {
+            method = HttpMethod.Post
+            configure("/LiveStreams/Close")
+            parameter("LiveStreamId", liveStreamId)
+        }
+    }
+
     companion object {
         const val DEFAULT_INCLUDE_ITEM_TYPES = "Movie,Series,Episode,BoxSet,MusicAlbum,MusicArtist"
         private const val REQUIRED_FIELDS =

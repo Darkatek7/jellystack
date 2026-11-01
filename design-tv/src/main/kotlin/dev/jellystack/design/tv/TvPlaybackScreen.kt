@@ -66,6 +66,7 @@ import dev.jellystack.players.PlaybackSegmentAction
 import dev.jellystack.players.PlaybackSegmentState
 import dev.jellystack.players.PlaybackSegmentType
 import dev.jellystack.players.PlaybackState
+import dev.jellystack.players.isLive
 import dev.jellystack.players.shouldOfferUpNext
 import dev.jellystack.players.syncplay.SyncPlayCoordinator
 import dev.jellystack.players.syncplay.SyncPlayUiState
@@ -374,15 +375,18 @@ internal fun TvPlaybackScreen(
                         KeyEvent.KEYCODE_DPAD_RIGHT,
                         ->
                             if (navigation.current == TvPlayerPanel.NONE && !controlsVisible && active != null) {
-                                // Hidden controls: preview the target with the seek bar and seek on release.
-                                val stepMs =
-                                    if (event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
-                                        -seekBackSeconds * 1_000L
-                                    } else {
-                                        seekForwardSeconds * 1_000L
-                                    }
-                                hiddenScrubVisible = true
-                                hiddenScrub.press(active.positionMs, active.durationMs, stepMs, event.nativeKeyEvent.repeatCount)
+                                // Hidden controls: preview the target with the seek bar and seek on release. A live
+                                // channel has nothing to seek in; the key is consumed and does nothing.
+                                if (!active.isLive) {
+                                    val stepMs =
+                                        if (event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+                                            -seekBackSeconds * 1_000L
+                                        } else {
+                                            seekForwardSeconds * 1_000L
+                                        }
+                                    hiddenScrubVisible = true
+                                    hiddenScrub.press(active.positionMs, active.durationMs, stepMs, event.nativeKeyEvent.repeatCount)
+                                }
                                 true
                             } else {
                                 false

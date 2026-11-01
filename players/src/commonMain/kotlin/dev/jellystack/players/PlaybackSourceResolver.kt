@@ -15,6 +15,9 @@ data class ResolvedPlaybackSource(
     val supportsTranscoding: Boolean? = null,
     val isFallbackHls: Boolean = false,
     val segmentContainer: String? = null,
+    /** A Live TV channel; [liveStreamId] is the stream the server opened for it and must close when playback ends. */
+    val isLive: Boolean = false,
+    val liveStreamId: String? = null,
 )
 
 /** `SubtitleStreamIndex` value that asks the server for no subtitles at all. */

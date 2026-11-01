@@ -67,7 +67,7 @@ import dev.jellystack.core.jellyfin.JellyfinSessionState
 import dev.jellystack.core.jellyfin.JellyfinSyncPlayAccess
 import dev.jellystack.core.jellyfin.LocalTrailerContext
 import dev.jellystack.core.jellyfin.LocalTrailerResolver
-import dev.jellystack.core.jellyfin.withBrowsableLibraries
+import dev.jellystack.core.jellyfin.isLiveTv
 import dev.jellystack.core.jellyseerr.JellyseerrEnvironmentProvider
 import dev.jellystack.core.jellyseerr.JellyseerrMediaAvailability
 import dev.jellystack.core.jellyseerr.JellyseerrRecommendationsCoordinator
@@ -75,6 +75,7 @@ import dev.jellystack.core.jellyseerr.JellyseerrRecommendationsState
 import dev.jellystack.core.jellyseerr.JellyseerrRepository
 import dev.jellystack.core.jellyseerr.JellyseerrRequestsCoordinator
 import dev.jellystack.core.jellyseerr.JellyseerrSearchItem
+import dev.jellystack.core.livetv.LiveTvRepository
 import dev.jellystack.core.preferences.AppSettingsRepository
 import dev.jellystack.core.profile.ActiveProfileRepository
 import dev.jellystack.core.profile.HouseholdProfile
@@ -989,7 +990,9 @@ private fun TvAuthenticatedApp(
             )
         }
     val browseState by browseCoordinator.state.collectAsStateWithLifecycle()
-    val homeState = remember(browseState) { browseState.withBrowsableLibraries() }
+    val liveTvRepository = remember(accountGeneration) { koin.get<LiveTvRepository>() }
+    val liveTv = rememberTvLiveTvAccess(liveTvRepository, scope, browseState.libraries)
+    val homeState = remember(browseState, liveTv) { liveTv.libraries(browseState) }
     val homeSections by homeSectionsRepository.state.collectAsStateWithLifecycle()
     val recommendations by recommendationsCoordinator.state.collectAsStateWithLifecycle()
     val requests by requestsCoordinator.state.collectAsStateWithLifecycle()
@@ -1147,6 +1150,10 @@ private fun TvAuthenticatedApp(
         libraryId: String,
         title: String?,
     ) {
+        if (homeState.libraries.firstOrNull { it.id == libraryId }?.isLiveTv() == true) {
+            push(TvRoute.LiveTv)
+            return
+        }
         val myListItems = myList.mapNotNull { it.jellyfinItem }
         val mode = tvLibraryEntryMode(libraryId, homeState, homeSections, myListItems, strings.libraryBrowseLabels())
         push(TvRoute.Library(libraryId, title, mode))
@@ -1293,6 +1300,7 @@ private fun TvAuthenticatedApp(
             currentRoute is TvRoute.Search ||
             currentRoute is TvRoute.Discover ||
             currentRoute is TvRoute.Settings ||
+            currentRoute is TvRoute.LiveTv ||
             currentRoute.itemListSource() != null
     val focusCoordinator =
         remember(appUiState.activeProfileGeneration) {
@@ -1622,6 +1630,18 @@ private fun TvAuthenticatedApp(
                                             playback = TvItemListRoutePlayback(playbackLauncher, ::openJellyfinDetail),
                                             strings = strings,
                                             focusMemory = focusMemory,
+                                        )
+                                    TvRoute.LiveTv ->
+                                        TvLiveTvRoute(
+                                            coordinator = liveTv.coordinator,
+                                            context =
+                                                TvLiveTvContext(
+                                                    images = TvLibraryGridImages(homeState.imageBaseUrl, homeState.imageAccessToken),
+                                                    routeKey = entryRouteKey,
+                                                    strings = strings,
+                                                    focusMemory = focusMemory,
+                                                ),
+                                            launcher = playbackLauncher,
                                         )
                                     is TvRoute.SeerrDetail -> {
                                         val key = route.mediaType to route.tmdbId

@@ -688,19 +688,20 @@ class JellyfinBrowseRepository(
                 put("ItemId", context.mediaId)
                 put("PlaySessionId", playSessionId)
                 context.mediaSourceId?.let { put("MediaSourceId", it) }
+                context.liveStreamId?.let { put("LiveStreamId", it) }
                 context.audioStreamIndex?.let { put("AudioStreamIndex", it) }
                 context.subtitleStreamIndex?.let { put("SubtitleStreamIndex", it) }
-                put("CanSeek", true)
+                put("CanSeek", !context.isLive)
                 put("IsMuted", false)
                 put("IsPaused", false)
                 put("PlaybackRate", 1.0)
                 put("RepeatMode", "RepeatNone")
-                put("PositionTicks", positionTicks)
+                if (!context.isLive) put("PositionTicks", positionTicks)
                 put("PlayMethod", playMethod)
                 environment.deviceId?.let { put("DeviceId", it) }
             }
         runCatching { api.startStreamingPlayback(environment.userId, body) }
-        runCatching { reportOfflineProgress(context.mediaId, positionMs) }
+        if (!context.isLive) runCatching { reportOfflineProgress(context.mediaId, positionMs) }
     }
 
     suspend fun reportStreamingProgress(
@@ -717,12 +718,13 @@ class JellyfinBrowseRepository(
                 put("ItemId", context.mediaId)
                 put("PlaySessionId", playSessionId)
                 context.mediaSourceId?.let { put("MediaSourceId", it) }
-                put("PositionTicks", positionTicks)
+                context.liveStreamId?.let { put("LiveStreamId", it) }
+                if (!context.isLive) put("PositionTicks", positionTicks)
                 put("IsPaused", false)
                 put("PlayMethod", playMethod)
             }
         runCatching { api.reportStreamingProgress(environment.userId, body) }
-        runCatching { reportOfflineProgress(context.mediaId, positionMs) }
+        if (!context.isLive) runCatching { reportOfflineProgress(context.mediaId, positionMs) }
     }
 
     suspend fun stopStreamingPlayback(
@@ -732,21 +734,30 @@ class JellyfinBrowseRepository(
     ) {
         val environment = environmentProvider.current() ?: return
         val api = apiFor(environment)
-        val playSessionId = context.playSessionId ?: return
         val playMethod = context.strategy.toApiValue()
-        val positionTicks = positionMs?.let { if (it <= 0) 0L else it * 10_000 }
-        val body =
-            buildJsonObject {
-                put("ItemId", context.mediaId)
-                put("PlaySessionId", playSessionId)
-                context.mediaSourceId?.let { put("MediaSourceId", it) }
-                positionTicks?.let { put("PositionTicks", it) }
-                put("PlayMethod", playMethod)
-                environment.deviceId?.let { put("DeviceId", it) }
+        // A live stream is closed whatever else happens: the server keeps the tuner busy until it is.
+        try {
+            val playSessionId = context.playSessionId ?: return
+            val positionTicks = positionMs?.takeUnless { context.isLive }?.let { if (it <= 0) 0L else it * 10_000 }
+            val body =
+                buildJsonObject {
+                    put("ItemId", context.mediaId)
+                    put("PlaySessionId", playSessionId)
+                    context.mediaSourceId?.let { put("MediaSourceId", it) }
+                    context.liveStreamId?.let { put("LiveStreamId", it) }
+                    positionTicks?.let { put("PositionTicks", it) }
+                    put("PlayMethod", playMethod)
+                    environment.deviceId?.let { put("DeviceId", it) }
+                }
+            runCatching { api.stopStreamingPlayback(environment.userId, body) }
+            if (completed && !context.isLive) {
+                runCatching { markOfflinePlaybackCompleted(context.mediaId) }
             }
-        runCatching { api.stopStreamingPlayback(environment.userId, body) }
-        if (completed) {
-            runCatching { markOfflinePlaybackCompleted(context.mediaId) }
+        } finally {
+            context.liveStreamId?.let { liveStreamId ->
+                runSuspendCatching { api.closeLiveStream(liveStreamId) }
+                    .onFailure { JellystackLog.w("Closing the live stream failed (${it.javaClass.simpleName})") }
+            }
         }
     }
 
