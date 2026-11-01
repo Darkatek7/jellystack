@@ -39,6 +39,11 @@ private const val FILTER_ERROR_PHRASE = "No media found with the specified filte
 const val ITEM_LIST_LIMIT = 500
 private const val PERSON_EPISODE_ITEM_TYPE = "Episode"
 private const val PERSON_ITEM_TYPES = "Movie,Series"
+private const val AUDIO_ITEM_TYPE = "Audio"
+private const val ALBUM_ITEM_TYPE = "MusicAlbum"
+
+/** Disc, then track number, then name for tracks without numbers. */
+private const val ALBUM_TRACK_SORT = "ParentIndexNumber,IndexNumber,SortName"
 
 private fun detailCacheKey(
     serverId: String,
@@ -937,6 +942,66 @@ class JellyfinBrowseRepository(
         return response.cacheAndMap(environment)
     }
 
+    /** The tracks of an album in disc and track order; tracks without numbers follow by name. */
+    suspend fun albumTracks(
+        albumId: String,
+        limit: Int = ITEM_LIST_LIMIT,
+    ): List<JellyfinItem> {
+        val environment = environmentProvider.current() ?: return emptyList()
+        val response =
+            apiFor(environment).fetchLibraryItems(
+                userId = environment.userId,
+                libraryId = albumId,
+                startIndex = 0,
+                limit = limit.coerceIn(1, ITEM_LIST_LIMIT),
+                includeItemTypes = AUDIO_ITEM_TYPE,
+                recursive = true,
+                sortBy = ALBUM_TRACK_SORT,
+            )
+        return response.cacheAndMap(environment)
+    }
+
+    /** The albums [artistId] made, newest first. */
+    suspend fun artistAlbums(
+        artistId: String,
+        limit: Int = ITEM_LIST_LIMIT,
+    ): List<JellyfinItem> {
+        val environment = environmentProvider.current() ?: return emptyList()
+        val response =
+            apiFor(environment).fetchLibraryItems(
+                userId = environment.userId,
+                libraryId = "",
+                startIndex = 0,
+                limit = limit.coerceIn(1, ITEM_LIST_LIMIT),
+                includeItemTypes = ALBUM_ITEM_TYPE,
+                recursive = true,
+                albumArtistIds = listOf(artistId),
+                sortBy = "ProductionYear,SortName",
+                sortOrder = "Descending",
+            )
+        return response.cacheAndMap(environment)
+    }
+
+    /** Every track on the albums of [artistId], album by album, each in disc and track order. */
+    suspend fun artistTracks(
+        artistId: String,
+        limit: Int = ITEM_LIST_LIMIT,
+    ): List<JellyfinItem> {
+        val environment = environmentProvider.current() ?: return emptyList()
+        val response =
+            apiFor(environment).fetchLibraryItems(
+                userId = environment.userId,
+                libraryId = "",
+                startIndex = 0,
+                limit = limit.coerceIn(1, ITEM_LIST_LIMIT),
+                includeItemTypes = AUDIO_ITEM_TYPE,
+                recursive = true,
+                albumArtistIds = listOf(artistId),
+                sortBy = "Album,$ALBUM_TRACK_SORT",
+            )
+        return response.cacheAndMap(environment)
+    }
+
     /** The entries of a playlist in the playlist's own order. */
     suspend fun playlistItems(
         playlistId: String,
@@ -1173,7 +1238,23 @@ private fun JellyfinItemDetailDto.toDomain(): JellyfinItemDetail =
                     )
                 },
         parentBackdropImageTags = parentBackdropImageTags.orEmpty(),
+        music = trackInfo(),
     )
+
+private fun JellyfinItemDetailDto.trackInfo(): JellyfinTrackInfo? {
+    val artist =
+        artists
+            .orEmpty()
+            .filter(String::isNotBlank)
+            .joinToString(", ")
+            .ifBlank { albumArtist?.takeIf(String::isNotBlank) }
+    val albumName = album?.takeIf(String::isNotBlank)
+    return if (artist == null && albumName == null) {
+        null
+    } else {
+        JellyfinTrackInfo(albumName, albumId, albumPrimaryImageTag, artist)
+    }
+}
 
 private fun JellyfinMediaSourceDto.toDomain(): JellyfinMediaSource =
     JellyfinMediaSource(

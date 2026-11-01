@@ -63,6 +63,14 @@ sealed interface TvRoute : NavKey {
         val isPlaylist: Boolean = false,
     ) : TvRoute
 
+    /** The tracks of an album, or the albums of an artist; opened from the card of one, wherever it is shown. */
+    @Serializable
+    data class Music(
+        val id: String,
+        val name: String,
+        val isAlbum: Boolean,
+    ) : TvRoute
+
     @Serializable
     data object Player : TvRoute
 }
@@ -91,6 +99,7 @@ internal fun TvRoute.focusRouteKey(libraryPath: List<String> = emptyList()): Str
         is TvRoute.SeerrDetail -> "seerr-detail:${mediaType.name}:$tmdbId"
         is TvRoute.Person -> "person:$id"
         is TvRoute.Collection -> "collection:$id"
+        is TvRoute.Music -> "music:$id"
         TvRoute.Player -> "player"
     }
 

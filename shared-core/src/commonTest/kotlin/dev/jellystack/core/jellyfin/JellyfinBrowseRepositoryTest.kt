@@ -214,6 +214,84 @@ class JellyfinBrowseRepositoryTest {
             assertEquals(listOf("third", "first", "second"), items.map { it.id })
         }
 
+    @Test
+    fun albumTracksAreAskedForInDiscAndTrackOrderBelowTheAlbum() =
+        runTest {
+            val requests = mutableListOf<Pair<String, Map<String, String>>>()
+            val listRepository = listRepository(requests, """{"Items":[${trackJson("t2")},${trackJson("t1")}],"TotalRecordCount":2}""")
+
+            val tracks = listRepository.albumTracks("album-1")
+
+            val (path, parameters) = requests.single()
+            assertEquals("/Items", path)
+            assertEquals("album-1", parameters["ParentId"])
+            assertEquals("Audio", parameters["IncludeItemTypes"])
+            assertEquals("true", parameters["Recursive"])
+            assertEquals("ParentIndexNumber,IndexNumber,SortName", parameters["SortBy"])
+            assertEquals("Ascending", parameters["SortOrder"])
+            assertEquals(listOf("t2", "t1"), tracks.map { it.id })
+            assertNotNull(itemStore.get("t1"))
+        }
+
+    @Test
+    fun artistAlbumsAreTheAlbumsTheArtistMadeNewestFirstAcrossAllLibraries() =
+        runTest {
+            val requests = mutableListOf<Pair<String, Map<String, String>>>()
+            val listRepository = listRepository(requests, """{"Items":[${albumJson("al-2")},${albumJson("al-1")}],"TotalRecordCount":2}""")
+
+            val albums = listRepository.artistAlbums("artist-1")
+
+            val (_, parameters) = requests.single()
+            assertEquals("artist-1", parameters["AlbumArtistIds"])
+            assertEquals("MusicAlbum", parameters["IncludeItemTypes"])
+            assertEquals("true", parameters["Recursive"])
+            assertEquals("ProductionYear,SortName", parameters["SortBy"])
+            assertEquals("Descending", parameters["SortOrder"])
+            assertNull(parameters["ParentId"])
+            assertEquals(listOf("al-2", "al-1"), albums.map { it.id })
+        }
+
+    @Test
+    fun artistTracksAreAskedForAlbumByAlbumEachInTrackOrder() =
+        runTest {
+            val requests = mutableListOf<Pair<String, Map<String, String>>>()
+            val listRepository = listRepository(requests, """{"Items":[${trackJson("t1")}],"TotalRecordCount":1}""")
+
+            listRepository.artistTracks("artist-1")
+
+            val (_, parameters) = requests.single()
+            assertEquals("artist-1", parameters["AlbumArtistIds"])
+            assertEquals("Audio", parameters["IncludeItemTypes"])
+            assertEquals("Album,ParentIndexNumber,IndexNumber,SortName", parameters["SortBy"])
+        }
+
+    @Test
+    fun aTracksDetailKnowsItsArtistsAlbumAndCover() =
+        runTest {
+            val requests = mutableListOf<Pair<String, Map<String, String>>>()
+            val listRepository = listRepository(requests, TRACK_DETAIL_JSON)
+
+            val music = listRepository.getItemDetail("t1")?.music
+
+            assertEquals(JellyfinTrackInfo("First Light", "album-1", "album-tag", "Example Band, Guest Singer"), music)
+        }
+
+    @Test
+    fun aTrackWithOnlyAnAlbumArtistShowsThatArtistAndAMovieHasNoMusicInfo() =
+        runTest {
+            val requests = mutableListOf<Pair<String, Map<String, String>>>()
+            val onlyAlbumArtist = """{"Id":"t1","Name":"Opening Theme","Album":"First Light","AlbumArtist":"Example Band"}"""
+            assertEquals("Example Band", listRepository(requests, onlyAlbumArtist).getItemDetail("t1")?.music?.artist)
+
+            val movie = listRepository(requests, """{"Id":"m1","Name":"Film"}""").getItemDetail("m1")
+            assertNull(movie?.music)
+        }
+
+    private fun trackJson(id: String) =
+        """{"Id":"$id","Name":"$id","Type":"Audio","MediaType":"Audio","IndexNumber":1,"ParentIndexNumber":1}"""
+
+    private fun albumJson(id: String) = """{"Id":"$id","Name":"$id","Type":"MusicAlbum"}"""
+
     private fun movieJson(id: String) = """{"Id":"$id","Name":"$id","Type":"Movie","MediaType":"Video"}"""
 
     private fun listRepository(
@@ -1204,6 +1282,18 @@ class JellyfinBrowseRepositoryTest {
     }
 
     companion object {
+        private const val TRACK_DETAIL_JSON = """
+            {
+              "Id": "t1",
+              "Name": "Opening Theme",
+              "Album": "First Light",
+              "AlbumId": "album-1",
+              "AlbumPrimaryImageTag": "album-tag",
+              "AlbumArtist": "Example Band",
+              "Artists": ["Example Band", "Guest Singer"]
+            }
+        """
+
         private fun detailJson(name: String): String = """{"Id":"shared","Name":"$name","Type":"Movie","MediaSources":[]}"""
 
         private const val LIBRARIES_JSON = """

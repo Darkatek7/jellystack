@@ -1,7 +1,22 @@
 package dev.jellystack.core.jellyfin
 
-/** A collection (BoxSet) or a playlist: it lists other titles instead of having a detail page of its own. */
-fun JellyfinItem.opensAsItemList(): Boolean = isPlaylist() || type.equals("BoxSet", ignoreCase = true)
+/**
+ * A collection (BoxSet), a playlist, an album, or an artist: it lists other titles instead of having a detail page of
+ * its own.
+ */
+fun JellyfinItem.opensAsItemList(): Boolean = isPlaylist() || type.equals("BoxSet", ignoreCase = true) || isMusicContainer()
+
+fun JellyfinItem.isMusicAlbum(): Boolean = type.equals("MusicAlbum", ignoreCase = true)
+
+fun JellyfinItem.isMusicArtist(): Boolean = type.equals("MusicArtist", ignoreCase = true)
+
+/** An album or an artist. */
+fun JellyfinItem.isMusicContainer(): Boolean = isMusicAlbum() || isMusicArtist()
+
+/** A single music track (or audiobook) the player can start. Missing files are not playable. */
+fun JellyfinItem.isPlayableAudio(): Boolean =
+    (type.equals("Audio", ignoreCase = true) || type.equals("AudioBook", ignoreCase = true)) &&
+        !locationType.equals("Virtual", ignoreCase = true)
 
 fun JellyfinItem.isPlaylist(): Boolean = type.equals("Playlist", ignoreCase = true)
 

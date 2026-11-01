@@ -821,7 +821,7 @@ private fun sessionMedia3Metadata(
         .Builder()
         .setTitle(metadata.title ?: "")
         .setArtist(metadata.sessionArtistLine())
-        .setAlbumTitle(metadata.seriesName?.takeIf(String::isNotBlank))
+        .setAlbumTitle((metadata.seriesName ?: metadata.albumName)?.takeIf(String::isNotBlank))
         .apply {
             artworkUrl
                 ?.takeIf(String::isNotBlank)

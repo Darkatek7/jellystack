@@ -104,6 +104,23 @@ class PlaybackSessionMetadataTest {
         assertNull(movie.copy(seriesName = "  ").sessionArtistLine())
     }
 
+    @Test
+    fun artistLineOfATrackIsItsArtist() {
+        val track =
+            PlaybackMetadata(
+                title = "Opening Theme",
+                seriesId = null,
+                seriesName = null,
+                episodeName = null,
+                artworkUrl = null,
+                primaryImageTag = null,
+                artist = "Example Band",
+                albumName = "First Light",
+            )
+        assertEquals("Example Band", track.sessionArtistLine())
+        assertNull(track.copy(artist = " ").sessionArtistLine())
+    }
+
     private fun request(
         mediaId: String = "item-1",
         metadata: PlaybackMetadata?,

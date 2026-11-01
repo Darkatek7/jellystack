@@ -15,6 +15,12 @@ private val SUPPORTED_DIRECT_VIDEO_CODECS =
         "av1",
     )
 
+/**
+ * Music codecs the platform decoders on TVs do not play. Such a track goes through the server's audio transcode
+ * instead of failing on a direct stream; every other codec direct plays.
+ */
+private val UNPLAYABLE_DIRECT_AUDIO_CODECS = setOf("alac", "wmav1", "wmav2", "wmapro", "wmalossless")
+
 private data class VideoQualityPreset(
     val bitrate: Int,
     val maxHeight: Int,
@@ -64,7 +70,7 @@ class PlaybackStreamSelector {
                         }
                     val supported =
                         if (mediaKind == PlaybackMediaKind.AUDIO) {
-                            primaryStream != null
+                            primaryStream != null && primaryStream.codec?.lowercase() !in UNPLAYABLE_DIRECT_AUDIO_CODECS
                         } else {
                             primaryStream?.codec?.let { it.lowercase() in SUPPORTED_DIRECT_VIDEO_CODECS } == true
                         }

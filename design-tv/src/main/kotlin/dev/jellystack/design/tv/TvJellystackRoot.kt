@@ -1293,7 +1293,7 @@ private fun TvAuthenticatedApp(
                         ?.rails
                         ?.values
                         ?.none { it.isLoading } != false
-            is TvRoute.Person, is TvRoute.Collection ->
+            is TvRoute.Person, is TvRoute.Collection, is TvRoute.Music ->
                 itemListStates[requireNotNull(currentRoute.itemListSource()).key()] !is TvItemListState.Loading
             else -> true
         }
@@ -1571,34 +1571,21 @@ private fun TvAuthenticatedApp(
                                             onOpenPerson = ::openPerson,
                                             onPlaybackStarted = { push(TvRoute.Player) },
                                         )
-                                    is TvRoute.Person, is TvRoute.Collection -> {
-                                        val listSource = requireNotNull(route.itemListSource())
-                                        LaunchedEffect(listSource) { itemLists.show(listSource) }
-                                        TvItemListScreen(
-                                            content =
-                                                TvItemListContent(
-                                                    source = listSource,
-                                                    state = itemListStates[listSource.key()] ?: TvItemListState.Loading,
+                                    is TvRoute.Person, is TvRoute.Collection, is TvRoute.Music ->
+                                        TvItemListRoute(
+                                            route = route,
+                                            data =
+                                                TvItemListRouteData(
+                                                    routeKey = entryRouteKey,
+                                                    coordinator = itemLists,
+                                                    states = itemListStates,
                                                     images = TvLibraryGridImages(homeState.imageBaseUrl, homeState.imageAccessToken),
                                                     favorites = homeState.favorites,
-                                                    routeKey = entryRouteKey,
                                                 ),
-                                            actions =
-                                                TvItemListActions(
-                                                    onOpenItem = ::openJellyfinDetail,
-                                                    onPlayAll = {
-                                                        (listSource as? TvItemListSource.Container)?.let {
-                                                            playbackLauncher.playAll(
-                                                                it.toItem(),
-                                                            )
-                                                        }
-                                                    },
-                                                    onRetry = { itemLists.retry(listSource) },
-                                                ),
+                                            playback = TvItemListRoutePlayback(playbackLauncher, ::openJellyfinDetail),
                                             strings = strings,
                                             focusMemory = focusMemory,
                                         )
-                                    }
                                     is TvRoute.SeerrDetail -> {
                                         val key = route.mediaType to route.tmdbId
                                         val routeItem = route.toSearchItem()
@@ -1661,6 +1648,11 @@ private fun TvAuthenticatedApp(
                                                     onRetry = playbackLauncher::retryStart,
                                                     onCancel = playbackLauncher::cancelStart,
                                                     onFailureSeen = playbackLauncher::cancelStart,
+                                                ),
+                                            audioQueue =
+                                                TvAudioQueueControls(
+                                                    hasPrevious = { playbackQueue.entryBefore(it) != null },
+                                                    playPrevious = playbackLauncher::playPrevious,
                                                 ),
                                             stopPlayback = stopPlayback,
                                             onClose = {

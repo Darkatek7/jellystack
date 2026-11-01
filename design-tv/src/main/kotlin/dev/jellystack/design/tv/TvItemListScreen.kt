@@ -54,13 +54,29 @@ internal class TvItemListContent(
 ) {
     val items: List<JellyfinItem> = (state as? TvItemListState.Ready)?.items.orEmpty()
 
-    /** A collection or playlist with something in it starts on its Play all button. */
-    val hasPlayAll: Boolean = source is TvItemListSource.Container && items.isNotEmpty()
+    /** A list of titles to play (everything but a filmography) starts on its Play all button once it has some. */
+    val hasPlayAll: Boolean = source !is TvItemListSource.Person && items.isNotEmpty()
+
+    /** Albums and artists, and playlists of music, can also be played in a random order. */
+    val hasShuffle: Boolean =
+        items.isNotEmpty() &&
+            (
+                source is TvItemListSource.Album ||
+                    source is TvItemListSource.Artist ||
+                    (source is TvItemListSource.Container && items.areTracks())
+            )
+
+    /** An album, or a playlist of music, lists its tracks as rows to play from instead of as cards. */
+    val showsTrackList: Boolean =
+        source is TvItemListSource.Album || (source is TvItemListSource.Container && items.areTracks())
 }
 
 internal class TvItemListActions(
     val onOpenItem: (JellyfinItem) -> Unit,
     val onPlayAll: () -> Unit,
+    val onShuffle: () -> Unit,
+    /** Plays the list from the track at this place, the rest following it. */
+    val onPlayTrack: (index: Int) -> Unit,
     val onRetry: () -> Unit,
 )
 
@@ -92,7 +108,7 @@ internal fun TvItemListScreen(
         ) {
             item(key = "item-list-header", span = { GridItemSpan(maxLineSpan) }) {
                 TvItemListHeader(content, strings) {
-                    if (content.hasPlayAll) TvItemListPlayAll(strings.messages.playAll, actions.onPlayAll)
+                    TvItemListPlayButtons(content, actions, strings)
                 }
             }
             itemsIndexed(content.items, key = { _, item -> item.id }) { index, item ->
@@ -132,7 +148,10 @@ private fun TvItemListFocusMaterializer(
         )
     val focusLocations =
         tvLibraryGridFocusLocations(itemTargetIds, terminalTarget) +
-            if (content.hasPlayAll) mapOf(TV_ITEM_LIST_PLAY_ALL_TARGET to 0) else emptyMap()
+            buildMap<String, Int> {
+                if (content.hasPlayAll) put(TV_ITEM_LIST_PLAY_ALL_TARGET, 0)
+                if (content.hasShuffle) put(TV_TRACK_LIST_SHUFFLE_TARGET, 0)
+            }
     TvRouteFocusMaterializer(
         ownerId = "item-list:${content.routeKey}",
         targetIds = focusLocations.keys,
@@ -185,23 +204,37 @@ private fun LazyGridScope.tvItemListStatus(
     }
 }
 
+/** Play all, and Shuffle where the list is music, side by side under the title. */
 @Composable
-private fun TvItemListPlayAll(
-    label: String,
-    onClick: () -> Unit,
+private fun TvItemListPlayButtons(
+    content: TvItemListContent,
+    actions: TvItemListActions,
+    strings: TvStrings,
 ) {
-    TvActionButton(
-        label = label,
-        onClick = onClick,
-        primary = true,
-        focusToNavigationRailOnLeft = true,
-        focusTargetId = TV_ITEM_LIST_PLAY_ALL_TARGET,
-        modifier =
-            Modifier
-                .width(240.dp)
-                .tvScreenEntryFocus(true, TV_ITEM_LIST_PLAY_ALL_TARGET)
-                .testTag("tv-item-list-play-all"),
-    )
+    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        if (content.hasPlayAll) {
+            TvActionButton(
+                label = strings.messages.playAll,
+                onClick = actions.onPlayAll,
+                primary = true,
+                focusToNavigationRailOnLeft = true,
+                focusTargetId = TV_ITEM_LIST_PLAY_ALL_TARGET,
+                modifier =
+                    Modifier
+                        .width(240.dp)
+                        .tvScreenEntryFocus(true, TV_ITEM_LIST_PLAY_ALL_TARGET)
+                        .testTag("tv-item-list-play-all"),
+            )
+        }
+        if (content.hasShuffle) {
+            TvActionButton(
+                label = strings.messages.music.shuffle,
+                onClick = actions.onShuffle,
+                focusTargetId = TV_TRACK_LIST_SHUFFLE_TARGET,
+                modifier = Modifier.width(240.dp).testTag("tv-item-list-shuffle"),
+            )
+        }
+    }
 }
 
 @Composable
@@ -216,6 +249,8 @@ private fun TvItemListHeader(
             is TvItemListSource.Person -> strings.messages.filmography
             is TvItemListSource.Container ->
                 if (source.isPlaylist) strings.messages.playlistLabel else strings.messages.collectionLabel
+            is TvItemListSource.Album -> strings.messages.music.album
+            is TvItemListSource.Artist -> strings.messages.music.albums
         }
     val count =
         content.items.size
@@ -226,7 +261,9 @@ private fun TvItemListHeader(
         horizontalArrangement = Arrangement.spacedBy(24.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (source is TvItemListSource.Person) TvPersonPhoto(source, content.images)
+        if (source is TvItemListSource.Person || source is TvItemListSource.Artist) {
+            TvPersonPhoto(source, content.images)
+        }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
                 text = source.title,
@@ -249,7 +286,7 @@ private fun TvItemListHeader(
 /** The person's portrait, with their initial underneath for people the server has no photo of. */
 @Composable
 private fun TvPersonPhoto(
-    person: TvItemListSource.Person,
+    person: TvItemListSource,
     images: TvLibraryGridImages,
 ) {
     Box(

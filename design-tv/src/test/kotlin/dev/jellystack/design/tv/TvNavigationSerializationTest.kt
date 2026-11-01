@@ -21,6 +21,8 @@ class TvNavigationSerializationTest {
                 TvRoute.Person(id = "person-7", name = "Ada Example"),
                 TvRoute.Collection(id = "box-3", name = "Example Saga"),
                 TvRoute.Collection(id = "playlist-9", name = "Friday Night", isPlaylist = true),
+                TvRoute.Music(id = "album-4", name = "First Light", isAlbum = true),
+                TvRoute.Music(id = "artist-2", name = "Example Band", isAlbum = false),
                 TvRoute.SeerrDetail(
                     tmdbId = 1234,
                     mediaType = JellyseerrMediaType.TV,

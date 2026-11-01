@@ -2,9 +2,11 @@ package dev.jellystack.players
 
 import dev.jellystack.core.jellyfin.JellyfinItem
 import kotlinx.coroutines.test.runTest
+import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -72,6 +74,57 @@ class PlaybackQueueTest {
 
         queue.clear()
         assertFalse(queue.contains("x"))
+    }
+
+    @Test
+    fun playFromAnIndexKeepsTheOrderAndStartsThere() {
+        val queue = PlaybackQueue()
+
+        val first = queue.start(listOf(queueEntry("a"), queueEntry("b"), queueEntry("c"), queueEntry("d")), startIndex = 2)
+
+        assertEquals("c", first?.id)
+        assertEquals(listOf("d"), queue.entriesAfter("c").map { it.id })
+        assertEquals("b", queue.entryBefore("c")?.id)
+        assertNull(queue.entryBefore("a"))
+    }
+
+    @Test
+    fun anIndexOutsideTheListStartsAtTheFirstEntry() {
+        val queue = PlaybackQueue()
+
+        assertEquals("a", queue.start(listOf(queueEntry("a"), queueEntry("b")), startIndex = 9)?.id)
+        assertNull(queue.start(emptyList()))
+        assertFalse(queue.contains("a"))
+    }
+
+    @Test
+    fun shuffleDecidesTheOrderOnceAndTheSameSeedGivesTheSameOrder() {
+        val items = ('a'..'h').map { queueEntry(it.toString()) }
+        val queue = PlaybackQueue()
+
+        val first = queue.start(items, startIndex = null, shuffle = Random(7))
+        val order = listOf(first!!.id) + queue.entriesAfter(first.id).map { it.id }
+
+        assertEquals(items.map { it.id }.toSet(), order.toSet())
+        assertEquals(items.size, order.size)
+        assertNotEquals(items.map { it.id }, order)
+        val again = PlaybackQueue().apply { start(items, startIndex = null, shuffle = Random(7)) }
+        assertEquals(order, listOf(order.first()) + again.entriesAfter(order.first()).map { it.id })
+        // Asking where to go from an entry never reorders the queue again.
+        assertEquals(queue.entriesAfter(order[2]).map { it.id }, order.drop(3))
+    }
+
+    @Test
+    fun shuffleFromAChosenEntryPlaysThatEntryFirstAndEveryOtherOnce() {
+        val items = ('a'..'f').map { queueEntry(it.toString()) }
+        val queue = PlaybackQueue()
+
+        val first = queue.start(items, startIndex = 3, shuffle = Random(1))
+
+        assertEquals("d", first?.id)
+        assertNull(queue.entryBefore("d"))
+        assertEquals(items.map { it.id }.toSet() - "d", queue.entriesAfter("d").map { it.id }.toSet())
+        assertEquals(5, queue.entriesAfter("d").size)
     }
 
     private fun target(mediaId: String) = PlaybackContinuationTarget(mediaId = mediaId, title = mediaId, fromQueue = true) {}

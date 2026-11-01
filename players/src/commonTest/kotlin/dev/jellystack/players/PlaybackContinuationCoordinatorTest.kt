@@ -16,6 +16,8 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+private val AUDIO = PlaybackMediaKind.AUDIO
+
 @OptIn(ExperimentalCoroutinesApi::class)
 class PlaybackContinuationCoordinatorTest {
     @Test
@@ -411,6 +413,68 @@ class PlaybackContinuationCoordinatorTest {
             assertNull(coordinator.state.value.nextTarget)
         }
 
+    @Test
+    fun theNextTrackOfAnAlbumStartsAtOnceWithoutACountdownWhateverTheEpisodeSettingIs() =
+        runTest {
+            AutoplayNextMode.entries.forEach { mode ->
+                var plays = 0
+                val coordinator =
+                    PlaybackContinuationCoordinator(
+                        scope = this,
+                        modeProvider = { mode },
+                        resolveNext = { _, _ -> error("a track must not look for series episodes") },
+                        queue = FakeQueue("track-1") { target(mediaId = "track-2", fromQueue = true) { plays += 1 } },
+                    )
+
+                coordinator.onPlaybackState(active("track-1", phase = PlaybackPhase.Ready, seriesId = null, mediaKind = AUDIO))
+                runCurrent()
+                coordinator.onPlaybackState(active("track-1", phase = PlaybackPhase.Ended, seriesId = null, mediaKind = AUDIO))
+                runCurrent()
+
+                assertEquals(1, plays, "$mode")
+                assertNull(coordinator.state.value.countdownSecondsRemaining, "$mode")
+                coordinator.release()
+            }
+        }
+
+    @Test
+    fun theLastTrackOfAnAlbumEndsWithoutAnythingToPlayNext() =
+        runTest {
+            val coordinator =
+                PlaybackContinuationCoordinator(
+                    scope = this,
+                    modeProvider = { AutoplayNextMode.IMMEDIATE },
+                    resolveNext = { _, _ -> error("a track must not look for series episodes") },
+                    queue = FakeQueue("track-9") { null },
+                )
+
+            coordinator.onPlaybackState(active("track-9", phase = PlaybackPhase.Ready, seriesId = null, mediaKind = AUDIO))
+            runCurrent()
+            coordinator.onPlaybackState(active("track-9", phase = PlaybackPhase.Ended, seriesId = null, mediaKind = AUDIO))
+            runCurrent()
+
+            assertNull(coordinator.state.value.nextTarget)
+        }
+
+    @Test
+    fun aSingleTrackOutsideAnyListNeverContinues() =
+        runTest {
+            val coordinator =
+                PlaybackContinuationCoordinator(
+                    scope = this,
+                    modeProvider = { AutoplayNextMode.IMMEDIATE },
+                    resolveNext = { _, _ -> error("not a series") },
+                    queue = FakeQueue("other") { error("not in the list") },
+                )
+
+            coordinator.onPlaybackState(active("loose", phase = PlaybackPhase.Ready, seriesId = "series", mediaKind = AUDIO))
+            runCurrent()
+            coordinator.onPlaybackState(active("loose", phase = PlaybackPhase.Ended, seriesId = "series", mediaKind = AUDIO))
+            runCurrent()
+
+            assertNull(coordinator.state.value.nextTarget)
+        }
+
     private class FakeQueue(
         private val member: String,
         private val next: suspend (String) -> PlaybackContinuationTarget?,
@@ -440,6 +504,7 @@ class PlaybackContinuationCoordinatorTest {
         positionMs: Long = 10_000,
         phase: PlaybackPhase,
         seriesId: String? = "series",
+        mediaKind: PlaybackMediaKind = PlaybackMediaKind.VIDEO,
     ): PlaybackState.Active =
         PlaybackState.LocalPlayback(
             mediaId = mediaId,
@@ -462,6 +527,7 @@ class PlaybackContinuationCoordinatorTest {
                     artworkUrl = null,
                     primaryImageTag = null,
                 ),
+            mediaKind = mediaKind,
             phase = phase,
         )
 

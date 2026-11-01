@@ -69,6 +69,7 @@ class JellyfinBrowseApi(
         genres: List<String> = emptyList(),
         years: List<Int> = emptyList(),
         personIds: List<String> = emptyList(),
+        albumArtistIds: List<String> = emptyList(),
     ): JellyfinItemsResponse =
         client
             .request {
@@ -91,6 +92,7 @@ class JellyfinBrowseApi(
                 genres.takeIf(List<String>::isNotEmpty)?.let { parameter("Genres", it.joinToString("|")) }
                 years.takeIf(List<Int>::isNotEmpty)?.let { parameter("Years", it.joinToString(",")) }
                 personIds.takeIf(List<String>::isNotEmpty)?.let { parameter("PersonIds", it.joinToString(",")) }
+                albumArtistIds.takeIf(List<String>::isNotEmpty)?.let { parameter("AlbumArtistIds", it.joinToString(",")) }
             }.body()
 
     /** The entries of a playlist in the order the playlist keeps them. */
@@ -550,6 +552,17 @@ data class JellyfinItemDetailDto(
     val userData: JellyfinItemUserData? = null,
     @SerialName("ProviderIds")
     val providerIds: Map<String, String>? = null,
+    /** Music tracks: the album and its artists. */
+    @SerialName("Album")
+    val album: String? = null,
+    @SerialName("AlbumId")
+    val albumId: String? = null,
+    @SerialName("AlbumPrimaryImageTag")
+    val albumPrimaryImageTag: String? = null,
+    @SerialName("AlbumArtist")
+    val albumArtist: String? = null,
+    @SerialName("Artists")
+    val artists: List<String>? = null,
 )
 
 @Serializable

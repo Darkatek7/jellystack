@@ -21,7 +21,23 @@ class TvPlayAllQueueTest {
 
             val queue = buildPlayAllQueue(entries) { emptyList() }
 
-            assertEquals(listOf("first", "second"), queue.map { it.id })
+            assertEquals(listOf("first", "song", "second"), queue.map { it.id })
+        }
+
+    @Test
+    fun musicTracksPlayInTheOrderOfTheListAndAMissingTrackIsLeftOut() =
+        runTest {
+            val entries =
+                listOf(
+                    listItem("t1", type = "Audio"),
+                    listItem("gone", type = "Audio", locationType = "Virtual"),
+                    listItem("album", type = "MusicAlbum"),
+                    listItem("t2", type = "Audio"),
+                )
+
+            val queue = buildPlayAllQueue(entries) { emptyList() }
+
+            assertEquals(listOf("t1", "t2"), queue.map { it.id })
         }
 
     @Test

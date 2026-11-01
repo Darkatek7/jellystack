@@ -58,6 +58,10 @@ data class PlaybackRequest(
                         episodeNumber = item.indexNumber,
                         artworkUrl = null,
                         primaryImageTag = detail.primaryImageTag ?: item.primaryImageTag,
+                        artist = detail.music?.artist,
+                        albumName = detail.music?.albumName,
+                        albumId = detail.music?.albumId,
+                        albumPrimaryImageTag = detail.music?.albumPrimaryImageTag,
                     ),
             )
     }
@@ -80,7 +84,7 @@ fun PlaybackRequest.artworkUrl(baseUrl: String?): String? {
 
 /** "Series · S1 · E2" style artist line; null when there is nothing beyond the title. */
 internal fun PlaybackMetadata.sessionArtistLine(): String? {
-    val series = seriesName?.takeIf(String::isNotBlank) ?: return null
+    val series = seriesName?.takeIf(String::isNotBlank) ?: return artist?.takeIf(String::isNotBlank)
     val season = seasonNumber
     val episode = episodeNumber
     return if (season != null && episode != null) {
@@ -121,6 +125,11 @@ data class PlaybackMetadata(
     val primaryImageTag: String?,
     val seasonNumber: Int? = null,
     val episodeNumber: Int? = null,
+    /** Music tracks: who made the track, and the album it is on with that album's cover. */
+    val artist: String? = null,
+    val albumName: String? = null,
+    val albumId: String? = null,
+    val albumPrimaryImageTag: String? = null,
 )
 
 enum class PlaybackMode {

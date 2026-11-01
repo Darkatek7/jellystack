@@ -14,6 +14,7 @@ import androidx.lifecycle.flowWithLifecycle
 import dev.jellystack.core.jellyfin.JellyfinBrowseRepository
 import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
 import dev.jellystack.core.jellyfin.JellyfinItem
+import dev.jellystack.core.jellyfin.isPlayableAudio
 import dev.jellystack.core.preferences.AppSettings
 import dev.jellystack.network.ClientConfig
 import dev.jellystack.network.NetworkClientFactory
@@ -256,7 +257,8 @@ private suspend fun TvPlaybackCoordinatorSources.continuationTarget(
     ) {
         router.playNext {
             controller.play(PlaybackRequest.from(next, detail, startPolicy = PlaybackStartPolicy.RESTART), environment)
-            controller.setPlaybackSpeed(settings().defaultPlaybackSpeed)
+            // Music plays at normal speed, whatever the default speed for video is.
+            controller.setPlaybackSpeed(if (next.isPlayableAudio()) 1f else settings().defaultPlaybackSpeed)
             controller.setStatsForNerdsEnabled(settings().statsForNerdsEnabled)
         }
     }

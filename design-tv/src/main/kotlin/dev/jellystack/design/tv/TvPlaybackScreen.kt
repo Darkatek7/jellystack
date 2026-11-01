@@ -101,11 +101,35 @@ internal fun TvPlaybackScreen(
     onPlayNext: () -> Unit,
     onCancelAutoplay: () -> Unit = {},
     startActions: TvPlayerStartActions = TvPlayerStartActions({}, {}, {}),
+    audioQueue: TvAudioQueueControls = TvAudioQueueControls(),
     strings: TvStrings,
     stopPlayback: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Leaving the route ends playback and a start still under way, whichever surface shows it.
+    DisposableEffect(engine) {
+        onDispose {
+            startActions.onCancel()
+            stopPlayback()
+        }
+    }
+    if (rememberTvPlayerSurface(playbackState, startState) == TvPlayerSurface.AUDIO) {
+        TvAudioPlayerScreen(
+            state =
+                TvAudioPlayerState(
+                    playback = playbackState,
+                    start = startState,
+                    images = TvPlayerImageSource(imageBaseUrl, imageAccessToken),
+                    hasNext = continuationState.nextTarget != null,
+                ),
+            transport = tvAudioTransport(playbackState, audioQueue, onSetPaused, onSeekTo, onPlayNext),
+            errors = TvAudioErrorActions(controller::retry, startActions.onRetry, onClose),
+            strings = strings,
+            modifier = modifier,
+        )
+        return
+    }
     val scope = rememberCoroutineScope()
     var controlsVisible by remember { mutableStateOf(true) }
     var navigation by remember { mutableStateOf(TvPlayerPanelNavigation.closed()) }
@@ -249,8 +273,6 @@ internal fun TvPlaybackScreen(
     DisposableEffect(engine) {
         onDispose {
             engine.setSubtitleBottomPaddingFraction(TV_SUBTITLE_NORMAL_PADDING_FRACTION)
-            startActions.onCancel()
-            stopPlayback()
         }
     }
     DisposableEffect(promptCoordinator) { onDispose(promptCoordinator::release) }
@@ -549,7 +571,7 @@ internal fun TvPlayerBackHandler(onBack: () -> Unit) {
 }
 
 @Composable
-private fun TvPlaybackError(
+internal fun TvPlaybackError(
     title: String,
     message: String,
     onRetry: () -> Unit,

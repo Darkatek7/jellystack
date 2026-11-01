@@ -9,6 +9,7 @@ import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.JellyfinItemDetail
 import dev.jellystack.core.jellyfin.SeriesPlaybackTargetResolver
 import dev.jellystack.core.jellyfin.isEpisodeParent
+import dev.jellystack.core.jellyfin.isPlayableAudio
 import dev.jellystack.core.jellyfin.opensAsItemList
 import dev.jellystack.core.logging.JellystackLog
 import dev.jellystack.core.logging.sanitizeIdentifier
@@ -23,6 +24,7 @@ import dev.jellystack.players.formatPlaybackTime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlin.random.Random
 
 /** A play action waiting for the user to choose between resuming and restarting. */
 internal data class TvResumeAsk(
@@ -39,6 +41,8 @@ internal class TvPlaybackSources(
     val loadListEntries: suspend (JellyfinItem) -> List<JellyfinItem> = { emptyList() },
     /** Receives the entries "Play all" is about to play, so the continuation coordinator can move on through them. */
     val queue: PlaybackQueue = PlaybackQueue(),
+    /** Decides the order of a shuffled list, once per play action. */
+    val random: Random = Random.Default,
 )
 
 /** Starts a resolved request; returns false when there is no server to play from. */
@@ -109,6 +113,8 @@ private data class TvStartAttempt(
     val policy: PlaybackStartPolicy,
     /** Set when another SyncPlay member started the item: the group decides the position and the speed. */
     val groupStartPositionMs: Long? = null,
+    /** For a list: play it in a random order instead of its own. */
+    val shuffle: Boolean = false,
 )
 
 /**
@@ -121,8 +127,9 @@ private data class TvStartAttempt(
  * A Series or Season has no media source of its own: [TvPlaybackSources.loadEpisodes] lists its episodes and
  * [SeriesPlaybackTargetResolver] picks the one to play (the one in progress, else the first unwatched, else the first).
  *
- * Playing a collection or playlist plays all of it: the entries become [TvPlaybackSources.queue], the first
- * playable one starts, and the continuation coordinator moves on through the queue. Playing anything else empties it.
+ * Playing a collection, playlist, album, or artist plays all of it: the entries become [TvPlaybackSources.queue], the
+ * first playable one starts, and the continuation coordinator moves on through the queue. Playing anything else empties
+ * it. Music never asks whether to resume (see [startDecision]).
  */
 internal class TvPlaybackLauncher(
     private val scope: CoroutineScope,
@@ -157,17 +164,48 @@ internal class TvPlaybackLauncher(
             start(TvStartAttempt(item, detail = null, policy = PlaybackStartPolicy.INHERIT))
             return
         }
-        when (val decision = decidePlaybackStart(item.positionTicks, currentSettings().resumeMode)) {
+        when (val decision = item.startDecision(currentSettings().resumeMode)) {
             is PlaybackStartDecision.Ask ->
                 pendingAsk = TvResumeAsk(item, detail, formatPlaybackTime(decision.resumePositionMs))
             is PlaybackStartDecision.Start -> start(TvStartAttempt(item, detail, decision.policy))
         }
     }
 
-    /** Plays the entries of [container] (a collection or playlist) one after the other, from the first playable one. */
-    fun playAll(container: JellyfinItem) {
+    /**
+     * Plays the entries of [container] (a collection, playlist, album, or artist) one after the other, from the first
+     * playable one, or in a random order that is decided now when [shuffle] is set.
+     */
+    fun playAll(
+        container: JellyfinItem,
+        shuffle: Boolean = false,
+    ) {
         pendingAsk = null
-        start(TvStartAttempt(container, detail = null, policy = PlaybackStartPolicy.INHERIT))
+        start(TvStartAttempt(container, detail = null, policy = PlaybackStartPolicy.INHERIT, shuffle = shuffle))
+    }
+
+    /**
+     * Plays [tracks] as one queue starting at [startIndex]: the tracks after it follow, the ones before it are what
+     * "previous" goes back to. Music never asks to resume. [shuffle] keeps the chosen track first and mixes the rest.
+     */
+    fun playTracks(
+        tracks: List<JellyfinItem>,
+        startIndex: Int?,
+        shuffle: Boolean = false,
+    ) {
+        pendingAsk = null
+        // A track the server lists but has no file for cannot play; the chosen track keeps its place among the rest.
+        val playable = tracks.filter(JellyfinItem::isPlayableAudio)
+        val chosen = startIndex?.let(tracks::getOrNull)
+        val playableIndex = chosen?.let { track -> playable.indexOfFirst { it.id == track.id } }
+        val first = sources.queue.start(playable, playableIndex, if (shuffle) sources.random else null) ?: return
+        start(TvStartAttempt(first, detail = null, policy = PlaybackStartPolicy.RESTART))
+    }
+
+    /** Plays the track before [currentMediaId] in the queue; does nothing for the first track or outside a queue. */
+    fun playPrevious(currentMediaId: String) {
+        val previous = sources.queue.entryBefore(currentMediaId) ?: return
+        pendingAsk = null
+        start(TvStartAttempt(previous, detail = null, policy = PlaybackStartPolicy.RESTART))
     }
 
     /**
@@ -213,10 +251,10 @@ internal class TvPlaybackLauncher(
             scope.launch {
                 val outcome =
                     runSuspendCatching {
-                        when {
-                            attempt.item.isEpisodeParent() -> runEpisodeOf(attempt.item)
-                            attempt.item.opensAsItemList() -> runFirstOf(attempt.item)
-                            else -> begin(attempt)
+                        if (attempt.item.isEpisodeParent() || attempt.item.opensAsItemList()) {
+                            runContainer(attempt.item, attempt.shuffle)
+                        } else {
+                            sources.begin(starter, currentSettings(), attempt)
                         }
                     }.onFailure { failure -> JellystackLog.e("TV playback could not start", failure) }
                         .getOrDefault(TvStartOutcome.Failed(TvStartFailure.COULD_NOT_START, "unexpected error"))
@@ -236,47 +274,76 @@ internal class TvPlaybackLauncher(
             }
     }
 
-    private suspend fun runFirstOf(container: JellyfinItem): TvStartOutcome {
-        val entries = buildPlayAllQueue(sources.loadListEntries(container), sources.loadEpisodes)
-        val first = entries.firstOrNull()
-        if (first == null) return TvStartOutcome.Failed(TvStartFailure.NO_PLAYABLE_ITEM, "no playable entry")
-        sources.queue.replace(entries)
+    /** Starts a container: the episode of a series or season to play, else the first entry of the list it plays. */
+    private suspend fun runContainer(
+        container: JellyfinItem,
+        shuffle: Boolean,
+    ): TvStartOutcome {
+        val episodeParent = container.isEpisodeParent()
+        val first =
+            if (episodeParent) {
+                sources.episodeToPlay(container, seriesTargetResolver)
+            } else {
+                sources.queueFirstOf(container, shuffle)
+            }
+        if (first == null) {
+            return if (episodeParent) {
+                TvStartOutcome.Failed(TvStartFailure.NO_PLAYABLE_EPISODE, "no playable episode")
+            } else {
+                TvStartOutcome.Failed(TvStartFailure.NO_PLAYABLE_ITEM, "no playable entry")
+            }
+        }
         startState = TvPlaybackStartState.Starting(first)
-        return when (val decision = decidePlaybackStart(first.positionTicks, currentSettings().resumeMode)) {
+        return when (val decision = first.startDecision(currentSettings().resumeMode)) {
             is PlaybackStartDecision.Ask ->
                 TvStartOutcome.AskResume(TvResumeAsk(first, null, formatPlaybackTime(decision.resumePositionMs)))
-            is PlaybackStartDecision.Start -> begin(TvStartAttempt(first, detail = null, policy = decision.policy))
-        }
-    }
-
-    private suspend fun runEpisodeOf(container: JellyfinItem): TvStartOutcome {
-        val episodes = sources.loadEpisodes(container)
-        val episode = seriesTargetResolver.resolve(episodes, completedDownloadIds = emptySet())?.episode
-        if (episode == null) return TvStartOutcome.Failed(TvStartFailure.NO_PLAYABLE_EPISODE, "no playable episode")
-        startState = TvPlaybackStartState.Starting(episode)
-        return when (val decision = decidePlaybackStart(episode.positionTicks, currentSettings().resumeMode)) {
-            is PlaybackStartDecision.Ask ->
-                TvStartOutcome.AskResume(TvResumeAsk(episode, null, formatPlaybackTime(decision.resumePositionMs)))
-            is PlaybackStartDecision.Start -> begin(TvStartAttempt(episode, detail = null, policy = decision.policy))
-        }
-    }
-
-    private suspend fun begin(target: TvStartAttempt): TvStartOutcome {
-        val detail =
-            target.detail ?: sources.loadDetail(target.item.id)
-                ?: return TvStartOutcome.Failed(TvStartFailure.COULD_NOT_START, "item detail unavailable")
-        val fromItem = PlaybackRequest.from(target.item, detail, startPolicy = target.policy)
-        val groupStart = target.groupStartPositionMs
-        // SyncPlay keeps the whole group at normal speed, whatever the default speed setting says.
-        val groupTicks = groupStart?.times(TICKS_PER_MILLISECOND)
-        val request = if (groupTicks == null) fromItem else fromItem.copy(resumePositionTicks = groupTicks)
-        val settings = currentSettings().let { if (groupStart == null) it else it.copy(defaultPlaybackSpeed = 1f) }
-        return if (starter.start(request, settings)) {
-            TvStartOutcome.Started
-        } else {
-            TvStartOutcome.Failed(TvStartFailure.COULD_NOT_START, "no server connection")
+            is PlaybackStartDecision.Start -> {
+                val attempt = TvStartAttempt(first, detail = null, policy = decision.policy)
+                sources.begin(starter, currentSettings(), attempt)
+            }
         }
     }
 }
+
+/** Resolves [target] into a request (with the group's position and speed for SyncPlay) and hands it to [starter]. */
+private suspend fun TvPlaybackSources.begin(
+    starter: TvPlaybackStarter,
+    appSettings: AppSettings,
+    target: TvStartAttempt,
+): TvStartOutcome {
+    val detail =
+        target.detail ?: loadDetail(target.item.id)
+            ?: return TvStartOutcome.Failed(TvStartFailure.COULD_NOT_START, "item detail unavailable")
+    val fromItem = PlaybackRequest.from(target.item, detail, startPolicy = target.policy)
+    val groupStart = target.groupStartPositionMs
+    // SyncPlay keeps the whole group at normal speed, whatever the default speed setting says.
+    val groupTicks = groupStart?.times(TICKS_PER_MILLISECOND)
+    val request = if (groupTicks == null) fromItem else fromItem.copy(resumePositionTicks = groupTicks)
+    // Music plays at normal speed, whatever the default speed for video is.
+    val normalSpeed = groupStart != null || target.item.isPlayableAudio()
+    val settings = if (normalSpeed) appSettings.copy(defaultPlaybackSpeed = 1f) else appSettings
+    return if (starter.start(request, settings)) {
+        TvStartOutcome.Started
+    } else {
+        TvStartOutcome.Failed(TvStartFailure.COULD_NOT_START, "no server connection")
+    }
+}
+
+/** The episode a series or season plays: the one in progress, else the first unwatched, else the first. */
+private suspend fun TvPlaybackSources.episodeToPlay(
+    container: JellyfinItem,
+    resolver: SeriesPlaybackTargetResolver,
+): JellyfinItem? = resolver.resolve(loadEpisodes(container), completedDownloadIds = emptySet())?.episode
+
+/** Makes the entries of [container] the queue (shuffled once if [shuffle]) and returns the one to play first. */
+private suspend fun TvPlaybackSources.queueFirstOf(
+    container: JellyfinItem,
+    shuffle: Boolean,
+): JellyfinItem? =
+    queue.start(
+        buildPlayAllQueue(loadListEntries(container), loadEpisodes),
+        startIndex = if (shuffle) null else 0,
+        shuffle = if (shuffle) random else null,
+    )
 
 private const val TICKS_PER_MILLISECOND = 10_000L

@@ -6,6 +6,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -23,6 +24,59 @@ class TvItemListTest {
         assertNull(listItem("movie-1", "Movie").itemListRoute())
         assertNull(listItem("series-1", "Series").itemListRoute())
         assertNull(listItem("folder-1", "Folder").itemListRoute())
+    }
+
+    @Test
+    fun albumsAndArtistsOpenTheirMusicPage() {
+        val album = listItem("album-1", "MusicAlbum").copy(name = "First Light")
+        val artist = listItem("artist-1", "MusicArtist").copy(name = "Example Band")
+        assertEquals(TvRoute.Music("album-1", "First Light", isAlbum = true), album.itemListRoute())
+        assertEquals(TvRoute.Music("artist-1", "Example Band", isAlbum = false), artist.itemListRoute())
+        assertNull(listItem("track-1", "Audio").itemListRoute())
+    }
+
+    @Test
+    fun musicRoutesMapToTheListTheyShowAndKeepSeparateKeys() {
+        val album = TvRoute.Music("a", "First Light", isAlbum = true)
+        val artist = TvRoute.Music("a", "Example Band", isAlbum = false)
+        assertEquals(TvItemListSource.Album("a", "First Light"), album.itemListSource())
+        assertEquals(TvItemListSource.Artist("a", "Example Band"), artist.itemListSource())
+        assertEquals("album:a", TvItemListSource.Album("a", "x").key())
+        assertEquals("artist:a", TvItemListSource.Artist("a", "x").key())
+    }
+
+    @Test
+    fun theListsThatPlayAsOneProvideATitleToPlayAndAFilmographyDoesNot() {
+        assertNull(person.playItem())
+        assertEquals("MusicAlbum", TvItemListSource.Album("a", "x").playItem()?.type)
+        assertEquals("MusicArtist", TvItemListSource.Artist("a", "x").playItem()?.type)
+        assertEquals("BoxSet", saga.playItem()?.type)
+    }
+
+    @Test
+    fun playButtonsAndTheTrackListFollowWhatTheListHolds() {
+        fun ready(
+            source: TvItemListSource,
+            items: List<JellyfinItem>,
+        ) = content(source, TvItemListState.Ready(items))
+        val tracks = listOf(listItem("t1", "Audio"), listItem("t2", "Audio"))
+        val album = TvItemListSource.Album("album-1", "First Light")
+        val playlist = TvItemListSource.Container("pl-1", "Mix", isPlaylist = true)
+
+        assertTrue(ready(album, tracks).showsTrackList)
+        assertTrue(ready(album, tracks).hasShuffle)
+        assertTrue(content(album, TvItemListState.Loading).showsTrackList)
+        assertTrue(ready(playlist, tracks).showsTrackList)
+        assertTrue(ready(playlist, tracks).hasShuffle)
+        assertFalse(ready(playlist, tracks + listItem("film")).showsTrackList)
+        assertFalse(ready(playlist, tracks + listItem("film")).hasShuffle)
+        assertTrue(ready(playlist, tracks + listItem("film")).hasPlayAll)
+        assertFalse(ready(saga, listOf(listItem("film"))).hasShuffle)
+        val artist = TvItemListSource.Artist("artist-1", "Example Band")
+        assertTrue(ready(artist, listOf(listItem("album-1", "MusicAlbum"))).hasShuffle)
+        assertFalse(ready(artist, listOf(listItem("album-1", "MusicAlbum"))).showsTrackList)
+        assertFalse(ready(artist, emptyList()).hasPlayAll)
+        assertFalse(ready(person, listOf(listItem("film"))).hasPlayAll)
     }
 
     @Test
@@ -106,6 +160,11 @@ class TvItemListTest {
             assertEquals(listOf("person-1"), personItems.items.map { it.id })
             assertEquals(listOf("box-1"), sagaItems.items.map { it.id })
         }
+
+    private fun content(
+        source: TvItemListSource,
+        state: TvItemListState,
+    ) = TvItemListContent(source, state, TvLibraryGridImages("https://example.com", null), emptySet(), "route")
 
     private fun TestScope.coordinator(load: suspend (TvItemListSource) -> List<JellyfinItem>) =
         TvItemListCoordinator(this, TvItemListLoader { load(it) })

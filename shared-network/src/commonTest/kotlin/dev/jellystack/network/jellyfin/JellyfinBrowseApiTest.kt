@@ -266,6 +266,95 @@ class JellyfinBrowseApiTest {
         }
 
     @Test
+    fun albumTracksQuerySortsByDiscThenTrackNumberBelowTheAlbum() =
+        runTest {
+            var parameters: Map<String, List<String>> = emptyMap()
+            val engine =
+                MockEngine { request ->
+                    parameters =
+                        request.url.parameters
+                            .entries()
+                            .associate { it.key to it.value }
+                    respond(
+                        """{"Items":[{"Id":"t1","Name":"Opening Theme","Type":"Audio","IndexNumber":1,"ParentIndexNumber":1}],"TotalRecordCount":1}""",
+                        HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                    )
+                }
+            val client = NetworkClientFactory.create(ClientConfig(engine = engine, installLogging = false))
+            val api = JellyfinBrowseApi(client, baseUrl = "https://example.test", accessToken = "dummy-access-token")
+
+            val page =
+                api.fetchLibraryItems(
+                    userId = "u-1",
+                    libraryId = "album-1",
+                    startIndex = 0,
+                    limit = 500,
+                    includeItemTypes = "Audio",
+                    recursive = true,
+                    sortBy = "ParentIndexNumber,IndexNumber,SortName",
+                )
+
+            assertEquals(listOf("album-1"), parameters["ParentId"])
+            assertEquals(listOf("ParentIndexNumber,IndexNumber,SortName"), parameters["SortBy"])
+            assertEquals(listOf("Ascending"), parameters["SortOrder"])
+            assertEquals(listOf("Audio"), parameters["IncludeItemTypes"])
+            assertEquals(1, page.items.single().indexNumber)
+            assertEquals(1, page.items.single().parentIndexNumber)
+            client.close()
+        }
+
+    @Test
+    fun albumArtistFilterSendsTheArtistIdsAndIsOmittedOtherwise() =
+        runTest {
+            val seen = mutableListOf<Map<String, List<String>>>()
+            val engine =
+                MockEngine { request ->
+                    seen +=
+                        request.url.parameters
+                            .entries()
+                            .associate { it.key to it.value }
+                    respond(
+                        """{"Items":[],"TotalRecordCount":0}""",
+                        HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                    )
+                }
+            val client = NetworkClientFactory.create(ClientConfig(engine = engine, installLogging = false))
+            val api = JellyfinBrowseApi(client, baseUrl = "https://example.test", accessToken = "dummy-access-token")
+
+            api.fetchLibraryItems("u-1", "", 0, 50, includeItemTypes = "MusicAlbum", albumArtistIds = listOf("artist-1"))
+            api.fetchLibraryItems("u-1", "lib-1", 0, 50)
+
+            assertEquals(listOf("artist-1"), seen[0]["AlbumArtistIds"])
+            assertNull(seen[1]["AlbumArtistIds"])
+            client.close()
+        }
+
+    @Test
+    fun trackDetailDecodesArtistsAlbumAndAlbumCover() =
+        runTest {
+            val engine =
+                MockEngine {
+                    respond(
+                        """{"Id":"t1","Name":"Opening Theme","Album":"First Light","AlbumId":"album-1","AlbumPrimaryImageTag":"tag","AlbumArtist":"Example Band","Artists":["Example Band"]}""",
+                        HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                    )
+                }
+            val client = NetworkClientFactory.create(ClientConfig(engine = engine, installLogging = false))
+            val api = JellyfinBrowseApi(client, baseUrl = "https://example.test", accessToken = "dummy-access-token")
+
+            val detail = api.fetchItemDetail("u-1", "t1")
+
+            assertEquals("First Light", detail.album)
+            assertEquals("album-1", detail.albumId)
+            assertEquals("tag", detail.albumPrimaryImageTag)
+            assertEquals(listOf("Example Band"), detail.artists)
+            client.close()
+        }
+
+    @Test
     fun queriesWithoutPersonsNeverSendThePersonFilter() =
         runTest {
             var parameters: Map<String, List<String>> = emptyMap()

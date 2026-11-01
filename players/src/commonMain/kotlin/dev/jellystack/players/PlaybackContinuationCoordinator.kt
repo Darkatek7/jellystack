@@ -40,6 +40,7 @@ class PlaybackContinuationCoordinator(
     private var currentMediaId: String? = null
     private var currentSeriesId: String? = null
     private var currentQueued = false
+    private var currentAudio = false
     private var resolutionStarted = false
     private var completionHandled = false
     private var completionMode: AutoplayNextMode? = null
@@ -91,7 +92,10 @@ class PlaybackContinuationCoordinator(
     private fun observeActive(active: PlaybackState.Active) {
         val queued = queue?.contains(active.mediaId) == true
         val seriesId = active.metadata?.seriesId
-        if (active.mediaKind != PlaybackMediaKind.VIDEO || (seriesId == null && !queued)) {
+        val audio = active.mediaKind == PlaybackMediaKind.AUDIO
+        // Only a list the user started continues with music; a lone track or an audiobook never queues on its own.
+        val eligible = if (audio) queued else seriesId != null || queued
+        if (!eligible) {
             observeIneligibleActive(active.mediaId, active.phase)
             return
         }
@@ -99,6 +103,7 @@ class PlaybackContinuationCoordinator(
             currentMediaId != active.mediaId ||
                 currentSeriesId != seriesId ||
                 currentQueued != queued ||
+                currentAudio != audio ||
                 observationKind == ContinuationObservationKind.NONE ||
                 observationKind == ContinuationObservationKind.INELIGIBLE_ACTIVE ||
                 (
@@ -107,7 +112,7 @@ class PlaybackContinuationCoordinator(
                         active.phase != PlaybackPhase.Ended
                 )
         if (startsNewSession) {
-            beginEpisode(active.mediaId, seriesId, queued)
+            beginEpisode(active.mediaId, seriesId, queued, audio)
         } else if (!resolutionStarted) {
             startResolution(active.mediaId, seriesId, queued)
         }
@@ -141,11 +146,13 @@ class PlaybackContinuationCoordinator(
         mediaId: String,
         seriesId: String?,
         queued: Boolean,
+        audio: Boolean,
     ) {
         clearCurrentWork()
         currentMediaId = mediaId
         currentSeriesId = seriesId
         currentQueued = queued
+        currentAudio = audio
         mutableState.value = PlaybackContinuationState(mediaId = mediaId)
         startResolution(mediaId, seriesId, queued)
     }
@@ -177,7 +184,8 @@ class PlaybackContinuationCoordinator(
     private fun onPlaybackCompleted(mediaId: String) {
         if (mediaId != currentMediaId || completionHandled) return
         completionHandled = true
-        completionMode = modeProvider()
+        // The next track of an album simply starts: no countdown card, and the episode setting does not apply.
+        completionMode = if (currentAudio) AutoplayNextMode.IMMEDIATE else modeProvider()
         applyCompletionMode()
     }
 
@@ -233,6 +241,7 @@ class PlaybackContinuationCoordinator(
         currentMediaId = null
         currentSeriesId = null
         currentQueued = false
+        currentAudio = false
         resolutionStarted = false
         completionHandled = false
         completionMode = null

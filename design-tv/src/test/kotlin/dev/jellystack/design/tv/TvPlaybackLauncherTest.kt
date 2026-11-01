@@ -15,6 +15,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
+import kotlin.random.Random
 
 class TvPlaybackLauncherTest {
     private val started = mutableListOf<PlaybackRequest>()
@@ -23,6 +24,7 @@ class TvPlaybackLauncherTest {
     private var defaultPlaybackSpeed = 1f
     private var loadListEntries: suspend () -> List<JellyfinItem> = { emptyList() }
     private val queue = PlaybackQueue()
+    private var random: Random = Random.Default
 
     @Test
     fun askModeWithSavedPositionWaitsForTheAnswerAndStartsWithIt() =
@@ -370,6 +372,128 @@ class TvPlaybackLauncherTest {
         )
     }
 
+    @Test
+    fun choosingATrackPlaysTheAlbumFromThatTrackWithTheRestFollowingAndThePreviousOnesBehind() =
+        runTest {
+            val launcher = launcher(ResumeMode.RESUME)
+
+            launcher.playTracks(tracks("t1", "t2", "t3", "t4"), startIndex = 2)
+            runCurrent()
+
+            assertEquals(listOf("t3"), started.map { it.mediaId })
+            assertEquals(listOf(PlaybackStartPolicy.RESTART), started.map { it.startPolicy })
+            assertEquals(listOf("t4"), queue.entriesAfter("t3").map { it.id })
+            assertEquals("t2", queue.entryBefore("t3")?.id)
+        }
+
+    @Test
+    fun musicNeverAsksToResumeEvenWithASavedPositionAndTheAskSetting() =
+        runTest {
+            val launcher = launcher(ResumeMode.ASK)
+
+            launcher.play(track("t1", positionTicks = 900_000_000L))
+            runCurrent()
+
+            assertNull(launcher.pendingAsk)
+            assertEquals(listOf(PlaybackStartPolicy.RESTART), started.map { it.startPolicy })
+        }
+
+    @Test
+    fun playingAnAlbumFromTheLibraryStartsItsFirstTrackWithoutAnAsk() =
+        runTest {
+            loadListEntries = { tracks("t1", "t2").map { it.copy(positionTicks = 500_000_000L) } }
+            val launcher = launcher(ResumeMode.ASK)
+
+            launcher.playAll(item(positionTicks = null, id = "album", type = "MusicAlbum"))
+            runCurrent()
+
+            assertNull(launcher.pendingAsk)
+            assertEquals(listOf("t1"), started.map { it.mediaId })
+            assertEquals(listOf("t2"), queue.entriesAfter("t1").map { it.id })
+        }
+
+    @Test
+    fun shuffleDecidesTheOrderOncePerPlayWithTheInjectedRandom() =
+        runTest {
+            val all = tracks("t1", "t2", "t3", "t4", "t5", "t6")
+            loadListEntries = { all }
+            random = Random(3)
+            val launcher = launcher(ResumeMode.RESUME)
+            val expected = all.shuffled(Random(3)).map { it.id }
+
+            launcher.playAll(item(positionTicks = null, id = "album", type = "MusicAlbum"), shuffle = true)
+            runCurrent()
+
+            assertEquals(expected.first(), started.single().mediaId)
+            assertEquals(expected.drop(1), queue.entriesAfter(expected.first()).map { it.id })
+        }
+
+    @Test
+    fun shuffleOfLoadedTracksKeepsTheChosenTrackFirst() =
+        runTest {
+            random = Random(5)
+            val launcher = launcher(ResumeMode.RESUME)
+
+            launcher.playTracks(tracks("t1", "t2", "t3", "t4"), startIndex = 1, shuffle = true)
+            runCurrent()
+
+            assertEquals(listOf("t2"), started.map { it.mediaId })
+            assertEquals(3, queue.entriesAfter("t2").size)
+            assertNull(queue.entryBefore("t2"))
+        }
+
+    @Test
+    fun previousStartsTheTrackBeforeAndDoesNothingAtTheFirstTrack() =
+        runTest {
+            val launcher = launcher(ResumeMode.RESUME)
+            launcher.playTracks(tracks("t1", "t2", "t3"), startIndex = 1)
+            runCurrent()
+
+            launcher.playPrevious("t2")
+            runCurrent()
+            launcher.playPrevious("t1")
+            runCurrent()
+
+            assertEquals(listOf("t2", "t1"), started.map { it.mediaId })
+            assertEquals(listOf("t2"), queue.entriesAfter("t1").take(1).map { it.id })
+        }
+
+    @Test
+    fun aTrackTheServerHasNoFileForIsSkippedAndTheChosenTrackKeepsItsPlace() =
+        runTest {
+            val launcher = launcher(ResumeMode.RESUME)
+            val missing = track("missing").copy(locationType = "Virtual")
+            val list = listOf(track("t1"), missing, track("t3"), track("t4"))
+
+            launcher.playTracks(list, startIndex = 2)
+            runCurrent()
+
+            assertEquals(listOf("t3"), started.map { it.mediaId })
+            assertEquals("t1", queue.entryBefore("t3")?.id)
+            assertEquals(false, queue.contains("missing"))
+        }
+
+    @Test
+    fun musicPlaysAtNormalSpeedWhileVideoKeepsTheDefaultSpeed() =
+        runTest {
+            defaultPlaybackSpeed = 1.5f
+            val launcher = launcher(ResumeMode.RESUME)
+
+            launcher.playTracks(tracks("t1", "t2"), startIndex = 0)
+            runCurrent()
+            launcher.play(item(positionTicks = null))
+            runCurrent()
+
+            assertEquals(listOf(1f, 1.5f), startedSettings.map { it.defaultPlaybackSpeed })
+        }
+
+    private fun tracks(vararg ids: String) = ids.map { track(it) }
+
+    private fun track(
+        id: String,
+        positionTicks: Long? = null,
+    ) = item(positionTicks, id = id, type = "Audio").copy(mediaType = "Audio")
+
     private fun TestScope.launcher(
         resumeMode: ResumeMode,
         startSucceeds: Boolean = true,
@@ -384,6 +508,7 @@ class TvPlaybackLauncherTest {
                 loadEpisodes = { loadEpisodes() },
                 loadListEntries = { loadListEntries() },
                 queue = queue,
+                random = random,
             ),
         starter =
             TvPlaybackStarter { request, settings ->
