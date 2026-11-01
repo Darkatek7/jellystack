@@ -130,22 +130,21 @@ internal fun Modifier.tvFocusable(
     val rememberedFocusRequester = remember { FocusRequester() }
     val restorationRequester = providedFocusRequester ?: rememberedFocusRequester
     val focusContext = LocalTvFocusContext.current
-    var horizontalCenter by remember(focusTargetId) { mutableStateOf(0f) }
-    val semanticTarget =
-        focusTargetId?.let { targetId ->
-            tvFocusTarget(
-                targetId = targetId,
-                horizontalCenter = horizontalCenter,
-                actionable = enabled && onClick != null,
-            )
-        }
+    val centerTracker = remember(focusTargetId) { TvHorizontalCenterTracker() }
     if (focusContext != null && focusTargetId != null) {
-        DisposableEffect(focusContext, focusTargetId, restorationRequester, semanticTarget) {
+        val actionable = enabled && onClick != null
+        DisposableEffect(focusContext, focusTargetId, restorationRequester, actionable) {
             focusContext.coordinator.register(
                 focusContext.routeKey,
                 focusTargetId,
                 restorationRequester,
-                focusTarget = semanticTarget,
+                focusTarget = tvFocusTarget(focusTargetId, actionable = actionable),
+            )
+            focusContext.coordinator.trackHorizontalCenter(
+                focusContext.routeKey,
+                focusTargetId,
+                restorationRequester,
+                centerTracker.read,
             )
             onDispose {
                 focusContext.coordinator.unregister(focusContext.routeKey, focusTargetId, restorationRequester)
@@ -196,7 +195,7 @@ internal fun Modifier.tvFocusable(
                 fill = fill,
             ).tvReturnToNavigationRailOnLeft(focusToNavigationRailOnLeft)
             .onGloballyPositioned { coordinates ->
-                horizontalCenter = coordinates.boundsInRoot().center.x
+                centerTracker.center = coordinates.boundsInRoot().center.x
             }.then(centerActionModifier)
             .focusable(enabled),
     )
@@ -793,6 +792,16 @@ internal data class TvFocusContext(
 
 internal val LocalTvFocusContext = staticCompositionLocalOf<TvFocusContext?> { null }
 
+/**
+ * Holds the latest horizontal center of a focus target outside snapshot state. The center changes on every scroll
+ * frame, so keeping it in state would recompose the card and re-register it with the coordinator each time; the
+ * coordinator reads it through [read] when it needs the position.
+ */
+internal class TvHorizontalCenterTracker {
+    var center: Float = 0f
+    val read: () -> Float = { center }
+}
+
 @Composable
 internal fun Modifier.tvScreenEntryFocus(
     enabled: Boolean = true,
@@ -813,24 +822,24 @@ internal fun Modifier.tvFocusTarget(
     focusTargetId: String,
 ): Modifier {
     val focusContext = LocalTvFocusContext.current
-    var horizontalCenter by remember(focusTargetId) { mutableStateOf(0f) }
-    val semanticTarget = tvFocusTarget(focusTargetId, horizontalCenter = horizontalCenter)
+    val centerTracker = remember(focusTargetId) { TvHorizontalCenterTracker() }
     if (focusContext != null) {
-        DisposableEffect(focusContext, focusTargetId, requester, fallback, semanticTarget) {
+        DisposableEffect(focusContext, focusTargetId, requester, fallback) {
             focusContext.coordinator.register(
                 focusContext.routeKey,
                 focusTargetId,
                 requester,
                 fallback,
-                semanticTarget,
+                tvFocusTarget(focusTargetId),
             )
+            focusContext.coordinator.trackHorizontalCenter(focusContext.routeKey, focusTargetId, requester, centerTracker.read)
             onDispose {
                 focusContext.coordinator.unregister(focusContext.routeKey, focusTargetId, requester)
             }
         }
     }
     return onGloballyPositioned { coordinates ->
-        horizontalCenter = coordinates.boundsInRoot().center.x
+        centerTracker.center = coordinates.boundsInRoot().center.x
     }.onFocusChanged { state ->
         if (state.isFocused) {
             focusContext

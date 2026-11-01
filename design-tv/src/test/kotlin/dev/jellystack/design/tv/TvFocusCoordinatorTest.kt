@@ -169,6 +169,33 @@ class TvFocusCoordinatorTest {
         }
 
     @Test
+    fun scrolledTargetsKeepTheirRegistrationButReportTheirLatestCenter() {
+        val coordinator = TvFocusCoordinator<String>()
+        val near = tvHomeCardTargetId("continue", "episode-1")
+        val far = tvHomeCardTargetId("continue", "episode-2")
+        var nearCenter = 100f
+        var farCenter = 900f
+        coordinator.register("home", near, "requester-1", focusTarget = tvFocusTarget(near))
+        coordinator.trackHorizontalCenter("home", near, "requester-1") { nearCenter }
+        coordinator.register("home", far, "requester-2", focusTarget = tvFocusTarget(far))
+        coordinator.trackHorizontalCenter("home", far, "requester-2") { farCenter }
+        val revision = coordinator.registrationRevision
+
+        nearCenter = 1_000f
+        farCenter = 150f
+
+        assertEquals(revision, coordinator.registrationRevision)
+        assertEquals(listOf(1_000f, 150f), coordinator.focusTargets("home").map { it.horizontalCenter })
+        val memory = TvFocusMemory()
+        memory.remember(
+            "home",
+            TvFocusAnchor("continue", "episode-9", TvFocusDestination.SECTION_ITEM),
+            horizontalCenter = 120f,
+        )
+        assertEquals(far, memory.resolve("home", coordinator.focusTargets("home"))?.targetId)
+    }
+
+    @Test
     fun secondQueuedRestorationCancelsWhenUserMovesWhileItWaitsForLock() =
         runTest {
             val firstFrame = CompletableDeferred<Unit>()
