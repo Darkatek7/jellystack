@@ -80,15 +80,18 @@ internal suspend fun Flow<Boolean>.popAfterGrace(
 @Composable
 internal fun TvPlayerRoutePopEffect(
     onPlayerRoute: Boolean,
-    playback: PlaybackState,
+    playback: () -> PlaybackState,
     start: TvPlaybackStartState,
     onPop: () -> Unit,
 ) {
-    val shouldPop = onPlayerRoute && shouldPopPlayerRoute(playback, start)
-    val currentShouldPop by rememberUpdatedState(shouldPop)
+    // [playback] is read inside the flow: it changes with every position tick and must not recompose the caller.
+    val currentPlayback by rememberUpdatedState(playback)
+    val currentOnPlayerRoute by rememberUpdatedState(onPlayerRoute)
+    val currentStart by rememberUpdatedState(start)
     val currentOnPop by rememberUpdatedState(onPop)
     LaunchedEffect(Unit) {
-        snapshotFlow { currentShouldPop }.popAfterGrace(TV_PLAYER_STOPPED_POP_GRACE_MS) { currentOnPop() }
+        snapshotFlow { currentOnPlayerRoute && shouldPopPlayerRoute(currentPlayback(), currentStart) }
+            .popAfterGrace(TV_PLAYER_STOPPED_POP_GRACE_MS) { currentOnPop() }
     }
 }
 

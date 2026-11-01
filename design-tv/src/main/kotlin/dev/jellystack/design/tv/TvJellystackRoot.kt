@@ -998,7 +998,9 @@ private fun TvAuthenticatedApp(
                 resolveIdentity = browseRepository::cachedItem,
             )
     }
-    val playbackState by playbackController.state.collectAsStateWithLifecycle()
+    // Held without reading it here: it changes with every position tick, only the player route reads the value.
+    val playbackStates = playbackController.state
+    val playbackStateHolder = playbackStates.collectAsStateWithLifecycle()
     val syncPlayState by syncPlay.state.collectAsStateWithLifecycle()
     val playbackIdentity =
         activeJellyfinServer?.let { server ->
@@ -1021,7 +1023,7 @@ private fun TvAuthenticatedApp(
         signal = remember(koin) { koin.get<AuthExpirySignal>() },
         environmentProvider = environmentProvider,
         sessionRepository = sessionRepository,
-        playback = playbackState,
+        playbackStates = playbackStates,
         syncPlayError = syncPlayState.error,
     )
     LaunchedEffect(sessionState) {
@@ -1094,7 +1096,7 @@ private fun TvAuthenticatedApp(
     val playbackCoordinators =
         rememberTvJellyfinPlaybackCoordinators(
             identity = playbackIdentity,
-            playbackState = playbackState,
+            playbackStates = playbackStates,
             controller = playbackController,
             router = playbackCommandRouter,
             sources =
@@ -1117,7 +1119,7 @@ private fun TvAuthenticatedApp(
 
     TvPlayerRoutePopEffect(
         onPlayerRoute = appUiState.currentRoute == TvRoute.Player,
-        playback = playbackState,
+        playback = { playbackStateHolder.value },
         start = playbackLauncher.startState,
         onPop = appStateHolder::popPlayerRoute,
     )
@@ -1180,9 +1182,9 @@ private fun TvAuthenticatedApp(
     LaunchedEffect(settings.trailerPreviewDelayMillis) {
         trailerPreviewCoordinator.setFocusDelayMillis(settings.trailerPreviewDelayMillis.toLong())
     }
-    LaunchedEffect(playbackState) {
-        if (playbackState is PlaybackState.Active || playbackState is PlaybackState.Preparing) {
-            trailerPreviewCoordinator.clearFocus()
+    LaunchedEffect(playbackStates) {
+        playbackStates.collect { state ->
+            if (state is PlaybackState.Active || state is PlaybackState.Preparing) trailerPreviewCoordinator.clearFocus()
         }
     }
     LaunchedEffect(accountGeneration, serverRepository.currentServers()) { trailerPreviewCoordinator.invalidateCache() }
@@ -1570,7 +1572,7 @@ private fun TvAuthenticatedApp(
                                             controller = playbackController,
                                             engine = playerEngine,
                                             syncPlay = syncPlay,
-                                            playbackState = playbackState,
+                                            playbackState = playbackStateHolder.value,
                                             startState = playbackLauncher.startState,
                                             syncState = syncPlayState,
                                             segmentState = segmentState,

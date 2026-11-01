@@ -15,6 +15,9 @@ import dev.jellystack.core.jellyfin.JellyfinSessionRepository
 import dev.jellystack.players.PlaybackState
 import dev.jellystack.players.PlayerErrorCategory
 import dev.jellystack.players.syncplay.SyncPlayErrorCode
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 
 /** What the profile gate does about the selected profile right now. */
 internal enum class TvActivationDecision {
@@ -95,7 +98,7 @@ internal fun TvAuthExpiryEffect(
     signal: AuthExpirySignal,
     environmentProvider: JellyfinEnvironmentProvider,
     sessionRepository: JellyfinSessionRepository,
-    playback: PlaybackState,
+    playbackStates: Flow<PlaybackState>,
     syncPlayError: SyncPlayErrorCode?,
 ) {
     // The repository is created per signed-in account generation, so the watcher restarts with it.
@@ -106,9 +109,12 @@ internal fun TvAuthExpiryEffect(
             verifySession = { sessionRepository.verifyAuthentication() },
         ).run()
     }
-    val unauthorizedPlayback = playback.unauthorizedPlaybackFailure()
-    LaunchedEffect(unauthorizedPlayback) {
-        if (unauthorizedPlayback != null) signal.report()
+    // Collected here instead of read in composition: playback state changes with every position tick.
+    LaunchedEffect(playbackStates) {
+        playbackStates
+            .map(PlaybackState::unauthorizedPlaybackFailure)
+            .distinctUntilChanged()
+            .collect { unauthorizedPlayback -> if (unauthorizedPlayback != null) signal.report() }
     }
     LaunchedEffect(syncPlayError) {
         if (syncPlayError == SyncPlayErrorCode.UNAUTHORIZED) signal.report()
