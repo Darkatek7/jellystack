@@ -19,13 +19,15 @@ import dev.jellystack.core.profile.newProfileJellyfinPrefill
 import dev.jellystack.core.server.JellyfinQuickConnectCoordinator
 import dev.jellystack.core.server.ServerConnectionCoordinator
 import dev.jellystack.core.server.ServerRepository
+import dev.jellystack.core.server.StoredCredential
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /**
  * Signs in another household member with the household's Jellyfin address already filled in.
- * An account that already has a profile opens that profile; a new account gets a profile that is signed in to the
- * household's Seerr.
+ * A new account gets a profile that is signed in to the household's Seerr. An account that already has a profile stays
+ * on this screen and says so, because Quick Connect signs in whichever account approved the code, and opening the
+ * existing profile would look as if adding the new one had worked.
  */
 @Composable
 internal fun TvAddProfileScreen(
@@ -41,7 +43,7 @@ internal fun TvAddProfileScreen(
     val serverRepository = remember(koin) { koin.get<ServerRepository>() }
     val autoLinkCoordinator = remember(koin) { koin.get<ProfileSeerrAutoLinkCoordinator>() }
     var settingUp by remember { mutableStateOf(false) }
-    var setupFailed by remember { mutableStateOf(false) }
+    var notice by remember { mutableStateOf<String?>(null) }
     val bindingsFlow = remember(profileRepository) { profileRepository.observeBindings() }
     val bindings: List<ProfileConnectionBinding>? by bindingsFlow.collectAsStateWithLifecycle(initialValue = null)
     // Resolved once when the bindings arrive, so later server changes never reset what the user typed.
@@ -60,26 +62,32 @@ internal fun TvAddProfileScreen(
         strings = strings,
         onConnected = { connected ->
             settingUp = true
-            setupFailed = false
+            notice = null
             scope.launch {
                 val profile =
                     try {
-                        autoLinkCoordinator.openOrCreateProfile(connected, appVersion)
+                        if (profileRepository.profileForJellyfinConnection(connected.id) != null) {
+                            val credentials = connected.credentials as? StoredCredential.Jellyfin
+                            val account = credentials?.username ?: connected.name
+                            notice = strings.messages.accountHasProfileFormat.format(account)
+                            null
+                        } else {
+                            autoLinkCoordinator.openOrCreateProfile(connected, appVersion)
+                        }
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (_: Throwable) {
                         JellystackLog.e("Could not set up the new profile")
-                        setupFailed = true
-                        settingUp = false
-                        return@launch
+                        notice = strings.jellyfinConnectionFailed
+                        null
                     }
-                onCreated(profile)
+                if (profile == null) settingUp = false else onCreated(profile)
             }
         },
         onDismiss = onDismiss,
         refreshExistingAccount = true,
         initialDisplayName = prefill?.name ?: "Jellyfin",
         initialBaseUrl = prefill?.baseUrl.orEmpty(),
-        notice = if (setupFailed) strings.jellyfinConnectionFailed else null,
+        notice = notice,
     )
 }
