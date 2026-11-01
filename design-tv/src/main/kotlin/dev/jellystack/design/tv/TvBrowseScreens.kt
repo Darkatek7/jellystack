@@ -77,6 +77,7 @@ import dev.jellystack.core.profile.MediaIdentity
 import dev.jellystack.core.profile.MyListEntry
 import dev.jellystack.players.AndroidPlayerEngine
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
@@ -323,7 +324,7 @@ internal fun TvHomeScreen(
             carouselState = carouselState.copy(selectedId = selectedId)
         }
     }
-    var heroInteraction by remember { mutableStateOf(0) }
+    val heroInteractions = remember { TvInteractionCounter() }
     val autoAdvanceHero =
         shouldAutoAdvanceTvHomeHero(
             enabled = spotlightAutoAdvance,
@@ -332,10 +333,13 @@ internal fun TvHomeScreen(
             cardStaged = focusedStageItem != null,
             trailerActive = trailerPreviewState is TvTrailerPreviewState.Armed || trailerPreviewState is TvTrailerPreviewState.Playing,
         )
-    LaunchedEffect(autoAdvanceHero, candidateIds, carouselState.selectedId, heroInteraction) {
+    LaunchedEffect(autoAdvanceHero, candidateIds, carouselState.selectedId, heroInteractions) {
         if (!autoAdvanceHero) return@LaunchedEffect
-        delay(TV_HOME_HERO_AUTO_ADVANCE_MS)
-        carouselState = carouselState.copy(selectedId = nextTvHomeAutoAdvanceId(candidateIds, carouselState.selectedId))
+        // A key press starts the wait again.
+        heroInteractions.changes.collectLatest {
+            delay(TV_HOME_HERO_AUTO_ADVANCE_MS)
+            carouselState = carouselState.copy(selectedId = nextTvHomeAutoAdvanceId(candidateIds, carouselState.selectedId))
+        }
     }
     val openNavigationRail = LocalTvNavigationRailOpener.current
     val heroModel =
@@ -359,7 +363,7 @@ internal fun TvHomeScreen(
     val stageTrailerPlaying =
         heroModel != null &&
             trailerPreviewState.showsTvHomeStagePreview(heroModel.stageItem.id, heroModel.stagePresentationId)
-    val homeUiAlpha = rememberTvHomeUiAlpha(stageTrailerPlaying, heroInteraction)
+    val homeUiAlpha = rememberTvHomeUiAlpha(stageTrailerPlaying, heroInteractions)
     val heroTrailer =
         TvHomeHeroTrailer(
             state = trailerPreviewState,
@@ -375,7 +379,7 @@ internal fun TvHomeScreen(
     Box(
         modifier.fillMaxSize().onPreviewKeyEvent {
             // Any remote input restarts the spotlight timer and brings the home UI back over a trailer.
-            heroInteraction += 1
+            heroInteractions.record()
             false
         },
     ) {

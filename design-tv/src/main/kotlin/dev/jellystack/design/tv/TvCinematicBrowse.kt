@@ -25,7 +25,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -131,12 +130,12 @@ internal fun TvCinematicBrowse(
         rowState != null
     }
 
-    var interaction by remember { mutableIntStateOf(0) }
-    val uiAlpha = rememberTvHomeUiAlpha(trailerPlaying = trailer != null, interaction = interaction)
+    val interactions = remember { TvInteractionCounter() }
+    val uiAlpha = rememberTvHomeUiAlpha(trailerPlaying = trailer != null, interactions = interactions)
     Box(
         modifier.fillMaxSize().background(TvBackground).onPreviewKeyEvent {
             // Any remote input brings the UI back over a playing trailer.
-            interaction += 1
+            interactions.record()
             false
         },
     ) {
