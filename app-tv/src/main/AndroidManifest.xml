@@ -76,5 +76,23 @@
             android:authorities="${applicationId}.watchnext.art"
             android:exported="true"
             android:grantUriPermissions="false" />
+
+        <!-- System screensaver with backdrops from the active profile's cached library. Only the system may bind it
+             (BIND_DREAM_SERVICE is a service permission, not a uses-permission, so the permission allowlist check
+             does not see it). Inert until the user picks it in the TV's Screen saver setting. -->
+        <service
+            android:name=".dream.JellystackDreamService"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/dream_label"
+            android:permission="android.permission.BIND_DREAM_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.dreams.DreamService" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.dream"
+                android:resource="@xml/jellystack_dream" />
+        </service>
     </application>
 </manifest>
