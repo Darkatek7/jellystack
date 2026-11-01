@@ -1,5 +1,6 @@
 package dev.jellystack.players
 
+import dev.jellystack.core.preferences.VideoScale
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 
@@ -111,6 +112,13 @@ interface PlayerEngine {
     ) = Unit
 
     fun setPlaybackSpeed(speed: Float) = Unit
+
+    /**
+     * Sets how the picture fills the video surface. The engine keeps the value across surface recreation.
+     * No-op by default: only engines that own a scalable surface (Android) apply it, so iOS and the phone UI
+     * keep their current fit behaviour.
+     */
+    fun setVideoScale(scale: VideoScale) = Unit
 
     fun release()
 }

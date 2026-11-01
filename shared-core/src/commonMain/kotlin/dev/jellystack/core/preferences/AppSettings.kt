@@ -69,6 +69,19 @@ enum class SubtitleBackground {
     DARK,
 }
 
+/**
+ * How the video picture fills the player surface. Engines without a scalable surface ignore it.
+ *
+ * - [FIT] keeps the aspect ratio and shows black bars where the ratios differ.
+ * - [ZOOM] keeps the aspect ratio and crops the picture so it fills the surface.
+ * - [STRETCH] ignores the aspect ratio and fills the surface.
+ */
+enum class VideoScale {
+    FIT,
+    ZOOM,
+    STRETCH,
+}
+
 enum class MotionPreference {
     SYSTEM,
     REDUCED,
@@ -108,6 +121,12 @@ data class AppSettings(
     val downloadsWifiOnly: Boolean = false,
     val defaultPlaybackSpeed: Float = 1f,
     val statsForNerdsEnabled: Boolean = false,
+    val videoScale: VideoScale = VideoScale.FIT,
+    /**
+     * TV only: switch the display to a mode whose refresh rate is a multiple of the video frame rate while the
+     * player is open. Off by default because a display mode change blanks the screen for a moment.
+     */
+    val matchRefreshRate: Boolean = false,
 )
 
 data class AppPlatformCapabilities(

@@ -76,6 +76,8 @@ class AppSettingsRepositoryTest {
         repository.setDownloadsWifiOnly(true)
         repository.setDefaultPlaybackSpeed(1.5f)
         repository.setStatsForNerdsEnabled(true)
+        repository.setVideoScale(VideoScale.ZOOM)
+        repository.setMatchRefreshRate(true)
 
         assertEquals(
             repository.settings.value,
@@ -97,6 +99,8 @@ class AppSettingsRepositoryTest {
         assertTrue(repository.settings.value.highContrastFocus)
         assertEquals(1.5f, repository.settings.value.defaultPlaybackSpeed)
         assertTrue(repository.settings.value.statsForNerdsEnabled)
+        assertEquals(VideoScale.ZOOM, repository.settings.value.videoScale)
+        assertTrue(repository.settings.value.matchRefreshRate)
     }
 
     @Test
@@ -116,6 +120,7 @@ class AppSettingsRepositoryTest {
                     "settings.outro_skip_mode" to "BROKEN",
                     "settings.preview_skip_mode" to "SHOW_BUTTON",
                     "settings.commercial_skip_mode" to "BROKEN",
+                    "settings.video_scale" to "CINEMASCOPE",
                 ),
             )
 
@@ -133,6 +138,7 @@ class AppSettingsRepositoryTest {
         assertEquals(SegmentSkipMode.SHOW_BUTTON, value.previewSkipMode)
         assertEquals(SegmentSkipMode.OFF, value.commercialSkipMode)
         assertEquals(1f, value.defaultPlaybackSpeed)
+        assertEquals(VideoScale.FIT, value.videoScale)
     }
 
     @Test

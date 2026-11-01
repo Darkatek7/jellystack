@@ -55,6 +55,7 @@ import dev.jellystack.core.coroutines.runSuspendCatching
 import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.preferences.SubtitleBackground
 import dev.jellystack.core.preferences.SubtitleTextSize
+import dev.jellystack.core.preferences.VideoScale
 import dev.jellystack.players.AndroidPlayerEngine
 import dev.jellystack.players.PlaybackContinuationState
 import dev.jellystack.players.PlaybackController
@@ -85,6 +86,9 @@ internal fun TvPlaybackScreen(
     seekForwardSeconds: Int = 30,
     subtitleTextSize: SubtitleTextSize = SubtitleTextSize.SYSTEM,
     subtitleBackground: SubtitleBackground = SubtitleBackground.SYSTEM,
+    videoScale: VideoScale = VideoScale.FIT,
+    onVideoScaleSelected: (VideoScale) -> Unit = {},
+    matchRefreshRate: Boolean = false,
     extrasState: PlaybackExtrasState = PlaybackExtrasState(),
     timelineSegments: List<PlaybackSegment> = emptyList(),
     imageBaseUrl: String? = null,
@@ -202,6 +206,16 @@ internal fun TvPlaybackScreen(
     LaunchedEffect(engine, subtitleBottomPaddingFraction) {
         engine.setSubtitleBottomPaddingFraction(subtitleBottomPaddingFraction)
     }
+    LaunchedEffect(engine, videoScale) {
+        engine.setVideoScale(videoScale)
+    }
+    // This screen is the Player route only, so Home trailer previews never switch the display mode.
+    TvDisplayModeMatching(
+        enabled = matchRefreshRate,
+        mediaId = active?.mediaId,
+        // Only a ready player has the video format of this title; before that the stats can still carry the last one.
+        frameRate = active?.takeIf { it.phase == PlaybackPhase.Ready }?.runtimeStats?.frameRate,
+    )
 
     LaunchedEffect(endedUpNextId) {
         if (endedUpNextId != null) controlsVisible = true
@@ -507,6 +521,8 @@ internal fun TvPlaybackScreen(
                 onQualitySelected = controller::selectQuality,
                 onSpeedSelected = controller::setPlaybackSpeed,
                 onStatsToggled = controller::setStatsForNerdsEnabled,
+                videoScale = videoScale,
+                onVideoScaleSelected = onVideoScaleSelected,
                 syncPlay = syncPlay,
                 modifier = Modifier.align(Alignment.CenterEnd),
                 chapterSummary =

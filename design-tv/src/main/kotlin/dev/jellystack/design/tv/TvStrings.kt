@@ -37,11 +37,16 @@ internal data class TvPlayerStrings(
     val startFailedTitle: String,
     val startFailedMessage: String,
     val noPlayableEpisodeMessage: String,
+    val videoScale: String,
+    val videoScaleFit: String,
+    val videoScaleZoom: String,
+    val videoScaleStretch: String,
 )
 
 /** Labels of the settings screens. */
 internal data class TvSettingsStrings(
     val trailerPreviewDelay: String,
+    val matchRefreshRate: String,
     val secondsShort: String,
     val decimalSeparator: String,
 ) {
@@ -590,6 +595,10 @@ internal data class TvStrings(
                         startFailedMessage =
                             "Could not start playback. Check the connection to your server and try again.",
                         noPlayableEpisodeMessage = "This series has no playable episodes.",
+                        videoScale = "Picture size",
+                        videoScaleFit = "Fit",
+                        videoScaleZoom = "Zoom (crop)",
+                        videoScaleStretch = "Stretch",
                     ),
                 seasonNumber = "Season %d",
                 specials = "Specials",
@@ -673,6 +682,7 @@ internal data class TvStrings(
                 settingsLabels =
                     TvSettingsStrings(
                         trailerPreviewDelay = "Preview delay",
+                        matchRefreshRate = "Match refresh rate",
                         secondsShort = "%s s",
                         decimalSeparator = ".",
                     ),
@@ -879,6 +889,10 @@ internal data class TvStrings(
                             "Die Wiedergabe konnte nicht gestartet werden. " +
                                 "Prüfe die Verbindung zu deinem Server und versuche es erneut.",
                         noPlayableEpisodeMessage = "Diese Serie hat keine abspielbaren Folgen.",
+                        videoScale = "Bildgröße",
+                        videoScaleFit = "Einpassen",
+                        videoScaleZoom = "Zoom (zuschneiden)",
+                        videoScaleStretch = "Strecken",
                     ),
                 seasonNumber = "Staffel %d",
                 specials = "Spezialfolgen",
@@ -962,6 +976,7 @@ internal data class TvStrings(
                 settingsLabels =
                     TvSettingsStrings(
                         trailerPreviewDelay = "Vorschau-Verzögerung",
+                        matchRefreshRate = "Bildwiederholrate anpassen",
                         secondsShort = "%s s",
                         decimalSeparator = ",",
                     ),

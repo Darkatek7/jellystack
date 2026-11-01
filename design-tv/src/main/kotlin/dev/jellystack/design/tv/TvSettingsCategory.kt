@@ -35,6 +35,7 @@ internal fun tvSettingsControlKeys(category: TvSettingsCategory): List<String> =
                 "seek-forward",
                 "playback-speed",
                 "stats",
+                "match-refresh-rate",
                 "trailer-previews",
                 "trailer-preview-sound",
             )

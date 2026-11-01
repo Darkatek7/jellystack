@@ -58,11 +58,20 @@ internal fun ResolvedSubtitle.toSubtitleConfiguration(): SubtitleConfiguration =
  * Sideloaded single-sample subtitles deliver raw `text/vtt` and `application/x-subrip` samples,
  * which the default text renderer refuses to decode unless legacy decoding is enabled. The
  * renderer also decodes sideloaded Jellyfin `.sup` files (PGS) through [JellystackSubtitleDecoderFactory].
+ *
+ * Decoder fallback is on: when the preferred (usually hardware) decoder of an audio or video renderer fails to
+ * initialise, Media3 tries the next decoder for the same format before reporting an error. Only when every
+ * decoder fails does the same renderer error as before reach the player, so the server-side fallback chain
+ * (`PlaybackFallbackState`) still starts from the unchanged error.
  */
 @UnstableApi
 internal class JellystackRenderersFactory(
     context: Context,
 ) : DefaultRenderersFactory(context) {
+    init {
+        setEnableDecoderFallback(true)
+    }
+
     override fun buildTextRenderers(
         context: Context,
         output: TextOutput,

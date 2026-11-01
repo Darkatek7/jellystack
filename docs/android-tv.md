@@ -56,6 +56,13 @@ Test at minimum:
 ## Audio playback
 
 Playback requests Direct Play first. Jellyfin approves it only when container, video codec and the selected audio track fit the device profile; otherwise the server returns its own stream and transcodes unsupported audio to the best codec the TV reported (EAC3, then AC3, AAC, MP3), copying video and any supported audio bit-identically. Switching to a track the TV cannot decode asks the server for a new stream. If audio output does not start, playback falls back once to server-selected stereo AAC HLS. Check Stats for Nerds and the debug log line `Playback decision` when testing DTS or TrueHD sources.
+
+## Video playback
+
+- Decoder fallback is enabled: if the preferred (usually hardware) decoder fails to start, Media3 tries the next decoder before the error reaches the server-side fallback chain.
+- Picture size (Fit, Zoom, Stretch) is in the player's More panel and is remembered across titles and app restarts.
+- Settings > Playback > Match refresh rate (off by default) switches the display, while the player is open, to a mode with the same resolution and a refresh rate that is an integer multiple of the video frame rate (for example 23.976 fps on 23.976, 47.95 or 119.88 Hz). The frame rate is the one of the Media3 video format. The mode is requested through the window's `preferredDisplayModeId`, because Fire TV runs Android 11 and Media3's frame-rate strategy needs Android 12. The previous preference is restored when the player closes. Switching blanks the screen briefly, and Home trailers never switch. Verify on each Fire TV and Google TV model that the display actually changes mode.
+
 ## Remote controls
 
 - Navigation rail: hidden while the content has focus; Left at the content's left edge or Back slides it in

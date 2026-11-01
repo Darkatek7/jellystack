@@ -26,12 +26,14 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
 import dev.jellystack.core.logging.JellystackLog
 import dev.jellystack.core.preferences.SubtitleBackground
 import dev.jellystack.core.preferences.SubtitleTextSize
+import dev.jellystack.core.preferences.VideoScale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -73,6 +75,7 @@ class AndroidPlayerEngine(
     private var pendingSubtitleTrack: SubtitleTrack? = null
     private var pendingSubtitleSelectionConfirmationId: String? = null
     private var videoSurface: PlayerView? = null
+    private var videoScale: VideoScale = VideoScale.FIT
     private var subtitleTextSize: SubtitleTextSize = SubtitleTextSize.SYSTEM
     private var subtitleBackground: SubtitleBackground = SubtitleBackground.SYSTEM
     private var subtitleBottomPaddingFraction: Float = SubtitleView.DEFAULT_BOTTOM_PADDING_FRACTION
@@ -284,8 +287,25 @@ class AndroidPlayerEngine(
             playerView.player = exoPlayer
         }
         videoSurface = playerView
+        applyVideoScale(playerView)
         applySubtitleAppearance(playerView)
         applySubtitleBottomPadding(playerView)
+    }
+
+    // Kept here, not on the view, so the choice survives the PlayerView being recreated (Compose AndroidView
+    // factory runs again after configuration changes or route re-entry).
+    override fun setVideoScale(scale: VideoScale) {
+        videoScale = scale
+        videoSurface?.let(::applyVideoScale)
+    }
+
+    private fun applyVideoScale(playerView: PlayerView) {
+        playerView.resizeMode =
+            when (videoScale) {
+                VideoScale.FIT -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                VideoScale.ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                VideoScale.STRETCH -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+            }
     }
 
     fun releaseVideoSurface(view: View) {

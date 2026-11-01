@@ -537,6 +537,14 @@ internal fun TvPlaybackSettings(
             repository.setStatsForNerdsEnabled(!settings.statsForNerdsEnabled)
         }
         TvSettingTile(
+            strings.settingsLabels.matchRefreshRate,
+            if (settings.matchRefreshRate) strings.on else strings.off,
+            focusTargetId = tvSettingsControlTargetId("match-refresh-rate"),
+            checked = settings.matchRefreshRate,
+        ) {
+            repository.setMatchRefreshRate(!settings.matchRefreshRate)
+        }
+        TvSettingTile(
             strings.trailerPreviews,
             if (settings.trailerPreviewsEnabled) strings.on else strings.off,
             focusTargetId = tvSettingsControlTargetId("trailer-previews"),

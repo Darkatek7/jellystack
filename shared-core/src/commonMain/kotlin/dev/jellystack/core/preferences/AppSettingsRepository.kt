@@ -92,6 +92,10 @@ class AppSettingsRepository(
 
     fun setStatsForNerdsEnabled(value: Boolean) = update(KEY_STATS_FOR_NERDS, value) { copy(statsForNerdsEnabled = value) }
 
+    fun setVideoScale(value: VideoScale) = update(KEY_VIDEO_SCALE, value.name) { copy(videoScale = value) }
+
+    fun setMatchRefreshRate(value: Boolean) = update(KEY_MATCH_REFRESH_RATE, value) { copy(matchRefreshRate = value) }
+
     private fun readSettings(): AppSettings =
         AppSettings(
             appLanguage = enumValue(KEY_APP_LANGUAGE, AppLanguage.SYSTEM),
@@ -128,6 +132,8 @@ class AppSettingsRepository(
             downloadsWifiOnly = storage.getBoolean(KEY_DOWNLOADS_WIFI_ONLY, false),
             defaultPlaybackSpeed = storage.getFloat(KEY_DEFAULT_PLAYBACK_SPEED, 1f).takeIf(PLAYBACK_SPEEDS::contains) ?: 1f,
             statsForNerdsEnabled = storage.getBoolean(KEY_STATS_FOR_NERDS, false),
+            videoScale = enumValue(KEY_VIDEO_SCALE, VideoScale.FIT),
+            matchRefreshRate = storage.getBoolean(KEY_MATCH_REFRESH_RATE, false),
         )
 
     private inline fun <reified T : Enum<T>> enumValue(
@@ -199,6 +205,8 @@ class AppSettingsRepository(
         const val KEY_DOWNLOADS_WIFI_ONLY = "settings.downloads_wifi_only"
         const val KEY_DEFAULT_PLAYBACK_SPEED = "settings.default_playback_speed"
         const val KEY_STATS_FOR_NERDS = "settings.stats_for_nerds"
+        const val KEY_VIDEO_SCALE = "settings.video_scale"
+        const val KEY_MATCH_REFRESH_RATE = "settings.match_refresh_rate"
         val SEEK_SECONDS = setOf(5, 10, 15, 30, 60)
         val SPOTLIGHT_INTERVAL_SECONDS = setOf(6, 8, 10, 15)
         val PLAYBACK_SPEEDS = setOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
