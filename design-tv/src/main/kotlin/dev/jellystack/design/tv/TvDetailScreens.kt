@@ -54,7 +54,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
@@ -1377,15 +1376,7 @@ internal fun TvSeerrDetailScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
             )
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Color.Black.copy(0.1f), TvBackground.copy(0.2f), TvBackground),
-                        ),
-                    ),
-            )
+            Box(Modifier.fillMaxSize().tvBakedScrim(TvScrim.SEERR_DETAIL_HERO))
             Column(
                 Modifier.align(Alignment.BottomStart).padding(start = 58.dp, bottom = 38.dp).fillMaxWidth(0.62f),
                 verticalArrangement = Arrangement.spacedBy(13.dp),

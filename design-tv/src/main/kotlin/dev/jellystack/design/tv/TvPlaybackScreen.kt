@@ -41,7 +41,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.testTag
@@ -401,11 +400,8 @@ internal fun TvPlaybackScreen(
                 modifier =
                     Modifier
                         .align(Alignment.TopCenter)
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(Color.Black.copy(alpha = 0.86f), Color.Black.copy(alpha = 0.42f), Color.Transparent),
-                            ),
-                        ).padding(start = 36.dp, end = 36.dp, top = 24.dp, bottom = 54.dp),
+                        .tvBakedScrim(TvScrim.PLAYER_HEADER)
+                        .padding(start = 36.dp, end = 36.dp, top = 24.dp, bottom = 54.dp),
             )
             if (active.statsForNerdsEnabled && navigation.current == TvPlayerPanel.NONE) {
                 TvStatsForNerdsOverlay(
@@ -438,7 +434,7 @@ internal fun TvPlaybackScreen(
                 Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))))
+                    .tvBakedScrim(TvScrim.PLAYER_SCRUB)
                     .padding(start = 42.dp, end = 42.dp, top = 48.dp, bottom = 40.dp)
                     .testTag(TV_PLAYBACK_SCRUB_OVERLAY_TAG),
             ) {
