@@ -15,21 +15,15 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.CastConnected
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.outlined.Cast
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -37,12 +31,10 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -51,13 +43,11 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,10 +61,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import dev.jellystack.core.di.JellystackDI
@@ -147,23 +133,16 @@ import dev.jellystack.core.server.SeerrConnectionResult
 import dev.jellystack.core.server.SeerrCredentialsRequirement
 import dev.jellystack.core.server.SeerrLoginCredentials
 import dev.jellystack.core.server.SeerrServerInput
-import dev.jellystack.core.server.ServerAddressValidation
 import dev.jellystack.core.server.ServerConnectionCoordinator
 import dev.jellystack.core.server.ServerRepository
 import dev.jellystack.core.server.ServerType
 import dev.jellystack.core.server.StoredCredential
-import dev.jellystack.core.server.validateServerAddress
 import dev.jellystack.design.admin.AdminScreen
 import dev.jellystack.design.biometric.rememberBiometricPlatformState
 import dev.jellystack.design.cast.BindCastSnapshotProvider
 import dev.jellystack.design.cast.CastRoutePickerButton
 import dev.jellystack.design.cast.rememberPlatformCastSessionManager
-import dev.jellystack.design.components.InsecureHttpWarning
-import dev.jellystack.design.components.JellyfinQuickConnectStatus
-import dev.jellystack.design.components.JellyfinSignInMethodSelector
 import dev.jellystack.design.components.ModalFocusScope
-import dev.jellystack.design.components.SeerrCompatibilityNotice
-import dev.jellystack.design.components.SeerrSignInMethodSelector
 import dev.jellystack.design.jellyfin.HomeSectionsScreen
 import dev.jellystack.design.jellyfin.HomeSkeleton
 import dev.jellystack.design.jellyfin.ImmersiveMediaDetailContent
@@ -261,7 +240,6 @@ import jellystack_mobile.design.generated.resources.app_lock_unlock_before_disab
 import jellystack_mobile.design.generated.resources.app_lock_waiting
 import jellystack_mobile.design.generated.resources.app_title
 import jellystack_mobile.design.generated.resources.audio_track_switch_failed
-import jellystack_mobile.design.generated.resources.base_url
 import jellystack_mobile.design.generated.resources.cancel
 import jellystack_mobile.design.generated.resources.cast_connection_failed
 import jellystack_mobile.design.generated.resources.cast_connection_lost
@@ -269,9 +247,6 @@ import jellystack_mobile.design.generated.resources.cast_reconnect
 import jellystack_mobile.design.generated.resources.cast_stopped
 import jellystack_mobile.design.generated.resources.close
 import jellystack_mobile.design.generated.resources.complete_required_fields
-import jellystack_mobile.design.generated.resources.connect_jellyfin
-import jellystack_mobile.design.generated.resources.connect_seerr
-import jellystack_mobile.design.generated.resources.connect_server
 import jellystack_mobile.design.generated.resources.continue_episode
 import jellystack_mobile.design.generated.resources.download_connect_server
 import jellystack_mobile.design.generated.resources.download_direct_required
@@ -287,7 +262,6 @@ import jellystack_mobile.design.generated.resources.downloads
 import jellystack_mobile.design.generated.resources.email
 import jellystack_mobile.design.generated.resources.favorite_update_failed
 import jellystack_mobile.design.generated.resources.favorites
-import jellystack_mobile.design.generated.resources.hide_password
 import jellystack_mobile.design.generated.resources.item_detail_unavailable
 import jellystack_mobile.design.generated.resources.libraries
 import jellystack_mobile.design.generated.resources.library_connect_server_status
@@ -297,16 +271,12 @@ import jellystack_mobile.design.generated.resources.nav_admin
 import jellystack_mobile.design.generated.resources.nav_discover
 import jellystack_mobile.design.generated.resources.nav_library
 import jellystack_mobile.design.generated.resources.no_playable_episode
-import jellystack_mobile.design.generated.resources.onboarding_saving
-import jellystack_mobile.design.generated.resources.onboarding_url_error
 import jellystack_mobile.design.generated.resources.password
-import jellystack_mobile.design.generated.resources.password_optional
 import jellystack_mobile.design.generated.resources.play
 import jellystack_mobile.design.generated.resources.play_episode
 import jellystack_mobile.design.generated.resources.playback_failed
 import jellystack_mobile.design.generated.resources.playback_no_source
 import jellystack_mobile.design.generated.resources.played_status_update_failed
-import jellystack_mobile.design.generated.resources.quick_connect_description
 import jellystack_mobile.design.generated.resources.quick_connect_seerr_manual
 import jellystack_mobile.design.generated.resources.refresh_status
 import jellystack_mobile.design.generated.resources.remove_server_failed
@@ -326,16 +296,9 @@ import jellystack_mobile.design.generated.resources.request_search_failed
 import jellystack_mobile.design.generated.resources.request_submitted
 import jellystack_mobile.design.generated.resources.requests_title
 import jellystack_mobile.design.generated.resources.retry
-import jellystack_mobile.design.generated.resources.seerr_automatic_login
-import jellystack_mobile.design.generated.resources.seerr_connect_jellyfin_first
 import jellystack_mobile.design.generated.resources.select_cast_device
-import jellystack_mobile.design.generated.resources.server_name
-import jellystack_mobile.design.generated.resources.server_url_missing_protocol
-import jellystack_mobile.design.generated.resources.show_password
 import jellystack_mobile.design.generated.resources.shows
-import jellystack_mobile.design.generated.resources.sign_in_with
 import jellystack_mobile.design.generated.resources.subtitle_track_switch_failed
-import jellystack_mobile.design.generated.resources.use_different_account
 import jellystack_mobile.design.generated.resources.username
 import jellystack_mobile.design.generated.resources.version_label
 import jellystack_mobile.design.generated.resources.view_changelog
@@ -361,7 +324,6 @@ import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 import kotlin.collections.buildList
 import kotlin.collections.buildMap
-import androidx.compose.ui.semantics.password as passwordSemantics
 
 enum class JellystackOrientation {
     Portrait,
@@ -423,58 +385,6 @@ private fun JellyfinDetailUiState.withImageInfo(
         is JellyfinDetailUiState.Loaded -> copy(imageBaseUrl = imageBaseUrl, imageAccessToken = imageAccessToken)
         is JellyfinDetailUiState.Loading -> copy(imageBaseUrl = imageBaseUrl, imageAccessToken = imageAccessToken)
     }
-
-internal data class ServerFormState(
-    val serverId: String? = null,
-    val type: ServerFormType = ServerFormType.JELLYFIN,
-    val name: String = "",
-    val baseUrl: String = "",
-    val username: String = "",
-    val email: String = "",
-    val password: String = "",
-    val jellyfinSignInMethod: JellyfinSignInMethod = JellyfinSignInMethod.QUICK_CONNECT,
-    val useJellyfinLogin: Boolean = false,
-    val automaticSeerrLogin: Boolean = false,
-    val requiresSeerrPassword: Boolean = false,
-    val allowInsecureHttp: Boolean = false,
-) {
-    val serverAddressValidation: ServerAddressValidation
-        get() = validateServerAddress(baseUrl)
-
-    val requiresInsecureHttpConfirmation: Boolean
-        get() =
-            serverId == null &&
-                baseUrl.trim().startsWith("http://", ignoreCase = true)
-
-    val isValid: Boolean
-        get() =
-            (!requiresInsecureHttpConfirmation || allowInsecureHttp) &&
-                serverAddressValidation is ServerAddressValidation.Valid &&
-                when (type) {
-                    ServerFormType.JELLYFIN ->
-                        name.isNotBlank() &&
-                            baseUrl.isNotBlank() &&
-                            (
-                                jellyfinSignInMethod == JellyfinSignInMethod.QUICK_CONNECT ||
-                                    (
-                                        username.isNotBlank()
-                                    )
-                            )
-                    ServerFormType.SEERR ->
-                        baseUrl.isNotBlank() &&
-                            (
-                                automaticSeerrLogin ||
-                                    (
-                                        (
-                                            useJellyfinLogin &&
-                                                username.isNotBlank() &&
-                                                (!requiresSeerrPassword || password.isNotBlank())
-                                        ) ||
-                                            (!useJellyfinLogin && email.isNotBlank() && password.isNotBlank())
-                                    )
-                            )
-                }
-}
 
 private data class ServerManagementUiState(
     val servers: List<ManagedServer> = emptyList(),
@@ -4170,367 +4080,6 @@ private fun BiometricLockOverlay(
             }
         }
     }
-}
-
-@Suppress("FunctionName", "UNUSED_PARAMETER")
-@Composable
-private fun AddServerDialog(
-    state: ServerFormState,
-    isSaving: Boolean,
-    quickConnectState: JellyfinQuickConnectState?,
-    errorMessage: String?,
-    seerrCompatibilityNotice: String?,
-    availableJellyfinServers: List<ManagedServer>,
-    onValueChange: (ServerFormState) -> Unit,
-    onClearError: () -> Unit,
-    onDismiss: () -> Unit,
-    onSubmit: () -> Unit,
-    onRestartQuickConnect: () -> Unit,
-) {
-    var passwordVisible by remember(state.type) { mutableStateOf(false) }
-    AlertDialog(
-        onDismissRequest = { if (!isSaving || quickConnectState != null) onDismiss() },
-        title = { Text(stringResource(Res.string.connect_server)) },
-        text = {
-            Column(
-                modifier = Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(
-                        selected = state.type == ServerFormType.JELLYFIN,
-                        onClick = {
-                            if (!isSaving) {
-                                passwordVisible = false
-                                onValueChange(
-                                    state.copy(
-                                        type = ServerFormType.JELLYFIN,
-                                        email = "",
-                                        password = "",
-                                        useJellyfinLogin = false,
-                                        automaticSeerrLogin = false,
-                                    ),
-                                )
-                                onClearError()
-                            }
-                        },
-                        enabled = !isSaving,
-                        label = { Text("Jellyfin") },
-                    )
-                    FilterChip(
-                        selected = state.type == ServerFormType.SEERR,
-                        onClick = {
-                            if (!isSaving) {
-                                passwordVisible = false
-                                onValueChange(
-                                    state.copy(
-                                        type = ServerFormType.SEERR,
-                                        username = "",
-                                        password = "",
-                                        useJellyfinLogin = true,
-                                        automaticSeerrLogin = true,
-                                    ),
-                                )
-                                onClearError()
-                            }
-                        },
-                        enabled = !isSaving,
-                        label = { Text("Seerr") },
-                    )
-                }
-                OutlinedTextField(
-                    value = state.name,
-                    onValueChange = {
-                        onValueChange(state.copy(name = it))
-                        onClearError()
-                    },
-                    label = { Text(stringResource(Res.string.server_name)) },
-                    singleLine = true,
-                    enabled = !isSaving,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                )
-                OutlinedTextField(
-                    value = state.baseUrl,
-                    onValueChange = {
-                        onValueChange(state.copy(baseUrl = it, allowInsecureHttp = false))
-                        onClearError()
-                    },
-                    label = { Text(stringResource(Res.string.base_url)) },
-                    placeholder = { Text("https://jellyfin.example.com") },
-                    singleLine = true,
-                    enabled = !isSaving,
-                    isError =
-                        state.serverAddressValidation is ServerAddressValidation.MissingProtocol ||
-                            state.serverAddressValidation is ServerAddressValidation.Invalid,
-                    supportingText =
-                        when (state.serverAddressValidation) {
-                            ServerAddressValidation.MissingProtocol ->
-                                {
-                                    {
-                                        Text(stringResource(Res.string.server_url_missing_protocol))
-                                    }
-                                }
-                            ServerAddressValidation.Invalid ->
-                                {
-                                    {
-                                        Text(stringResource(Res.string.onboarding_url_error))
-                                    }
-                                }
-                            else -> null
-                        },
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next, keyboardType = KeyboardType.Uri),
-                )
-                if (state.requiresInsecureHttpConfirmation) {
-                    InsecureHttpWarning(
-                        confirmed = state.allowInsecureHttp,
-                        onConfirmedChange = { confirmed ->
-                            onValueChange(state.copy(allowInsecureHttp = confirmed))
-                            onClearError()
-                        },
-                        enabled = !isSaving,
-                    )
-                }
-                when (state.type) {
-                    ServerFormType.JELLYFIN -> {
-                        JellyfinSignInMethodSelector(
-                            selected = state.jellyfinSignInMethod,
-                            onSelected = { method ->
-                                passwordVisible = false
-                                onValueChange(
-                                    state.copy(
-                                        jellyfinSignInMethod = method,
-                                        password = "",
-                                    ),
-                                )
-                                onClearError()
-                            },
-                            enabled = !isSaving || quickConnectState != null,
-                        )
-                        if (quickConnectState != null) {
-                            JellyfinQuickConnectStatus(
-                                state = quickConnectState,
-                                onUsePassword = {
-                                    onValueChange(
-                                        state.copy(
-                                            jellyfinSignInMethod = JellyfinSignInMethod.PASSWORD,
-                                        ),
-                                    )
-                                    onClearError()
-                                },
-                                onNewCode = onRestartQuickConnect,
-                                onCancel = onDismiss,
-                            )
-                        } else if (state.jellyfinSignInMethod == JellyfinSignInMethod.QUICK_CONNECT) {
-                            Text(
-                                text = stringResource(Res.string.quick_connect_description),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        } else {
-                            OutlinedTextField(
-                                value = state.username,
-                                onValueChange = {
-                                    onValueChange(state.copy(username = it))
-                                    onClearError()
-                                },
-                                label = { Text(stringResource(Res.string.username)) },
-                                placeholder = { Text("user") },
-                                singleLine = true,
-                                enabled = !isSaving,
-                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                            )
-                            OutlinedTextField(
-                                value = state.password,
-                                onValueChange = {
-                                    onValueChange(state.copy(password = it))
-                                    onClearError()
-                                },
-                                label = { Text(stringResource(Res.string.password_optional)) },
-                                singleLine = true,
-                                enabled = !isSaving,
-                                visualTransformation =
-                                    if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                                keyboardOptions =
-                                    KeyboardOptions(imeAction = ImeAction.Done, keyboardType = KeyboardType.Password),
-                                trailingIcon = {
-                                    val icon =
-                                        if (passwordVisible) {
-                                            Icons.Filled.VisibilityOff
-                                        } else {
-                                            Icons.Filled.Visibility
-                                        }
-                                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                                        Icon(
-                                            imageVector = icon,
-                                            contentDescription =
-                                                stringResource(
-                                                    if (passwordVisible) {
-                                                        Res.string.hide_password
-                                                    } else {
-                                                        Res.string.show_password
-                                                    },
-                                                ),
-                                        )
-                                    }
-                                },
-                                modifier = Modifier.semantics { passwordSemantics() },
-                            )
-                        }
-                    }
-                    ServerFormType.SEERR -> {
-                        if (state.automaticSeerrLogin) {
-                            Text(
-                                text =
-                                    if (availableJellyfinServers.isNotEmpty()) {
-                                        stringResource(Res.string.seerr_automatic_login)
-                                    } else {
-                                        stringResource(Res.string.seerr_connect_jellyfin_first)
-                                    },
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            TextButton(
-                                onClick = {
-                                    onValueChange(
-                                        state.copy(
-                                            automaticSeerrLogin = false,
-                                            useJellyfinLogin = availableJellyfinServers.isNotEmpty(),
-                                        ),
-                                    )
-                                    onClearError()
-                                },
-                                enabled = !isSaving,
-                            ) {
-                                Text(stringResource(Res.string.use_different_account))
-                            }
-                        } else {
-                            seerrCompatibilityNotice?.let { notice ->
-                                SeerrCompatibilityNotice(text = notice)
-                            }
-                            Text(stringResource(Res.string.sign_in_with), style = MaterialTheme.typography.labelLarge)
-                            SeerrSignInMethodSelector(
-                                useJellyfinLogin = state.useJellyfinLogin,
-                                onUseJellyfinLoginChange = { useJellyfinLogin ->
-                                    onValueChange(
-                                        state.copy(
-                                            useJellyfinLogin = useJellyfinLogin,
-                                            username = if (useJellyfinLogin) state.username else "",
-                                            email = if (useJellyfinLogin) "" else state.email,
-                                        ),
-                                    )
-                                    onClearError()
-                                },
-                                enabled = !isSaving,
-                            )
-                            if (state.useJellyfinLogin) {
-                                OutlinedTextField(
-                                    value = state.username,
-                                    onValueChange = {
-                                        onValueChange(state.copy(username = it))
-                                        onClearError()
-                                    },
-                                    label = { Text(stringResource(Res.string.username)) },
-                                    placeholder = { Text("user") },
-                                    singleLine = true,
-                                    enabled = !isSaving,
-                                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                                )
-                            } else {
-                                OutlinedTextField(
-                                    value = state.email,
-                                    onValueChange = {
-                                        onValueChange(state.copy(email = it))
-                                        onClearError()
-                                    },
-                                    label = { Text(stringResource(Res.string.email)) },
-                                    placeholder = { Text("user@example.com") },
-                                    singleLine = true,
-                                    enabled = !isSaving,
-                                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next, keyboardType = KeyboardType.Email),
-                                )
-                            }
-                            OutlinedTextField(
-                                value = state.password,
-                                onValueChange = {
-                                    onValueChange(state.copy(password = it))
-                                    onClearError()
-                                },
-                                label = {
-                                    Text(
-                                        stringResource(
-                                            if (state.useJellyfinLogin) {
-                                                if (state.requiresSeerrPassword) {
-                                                    Res.string.password
-                                                } else {
-                                                    Res.string.password_optional
-                                                }
-                                            } else {
-                                                Res.string.password
-                                            },
-                                        ),
-                                    )
-                                },
-                                singleLine = true,
-                                enabled = !isSaving,
-                                visualTransformation =
-                                    if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                                keyboardOptions =
-                                    KeyboardOptions(imeAction = ImeAction.Done, keyboardType = KeyboardType.Password),
-                                trailingIcon = {
-                                    val icon = if (passwordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility
-                                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                                        Icon(
-                                            imageVector = icon,
-                                            contentDescription =
-                                                stringResource(
-                                                    if (passwordVisible) Res.string.hide_password else Res.string.show_password,
-                                                ),
-                                        )
-                                    }
-                                },
-                                modifier = Modifier.semantics { passwordSemantics() },
-                            )
-                        }
-                    }
-                }
-                if (errorMessage != null && quickConnectState == null) {
-                    Text(
-                        text = errorMessage,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            if (quickConnectState == null) {
-                Button(
-                    onClick = onSubmit,
-                    enabled = state.isValid && !isSaving,
-                ) {
-                    if (isSaving) {
-                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(stringResource(Res.string.onboarding_saving))
-                    } else {
-                        val label =
-                            when (state.type) {
-                                ServerFormType.JELLYFIN -> stringResource(Res.string.connect_jellyfin)
-                                ServerFormType.SEERR -> stringResource(Res.string.connect_seerr)
-                            }
-                        Text(label)
-                    }
-                }
-            }
-        },
-        dismissButton = {
-            if (quickConnectState == null) {
-                TextButton(onClick = onDismiss, enabled = !isSaving) {
-                    Text(stringResource(Res.string.cancel))
-                }
-            }
-        },
-    )
 }
 
 private object JellystackTags {
