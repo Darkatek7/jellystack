@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- No settings screen: the screensaver has no options. Choosing it in the system's Screen saver setting is the opt-in. -->
+<dream xmlns:android="http://schemas.android.com/apk/res/android" />

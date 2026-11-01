@@ -418,6 +418,18 @@ internal enum class TvMediaCardFormat { LANDSCAPE, POSTER, CAST_PORTRAIT }
 
 internal enum class TvMediaCardArtworkFit { CROP, CONTAIN_PORTRAIT }
 
+/** The size of a media card, shared with the skeleton that stands in for it so nothing moves when content arrives. */
+internal fun Modifier.tvMediaCardSize(
+    format: TvMediaCardFormat,
+    fillWidth: Boolean,
+): Modifier =
+    if (format == TvMediaCardFormat.LANDSCAPE) {
+        then(if (fillWidth) Modifier.fillMaxWidth() else Modifier.width(TvLayoutTokens.LandscapeArtworkWidth))
+            .height(TvLayoutTokens.LandscapeArtworkHeight)
+    } else {
+        then(if (fillWidth) Modifier.fillMaxWidth() else Modifier.width(140.dp)).aspectRatio(2f / 3f)
+    }
+
 @Composable
 internal fun TvMediaCard(
     title: String,
@@ -441,13 +453,6 @@ internal fun TvMediaCard(
 ) {
     val shape = TvShapes.Card
     var focused by remember { mutableStateOf(false) }
-    val cardWidth = if (format == TvMediaCardFormat.LANDSCAPE) TvLayoutTokens.LandscapeArtworkWidth else 140.dp
-    val aspectRatio =
-        if (format == TvMediaCardFormat.LANDSCAPE) {
-            TvLayoutTokens.LandscapeArtworkWidth.value / TvLayoutTokens.LandscapeArtworkHeight.value
-        } else {
-            2f / 3f
-        }
     val bringIntoViewRequester = remember { BringIntoViewRequester() }
     LaunchedEffect(focused) {
         if (focused) {
@@ -477,14 +482,8 @@ internal fun TvMediaCard(
     Box(
         modifier =
             modifier
-                .then(if (fillWidth) Modifier.fillMaxWidth() else Modifier.width(cardWidth))
-                .then(
-                    if (format == TvMediaCardFormat.LANDSCAPE) {
-                        Modifier.height(TvLayoutTokens.LandscapeArtworkHeight)
-                    } else {
-                        Modifier.aspectRatio(aspectRatio)
-                    },
-                ).then(interactionModifier)
+                .tvMediaCardSize(format, fillWidth)
+                .then(interactionModifier)
                 .bringIntoViewRequester(bringIntoViewRequester)
                 .semantics(mergeDescendants = true) {
                     contentDescription = listOfNotNull(title, subtitle).joinToString(", ")

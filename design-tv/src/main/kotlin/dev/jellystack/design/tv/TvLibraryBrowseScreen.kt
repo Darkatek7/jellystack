@@ -22,6 +22,8 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -404,12 +406,7 @@ private fun TvLibraryAllTitles(
     BoxWithConstraints(modifier.fillMaxSize()) {
         val fontScale = LocalDensity.current.fontScale
         val cardShape = tvLibraryCardShape(collectionType, reliablePosters = tvLibraryHasReliablePosters(state.libraryItems))
-        val columns =
-            if (cardShape == TvLibraryCardShape.PORTRAIT) {
-                tvLibraryAllTitlesColumnCount(maxWidth.value, fontScale)
-            } else {
-                ((maxWidth.value - (TvLayoutTokens.SafeInsets.horizontal.value * 2f)) / 248f).toInt().coerceAtLeast(1)
-            }
+        val columns = tvLibraryGridColumns(cardShape, maxWidth.value, fontScale)
         LaunchedEffect(state.libraryItems.size, state.endReached, state.isPageLoading, state.libraryErrorMessage, columns) {
             androidx.compose.runtime
                 .snapshotFlow {
@@ -460,39 +457,33 @@ private fun TvLibraryAllTitles(
                 }
             }
             itemsIndexed(state.libraryItems, key = { _, item -> item.id }) { index, item ->
-                val artwork = resolveTvJellyfinArtwork(item, landscape = cardShape == TvLibraryCardShape.LANDSCAPE)
-                val targetId = tvLibraryTargetId(item.id)
-                TvMediaCard(
-                    title = item.name.ifBlank { strings.messages.untitled },
-                    subtitle = item.subtitleText(),
-                    imageUrl =
-                        jellyfinImageUrl(
-                            state.imageBaseUrl,
-                            state.imageAccessToken,
-                            artwork,
-                            if (cardShape == TvLibraryCardShape.PORTRAIT) TvArtworkSize.PORTRAIT_CARD else TvArtworkSize.LANDSCAPE_CARD,
-                        ),
-                    selected = item.id in state.favorites,
-                    format = if (cardShape == TvLibraryCardShape.PORTRAIT) TvMediaCardFormat.POSTER else TvMediaCardFormat.LANDSCAPE,
-                    artworkFit =
-                        if (artwork?.imageType ==
-                            "Primary"
-                        ) {
-                            TvMediaCardArtworkFit.CONTAIN_PORTRAIT
-                        } else {
-                            TvMediaCardArtworkFit.CROP
-                        },
-                    fillWidth = true,
+                TvLibraryGridCard(
+                    item = item,
+                    index = index,
+                    columns = columns,
+                    cardShape = cardShape,
+                    images = TvLibraryGridImages(state.imageBaseUrl, state.imageAccessToken),
+                    favorites = state.favorites,
+                    strings = strings,
+                    focusMemory = focusMemory,
+                    routeKey = routeKey,
+                    entryFocus = index == 0,
                     onClick = { item.open(onOpenItem, onOpenContainer) },
-                    onFocused = {
-                        focusMemory.remember(routeKey, "items", item.id, index + 1, index)
-                    },
-                    focusTargetId = targetId,
-                    focusToNavigationRailOnLeft = isTvGridLeftEdge(index, columns),
-                    modifier = Modifier.tvScreenEntryFocus(index == 0, targetId).testTag("tv-library-all-title-${item.id}"),
                 )
             }
-            if (state.isLibraryLoading || state.isPageLoading) {
+            if ((state.isLibraryLoading || state.isPageLoading) && state.libraryItems.isEmpty()) {
+                tvSkeletonGridCells(
+                    label = strings.loading,
+                    count = columns * 2,
+                    format =
+                        if (cardShape == TvLibraryCardShape.PORTRAIT) {
+                            TvMediaCardFormat.POSTER
+                        } else {
+                            TvMediaCardFormat.LANDSCAPE
+                        },
+                    keyPrefix = "all-titles-skeleton",
+                )
+            } else if (state.isLibraryLoading || state.isPageLoading) {
                 item(key = "all-titles-loading", span = { GridItemSpan(maxLineSpan) }) {
                     Box(Modifier.fillMaxWidth().height(96.dp), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = TvPurple)
@@ -504,19 +495,85 @@ private fun TvLibraryAllTitles(
                         Text(
                             strings.libraryLoadFailed,
                             color =
-                                androidx.compose.ui.graphics
-                                    .Color(0xFFFFA59E),
+                            TvError,
                         )
                         TvActionButton(strings.retry, onRetry, modifier = Modifier.width(220.dp), focusTargetId = TV_LIBRARY_RETRY_TARGET)
                     }
                 }
             } else if (state.libraryItems.isEmpty()) {
                 item(key = "all-titles-empty", span = { GridItemSpan(maxLineSpan) }) {
-                    TvFocusPlaceholder(strings.noResults, TV_LIBRARY_EMPTY_TARGET)
+                    TvEmptyState(
+                        icon = Icons.Default.VideoLibrary,
+                        title = strings.noResults,
+                        hint = if (state.libraryBrowseQuery.isDefault) strings.emptyStates.libraryHint else strings.emptyStates.filterHint,
+                    )
                 }
             }
         }
     }
+}
+
+/** Where the artwork of a title grid comes from. */
+internal data class TvLibraryGridImages(
+    val baseUrl: String?,
+    val accessToken: String?,
+)
+
+internal fun tvLibraryGridColumns(
+    cardShape: TvLibraryCardShape,
+    widthDp: Float,
+    fontScale: Float,
+): Int =
+    if (cardShape == TvLibraryCardShape.PORTRAIT) {
+        tvLibraryAllTitlesColumnCount(widthDp, fontScale)
+    } else {
+        ((widthDp - (TvLayoutTokens.SafeInsets.horizontal.value * 2f)) / 248f).toInt().coerceAtLeast(1)
+    }
+
+/** One title of a library grid; the person, collection, and playlist screens show their titles with it too. */
+@Composable
+internal fun TvLibraryGridCard(
+    item: JellyfinItem,
+    index: Int,
+    columns: Int,
+    cardShape: TvLibraryCardShape,
+    images: TvLibraryGridImages,
+    favorites: Set<String>,
+    strings: TvStrings,
+    focusMemory: TvFocusMemory,
+    routeKey: String,
+    entryFocus: Boolean,
+    onClick: () -> Unit,
+) {
+    val artwork = resolveTvJellyfinArtwork(item, landscape = cardShape == TvLibraryCardShape.LANDSCAPE)
+    val targetId = tvLibraryTargetId(item.id)
+    TvMediaCard(
+        title = item.name.ifBlank { strings.messages.untitled },
+        subtitle = item.subtitleText(),
+        imageUrl =
+            jellyfinImageUrl(
+                images.baseUrl,
+                images.accessToken,
+                artwork,
+                if (cardShape == TvLibraryCardShape.PORTRAIT) TvArtworkSize.PORTRAIT_CARD else TvArtworkSize.LANDSCAPE_CARD,
+            ),
+        selected = item.id in favorites,
+        format = if (cardShape == TvLibraryCardShape.PORTRAIT) TvMediaCardFormat.POSTER else TvMediaCardFormat.LANDSCAPE,
+        artworkFit =
+            if (artwork?.imageType == "Primary") {
+                TvMediaCardArtworkFit.CONTAIN_PORTRAIT
+            } else {
+                TvMediaCardArtworkFit.CROP
+            },
+        fillWidth = true,
+        onClick = onClick,
+        onFocused = {
+            focusMemory.remember(routeKey, "items", item.id, index + 1, index)
+        },
+        focusTargetId = targetId,
+        focusToNavigationRailOnLeft = isTvGridLeftEdge(index, columns),
+        modifier = Modifier.tvScreenEntryFocus(entryFocus, targetId).testTag("tv-library-all-title-${item.id}"),
+    )
 }
 
 @Composable
@@ -577,6 +634,7 @@ private fun TvStrings.tvLibraryQueryLabels() =
         genre = genre,
         year = releaseYearSort,
         mediaType = mediaType,
+        mediaTypeNames = mediaTypeLabels,
         all = all,
         clear = clearFilters,
         apply = applyLabel,
@@ -592,7 +650,7 @@ private fun tvLibraryMediaTypes(collectionType: String?): List<LibraryMediaType>
         else -> LibraryMediaType.entries
     }
 
-private fun tvLibraryHasReliablePosters(items: List<JellyfinItem>): Boolean {
+internal fun tvLibraryHasReliablePosters(items: List<JellyfinItem>): Boolean {
     if (items.isEmpty()) return true
     val withPoster = items.count { it.primaryImageTag != null || it.seriesPrimaryImageTag != null }
     return withPoster.toFloat() / items.size >= 0.6f

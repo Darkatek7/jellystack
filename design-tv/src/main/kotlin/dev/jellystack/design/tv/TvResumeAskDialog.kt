@@ -25,42 +25,52 @@ internal fun TvResumeAskDialog(
     strings: TvStrings,
     onAnswer: (PlaybackStartPolicy?) -> Unit,
 ) {
-    val resumeFocus = rememberTvDialogInitialFocus()
     Dialog(onDismissRequest = { onAnswer(null) }) {
-        Column(
-            Modifier
-                .width(620.dp)
-                .background(TvSurfaceRaised, RoundedCornerShape(28.dp))
-                .padding(34.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp),
-        ) {
-            Text(
-                strings.resumeAskTitle,
-                modifier = Modifier.tvHeading(),
-                fontSize = 30.sp,
-                fontWeight = FontWeight.Bold,
-                color = TvText,
+        TvResumeAskDialogContent(positionLabel, strings, onAnswer)
+    }
+}
+
+/** The prompt itself, apart from the window it opens in. */
+@Composable
+internal fun TvResumeAskDialogContent(
+    positionLabel: String,
+    strings: TvStrings,
+    onAnswer: (PlaybackStartPolicy?) -> Unit,
+) {
+    val resumeFocus = rememberTvDialogInitialFocus()
+    Column(
+        Modifier
+            .width(620.dp)
+            .background(TvSurfaceRaised, RoundedCornerShape(28.dp))
+            .padding(34.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
+    ) {
+        Text(
+            strings.resumeAskTitle,
+            modifier = Modifier.tvHeading(),
+            fontSize = 30.sp,
+            fontWeight = FontWeight.Bold,
+            color = TvText,
+        )
+        Text(
+            strings.continueFrom.format(positionLabel),
+            fontSize = 19.sp,
+            color = TvTextMuted,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            TvActionButton(
+                strings.continueLabel,
+                primary = true,
+                modifier = Modifier.width(230.dp),
+                focusRequester = resumeFocus,
+                onClick = { onAnswer(PlaybackStartPolicy.RESUME) },
             )
-            Text(
-                strings.continueFrom.format(positionLabel),
-                fontSize = 19.sp,
-                color = TvTextMuted,
+            TvActionButton(
+                strings.restart,
+                modifier = Modifier.width(230.dp),
+                onClick = { onAnswer(PlaybackStartPolicy.RESTART) },
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                TvActionButton(
-                    strings.continueLabel,
-                    primary = true,
-                    modifier = Modifier.width(230.dp),
-                    focusRequester = resumeFocus,
-                    onClick = { onAnswer(PlaybackStartPolicy.RESUME) },
-                )
-                TvActionButton(
-                    strings.restart,
-                    modifier = Modifier.width(230.dp),
-                    onClick = { onAnswer(PlaybackStartPolicy.RESTART) },
-                )
-                TvActionButton(strings.cancel, onClick = { onAnswer(null) })
-            }
+            TvActionButton(strings.cancel, onClick = { onAnswer(null) })
         }
     }
 }

@@ -157,6 +157,56 @@ class PlaybackDeviceProfileProviderTest {
     }
 
     @Test
+    fun videoRangeConditionListsOnlyAllowedRangeTypesAndNeverBlocksUnclassifiedStreams() {
+        val profile =
+            PlaybackDeviceProfileFactory.create(
+                name = "HDR TV",
+                capabilities =
+                    PlaybackDecoderCapabilities(
+                        videoCodecs = setOf(PlaybackVideoCodec.HEVC, PlaybackVideoCodec.H264),
+                        videoRanges =
+                            mapOf(
+                                PlaybackVideoCodec.HEVC to
+                                    setOf(
+                                        PlaybackVideoRange.DOVI_WITH_HDR10,
+                                        PlaybackVideoRange.SDR,
+                                        PlaybackVideoRange.HDR10,
+                                    ),
+                                // Not a direct-play codec of this device, so it gets no condition.
+                                PlaybackVideoCodec.AV1 to setOf(PlaybackVideoRange.SDR),
+                            ),
+                    ),
+            )
+
+        val hevc = profile.codecProfiles.single { it.type == "Video" }
+        assertEquals("hevc", hevc.codec)
+        val condition = hevc.conditions.single()
+        assertEquals("VideoRangeType", condition.property)
+        assertEquals("EqualsAny", condition.condition)
+        assertEquals("SDR|HDR10|DOVIWithHDR10", condition.value)
+        assertFalse(condition.isRequired)
+    }
+
+    @Test
+    fun passthroughCodecsAreOnlyEverDirectPlayInputsInMkv() {
+        val profile =
+            PlaybackDeviceProfileFactory.create(
+                name = "Passthrough",
+                capabilities =
+                    PlaybackDecoderCapabilities(
+                        videoCodecs = setOf(PlaybackVideoCodec.H264),
+                        audioCodecs = PlaybackAudioCodec.entries.toSet(),
+                    ),
+            )
+
+        assertEquals(
+            listOf("mkv"),
+            profile.directPlayProfiles.filter { "dts" in it.audioCodec || "truehd" in it.audioCodec }.map { it.container },
+        )
+        assertTrue(profile.transcodingProfiles.none { "dts" in it.audioCodec || "truehd" in it.audioCodec })
+    }
+
+    @Test
     fun tvAacProfileCapsDirectAndTranscodedAudioAtStereo() {
         val profile =
             PlaybackDeviceProfileFactory.create(

@@ -110,6 +110,91 @@ class JellyfinPlaybackApiTest {
         }
 
     @Test
+    fun openingALiveChannelAsksForTheStreamAndReadsItsId() =
+        runTest {
+            var body = ""
+            var autoOpen: String? = null
+            val engine =
+                MockEngine { request ->
+                    body = request.bodyText()
+                    autoOpen = request.url.parameters["AutoOpenLiveStream"]
+                    respond(
+                        """{"PlaySessionId":"play-1","MediaSources":[{"Id":"mediasource-1","LiveStreamId":"live-1","IsInfiniteStream":true,"TranscodingUrl":"/videos/channel-1/master.m3u8?LiveStreamId=live-1"}]}""",
+                        HttpStatusCode.OK,
+                        headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                    )
+                }
+            val client = NetworkClientFactory.create(ClientConfig(engine = engine, installLogging = false))
+            val request =
+                JellyfinPlaybackInfoRequestDto(
+                    userId = "user-1",
+                    deviceProfile =
+                        JellyfinDeviceProfileDto(
+                            name = "Test",
+                            directPlayProfiles = emptyList(),
+                            transcodingProfiles = emptyList(),
+                        ),
+                    enableDirectPlay = false,
+                    enableDirectStream = false,
+                    enableTranscoding = true,
+                    allowVideoStreamCopy = true,
+                    allowAudioStreamCopy = true,
+                    autoOpenLiveStream = true,
+                )
+
+            val response =
+                JellyfinPlaybackApi(client, "https://example.test", "dummy-token")
+                    .fetchPlaybackInfo("channel-1", "user-1", request)
+
+            assertEquals("true", autoOpen)
+            assertTrue(body.contains("\"AutoOpenLiveStream\":true"))
+            assertEquals("live-1", response.mediaSources.single().liveStreamId)
+            assertTrue(response.mediaSources.single().isInfiniteStream)
+            client.close()
+        }
+
+    @Test
+    fun aVideoRequestDoesNotMentionLiveStreams() =
+        runTest {
+            var body = ""
+            var autoOpen: String? = null
+            val engine =
+                MockEngine { request ->
+                    body = request.bodyText()
+                    autoOpen = request.url.parameters["AutoOpenLiveStream"]
+                    respond(
+                        """{"MediaSources":[]}""",
+                        HttpStatusCode.OK,
+                        headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                    )
+                }
+            val client = NetworkClientFactory.create(ClientConfig(engine = engine, installLogging = false))
+
+            JellyfinPlaybackApi(client, "https://example.test", "dummy-token").fetchPlaybackInfo(
+                "item-1",
+                "user-1",
+                JellyfinPlaybackInfoRequestDto(
+                    userId = "user-1",
+                    deviceProfile =
+                        JellyfinDeviceProfileDto(
+                            name = "Test",
+                            directPlayProfiles = emptyList(),
+                            transcodingProfiles = emptyList(),
+                        ),
+                    enableDirectPlay = true,
+                    enableDirectStream = true,
+                    enableTranscoding = true,
+                    allowVideoStreamCopy = true,
+                    allowAudioStreamCopy = true,
+                ),
+            )
+
+            assertNull(autoOpen)
+            assertTrue(!body.contains("AutoOpenLiveStream"))
+            client.close()
+        }
+
+    @Test
     fun omittedSupportsTranscodingRemainsUnknown() =
         runTest {
             val engine =

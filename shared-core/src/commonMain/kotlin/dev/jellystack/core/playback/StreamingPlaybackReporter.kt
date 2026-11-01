@@ -9,6 +9,12 @@ data class StreamingProgressContext(
     val audioStreamIndex: Int?,
     val subtitleStreamIndex: Int?,
     val strategy: StreamingPlayStrategy,
+    /**
+     * A Live TV channel: it has no position, so reports carry none and never touch the user's watched state or
+     * resume point, and its [liveStreamId] is closed when playback stops.
+     */
+    val isLive: Boolean = false,
+    val liveStreamId: String? = null,
 )
 
 enum class StreamingPlayStrategy {

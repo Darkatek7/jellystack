@@ -2,6 +2,7 @@ package dev.jellystack.players
 
 import android.content.Context
 import android.net.Uri
+import android.os.Handler
 import android.os.Looper
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem.SubtitleConfiguration
@@ -9,6 +10,9 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.Renderer
+import androidx.media3.exoplayer.audio.AudioRendererEventListener
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.SingleSampleMediaSource
@@ -58,11 +62,59 @@ internal fun ResolvedSubtitle.toSubtitleConfiguration(): SubtitleConfiguration =
  * Sideloaded single-sample subtitles deliver raw `text/vtt` and `application/x-subrip` samples,
  * which the default text renderer refuses to decode unless legacy decoding is enabled. The
  * renderer also decodes sideloaded Jellyfin `.sup` files (PGS) through [JellystackSubtitleDecoderFactory].
+ *
+ * Decoder fallback is on: when the preferred (usually hardware) decoder of an audio or video renderer fails to
+ * initialise, Media3 tries the next decoder for the same format before reporting an error. Only when every
+ * decoder fails does the same renderer error as before reach the player, so the server-side fallback chain
+ * (`PlaybackFallbackState`) still starts from the unchanged error.
+ *
+ * [softwareAudio], when the host app brings one, adds its renderer after the platform audio renderers. Media3
+ * resolves a tie between renderers in favour of the earlier one, so a track a platform decoder or a passthrough
+ * route can take never reaches the software decoder. Media3's own extension renderer mode is deliberately left
+ * off: it would also load the extension's experimental FFmpeg video renderer by reflection.
  */
 @UnstableApi
 internal class JellystackRenderersFactory(
     context: Context,
+    private val delays: PlaybackDelays = PlaybackDelays(),
+    private val softwareAudio: SoftwareAudioDecoding? = null,
 ) : DefaultRenderersFactory(context) {
+    init {
+        setEnableDecoderFallback(true)
+    }
+
+    override fun buildAudioSink(
+        context: Context,
+        enableFloatOutput: Boolean,
+        enableAudioOutputPlaybackParams: Boolean,
+    ): AudioSink? =
+        super
+            .buildAudioSink(context, enableFloatOutput, enableAudioOutputPlaybackParams)
+            ?.let { DelayedAudioSink(it, delays) }
+
+    override fun buildAudioRenderers(
+        context: Context,
+        extensionRendererMode: Int,
+        mediaCodecSelector: MediaCodecSelector,
+        enableDecoderFallback: Boolean,
+        audioSink: AudioSink,
+        eventHandler: Handler,
+        eventListener: AudioRendererEventListener,
+        out: ArrayList<Renderer>,
+    ) {
+        super.buildAudioRenderers(
+            context,
+            extensionRendererMode,
+            mediaCodecSelector,
+            enableDecoderFallback,
+            audioSink,
+            eventHandler,
+            eventListener,
+            out,
+        )
+        softwareAudio?.let { out.add(it.createAudioRenderer(eventHandler, eventListener, audioSink)) }
+    }
+
     override fun buildTextRenderers(
         context: Context,
         output: TextOutput,
@@ -72,7 +124,7 @@ internal class JellystackRenderersFactory(
     ) {
         val renderer = TextRenderer(output, outputLooper, JellystackSubtitleDecoderFactory)
         renderer.experimentalSetLegacyDecodingEnabled(true)
-        out.add(renderer)
+        out.add(DelayedTextRenderer(renderer, delays))
     }
 }
 

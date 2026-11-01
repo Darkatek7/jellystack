@@ -55,6 +55,7 @@ import dev.jellystack.core.coroutines.runSuspendCatching
 import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.preferences.SubtitleBackground
 import dev.jellystack.core.preferences.SubtitleTextSize
+import dev.jellystack.core.preferences.VideoScale
 import dev.jellystack.players.AndroidPlayerEngine
 import dev.jellystack.players.PlaybackContinuationState
 import dev.jellystack.players.PlaybackController
@@ -65,6 +66,7 @@ import dev.jellystack.players.PlaybackSegmentAction
 import dev.jellystack.players.PlaybackSegmentState
 import dev.jellystack.players.PlaybackSegmentType
 import dev.jellystack.players.PlaybackState
+import dev.jellystack.players.isLive
 import dev.jellystack.players.shouldOfferUpNext
 import dev.jellystack.players.syncplay.SyncPlayCoordinator
 import dev.jellystack.players.syncplay.SyncPlayUiState
@@ -85,6 +87,9 @@ internal fun TvPlaybackScreen(
     seekForwardSeconds: Int = 30,
     subtitleTextSize: SubtitleTextSize = SubtitleTextSize.SYSTEM,
     subtitleBackground: SubtitleBackground = SubtitleBackground.SYSTEM,
+    videoScale: VideoScale = VideoScale.FIT,
+    onVideoScaleSelected: (VideoScale) -> Unit = {},
+    matchRefreshRate: Boolean = false,
     extrasState: PlaybackExtrasState = PlaybackExtrasState(),
     timelineSegments: List<PlaybackSegment> = emptyList(),
     imageBaseUrl: String? = null,
@@ -97,11 +102,35 @@ internal fun TvPlaybackScreen(
     onPlayNext: () -> Unit,
     onCancelAutoplay: () -> Unit = {},
     startActions: TvPlayerStartActions = TvPlayerStartActions({}, {}, {}),
+    audioQueue: TvAudioQueueControls = TvAudioQueueControls(),
     strings: TvStrings,
     stopPlayback: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Leaving the route ends playback and a start still under way, whichever surface shows it.
+    DisposableEffect(engine) {
+        onDispose {
+            startActions.onCancel()
+            stopPlayback()
+        }
+    }
+    if (rememberTvPlayerSurface(playbackState, startState) == TvPlayerSurface.AUDIO) {
+        TvAudioPlayerScreen(
+            state =
+                TvAudioPlayerState(
+                    playback = playbackState,
+                    start = startState,
+                    images = TvPlayerImageSource(imageBaseUrl, imageAccessToken),
+                    hasNext = continuationState.nextTarget != null,
+                ),
+            transport = tvAudioTransport(playbackState, audioQueue, onSetPaused, onSeekTo, onPlayNext),
+            errors = TvAudioErrorActions(controller::retry, startActions.onRetry, onClose),
+            strings = strings,
+            modifier = modifier,
+        )
+        return
+    }
     val scope = rememberCoroutineScope()
     var controlsVisible by remember { mutableStateOf(true) }
     var navigation by remember { mutableStateOf(TvPlayerPanelNavigation.closed()) }
@@ -120,7 +149,7 @@ internal fun TvPlaybackScreen(
             continuationState = continuationState,
             context =
                 TvPlaybackActionContext(
-                    isEpisode = active?.metadata?.seriesId != null,
+                    isEpisode = active?.metadata?.seriesId != null || continuationState.nextTarget?.fromQueue == true,
                     phase = active?.phase ?: PlaybackPhase.Ready,
                     upNextDue =
                         !upNextDismissed &&
@@ -202,6 +231,17 @@ internal fun TvPlaybackScreen(
     LaunchedEffect(engine, subtitleBottomPaddingFraction) {
         engine.setSubtitleBottomPaddingFraction(subtitleBottomPaddingFraction)
     }
+    LaunchedEffect(engine, videoScale) {
+        engine.setVideoScale(videoScale)
+    }
+    val delays = rememberTvPlaybackDelays(engine, playbackState)
+    // This screen is the Player route only, so Home trailer previews never switch the display mode.
+    TvDisplayModeMatching(
+        enabled = matchRefreshRate,
+        mediaId = active?.mediaId,
+        // Only a ready player has the video format of this title; before that the stats can still carry the last one.
+        frameRate = active?.takeIf { it.phase == PlaybackPhase.Ready }?.runtimeStats?.frameRate,
+    )
 
     LaunchedEffect(endedUpNextId) {
         if (endedUpNextId != null) controlsVisible = true
@@ -237,8 +277,6 @@ internal fun TvPlaybackScreen(
     DisposableEffect(engine) {
         onDispose {
             engine.setSubtitleBottomPaddingFraction(TV_SUBTITLE_NORMAL_PADDING_FRACTION)
-            startActions.onCancel()
-            stopPlayback()
         }
     }
     DisposableEffect(promptCoordinator) { onDispose(promptCoordinator::release) }
@@ -340,15 +378,18 @@ internal fun TvPlaybackScreen(
                         KeyEvent.KEYCODE_DPAD_RIGHT,
                         ->
                             if (navigation.current == TvPlayerPanel.NONE && !controlsVisible && active != null) {
-                                // Hidden controls: preview the target with the seek bar and seek on release.
-                                val stepMs =
-                                    if (event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
-                                        -seekBackSeconds * 1_000L
-                                    } else {
-                                        seekForwardSeconds * 1_000L
-                                    }
-                                hiddenScrubVisible = true
-                                hiddenScrub.press(active.positionMs, active.durationMs, stepMs, event.nativeKeyEvent.repeatCount)
+                                // Hidden controls: preview the target with the seek bar and seek on release. A live
+                                // channel has nothing to seek in; the key is consumed and does nothing.
+                                if (!active.isLive) {
+                                    val stepMs =
+                                        if (event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+                                            -seekBackSeconds * 1_000L
+                                        } else {
+                                            seekForwardSeconds * 1_000L
+                                        }
+                                    hiddenScrubVisible = true
+                                    hiddenScrub.press(active.positionMs, active.durationMs, stepMs, event.nativeKeyEvent.repeatCount)
+                                }
                                 true
                             } else {
                                 false
@@ -510,6 +551,9 @@ internal fun TvPlaybackScreen(
                 onQualitySelected = controller::selectQuality,
                 onSpeedSelected = controller::setPlaybackSpeed,
                 onStatsToggled = controller::setStatsForNerdsEnabled,
+                videoScale = videoScale,
+                onVideoScaleSelected = onVideoScaleSelected,
+                delays = delays,
                 syncPlay = syncPlay,
                 modifier = Modifier.align(Alignment.CenterEnd),
                 chapterSummary =
@@ -534,7 +578,7 @@ internal fun TvPlayerBackHandler(onBack: () -> Unit) {
 }
 
 @Composable
-private fun TvPlaybackError(
+internal fun TvPlaybackError(
     title: String,
     message: String,
     onRetry: () -> Unit,

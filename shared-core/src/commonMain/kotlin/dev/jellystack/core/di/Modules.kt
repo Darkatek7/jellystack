@@ -20,6 +20,8 @@ import dev.jellystack.core.jellyseerr.JellyseerrAuthenticator
 import dev.jellystack.core.jellyseerr.JellyseerrEnvironmentProvider
 import dev.jellystack.core.jellyseerr.JellyseerrRepository
 import dev.jellystack.core.jellyseerr.ServerRepositoryJellyseerrEnvironmentProvider
+import dev.jellystack.core.livetv.LiveTvRepository
+import dev.jellystack.core.livetv.defaultLiveTvApiFactory
 import dev.jellystack.core.logging.NoOpTelemetryTracker
 import dev.jellystack.core.logging.TelemetryTracker
 import dev.jellystack.core.preferences.AppSettingsRepository
@@ -119,6 +121,16 @@ fun coreModule(): Module =
                 environmentProvider = get(),
                 apiFactory = get(homeSectionsApiFactoryQualifier),
                 localeProvider = get(),
+            )
+        }
+        single {
+            LiveTvRepository(
+                environmentProvider = get(),
+                apiFactory =
+                    defaultLiveTvApiFactory(
+                        acceptLanguageProvider = { get<JellystackLocaleProvider>().languageTag() },
+                        authExpirySignal = get(),
+                    ),
             )
         }
         single<JellyfinSessionApiFactory>(jellyfinSessionApiFactoryQualifier) {

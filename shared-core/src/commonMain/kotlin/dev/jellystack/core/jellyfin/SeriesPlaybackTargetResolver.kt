@@ -58,6 +58,16 @@ class SeriesPlaybackTargetResolver {
         return listOf(primary) + remaining
     }
 
+    /** The available episodes in the order they are meant to be watched: numbered seasons, then specials. */
+    fun playOrder(
+        episodes: List<JellyfinItem>,
+        completedDownloadIds: Set<String>,
+    ): List<JellyfinItem> =
+        episodes
+            .filter { it.type.equals("Episode", ignoreCase = true) }
+            .filter { it.id in completedDownloadIds || it.hasAvailableLocation() }
+            .sortedWith(episodeComparator)
+
     private fun JellyfinItem.hasAvailableLocation(): Boolean =
         locationType.equals("FileSystem", ignoreCase = true) ||
             locationType.equals("Offline", ignoreCase = true)

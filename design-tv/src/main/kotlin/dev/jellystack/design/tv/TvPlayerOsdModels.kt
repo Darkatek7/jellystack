@@ -11,6 +11,7 @@ import dev.jellystack.players.PlaybackExtrasState
 import dev.jellystack.players.PlaybackSegment
 import dev.jellystack.players.PlaybackState
 import dev.jellystack.players.SubtitleTrack
+import dev.jellystack.players.isLive
 import dev.jellystack.players.playbackEndsAtMs
 import dev.jellystack.players.playbackTimelineMarkers
 import kotlinx.coroutines.delay
@@ -35,6 +36,9 @@ internal fun PlaybackState.Active.toTvPlayerOsdModel(
         audioCompactLabel = tvAudioButtonLabel(audioTrack, strings.locale, withChannels = false),
         subtitleLabel = subtitleTrack?.let { tvSubtitleButtonLabel(it, strings.locale) } ?: strings.off,
         promptActions = promptActions,
+        liveLabel =
+            strings.messages.liveTv.live
+                .takeIf { isLive },
     )
 }
 

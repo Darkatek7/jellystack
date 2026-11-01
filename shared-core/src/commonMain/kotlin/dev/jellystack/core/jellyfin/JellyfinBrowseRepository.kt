@@ -35,6 +35,16 @@ typealias JellyfinBrowseApiFactory = (JellyfinEnvironment) -> JellyfinBrowseApi
 
 private const val FILTER_ERROR_PHRASE = "No media found with the specified filter"
 
+/** The most entries a person page, collection, or playlist lists; one request, no paging. */
+const val ITEM_LIST_LIMIT = 500
+private const val PERSON_EPISODE_ITEM_TYPE = "Episode"
+private const val PERSON_ITEM_TYPES = "Movie,Series"
+private const val AUDIO_ITEM_TYPE = "Audio"
+private const val ALBUM_ITEM_TYPE = "MusicAlbum"
+
+/** Disc, then track number, then name for tracks without numbers. */
+private const val ALBUM_TRACK_SORT = "ParentIndexNumber,IndexNumber,SortName"
+
 private fun detailCacheKey(
     serverId: String,
     itemId: String,
@@ -678,19 +688,20 @@ class JellyfinBrowseRepository(
                 put("ItemId", context.mediaId)
                 put("PlaySessionId", playSessionId)
                 context.mediaSourceId?.let { put("MediaSourceId", it) }
+                context.liveStreamId?.let { put("LiveStreamId", it) }
                 context.audioStreamIndex?.let { put("AudioStreamIndex", it) }
                 context.subtitleStreamIndex?.let { put("SubtitleStreamIndex", it) }
-                put("CanSeek", true)
+                put("CanSeek", !context.isLive)
                 put("IsMuted", false)
                 put("IsPaused", false)
                 put("PlaybackRate", 1.0)
                 put("RepeatMode", "RepeatNone")
-                put("PositionTicks", positionTicks)
+                if (!context.isLive) put("PositionTicks", positionTicks)
                 put("PlayMethod", playMethod)
                 environment.deviceId?.let { put("DeviceId", it) }
             }
         runCatching { api.startStreamingPlayback(environment.userId, body) }
-        runCatching { reportOfflineProgress(context.mediaId, positionMs) }
+        if (!context.isLive) runCatching { reportOfflineProgress(context.mediaId, positionMs) }
     }
 
     suspend fun reportStreamingProgress(
@@ -707,12 +718,13 @@ class JellyfinBrowseRepository(
                 put("ItemId", context.mediaId)
                 put("PlaySessionId", playSessionId)
                 context.mediaSourceId?.let { put("MediaSourceId", it) }
-                put("PositionTicks", positionTicks)
+                context.liveStreamId?.let { put("LiveStreamId", it) }
+                if (!context.isLive) put("PositionTicks", positionTicks)
                 put("IsPaused", false)
                 put("PlayMethod", playMethod)
             }
         runCatching { api.reportStreamingProgress(environment.userId, body) }
-        runCatching { reportOfflineProgress(context.mediaId, positionMs) }
+        if (!context.isLive) runCatching { reportOfflineProgress(context.mediaId, positionMs) }
     }
 
     suspend fun stopStreamingPlayback(
@@ -722,21 +734,30 @@ class JellyfinBrowseRepository(
     ) {
         val environment = environmentProvider.current() ?: return
         val api = apiFor(environment)
-        val playSessionId = context.playSessionId ?: return
         val playMethod = context.strategy.toApiValue()
-        val positionTicks = positionMs?.let { if (it <= 0) 0L else it * 10_000 }
-        val body =
-            buildJsonObject {
-                put("ItemId", context.mediaId)
-                put("PlaySessionId", playSessionId)
-                context.mediaSourceId?.let { put("MediaSourceId", it) }
-                positionTicks?.let { put("PositionTicks", it) }
-                put("PlayMethod", playMethod)
-                environment.deviceId?.let { put("DeviceId", it) }
+        // A live stream is closed whatever else happens: the server keeps the tuner busy until it is.
+        try {
+            val playSessionId = context.playSessionId ?: return
+            val positionTicks = positionMs?.takeUnless { context.isLive }?.let { if (it <= 0) 0L else it * 10_000 }
+            val body =
+                buildJsonObject {
+                    put("ItemId", context.mediaId)
+                    put("PlaySessionId", playSessionId)
+                    context.mediaSourceId?.let { put("MediaSourceId", it) }
+                    context.liveStreamId?.let { put("LiveStreamId", it) }
+                    positionTicks?.let { put("PositionTicks", it) }
+                    put("PlayMethod", playMethod)
+                    environment.deviceId?.let { put("DeviceId", it) }
+                }
+            runCatching { api.stopStreamingPlayback(environment.userId, body) }
+            if (completed && !context.isLive) {
+                runCatching { markOfflinePlaybackCompleted(context.mediaId) }
             }
-        runCatching { api.stopStreamingPlayback(environment.userId, body) }
-        if (completed) {
-            runCatching { markOfflinePlaybackCompleted(context.mediaId) }
+        } finally {
+            context.liveStreamId?.let { liveStreamId ->
+                runSuspendCatching { api.closeLiveStream(liveStreamId) }
+                    .onFailure { JellystackLog.w("Closing the live stream failed (${it.javaClass.simpleName})") }
+            }
         }
     }
 
@@ -878,6 +899,138 @@ class JellyfinBrowseRepository(
                 .fetchSimilarItems(environment.userId, itemId, limit)
                 .items
                 .map { item -> item.toRecord(environment, fallbackLibraryId = item.parentId, updatedAt = now) }
+        itemStore.upsert(records)
+        return records.map { it.toDomain() }
+    }
+
+    /** Movies and series [personId] appears in, from all libraries the user can see. */
+    suspend fun personItems(
+        personId: String,
+        limit: Int = ITEM_LIST_LIMIT,
+    ): List<JellyfinItem> {
+        val environment = environmentProvider.current() ?: return emptyList()
+        val titles = personItemsOfTypes(environment, personId, PERSON_ITEM_TYPES, limit)
+        if (titles.isNotEmpty()) return titles
+        // Series metadata often lists a voice cast only on the episodes; one entry per series is enough here.
+        return personItemsOfTypes(environment, personId, PERSON_EPISODE_ITEM_TYPE, limit).distinctBy { it.seriesId ?: it.id }
+    }
+
+    private suspend fun personItemsOfTypes(
+        environment: JellyfinEnvironment,
+        personId: String,
+        itemTypes: String,
+        limit: Int,
+    ): List<JellyfinItem> =
+        apiFor(environment)
+            .fetchLibraryItems(
+                userId = environment.userId,
+                libraryId = "",
+                startIndex = 0,
+                limit = limit.coerceIn(1, ITEM_LIST_LIMIT),
+                includeItemTypes = itemTypes,
+                recursive = true,
+                personIds = listOf(personId),
+                sortBy = "ProductionYear,SortName",
+                sortOrder = "Descending",
+            ).cacheAndMap(environment)
+
+    /** The direct children of a collection (BoxSet) in release order, with the user's watched state. */
+    suspend fun collectionItems(
+        collectionId: String,
+        limit: Int = ITEM_LIST_LIMIT,
+    ): List<JellyfinItem> {
+        val environment = environmentProvider.current() ?: return emptyList()
+        val response =
+            apiFor(environment).fetchLibraryItems(
+                userId = environment.userId,
+                libraryId = collectionId,
+                startIndex = 0,
+                limit = limit.coerceIn(1, ITEM_LIST_LIMIT),
+                includeItemTypes = null,
+                recursive = false,
+                sortBy = "PremiereDate,SortName",
+            )
+        return response.cacheAndMap(environment)
+    }
+
+    /** The tracks of an album in disc and track order; tracks without numbers follow by name. */
+    suspend fun albumTracks(
+        albumId: String,
+        limit: Int = ITEM_LIST_LIMIT,
+    ): List<JellyfinItem> {
+        val environment = environmentProvider.current() ?: return emptyList()
+        val response =
+            apiFor(environment).fetchLibraryItems(
+                userId = environment.userId,
+                libraryId = albumId,
+                startIndex = 0,
+                limit = limit.coerceIn(1, ITEM_LIST_LIMIT),
+                includeItemTypes = AUDIO_ITEM_TYPE,
+                recursive = true,
+                sortBy = ALBUM_TRACK_SORT,
+            )
+        return response.cacheAndMap(environment)
+    }
+
+    /** The albums [artistId] made, newest first. */
+    suspend fun artistAlbums(
+        artistId: String,
+        limit: Int = ITEM_LIST_LIMIT,
+    ): List<JellyfinItem> {
+        val environment = environmentProvider.current() ?: return emptyList()
+        val response =
+            apiFor(environment).fetchLibraryItems(
+                userId = environment.userId,
+                libraryId = "",
+                startIndex = 0,
+                limit = limit.coerceIn(1, ITEM_LIST_LIMIT),
+                includeItemTypes = ALBUM_ITEM_TYPE,
+                recursive = true,
+                albumArtistIds = listOf(artistId),
+                sortBy = "ProductionYear,SortName",
+                sortOrder = "Descending",
+            )
+        return response.cacheAndMap(environment)
+    }
+
+    /** Every track on the albums of [artistId], album by album, each in disc and track order. */
+    suspend fun artistTracks(
+        artistId: String,
+        limit: Int = ITEM_LIST_LIMIT,
+    ): List<JellyfinItem> {
+        val environment = environmentProvider.current() ?: return emptyList()
+        val response =
+            apiFor(environment).fetchLibraryItems(
+                userId = environment.userId,
+                libraryId = "",
+                startIndex = 0,
+                limit = limit.coerceIn(1, ITEM_LIST_LIMIT),
+                includeItemTypes = AUDIO_ITEM_TYPE,
+                recursive = true,
+                albumArtistIds = listOf(artistId),
+                sortBy = "Album,$ALBUM_TRACK_SORT",
+            )
+        return response.cacheAndMap(environment)
+    }
+
+    /** The entries of a playlist in the playlist's own order. */
+    suspend fun playlistItems(
+        playlistId: String,
+        limit: Int = ITEM_LIST_LIMIT,
+    ): List<JellyfinItem> {
+        val environment = environmentProvider.current() ?: return emptyList()
+        val response =
+            apiFor(environment).fetchPlaylistItems(
+                userId = environment.userId,
+                playlistId = playlistId,
+                limit = limit.coerceIn(1, ITEM_LIST_LIMIT),
+            )
+        return response.cacheAndMap(environment)
+    }
+
+    private suspend fun JellyfinItemsResponse.cacheAndMap(environment: JellyfinEnvironment): List<JellyfinItem> {
+        val now = clock.now()
+        val records = items.map { it.toRecord(environment, fallbackLibraryId = it.parentId, updatedAt = now) }
         itemStore.upsert(records)
         return records.map { it.toDomain() }
     }
@@ -1096,7 +1249,23 @@ private fun JellyfinItemDetailDto.toDomain(): JellyfinItemDetail =
                     )
                 },
         parentBackdropImageTags = parentBackdropImageTags.orEmpty(),
+        music = trackInfo(),
     )
+
+private fun JellyfinItemDetailDto.trackInfo(): JellyfinTrackInfo? {
+    val artist =
+        artists
+            .orEmpty()
+            .filter(String::isNotBlank)
+            .joinToString(", ")
+            .ifBlank { albumArtist?.takeIf(String::isNotBlank) }
+    val albumName = album?.takeIf(String::isNotBlank)
+    return if (artist == null && albumName == null) {
+        null
+    } else {
+        JellyfinTrackInfo(albumName, albumId, albumPrimaryImageTag, artist)
+    }
+}
 
 private fun JellyfinMediaSourceDto.toDomain(): JellyfinMediaSource =
     JellyfinMediaSource(

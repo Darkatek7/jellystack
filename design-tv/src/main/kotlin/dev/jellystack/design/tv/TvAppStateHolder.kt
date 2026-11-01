@@ -75,6 +75,12 @@ internal class TvAppStateHolder(
 
     val focusMemory = TvFocusMemory(initialSnapshot.focusSnapshots)
 
+    /**
+     * Told the focus route key of a page that left the back stack, after its [focusMemory] entry is gone, so the owner
+     * of the focus coordinator can drop what that remembers too.
+     */
+    var onRouteForgotten: (String) -> Unit = {}
+
     var state by
         mutableStateOf(
             uiState(
@@ -95,19 +101,38 @@ internal class TvAppStateHolder(
             } else {
                 state.backStack + route
             }
-        state = state.withBackStack(nextBackStack)
+        replaceBackStack(nextBackStack)
     }
 
     fun selectTopLevel(route: TvRoute) {
         val nextBackStack = listOf(route)
         if (state.backStack == nextBackStack) return
-        state = state.withBackStack(nextBackStack)
+        replaceBackStack(nextBackStack)
     }
 
     fun popRoute(): Boolean {
         if (state.backStack.size <= 1) return false
-        state = state.withBackStack(state.backStack.dropLast(1))
+        replaceBackStack(state.backStack.dropLast(1))
         return true
+    }
+
+    /**
+     * Pages opened from another screen start on their default focus every time they are opened. Going back to one
+     * from a page opened on top of it still restores focus, because it never left the back stack.
+     */
+    private fun replaceBackStack(nextBackStack: List<TvRoute>) {
+        val previous = state.backStack
+        state = state.withBackStack(nextBackStack)
+        val kept = state.backStack.mapTo(mutableSetOf()) { it.focusRouteKey() }
+        previous
+            .filter(TvRoute::forgetsFocusWhenClosed)
+            .map { it.focusRouteKey() }
+            .distinct()
+            .filterNot(kept::contains)
+            .forEach { routeKey ->
+                focusMemory.forget(routeKey)
+                onRouteForgotten(routeKey)
+            }
     }
 
     /** Leaves the player route after playback stopped outside it; a no-op anywhere else. */
@@ -231,6 +256,13 @@ internal class TvAppStateHolder(
         }
     }
 }
+
+/** Detail, person, and collection pages are opened for one title; the rail destinations and the library keep theirs. */
+internal fun TvRoute.forgetsFocusWhenClosed(): Boolean =
+    this is TvRoute.JellyfinDetail ||
+        this is TvRoute.SeerrDetail ||
+        this is TvRoute.Person ||
+        this is TvRoute.Collection
 
 private fun TvRoute.isDetailRoute(): Boolean = this is TvRoute.JellyfinDetail || this is TvRoute.SeerrDetail
 

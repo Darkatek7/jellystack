@@ -1807,6 +1807,47 @@ class PlaybackControllerTest {
         }
 
     @Test
+    fun selectingAServerBurnedInSubtitleDuringDirectPlayRenegotiatesInsteadOfFailingLocally() =
+        runTest {
+            val controllerScope = TestScope(UnconfinedTestDispatcher(testScheduler))
+            val engine = RecordingPlayerEngine()
+            val resolver = DirectThenHlsResolver()
+            val controller =
+                PlaybackController(
+                    playbackSourceResolver = resolver,
+                    playerEngine = engine,
+                    playbackPreferencesProvider = PlaybackPreferencesProvider { AppSettings(subtitleMode = SubtitleMode.OFF) },
+                    scope = controllerScope,
+                )
+            val baseDetail = sampleDetail(withDirect = true)
+            val detail =
+                baseDetail.copy(
+                    mediaSources =
+                        baseDetail.mediaSources.map { source ->
+                            if (source.id == "direct-source") {
+                                source.copy(streams = source.streams + subtitleStream(3, "dvdsub", "English DVD"))
+                            } else {
+                                source
+                            }
+                        },
+                )
+
+            try {
+                controller.play(PlaybackRequest.from(sampleItem(), detail), testEnvironment())
+                assertEquals(PlaybackMode.DIRECT, controller.currentSession()?.source?.mode)
+
+                controller.selectSubtitle("3")
+                controllerScope.advanceUntilIdle()
+
+                assertEquals(listOf(-1, 3), resolver.requests.map { it.subtitleStreamIndex })
+                assertEquals(PlaybackMode.HLS, controller.currentSession()?.source?.mode)
+                assertEquals("3", controller.currentSession()?.subtitleTrack?.id)
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
     fun newerHlsSubtitleSelectionCancelsAnOlderPendingSwitch() =
         runTest {
             val firstSwitchStarted = CompletableDeferred<Unit>()
@@ -3303,6 +3344,31 @@ private class RecordingSubtitleSwitchResolver : PlaybackSourceResolver {
             url = "https://example.test/${request.mediaId}-${options.subtitleStreamIndex}.m3u8",
             mode = PlaybackMode.HLS,
             playSessionId = options.playSessionId ?: "play-subtitle",
+            mediaSourceId = selection.sourceId,
+        ).copy(
+            audioStreamIndex = options.audioStreamIndex,
+            subtitleStreamIndex = options.subtitleStreamIndex,
+        )
+    }
+}
+
+/** Direct Play on the first negotiation, an HLS transcode on every later one. */
+private class DirectThenHlsResolver : PlaybackSourceResolver {
+    val requests = mutableListOf<PlaybackSourceOptions>()
+
+    override suspend fun resolve(
+        request: PlaybackRequest,
+        selection: PlaybackStreamSelection,
+        environment: JellyfinEnvironment,
+        startPositionMs: Long,
+        options: PlaybackSourceOptions,
+    ): ResolvedPlaybackSource {
+        requests += options
+        val mode = if (requests.size == 1) PlaybackMode.DIRECT else PlaybackMode.HLS
+        return resolvedSource(
+            url = "https://example.test/${request.mediaId}-${requests.size}",
+            mode = mode,
+            playSessionId = options.playSessionId ?: "play-burn-in",
             mediaSourceId = selection.sourceId,
         ).copy(
             audioStreamIndex = options.audioStreamIndex,

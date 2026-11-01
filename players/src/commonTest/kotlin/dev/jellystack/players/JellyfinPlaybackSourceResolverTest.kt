@@ -1121,6 +1121,96 @@ class JellyfinPlaybackSourceResolverTest {
             assertEquals(listOf("subtitle-0"), source.subtitles.map(ResolvedSubtitle::trackId))
         }
 
+    @Test
+    fun tvSinkThatPassesDtsThroughDirectPlaysItWhileAStereoSinkAsksTheServerToTranscode() {
+        fun resolverFor(vararg audio: PlaybackAudioCodec) =
+            JellyfinPlaybackSourceResolver(
+                RecordingPlaybackInfoService(directPlayResponse()),
+                tvProvider(tvSnapshot(*audio)),
+            )
+
+        val passthrough = resolverFor(PlaybackAudioCodec.AAC, PlaybackAudioCodec.EAC3, PlaybackAudioCodec.DTS, PlaybackAudioCodec.TRUEHD)
+        val stereo = resolverFor(PlaybackAudioCodec.AAC)
+
+        assertTrue(passthrough.canPlayAudioCodecLocally("dts"))
+        assertTrue(passthrough.canPlayAudioCodecLocally("truehd"))
+        assertFalse(stereo.canPlayAudioCodecLocally("dts"))
+        assertFalse(stereo.canPlayAudioCodecLocally("truehd"))
+    }
+
+    @Test
+    fun dvdAndDvbSubtitlesAreNeverFetchedAsSupAndAreBurnedInByTheServer() =
+        runTest {
+            val service =
+                RecordingPlaybackInfoService(
+                    JellyfinPlaybackInfoResponseDto(
+                        mediaSources =
+                            listOf(
+                                JellyfinPlaybackMediaSourceDto(
+                                    id = "source-1",
+                                    container = "mkv",
+                                    supportsDirectPlay = true,
+                                    supportsDirectStream = true,
+                                    supportsTranscoding = false,
+                                ),
+                            ),
+                    ),
+                )
+            val resolver = JellyfinPlaybackSourceResolver(service, tvProvider(tvSnapshot(PlaybackAudioCodec.EAC3)))
+            val request = videoRequest()
+            val tracks =
+                listOf(SubtitleFormat.SRT, SubtitleFormat.PGS, SubtitleFormat.BITMAP_BURN_IN).mapIndexed { index, format ->
+                    SubtitleTrack(
+                        id = "subtitle-$index",
+                        language = "en",
+                        title = "English",
+                        format = format,
+                        isDefault = false,
+                        isForced = false,
+                        streamIndex = index + 1,
+                    )
+                }
+            val selection = PlaybackStreamSelector().select(request.mediaSources).copy(subtitleTracks = tracks)
+
+            val source = resolver.resolve(request, selection, environment(), 0, PlaybackSourceOptions(subtitleStreamIndex = 3))
+
+            val sent = checkNotNull(service.lastRequest)
+            assertFalse(sent.enableDirectPlay)
+            assertFalse(sent.allowVideoStreamCopy)
+            assertEquals(3, sent.subtitleStreamIndex)
+            assertEquals(PlaybackMode.HLS, source.mode)
+            assertFalse(source.url.contains("VideoCodec=copy"))
+            assertNull(source.url.queryParameter("SubtitleMethod"))
+            assertEquals(listOf("subtitle-0", "subtitle-1"), source.subtitles.map(ResolvedSubtitle::trackId))
+            assertTrue(source.subtitles.none { it.url.contains("/Subtitles/3/") })
+        }
+
+    @Test
+    fun selectingATextSubtitleAfterABurnedInOneAllowsDirectPlayAgain() =
+        runTest {
+            val service = RecordingPlaybackInfoService(directPlayResponse())
+            val resolver = JellyfinPlaybackSourceResolver(service, tvProvider(tvSnapshot(PlaybackAudioCodec.EAC3)))
+            val request = videoRequest()
+            val tracks =
+                listOf(SubtitleFormat.SRT, SubtitleFormat.BITMAP_BURN_IN).mapIndexed { index, format ->
+                    SubtitleTrack(
+                        id = "subtitle-$index",
+                        language = "en",
+                        title = "English",
+                        format = format,
+                        isDefault = false,
+                        isForced = false,
+                        streamIndex = index + 1,
+                    )
+                }
+            val selection = PlaybackStreamSelector().select(request.mediaSources).copy(subtitleTracks = tracks)
+
+            val source = resolver.resolve(request, selection, environment(), 0, PlaybackSourceOptions(subtitleStreamIndex = 1))
+
+            assertTrue(checkNotNull(service.lastRequest).enableDirectPlay)
+            assertEquals(PlaybackMode.DIRECT, source.mode)
+        }
+
     private fun pgsAndTextTracks() =
         listOf(SubtitleFormat.SRT, SubtitleFormat.PGS).mapIndexed { index, format ->
             SubtitleTrack(
@@ -1502,12 +1592,15 @@ class JellyfinPlaybackSourceResolverTest {
             ).toSubtitleTrack()?.format
 
         assertEquals(SubtitleFormat.PGS, format("PGSSUB"))
-        assertEquals(SubtitleFormat.SUP, format("dvd_subtitle"))
+        assertEquals(SubtitleFormat.SUP, format("sup"))
+        assertEquals(SubtitleFormat.BITMAP_BURN_IN, format("dvd_subtitle"))
+        assertEquals(SubtitleFormat.BITMAP_BURN_IN, format("dvdsub"))
+        assertEquals(SubtitleFormat.BITMAP_BURN_IN, format("DVBSUB"))
         assertEquals(SubtitleFormat.SRT, format("subrip"))
     }
 
     @Test
-    fun tvProfileNeverOffersDtsAndTranscodesTheSelectedDtsTrackToTheBestSupportedCodec() =
+    fun tvProfileNeverOffersDtsAsATranscodeTargetEvenWhenItCanPassItThrough() =
         runTest {
             val service =
                 RecordingPlaybackInfoService(
@@ -1545,10 +1638,10 @@ class JellyfinPlaybackSourceResolverTest {
             assertEquals(2, sent.audioStreamIndex)
             assertTrue(sent.allowAudioStreamCopy)
             assertTrue(sent.enableDirectPlay)
-            val offeredAudioCodecs =
-                (sent.deviceProfile.directPlayProfiles.map { it.audioCodec } + sent.deviceProfile.transcodingProfiles.map { it.audioCodec })
-                    .flatMap { codecs -> codecs.split(',') }
-            assertFalse("dts" in offeredAudioCodecs)
+            val transcodeAudioCodecs = sent.deviceProfile.transcodingProfiles.flatMap { it.audioCodec.split(',') }
+            assertFalse("dts" in transcodeAudioCodecs)
+            assertFalse("truehd" in transcodeAudioCodecs)
+            assertTrue(sent.deviceProfile.directPlayProfiles.any { "dts" in it.audioCodec.split(',') })
             sent.deviceProfile.transcodingProfiles.forEach { profile ->
                 assertTrue(profile.audioCodec.startsWith("eac3,ac3,aac,mp3"), profile.audioCodec)
                 assertEquals("6", profile.maxAudioChannels)

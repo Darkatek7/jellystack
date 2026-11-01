@@ -1,5 +1,6 @@
 package dev.jellystack.players
 
+import dev.jellystack.core.preferences.VideoScale
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 
@@ -111,6 +112,22 @@ interface PlayerEngine {
     ) = Unit
 
     fun setPlaybackSpeed(speed: Float) = Unit
+
+    /**
+     * Sets how the picture fills the video surface. The engine keeps the value across surface recreation.
+     * No-op by default: only engines that own a scalable surface (Android) apply it, so iOS and the phone UI
+     * keep their current fit behaviour.
+     */
+    fun setVideoScale(scale: VideoScale) = Unit
+
+    /**
+     * Delays the audio by [delayMs] against the picture (negative: earlier), within [PlaybackDelay]'s range.
+     * It belongs to the title being played: the caller sets it back to 0 for the next title. No-op by default.
+     */
+    fun setAudioDelayMs(delayMs: Int) = Unit
+
+    /** Delays the subtitles by [delayMs] (negative: earlier), with the same scope as [setAudioDelayMs]. */
+    fun setSubtitleDelayMs(delayMs: Int) = Unit
 
     fun release()
 }

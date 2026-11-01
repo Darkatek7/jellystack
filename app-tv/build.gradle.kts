@@ -35,6 +35,8 @@ val verifyTvReleaseManifestPermissions by tasks.registering {
             setOf(
                 "android.permission.INTERNET",
                 "android.permission.ACCESS_NETWORK_STATE",
+                // Writing the app's own Watch Next programs, see docs/permissions.md.
+                "com.android.providers.tv.permission.WRITE_EPG_DATA",
                 "app.jellystack.mobile.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
             )
         check((permissions - allowed).isEmpty()) {
@@ -51,8 +53,8 @@ android {
         applicationId = "app.jellystack.mobile"
         minSdk = 24
         targetSdk = 36
-        versionCode = 34
-        versionName = "0.17.3"
+        versionCode = 36
+        versionName = "0.18.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -104,6 +106,8 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // kotlinx-datetime needs java.time, which Android only ships from API 26 while minSdk is 24.
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
@@ -134,6 +138,7 @@ tasks.named("check").configure {
 }
 
 dependencies {
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
     implementation(projects.sharedCore)
     implementation(projects.sharedNetwork)
     implementation(projects.sharedDatabase)
@@ -146,6 +151,7 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.media3.ui)
     implementation(libs.androidx.media3.session)
+    implementation(libs.jellyfin.media3.ffmpeg.decoder)
     implementation(libs.sqldelight.android)
     implementation(libs.multiplatform.settings)
     implementation(libs.coroutines.android)

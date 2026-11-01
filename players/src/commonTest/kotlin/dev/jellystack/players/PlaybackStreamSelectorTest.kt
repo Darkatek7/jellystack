@@ -74,4 +74,44 @@ class PlaybackStreamSelectorTest {
 
         assertEquals(6, selection.audioTracks.single().channels)
     }
+
+    @Test
+    fun musicInCommonCodecsPlaysDirectly() {
+        listOf("flac", "mp3", "aac", "opus", "vorbis").forEach { codec ->
+            val selection = PlaybackStreamSelector().select(listOf(trackSource(codec)), mediaKind = PlaybackMediaKind.AUDIO)
+
+            assertEquals(PlaybackMode.DIRECT, selection.mode, codec)
+        }
+    }
+
+    @Test
+    fun musicInACodecTheTvCannotDecodeIsTranscodedByTheServer() {
+        val selection = PlaybackStreamSelector().select(listOf(trackSource("alac")), mediaKind = PlaybackMediaKind.AUDIO)
+
+        assertEquals(PlaybackMode.HLS, selection.mode)
+    }
+
+    private fun trackSource(codec: String) =
+        JellyfinMediaSource(
+            id = "track-source",
+            name = "Track",
+            runTimeTicks = 2_000_000_000,
+            container = "m4a",
+            videoBitrate = null,
+            supportsDirectPlay = true,
+            supportsDirectStream = true,
+            supportsTranscoding = true,
+            streams =
+                listOf(
+                    JellyfinMediaStream(
+                        type = JellyfinMediaStreamType.AUDIO,
+                        index = 0,
+                        displayTitle = codec,
+                        codec = codec,
+                        language = null,
+                        isDefault = true,
+                        isForced = false,
+                    ),
+                ),
+        )
 }

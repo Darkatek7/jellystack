@@ -2,4 +2,5 @@
 <resources>
     <string name="app_name">Jellystack</string>
     <string name="tv_voice_search_prompt">Search Jellystack</string>
+    <string name="dream_label">Jellystack library artwork</string>
 </resources>

@@ -83,6 +83,23 @@ internal enum class TvScrim(
         draw = { drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f)))) },
         fixedBakeSize = TV_VERTICAL_SCRIM_BAKE_SIZE,
     ),
+
+    // Darkens the lower part of a screensaver backdrop, where the small caption sits.
+    SCREENSAVER_CAPTION(
+        draw = {
+            drawRect(
+                Brush.verticalGradient(
+                    colorStops =
+                        arrayOf(
+                            0f to Color.Transparent,
+                            0.6f to Color.Transparent,
+                            1f to Color.Black.copy(alpha = 0.78f),
+                        ),
+                ),
+            )
+        },
+        fixedBakeSize = TV_VERTICAL_SCRIM_BAKE_SIZE,
+    ),
     MEDIA_CARD_TEXT(
         draw = {
             drawRect(
