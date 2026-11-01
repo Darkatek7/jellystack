@@ -1344,10 +1344,14 @@ private fun TvAuthenticatedApp(
                 }
             },
         ) {
+            val reducedMotion = LocalTvFocusAppearance.current.reducedMotion
+            val screenTransition = remember(reducedMotion) { tvScreenTransition<TvRoute>(reducedMotion) }
             NavDisplay(
                 backStack = appUiState.backStack,
                 onBack = { backDispatcher.dispatch() },
                 modifier = Modifier.fillMaxSize(),
+                transitionSpec = screenTransition,
+                popTransitionSpec = screenTransition,
                 entryProvider =
                     rememberLatestNavEntryProvider { route ->
                         NavEntry(route) {
