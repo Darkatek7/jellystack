@@ -118,6 +118,7 @@ internal fun TvPlayerOptionRow(
     modifier: Modifier = Modifier,
     trailing: (@Composable () -> Unit)? = null,
     checked: Boolean? = null,
+    enabled: Boolean = true,
 ) {
     val shape = RoundedCornerShape(16.dp)
     var focused by remember { mutableStateOf(false) }
@@ -139,8 +140,8 @@ internal fun TvPlayerOptionRow(
                     contentDescription = description
                     this.selected = selected
                     checked?.let { toggleableState = if (it) ToggleableState.On else ToggleableState.Off }
-                }.clickable(onClick = onClick)
-                .focusable()
+                }.clickable(enabled = enabled, onClick = onClick)
+                .focusable(enabled = enabled)
                 .padding(horizontal = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),

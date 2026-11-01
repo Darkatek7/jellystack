@@ -1,8 +1,6 @@
 package dev.jellystack.design.tv
 
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -29,45 +27,39 @@ class TvPlayerDelayPanelTest {
     @Test
     fun leftAndRightStepTheFocusedDelayAndCenterResetsIt() {
         setPanel(subtitleOn = true)
-        val audio = composeRule.onNodeWithContentDescription("${strings.player.sync.audioDelay}, 0 ms")
-        audio.assertIsFocused()
+        audioRow("0 ms").assertIsFocused()
 
-        audio.performKeyInput { pressKey(Key.DirectionRight) }
-        audio.performKeyInput { pressKey(Key.DirectionRight) }
+        audioRow("0 ms").performKeyInput { pressKey(Key.DirectionRight) }
+        audioRow("+50 ms").performKeyInput { pressKey(Key.DirectionRight) }
         composeRule.runOnIdle { assertEquals(100, delays.audioMs) }
 
-        composeRule
-            .onNodeWithContentDescription(
-                "${strings.player.sync.audioDelay}, +100 ms",
-            ).performKeyInput { pressKey(Key.DirectionLeft) }
+        audioRow("+100 ms").performKeyInput { pressKey(Key.DirectionLeft) }
         composeRule.runOnIdle { assertEquals(50, delays.audioMs) }
 
-        composeRule
-            .onNodeWithContentDescription(
-                "${strings.player.sync.audioDelay}, +50 ms",
-            ).performKeyInput { pressKey(Key.DirectionCenter) }
+        audioRow("+50 ms").performKeyInput { pressKey(Key.DirectionCenter) }
         composeRule.runOnIdle { assertEquals(0, delays.audioMs) }
     }
 
     @Test
     fun subtitleRowIsSkippedByTheDpadWhileNoSubtitleIsOn() {
         setPanel(subtitleOn = false)
-        composeRule.onNodeWithContentDescription("${strings.player.sync.audioDelay}, 0 ms").assertIsFocused().performKeyInput {
-            pressKey(Key.DirectionDown)
-        }
+        audioRow("0 ms").assertIsFocused().performKeyInput { pressKey(Key.DirectionDown) }
 
         composeRule.onNodeWithContentDescription(strings.player.sync.resetDelays).assertIsFocused()
     }
 
+    private fun audioRow(value: String) = composeRule.onNodeWithContentDescription("${strings.player.sync.audioDelay}, $value")
+
     private fun setPanel(subtitleOn: Boolean) {
+        val first = FocusRequester()
         composeRule.setContent {
-            val first = remember { FocusRequester() }
             JellystackTvTheme {
                 LazyColumn {
                     tvPlayerDelayRows(delays, subtitleOn, strings, Modifier.focusRequester(first))
                 }
             }
-            LaunchedEffect(Unit) { first.requestFocus() }
         }
+        // The rows of a lazy list only exist after the first layout, so an effect in setContent would be too early.
+        composeRule.runOnIdle { first.requestFocus() }
     }
 }

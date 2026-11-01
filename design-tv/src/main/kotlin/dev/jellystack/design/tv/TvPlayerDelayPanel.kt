@@ -17,7 +17,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Icon
@@ -55,11 +54,7 @@ internal fun LazyListScope.tvPlayerDelayRows(
     }
     item {
         val rowModifier =
-            if (subtitleOn) {
-                Modifier.delayKeys(delays::stepSubtitle)
-            } else {
-                Modifier.alpha(DISABLED_ROW_ALPHA).focusProperties { canFocus = false }
-            }
+            if (subtitleOn) Modifier.delayKeys(delays::stepSubtitle) else Modifier.alpha(DISABLED_ROW_ALPHA)
         TvPlayerOptionRow(
             icon = Icons.Default.Subtitles,
             title = strings.player.sync.subtitleDelay,
@@ -72,6 +67,7 @@ internal fun LazyListScope.tvPlayerDelayRows(
             selected = subtitleOn && delays.subtitleMs != 0,
             onClick = delays::resetSubtitle,
             modifier = rowModifier,
+            enabled = subtitleOn,
             trailing = { if (subtitleOn) DelayArrows() },
         )
     }
