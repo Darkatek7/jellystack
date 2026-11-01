@@ -18,6 +18,9 @@ class TvNavigationSerializationTest {
                 TvRoute.Library(libraryId = "lib-1", title = "Movies"),
                 TvRoute.Settings(section = "playback"),
                 TvRoute.JellyfinDetail(itemId = "item-42"),
+                TvRoute.Person(id = "person-7", name = "Ada Example"),
+                TvRoute.Collection(id = "box-3", name = "Example Saga"),
+                TvRoute.Collection(id = "playlist-9", name = "Friday Night", isPlaylist = true),
                 TvRoute.SeerrDetail(
                     tmdbId = 1234,
                     mediaType = JellyseerrMediaType.TV,

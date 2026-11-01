@@ -35,6 +35,10 @@ typealias JellyfinBrowseApiFactory = (JellyfinEnvironment) -> JellyfinBrowseApi
 
 private const val FILTER_ERROR_PHRASE = "No media found with the specified filter"
 
+/** The most entries a person page, collection, or playlist lists; one request, no paging. */
+const val ITEM_LIST_LIMIT = 500
+private const val PERSON_ITEM_TYPES = "Movie,Series"
+
 private fun detailCacheKey(
     serverId: String,
     itemId: String,
@@ -878,6 +882,68 @@ class JellyfinBrowseRepository(
                 .fetchSimilarItems(environment.userId, itemId, limit)
                 .items
                 .map { item -> item.toRecord(environment, fallbackLibraryId = item.parentId, updatedAt = now) }
+        itemStore.upsert(records)
+        return records.map { it.toDomain() }
+    }
+
+    /** Movies and series [personId] appears in, from all libraries the user can see. */
+    suspend fun personItems(
+        personId: String,
+        limit: Int = ITEM_LIST_LIMIT,
+    ): List<JellyfinItem> {
+        val environment = environmentProvider.current() ?: return emptyList()
+        val response =
+            apiFor(environment).fetchLibraryItems(
+                userId = environment.userId,
+                libraryId = "",
+                startIndex = 0,
+                limit = limit.coerceIn(1, ITEM_LIST_LIMIT),
+                includeItemTypes = PERSON_ITEM_TYPES,
+                recursive = true,
+                personIds = listOf(personId),
+                sortBy = "ProductionYear,SortName",
+                sortOrder = "Descending",
+            )
+        return response.cacheAndMap(environment)
+    }
+
+    /** The direct children of a collection (BoxSet) in release order, with the user's watched state. */
+    suspend fun collectionItems(
+        collectionId: String,
+        limit: Int = ITEM_LIST_LIMIT,
+    ): List<JellyfinItem> {
+        val environment = environmentProvider.current() ?: return emptyList()
+        val response =
+            apiFor(environment).fetchLibraryItems(
+                userId = environment.userId,
+                libraryId = collectionId,
+                startIndex = 0,
+                limit = limit.coerceIn(1, ITEM_LIST_LIMIT),
+                includeItemTypes = null,
+                recursive = false,
+                sortBy = "PremiereDate,SortName",
+            )
+        return response.cacheAndMap(environment)
+    }
+
+    /** The entries of a playlist in the playlist's own order. */
+    suspend fun playlistItems(
+        playlistId: String,
+        limit: Int = ITEM_LIST_LIMIT,
+    ): List<JellyfinItem> {
+        val environment = environmentProvider.current() ?: return emptyList()
+        val response =
+            apiFor(environment).fetchPlaylistItems(
+                userId = environment.userId,
+                playlistId = playlistId,
+                limit = limit.coerceIn(1, ITEM_LIST_LIMIT),
+            )
+        return response.cacheAndMap(environment)
+    }
+
+    private suspend fun JellyfinItemsResponse.cacheAndMap(environment: JellyfinEnvironment): List<JellyfinItem> {
+        val now = clock.now()
+        val records = items.map { it.toRecord(environment, fallbackLibraryId = it.parentId, updatedAt = now) }
         itemStore.upsert(records)
         return records.map { it.toDomain() }
     }

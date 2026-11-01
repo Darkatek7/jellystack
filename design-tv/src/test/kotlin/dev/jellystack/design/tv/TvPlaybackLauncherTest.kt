@@ -5,6 +5,7 @@ import dev.jellystack.core.jellyfin.JellyfinItemDetail
 import dev.jellystack.core.preferences.AppLanguage
 import dev.jellystack.core.preferences.AppSettings
 import dev.jellystack.core.preferences.ResumeMode
+import dev.jellystack.players.PlaybackQueue
 import dev.jellystack.players.PlaybackRequest
 import dev.jellystack.players.PlaybackStartPolicy
 import kotlinx.coroutines.CompletableDeferred
@@ -20,6 +21,8 @@ class TvPlaybackLauncherTest {
     private val startedSettings = mutableListOf<AppSettings>()
     private var startedRoutes = 0
     private var defaultPlaybackSpeed = 1f
+    private var loadListEntries: suspend () -> List<JellyfinItem> = { emptyList() }
+    private val queue = PlaybackQueue()
 
     @Test
     fun askModeWithSavedPositionWaitsForTheAnswerAndStartsWithIt() =
@@ -272,6 +275,83 @@ class TvPlaybackLauncherTest {
         }
 
     @Test
+    fun playingACollectionStartsItsFirstPlayableEntryAndQueuesTheRest() =
+        runTest {
+            val entries =
+                listOf(
+                    listItem("missing", locationType = "Virtual"),
+                    listItem("part-1"),
+                    listItem("folder", type = "Folder"),
+                    listItem("part-2"),
+                )
+            loadListEntries = { entries }
+            val launcher = launcher(ResumeMode.RESUME)
+
+            launcher.play(listItem("box", type = "BoxSet"))
+            assertEquals("the route opens before the entries are listed", 1, startedRoutes)
+            runCurrent()
+
+            assertEquals(listOf("part-1"), started.map { it.mediaId })
+            assertEquals(TvPlaybackStartState.Idle, launcher.startState)
+            assertEquals(listOf("part-2"), queue.entriesAfter("part-1").map { it.id })
+        }
+
+    @Test
+    fun playingAPlaylistFollowsItsOrderAndAsksBeforeResumingTheFirstEntry() =
+        runTest {
+            val entries = listOf(listItem("b", positionTicks = 7_540_000_000L), listItem("a"))
+            loadListEntries = { entries }
+            val launcher = launcher(ResumeMode.ASK)
+
+            launcher.playAll(listItem("playlist", type = "Playlist"))
+            runCurrent()
+
+            assertEquals("b", launcher.pendingAsk?.item?.id)
+            assertEquals(emptyList<PlaybackRequest>(), started)
+
+            launcher.answerAsk(PlaybackStartPolicy.RESUME)
+            runCurrent()
+
+            assertEquals(listOf("b"), started.map { it.mediaId })
+            assertEquals(listOf("a"), queue.entriesAfter("b").map { it.id })
+        }
+
+    @Test
+    fun aCollectionWithoutAPlayableEntryEndsInAFailedStartWithItsOwnReason() =
+        runTest {
+            val box = listItem("box", type = "BoxSet")
+            loadListEntries = { listOf(listItem("gone", locationType = "Virtual")) }
+            val onlyMissing = launcher(ResumeMode.RESUME)
+
+            onlyMissing.play(box)
+            runCurrent()
+
+            assertEquals(TvPlaybackStartState.Failed(box, TvStartFailure.NO_PLAYABLE_ITEM), onlyMissing.startState)
+            assertEquals(emptyList<PlaybackRequest>(), started)
+
+            loadListEntries = { error("offline") }
+            val failing = launcher(ResumeMode.RESUME)
+            failing.play(box)
+            runCurrent()
+            assertEquals(TvPlaybackStartState.Failed(box, TvStartFailure.COULD_NOT_START), failing.startState)
+        }
+
+    @Test
+    fun playingAnythingElseEmptiesTheQueueOfThePreviousList() =
+        runTest {
+            loadListEntries = { listOf(listItem("part-1"), listItem("part-2")) }
+            val launcher = launcher(ResumeMode.RESUME)
+            launcher.play(listItem("box", type = "BoxSet"))
+            runCurrent()
+            assertEquals(true, queue.contains("part-2"))
+
+            launcher.play(listItem("part-2"))
+            runCurrent()
+
+            assertEquals(false, queue.contains("part-2"))
+        }
+
+    @Test
     fun theStartErrorPanelNamesTheReasonOfTheFailure() {
         val strings = TvStrings.current(AppLanguage.ENGLISH)
         val series = series()
@@ -279,6 +359,10 @@ class TvPlaybackLauncherTest {
         assertEquals(
             strings.player.noPlayableEpisodeMessage,
             tvStartFailureMessage(TvPlaybackStartState.Failed(series, TvStartFailure.NO_PLAYABLE_EPISODE), strings),
+        )
+        assertEquals(
+            strings.player.noPlayableItemMessage,
+            tvStartFailureMessage(TvPlaybackStartState.Failed(series, TvStartFailure.NO_PLAYABLE_ITEM), strings),
         )
         assertEquals(
             strings.player.startFailedMessage,
@@ -294,7 +378,13 @@ class TvPlaybackLauncherTest {
         startGate: CompletableDeferred<Unit>? = null,
     ) = TvPlaybackLauncher(
         scope = this,
-        sources = TvPlaybackSources(loadDetail = { loadDetail() }, loadEpisodes = { loadEpisodes() }),
+        sources =
+            TvPlaybackSources(
+                loadDetail = { loadDetail() },
+                loadEpisodes = { loadEpisodes() },
+                loadListEntries = { loadListEntries() },
+                queue = queue,
+            ),
         starter =
             TvPlaybackStarter { request, settings ->
                 startGate?.await()

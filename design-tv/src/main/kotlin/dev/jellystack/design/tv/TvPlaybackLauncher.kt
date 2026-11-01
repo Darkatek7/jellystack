@@ -8,10 +8,13 @@ import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
 import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.JellyfinItemDetail
 import dev.jellystack.core.jellyfin.SeriesPlaybackTargetResolver
+import dev.jellystack.core.jellyfin.isEpisodeParent
+import dev.jellystack.core.jellyfin.opensAsItemList
 import dev.jellystack.core.logging.JellystackLog
 import dev.jellystack.core.logging.sanitizeIdentifier
 import dev.jellystack.core.preferences.AppSettings
 import dev.jellystack.players.PlaybackController
+import dev.jellystack.players.PlaybackQueue
 import dev.jellystack.players.PlaybackRequest
 import dev.jellystack.players.PlaybackStartDecision
 import dev.jellystack.players.PlaybackStartPolicy
@@ -28,13 +31,14 @@ internal data class TvResumeAsk(
     val positionLabel: String,
 )
 
-private fun JellyfinItem.isEpisodeContainer(): Boolean =
-    type.equals("Series", ignoreCase = true) || type.equals("Season", ignoreCase = true)
-
-/** Where the launcher reads the item detail and the episodes of a series from. */
+/** Where the launcher reads the item detail, the episodes of a series, and the entries of a collection from. */
 internal class TvPlaybackSources(
     val loadDetail: suspend (String) -> JellyfinItemDetail?,
     val loadEpisodes: suspend (JellyfinItem) -> List<JellyfinItem>,
+    /** The entries of a collection or playlist, in the order they play. */
+    val loadListEntries: suspend (JellyfinItem) -> List<JellyfinItem> = { emptyList() },
+    /** Receives the entries "Play all" is about to play, so the continuation coordinator can move on through them. */
+    val queue: PlaybackQueue = PlaybackQueue(),
 )
 
 /** Starts a resolved request; returns false when there is no server to play from. */
@@ -80,6 +84,9 @@ internal enum class TvStartFailure {
 
     /** A series or season without an episode that can be played. */
     NO_PLAYABLE_EPISODE,
+
+    /** A collection or playlist without an entry that can be played. */
+    NO_PLAYABLE_ITEM,
 }
 
 private sealed interface TvStartOutcome {
@@ -113,6 +120,9 @@ private data class TvStartAttempt(
  *
  * A Series or Season has no media source of its own: [TvPlaybackSources.loadEpisodes] lists its episodes and
  * [SeriesPlaybackTargetResolver] picks the one to play (the one in progress, else the first unwatched, else the first).
+ *
+ * Playing a collection or playlist plays all of it: the entries become [TvPlaybackSources.queue], the first
+ * playable one starts, and the continuation coordinator moves on through the queue. Playing anything else empties it.
  */
 internal class TvPlaybackLauncher(
     private val scope: CoroutineScope,
@@ -136,7 +146,12 @@ internal class TvPlaybackLauncher(
         item: JellyfinItem,
         detail: JellyfinItemDetail? = null,
     ) {
-        if (item.isEpisodeContainer()) {
+        if (item.opensAsItemList()) {
+            playAll(item)
+            return
+        }
+        sources.queue.clear()
+        if (item.isEpisodeParent()) {
             // The episode to play is only known once the episodes are loaded, so the resume rule runs in the start.
             pendingAsk = null
             start(TvStartAttempt(item, detail = null, policy = PlaybackStartPolicy.INHERIT))
@@ -149,6 +164,12 @@ internal class TvPlaybackLauncher(
         }
     }
 
+    /** Plays the entries of [container] (a collection or playlist) one after the other, from the first playable one. */
+    fun playAll(container: JellyfinItem) {
+        pendingAsk = null
+        start(TvStartAttempt(container, detail = null, policy = PlaybackStartPolicy.INHERIT))
+    }
+
     /**
      * Plays [item] because another member of the joined SyncPlay group started it at [startPositionMs]. It opens the
      * player route like a local play action (without it the audio would play behind the browse UI) and skips the
@@ -159,6 +180,7 @@ internal class TvPlaybackLauncher(
         startPositionMs: Long,
     ) {
         pendingAsk = null
+        sources.queue.clear()
         val attempt = TvStartAttempt(item, detail = null, policy = PlaybackStartPolicy.RESUME)
         start(attempt.copy(groupStartPositionMs = startPositionMs))
     }
@@ -190,8 +212,13 @@ internal class TvPlaybackLauncher(
         startJob =
             scope.launch {
                 val outcome =
-                    runSuspendCatching { run(attempt) }
-                        .onFailure { failure -> JellystackLog.e("TV playback could not start", failure) }
+                    runSuspendCatching {
+                        when {
+                            attempt.item.isEpisodeParent() -> runEpisodeOf(attempt.item)
+                            attempt.item.opensAsItemList() -> runFirstOf(attempt.item)
+                            else -> begin(attempt)
+                        }
+                    }.onFailure { failure -> JellystackLog.e("TV playback could not start", failure) }
                         .getOrDefault(TvStartOutcome.Failed(TvStartFailure.COULD_NOT_START, "unexpected error"))
                 startState =
                     when (outcome) {
@@ -209,11 +236,22 @@ internal class TvPlaybackLauncher(
             }
     }
 
-    private suspend fun run(attempt: TvStartAttempt): TvStartOutcome =
-        if (attempt.item.isEpisodeContainer()) runEpisodeOf(attempt.item) else begin(attempt)
+    private suspend fun runFirstOf(container: JellyfinItem): TvStartOutcome {
+        val entries = buildPlayAllQueue(sources.loadListEntries(container), sources.loadEpisodes)
+        val first = entries.firstOrNull()
+        if (first == null) return TvStartOutcome.Failed(TvStartFailure.NO_PLAYABLE_ITEM, "no playable entry")
+        sources.queue.replace(entries)
+        startState = TvPlaybackStartState.Starting(first)
+        return when (val decision = decidePlaybackStart(first.positionTicks, currentSettings().resumeMode)) {
+            is PlaybackStartDecision.Ask ->
+                TvStartOutcome.AskResume(TvResumeAsk(first, null, formatPlaybackTime(decision.resumePositionMs)))
+            is PlaybackStartDecision.Start -> begin(TvStartAttempt(first, detail = null, policy = decision.policy))
+        }
+    }
 
     private suspend fun runEpisodeOf(container: JellyfinItem): TvStartOutcome {
-        val episode = resolveEpisode(container)
+        val episodes = sources.loadEpisodes(container)
+        val episode = seriesTargetResolver.resolve(episodes, completedDownloadIds = emptySet())?.episode
         if (episode == null) return TvStartOutcome.Failed(TvStartFailure.NO_PLAYABLE_EPISODE, "no playable episode")
         startState = TvPlaybackStartState.Starting(episode)
         return when (val decision = decidePlaybackStart(episode.positionTicks, currentSettings().resumeMode)) {
@@ -222,10 +260,6 @@ internal class TvPlaybackLauncher(
             is PlaybackStartDecision.Start -> begin(TvStartAttempt(episode, detail = null, policy = decision.policy))
         }
     }
-
-    /** The episode a Play on [container] starts, or null when it has no playable one. */
-    private suspend fun resolveEpisode(container: JellyfinItem): JellyfinItem? =
-        seriesTargetResolver.resolve(sources.loadEpisodes(container), completedDownloadIds = emptySet())?.episode
 
     private suspend fun begin(target: TvStartAttempt): TvStartOutcome {
         val detail =

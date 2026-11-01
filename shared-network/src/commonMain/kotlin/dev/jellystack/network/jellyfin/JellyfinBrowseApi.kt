@@ -68,6 +68,7 @@ class JellyfinBrowseApi(
         isPlayed: Boolean? = null,
         genres: List<String> = emptyList(),
         years: List<Int> = emptyList(),
+        personIds: List<String> = emptyList(),
     ): JellyfinItemsResponse =
         client
             .request {
@@ -89,6 +90,27 @@ class JellyfinBrowseApi(
                 isPlayed?.let { parameter("IsPlayed", it) }
                 genres.takeIf(List<String>::isNotEmpty)?.let { parameter("Genres", it.joinToString("|")) }
                 years.takeIf(List<Int>::isNotEmpty)?.let { parameter("Years", it.joinToString(",")) }
+                personIds.takeIf(List<String>::isNotEmpty)?.let { parameter("PersonIds", it.joinToString(",")) }
+            }.body()
+
+    /** The entries of a playlist in the order the playlist keeps them. */
+    suspend fun fetchPlaylistItems(
+        userId: String,
+        playlistId: String,
+        startIndex: Int = 0,
+        limit: Int,
+    ): JellyfinItemsResponse =
+        client
+            .request {
+                method = HttpMethod.Get
+                configure("/Playlists/$playlistId/Items")
+                parameter("UserId", userId)
+                parameter("StartIndex", startIndex)
+                parameter("Limit", limit)
+                parameter("Fields", REQUIRED_FIELDS)
+                parameter("ImageTypeLimit", 1)
+                parameter("EnableImageTypes", "Primary,Backdrop,Thumb,Logo")
+                parameter("EnableUserData", true)
             }.body()
 
     suspend fun fetchLatestItems(

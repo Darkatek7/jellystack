@@ -519,6 +519,9 @@ class TvFocusCoordinatorTest {
         assertEquals("settings:playback", TvRoute.Settings("playback").focusRouteKey())
         assertEquals("discover", TvRoute.Discover.focusRouteKey())
         assertEquals("search", TvRoute.Search.focusRouteKey())
+        assertEquals("person:p-1", TvRoute.Person("p-1", "Ada Example").focusRouteKey())
+        assertEquals("collection:c-1", TvRoute.Collection("c-1", "Saga").focusRouteKey())
+        assertEquals("collection:c-1", TvRoute.Collection("c-1", "Saga", isPlaylist = true).focusRouteKey())
         assertEquals(tvRailTargetId(TvRoute.Library()), tvRailTargetId(TvRoute.Library("movies")))
         assertEquals(tvRailTargetId(TvRoute.Settings()), tvRailTargetId(TvRoute.Settings("playback")))
     }

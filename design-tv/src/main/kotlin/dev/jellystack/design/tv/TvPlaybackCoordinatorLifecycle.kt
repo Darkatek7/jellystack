@@ -13,6 +13,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.flowWithLifecycle
 import dev.jellystack.core.jellyfin.JellyfinBrowseRepository
 import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
+import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.preferences.AppSettings
 import dev.jellystack.network.ClientConfig
 import dev.jellystack.network.NetworkClientFactory
@@ -22,6 +23,7 @@ import dev.jellystack.players.PlaybackContinuationCoordinator
 import dev.jellystack.players.PlaybackContinuationTarget
 import dev.jellystack.players.PlaybackController
 import dev.jellystack.players.PlaybackExtrasCoordinator
+import dev.jellystack.players.PlaybackQueue
 import dev.jellystack.players.PlaybackRequest
 import dev.jellystack.players.PlaybackSeekAdapter
 import dev.jellystack.players.PlaybackSegmentCoordinator
@@ -153,6 +155,8 @@ internal class TvPlaybackCoordinatorSources(
     val browseRepository: JellyfinBrowseRepository,
     val settings: () -> AppSettings,
     val images: () -> TvPlayerImages,
+    /** The entries of the list being played with "Play all"; continuation follows it before it follows a series. */
+    val queue: PlaybackQueue = PlaybackQueue(),
 )
 
 /** Segment, continuation, and extras coordinators for the signed-in server; seeks and "next" go through [router]. */
@@ -188,6 +192,25 @@ internal fun rememberTvJellyfinPlaybackCoordinators(
                 resolveNext = { mediaId, seriesId ->
                     currentSources.resolveNextEpisode(mediaId, seriesId, controller, currentRouter)
                 },
+                queue =
+                    sources.queue.source { entry ->
+                        currentSources.continuationTarget(
+                            next = entry,
+                            subtitle =
+                                if (entry.type.equals(
+                                        "Episode",
+                                        true,
+                                    )
+                                ) {
+                                    tvEpisodeCode(entry.parentIndexNumber, entry.indexNumber)
+                                } else {
+                                    null
+                                },
+                            fromQueue = true,
+                            controller = controller,
+                            router = currentRouter,
+                        )
+                    },
             )
         },
         createExtrasCoordinator = { scope ->
@@ -202,16 +225,34 @@ private suspend fun TvPlaybackCoordinatorSources.resolveNextEpisode(
     controller: PlaybackController,
     router: TvPlaybackCommandRouter,
 ): PlaybackContinuationTarget? {
-    val next = selectNextTvEpisode(browseRepository.latestEpisodesForSeries(seriesId), mediaId)
-    val detail = next?.let { browseRepository.getItemDetail(it.id) }
+    val next = selectNextTvEpisode(browseRepository.latestEpisodesForSeries(seriesId), mediaId) ?: return null
+    return continuationTarget(
+        next = next,
+        subtitle = tvEpisodeCode(next.parentIndexNumber, next.indexNumber),
+        fromQueue = false,
+        controller = controller,
+        router = router,
+    )
+}
+
+/** The up-next target that plays [next]; null while its detail or the server connection is missing. */
+private suspend fun TvPlaybackCoordinatorSources.continuationTarget(
+    next: JellyfinItem,
+    subtitle: String?,
+    fromQueue: Boolean,
+    controller: PlaybackController,
+    router: TvPlaybackCommandRouter,
+): PlaybackContinuationTarget? {
+    val detail = browseRepository.getItemDetail(next.id)
     val environment = environmentProvider.current()
-    if (next == null || detail == null || environment == null) return null
+    if (detail == null || environment == null) return null
     val images = images()
     return PlaybackContinuationTarget(
         mediaId = next.id,
         title = next.episodeTitle ?: next.name,
-        subtitle = tvEpisodeCode(next.parentIndexNumber, next.indexNumber),
+        subtitle = subtitle,
         imageUrl = jellyfinImageUrl(images.baseUrl, images.accessToken, next.id, next.primaryImageTag),
+        fromQueue = fromQueue,
     ) {
         router.playNext {
             controller.play(PlaybackRequest.from(next, detail, startPolicy = PlaybackStartPolicy.RESTART), environment)

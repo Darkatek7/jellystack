@@ -46,6 +46,7 @@ internal fun tvStartFailureMessage(
 ): String =
     when ((start as? TvPlaybackStartState.Failed)?.failure) {
         TvStartFailure.NO_PLAYABLE_EPISODE -> strings.player.noPlayableEpisodeMessage
+        TvStartFailure.NO_PLAYABLE_ITEM -> strings.player.noPlayableItemMessage
         else -> strings.player.startFailedMessage
     }
 

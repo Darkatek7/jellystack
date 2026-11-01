@@ -78,6 +78,7 @@ import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
 import dev.jellystack.core.jellyfin.JellyfinHomeState
 import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.JellyfinItemDetail
+import dev.jellystack.core.jellyfin.JellyfinPerson
 import dev.jellystack.core.jellyfin.mediaFeatures
 import dev.jellystack.core.jellyfin.withProgressOf
 import dev.jellystack.core.jellyseerr.JellyseerrCreateSelection
@@ -738,6 +739,7 @@ internal fun TvJellyfinDetailScreen(
     trailerResolver: DetailTrailerResolver,
     strings: TvStrings,
     onOpenItem: (JellyfinItem) -> Unit,
+    onOpenPerson: (JellyfinPerson) -> Unit,
     onPlaybackStarted: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -948,6 +950,7 @@ internal fun TvJellyfinDetailScreen(
             bodyFocusModifier = bodyFocusModifier,
             sectionFocusModifiers = sectionFocusModifiers,
             onOpenItem = onOpenItem,
+            onOpenPerson = onOpenPerson,
             onSelectSeason = { chosenSeasonIndex = it },
         )
     }
@@ -961,6 +964,7 @@ internal fun LazyListScope.tvJellyfinDetailSections(
     sectionFocusModifiers: Map<String, TvDetailSectionFocusModifiers>,
     onOpenItem: (JellyfinItem) -> Unit,
     onSelectSeason: (Int) -> Unit,
+    onOpenPerson: (JellyfinPerson) -> Unit = {},
 ) {
     uiState.sections.forEach { section ->
         when (section) {
@@ -1062,7 +1066,7 @@ internal fun LazyListScope.tvJellyfinDetailSections(
                                             "Primary",
                                             TvArtworkSize.PORTRAIT_CARD.maxWidth,
                                         ),
-                                    onClick = null,
+                                    onClick = { onOpenPerson(person) },
                                     modifier = focusModifiers.itemModifier(person.id),
                                     providedFocusRequester = focusModifiers.itemFocusRequester(person.id),
                                 )

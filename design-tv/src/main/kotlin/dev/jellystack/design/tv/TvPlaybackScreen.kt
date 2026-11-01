@@ -124,7 +124,7 @@ internal fun TvPlaybackScreen(
             continuationState = continuationState,
             context =
                 TvPlaybackActionContext(
-                    isEpisode = active?.metadata?.seriesId != null,
+                    isEpisode = active?.metadata?.seriesId != null || continuationState.nextTarget?.fromQueue == true,
                     phase = active?.phase ?: PlaybackPhase.Ready,
                     upNextDue =
                         !upNextDismissed &&

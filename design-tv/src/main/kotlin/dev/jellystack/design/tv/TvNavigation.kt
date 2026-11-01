@@ -48,6 +48,21 @@ sealed interface TvRoute : NavKey {
         val tvdbId: Int? = null,
     ) : TvRoute
 
+    /** The titles a person appears in; opened from a cast card. */
+    @Serializable
+    data class Person(
+        val id: String,
+        val name: String,
+    ) : TvRoute
+
+    /** The entries of a collection or playlist; opened from the card of one, wherever it is shown. */
+    @Serializable
+    data class Collection(
+        val id: String,
+        val name: String,
+        val isPlaylist: Boolean = false,
+    ) : TvRoute
+
     @Serializable
     data object Player : TvRoute
 }
@@ -74,6 +89,8 @@ internal fun TvRoute.focusRouteKey(libraryPath: List<String> = emptyList()): Str
         is TvRoute.Settings -> "settings:${TvSettingsCategory.fromRouteSection(section)?.routeKey ?: "root"}"
         is TvRoute.JellyfinDetail -> "jellyfin-detail:$itemId"
         is TvRoute.SeerrDetail -> "seerr-detail:${mediaType.name}:$tmdbId"
+        is TvRoute.Person -> "person:$id"
+        is TvRoute.Collection -> "collection:$id"
         TvRoute.Player -> "player"
     }
 
