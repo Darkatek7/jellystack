@@ -82,6 +82,7 @@ internal data class TvMessageStrings(
     val playlistLabel: String,
     val music: TvMusicStrings,
     val liveTv: TvLiveTvStrings,
+    val accountHasProfileFormat: String,
     private val voiceSearchUnavailable: String,
     private val voiceSearchNoSpeech: String,
     private val voiceSearchFailed: String,
@@ -725,6 +726,8 @@ private val englishMessageStrings =
         playlistLabel = "Playlist",
         music = TvMusicStrings.ENGLISH,
         liveTv = TvLiveTvStrings.ENGLISH,
+        accountHasProfileFormat =
+            "%s already has a profile. To add another account, approve the code with that account.",
         voiceSearchUnavailable = "Voice search is not available on this device.",
         voiceSearchNoSpeech = "No speech was recognized. Try again.",
         voiceSearchFailed = "Voice search failed. Try again.",
