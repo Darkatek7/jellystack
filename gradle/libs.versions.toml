@@ -28,7 +28,7 @@ kotlin = "2.2.10"
 coil3 = "3.0.0"
 androidx-appcompat = "1.7.0"
 multiplatform-settings = "1.1.1"
-sqlite-jdbc = "3.45.3.0"
+sqlite-jdbc = "3.54.1.0"
 media3 = "1.10.1"
 # Precompiled FFmpeg audio extension from the Jellyfin project (GPL-3.0), built against Media3 1.9.0. TV only.
 media3-ffmpeg-jellyfin = "1.9.0+1"
