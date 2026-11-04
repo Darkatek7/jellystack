@@ -77,6 +77,7 @@ internal fun TvDetailFocusLayout(
     heroContentDescription: String,
     hasPrimaryAction: Boolean = true,
     heroHeightDp: Int = TV_DETAIL_HERO_HEIGHT_DP,
+    lowestHeroControl: FocusRequester? = null,
     modifier: Modifier = Modifier,
     awaitFocusStart: suspend (TvFocusDestination) -> Unit = {},
     awaitFocusReady: suspend (TvFocusDestination) -> Unit = { withFrameNanos { } },
@@ -186,7 +187,10 @@ internal fun TvDetailFocusLayout(
         focusOwnership = null
     }
 
-    fun focusPrimaryAction(cancelPersistedRestoration: Boolean = true) {
+    fun focusPrimaryAction(
+        cancelPersistedRestoration: Boolean = true,
+        target: FocusRequester = primaryActionFocusRequester,
+    ) {
         ownDestination(TvFocusDestination.PRIMARY_ACTION, cancelPersistedRestoration)
         val transactionId = focusTransactionId
         scope.launch {
@@ -196,7 +200,7 @@ internal fun TvDetailFocusLayout(
             if (focusTransactionId != transactionId) return@launch
             awaitFocusReady(TvFocusDestination.PRIMARY_ACTION)
             if (focusTransactionId != transactionId) return@launch
-            val focused = runCatching { primaryActionFocusRequester.requestFocus() }.getOrDefault(false)
+            val focused = runCatching { target.requestFocus() }.getOrDefault(false)
             if (focused && focusTransactionId == transactionId) {
                 withFrameNanos { }
                 if (focusTransactionId == transactionId) listState.scrollToItem(0)
@@ -555,7 +559,10 @@ internal fun TvDetailFocusLayout(
                                     KeyEvent.KEYCODE_DPAD_UP -> {
                                         when {
                                             sectionIndex > 0 -> focusSection(focusSections[sectionIndex - 1].id)
-                                            hasPrimaryAction -> focusPrimaryAction()
+                                            // Up from the first row returns to the control right above it, such as
+                                            // the track line under the actions.
+                                            hasPrimaryAction ->
+                                                focusPrimaryAction(target = lowestHeroControl ?: primaryActionFocusRequester)
                                             else -> return@onPreviewKeyEvent false
                                         }
                                         true

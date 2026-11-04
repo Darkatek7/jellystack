@@ -10,6 +10,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalUriHandler
 import dev.jellystack.core.coroutines.runSuspendCatching
 import dev.jellystack.core.jellyfin.DetailTrailerResolver
@@ -235,8 +237,7 @@ private fun TvJellyfinDetailContent(
     val scope = rememberCoroutineScope { tvCoroutineFailureHandler("the detail screen") }
     var chosenSeasonIndex by remember(route.itemId) { mutableStateOf<Int?>(null) }
     var selection by remember(route.itemId) { mutableStateOf(TvDetailSelection()) }
-    var showPicker by remember(route.itemId) { mutableStateOf(false) }
-    var showMore by remember(route.itemId) { mutableStateOf(false) }
+    var dialog by remember(route.itemId) { mutableStateOf<TvDetailDialog?>(null) }
     val isSeries = item.type.equals("Series", true)
     val endsAt =
         rememberTvEndsAtLabel(
@@ -259,16 +260,25 @@ private fun TvJellyfinDetailContent(
             choice = selection.toPlayChoice().takeUnless { isSeries },
             services = services,
             onPlaybackStarted = navigation.onPlaybackStarted,
-            onMore = { showMore = true }.takeIf { page.moreEntries.isNotEmpty() },
+            onMore = { dialog = TvDetailDialog.MORE }.takeIf { page.moreEntries.isNotEmpty() },
         )
+    val trackLineFocus = remember(route.itemId) { FocusRequester() }
     TvDetailFocusLayout(
         uiState = page.uiState,
         heroContentDescription = detail.name,
         heroHeightDp = if (isSeries) TV_DETAIL_SERIES_HERO_HEIGHT_DP else TV_DETAIL_HERO_HEIGHT_DP,
+        lowestHeroControl = trackLineFocus.takeIf { page.trackSummary != null },
         modifier = modifier,
         heroContent = { primaryActionModifier, actionRowModifier ->
             TvDetailHero(page.hero) {
-                TvJellyfinHeroActions(page, callbacks, strings, primaryActionModifier, actionRowModifier) { showPicker = true }
+                TvJellyfinHeroActions(
+                    page,
+                    callbacks,
+                    strings,
+                    primaryActionModifier,
+                    actionRowModifier.focusRequester(trackLineFocus).takeIf { page.trackSummary != null }
+                        ?: actionRowModifier,
+                ) { dialog = TvDetailDialog.TRACKS }
             }
         },
     ) { bodyFocusModifier, sectionFocusModifiers ->
@@ -283,31 +293,24 @@ private fun TvJellyfinDetailContent(
             onSelectSeason = { chosenSeasonIndex = it },
         )
     }
-    if (showMore) {
-        TvDetailMoreDialog(
-            entries = page.moreEntries,
-            strings = strings,
-            onEntry = { entry ->
-                showMore = false
-                when (entry) {
-                    TvDetailMoreEntry.GO_TO_SERIES -> scope.launchOpenSeries(item, services.repository, navigation.onOpenItem)
-                    TvDetailMoreEntry.VERSION -> showPicker = true
-                }
-            },
-            onDismiss = { showMore = false },
-        )
-    }
-    val options = page.options
-    if (showPicker && options != null) {
-        TvDetailTrackPickerDialog(
-            options = options,
-            strings = strings,
-            onAudio = { selection = selection.withAudio(it) },
-            onSubtitle = { selection = selection.withSubtitle(it) },
-            onVersion = { selection = selection.withVersion(it) },
-            onDismiss = { showPicker = false },
-        )
-    }
+    TvDetailDialogs(
+        dialog = dialog,
+        moreEntries = page.moreEntries,
+        options = page.options,
+        strings = strings,
+        callbacks =
+            TvDetailDialogCallbacks(
+                onMoreEntry = { entry ->
+                    dialog = null
+                    when (entry) {
+                        TvDetailMoreEntry.GO_TO_SERIES -> scope.launchOpenSeries(item, services.repository, navigation.onOpenItem)
+                        TvDetailMoreEntry.VERSION -> dialog = TvDetailDialog.TRACKS
+                    }
+                },
+                onSelection = { selection = it(selection) },
+                onDismiss = { dialog = null },
+            ),
+    )
 }
 
 /** Opens the series of [episode]: the cached series item, else a stand-in built from the episode. */

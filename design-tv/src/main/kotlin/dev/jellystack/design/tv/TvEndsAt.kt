@@ -13,14 +13,17 @@ private const val MILLIS_PER_MINUTE = 60_000L
 /** The wall clock behind "Ends at"; screenshot fixtures pin it so their output does not depend on the time of day. */
 internal val LocalTvNowMillis = staticCompositionLocalOf<() -> Long> { System::currentTimeMillis }
 
-/** Minutes of [runTimeTicks] still to watch from [positionTicks]; null without a runtime, never negative. */
+/**
+ * Minutes of [runTimeTicks] still to watch from [positionTicks], rounded up like the cards' "min left"; null without
+ * a runtime, never negative.
+ */
 internal fun tvRemainingMinutes(
     runTimeTicks: Long?,
     positionTicks: Long?,
 ): Long? {
     val runtime = runTimeTicks?.takeIf { it > 0L } ?: return null
     val watched = (positionTicks ?: 0L).coerceIn(0L, runtime)
-    return (runtime - watched) / TV_RUNTIME_TICKS_PER_MINUTE
+    return (runtime - watched + TV_RUNTIME_TICKS_PER_MINUTE - 1) / TV_RUNTIME_TICKS_PER_MINUTE
 }
 
 /**

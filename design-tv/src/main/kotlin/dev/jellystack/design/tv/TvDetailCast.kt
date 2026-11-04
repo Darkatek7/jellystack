@@ -13,6 +13,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -63,12 +67,15 @@ internal fun TvDetailCastAvatar(
                 ).background(TvSurfaceRaised, TvShapes.Pill),
             contentAlignment = Alignment.Center,
         ) {
-            if (card.imageUrl != null) {
+            // A person whose photo fails to load shows the initial instead of an empty circle.
+            var imageFailed by remember(card.imageUrl) { mutableStateOf(false) }
+            if (card.imageUrl != null && !imageFailed) {
                 AsyncImage(
                     model = card.imageUrl,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.size(TV_DETAIL_CAST_AVATAR_DP.dp),
+                    onError = { imageFailed = true },
                 )
             } else {
                 Text(

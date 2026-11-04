@@ -36,6 +36,7 @@ class TvEndsAtTest {
         assertEquals(100L, tvRemainingMinutes(runtime, null))
         assertEquals(62L, tvRemainingMinutes(runtime, 38 * TV_RUNTIME_TICKS_PER_MINUTE))
         assertEquals(0L, tvRemainingMinutes(runtime, 140 * TV_RUNTIME_TICKS_PER_MINUTE))
+        assertEquals(20L, tvRemainingMinutes(runtime, 80 * TV_RUNTIME_TICKS_PER_MINUTE + 1))
     }
 
     @Test

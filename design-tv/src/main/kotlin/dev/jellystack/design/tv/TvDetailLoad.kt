@@ -72,7 +72,10 @@ internal fun defaultTvSeasonIndex(
             ?.let { targetId -> groups.indexOfFirst { group -> group.episodes.any { it.id == targetId } } }
             ?.takeIf { it >= 0 }
     if (byFallback != null) return byFallback
-    val hasProgress: (JellyfinItem) -> Boolean = { (it.positionTicks ?: 0L) > 0L || it.playedPercentage != null }
+    // Watched episodes keep a played percentage of 100, so only unfinished ones count as in progress.
+    val hasProgress: (JellyfinItem) -> Boolean = {
+        !it.isPlayed && ((it.positionTicks ?: 0L) > 0L || (it.playedPercentage ?: 0.0) > 0.0)
+    }
     val inProgress = groups.indexOfFirst { group -> group.episodes.any(hasProgress) }
     if (inProgress >= 0) return inProgress
     // Otherwise open where the viewer left off: the first regular season that still has an unwatched episode.

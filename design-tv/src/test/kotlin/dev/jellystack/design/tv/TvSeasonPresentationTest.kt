@@ -98,7 +98,7 @@ class TvSeasonPresentationTest {
             buildTvSeasonGroups(
                 listOf(
                     episode("special", 0, 1),
-                    episode("s1e1", 1, 1).copy(isPlayed = true),
+                    episode("s1e1", 1, 1).copy(isPlayed = true, playedPercentage = 100.0),
                     episode("s1e2", 1, 2).copy(isPlayed = true),
                     episode("s2e1", 2, 1),
                 ),
