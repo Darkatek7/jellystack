@@ -1322,7 +1322,10 @@ private fun TvAuthenticatedApp(
                 !homeState.isInitialLoading &&
                     !homeState.isHomeLoading &&
                     homeSections !is HomeSectionsState.Loading
-            is TvRoute.Library -> !homeState.isLibraryLoading && !homeState.isPageLoading
+            is TvRoute.Library ->
+                !homeState.isLibraryLoading &&
+                    !homeState.isPageLoading &&
+                    (currentRoute.mode != TvLibraryMode.ALL_TITLES || tvLibraryContentDetermined(homeState))
             TvRoute.Search ->
                 !searchState.jellyfin.isLoading && !searchState.seerr.isLoading
             TvRoute.Discover ->

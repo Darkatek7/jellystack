@@ -135,6 +135,8 @@ internal fun tvHomeCardTargetId(
     itemId: String,
 ): String = "home:row:$rowId:item:$itemId"
 
+internal fun TvFocusTarget.isLibraryQueryControl(): Boolean = targetId == TV_LIBRARY_SORT_TARGET || targetId == TV_LIBRARY_FILTER_TARGET
+
 internal fun tvLibraryTargetId(
     itemId: String,
     sectionId: String = "items",
@@ -254,7 +256,11 @@ internal class TvSemanticFocusRestorationSession(
     ): String? {
         if (!isPending) return null
         val actionable = availableTargets.filter(TvFocusTarget::actionable)
-        val remembered = snapshot ?: return actionable.firstOrNull()?.targetId
+        val remembered =
+            snapshot ?: return actionable
+                // Controls above a grid must not claim the first focus while the grid's items are still on their way.
+                .firstOrNull { contentAuthoritativelyLoaded || !it.isLibraryQueryControl() }
+                ?.targetId
         actionable.firstOrNull { it.anchor == remembered.anchor }?.let { return it.targetId }
         if (!contentAuthoritativelyLoaded) return null
         val sameSection = actionable.filter { it.anchor.sectionId == remembered.anchor.sectionId }
