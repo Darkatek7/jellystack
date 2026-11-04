@@ -153,6 +153,18 @@ internal data class TvDiagnosticsStrings(
     ): String = crashSummaryFormat.format(time, thread, version)
 }
 
+/** Settings > Home: which rows the home screen shows and in which order. */
+internal data class TvHomeSettingsStrings(
+    val categoryTitle: String,
+    val categoryDescription: String,
+    val intro: String,
+    val shown: String,
+    val hidden: String,
+    val moveUp: String,
+    val moveDown: String,
+    val empty: String,
+)
+
 internal data class TvStrings(
     val home: String,
     val library: String,
@@ -396,6 +408,7 @@ internal data class TvStrings(
     val metadata: TvMetadataStrings,
     val settingsLabels: TvSettingsStrings,
     val diagnostics: TvDiagnosticsStrings,
+    val homeSettings: TvHomeSettingsStrings,
     private val itemSingular: String,
     private val itemPlural: String,
 ) {
@@ -707,6 +720,7 @@ internal data class TvStrings(
                         decimalSeparator = ".",
                     ),
                 diagnostics = englishDiagnosticStrings,
+                homeSettings = englishHomeSettingsStrings,
                 itemSingular = "item",
                 itemPlural = "items",
             )
@@ -740,6 +754,18 @@ private val englishMessageStrings =
         requestTitleFormat = "Request %s",
         loadingDetails = "Loading details…",
         untitled = "Untitled",
+    )
+
+private val englishHomeSettingsStrings =
+    TvHomeSettingsStrings(
+        categoryTitle = "Home",
+        categoryDescription = "Show, hide and reorder the rows",
+        intro = "Press OK to show or hide a row. Use the arrows to move it up or down.",
+        shown = "Shown",
+        hidden = "Hidden",
+        moveUp = "Move up",
+        moveDown = "Move down",
+        empty = "The rows appear here once the home screen has loaded.",
     )
 
 private val englishDiagnosticStrings =

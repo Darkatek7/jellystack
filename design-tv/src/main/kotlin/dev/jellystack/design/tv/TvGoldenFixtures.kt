@@ -36,6 +36,8 @@ enum class TvGoldenFixture {
     PLAYER_SCRUB,
     PLAYER_UP_NEXT,
     HOME_HERO,
+    HOME_HERO_HINTS,
+    HOME_SETTINGS,
     DETAIL_HERO,
     LIBRARY_GRID,
     EMPTY_STATE,
@@ -45,6 +47,14 @@ enum class TvGoldenFixture {
     NAVIGATION_RAIL_OPEN,
     RESUME_DIALOG,
 }
+
+private val GOLDEN_HERO_FIXTURES =
+    setOf(
+        TvGoldenFixture.HOME_HERO,
+        TvGoldenFixture.HOME_HERO_HINTS,
+        TvGoldenFixture.HOME_SETTINGS,
+        TvGoldenFixture.DETAIL_HERO,
+    )
 
 /** Screenshot-test entry point; production code never calls it. */
 @Composable
@@ -62,12 +72,13 @@ fun JellystackTvGoldenFixture(
         }
         return
     }
-    if (fixture == TvGoldenFixture.HOME_HERO || fixture == TvGoldenFixture.DETAIL_HERO) {
+    if (fixture in GOLDEN_HERO_FIXTURES) {
         JellystackTvTheme {
-            if (fixture == TvGoldenFixture.HOME_HERO) {
-                GoldenHomeHero(strings, modifier)
-            } else {
-                GoldenDetailHero(strings, modifier)
+            when (fixture) {
+                TvGoldenFixture.HOME_HERO -> GoldenHomeHero(strings, modifier, showKeyHints = false, pageIndex = 5)
+                TvGoldenFixture.HOME_HERO_HINTS -> GoldenHomeHero(strings, modifier, showKeyHints = true, pageIndex = 0)
+                TvGoldenFixture.HOME_SETTINGS -> GoldenHomeSettings(strings, modifier)
+                else -> GoldenDetailHero(strings, modifier)
             }
         }
         return
@@ -86,6 +97,8 @@ fun JellystackTvGoldenFixture(
                 TvGoldenFixture.LANDSCAPE_CARDS -> GoldenLandscapeCards(strings)
                 TvGoldenFixture.PORTRAIT_CARDS -> GoldenPortraitCards()
                 TvGoldenFixture.HOME_HERO,
+                TvGoldenFixture.HOME_HERO_HINTS,
+                TvGoldenFixture.HOME_SETTINGS,
                 TvGoldenFixture.PLAYER_CONTROLS,
                 TvGoldenFixture.PLAYER_SCRUB,
                 TvGoldenFixture.PLAYER_UP_NEXT,

@@ -1490,6 +1490,9 @@ private fun TvAuthenticatedApp(
                                                     ?: entry.savedMedia?.toTvRoute()?.let(::push)
                                             },
                                             spotlightAutoAdvance = settings.spotlightAutoCycle,
+                                            rowPreferences = settings.homeRows,
+                                            heroHintsSeen = settings.heroHintsSeen,
+                                            onHeroHintsUsed = { settingsRepository.setHeroHintsSeen(true) },
                                         )
                                     is TvRoute.Library -> {
                                         val library = homeState.libraries.firstOrNull { it.id == route.libraryId }
@@ -1599,6 +1602,7 @@ private fun TvAuthenticatedApp(
                                             profilePreferencesRepository = profilePreferencesRepository,
                                             profileRepository = profileRepository,
                                             watchNextAvailable = integrations.watchNext.supported,
+                                            homeRows = tvHomeRowOptions(homeState, homeSections, myList.isNotEmpty(), strings),
                                         )
                                     is TvRoute.JellyfinDetail ->
                                         TvJellyfinDetailScreen(

@@ -84,6 +84,7 @@ internal fun TvSettingsScreen(
     profilePreferencesRepository: ProfilePreferencesRepository? = null,
     profileRepository: HouseholdProfileRepository? = null,
     watchNextAvailable: Boolean = false,
+    homeRows: List<TvHomeRowOption> = emptyList(),
 ) {
     val scope = rememberCoroutineScope()
     val servers by serverRepository.observeServers().collectAsStateWithLifecycle()
@@ -143,6 +144,15 @@ internal fun TvSettingsScreen(
                 modifier = modifier,
             ) {
                 TvAppearanceSettings(settings, repository, strings, ::showChoices, watchNextAvailable)
+            }
+        TvSettingsCategory.HOME ->
+            TvSettingsCategoryPage(
+                category = category,
+                title = strings.homeSettings.categoryTitle,
+                targetIds = homeRows.map { tvHomeRowToggleTargetId(it.id) },
+                modifier = modifier,
+            ) {
+                TvHomeSettings(homeRows, settings.homeRows, strings, repository::setHomeRows)
             }
         TvSettingsCategory.PLAYBACK ->
             TvSettingsCategoryPage(
@@ -781,6 +791,7 @@ internal fun TvRemoveServerDialog(
 private fun TvSettingsCategory.title(strings: TvStrings): String =
     when (this) {
         TvSettingsCategory.APPEARANCE -> strings.settingsAppearance
+        TvSettingsCategory.HOME -> strings.homeSettings.categoryTitle
         TvSettingsCategory.PLAYBACK -> strings.settingsPlaybackCategory
         TvSettingsCategory.AUDIO_SUBTITLES -> strings.settingsAudioSubtitles
         TvSettingsCategory.SEGMENT_SKIPPING -> strings.segmentSkipping
@@ -791,6 +802,7 @@ private fun TvSettingsCategory.title(strings: TvStrings): String =
 private fun TvSettingsCategory.description(strings: TvStrings): String =
     when (this) {
         TvSettingsCategory.APPEARANCE -> strings.settingsAppearanceDescription
+        TvSettingsCategory.HOME -> strings.homeSettings.categoryDescription
         TvSettingsCategory.PLAYBACK -> strings.settingsPlaybackDescription
         TvSettingsCategory.AUDIO_SUBTITLES -> strings.settingsAudioSubtitlesDescription
         TvSettingsCategory.SEGMENT_SKIPPING -> strings.settingsSegmentSkippingDescription

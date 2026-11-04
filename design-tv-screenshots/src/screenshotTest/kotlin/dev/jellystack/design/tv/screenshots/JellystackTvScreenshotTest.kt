@@ -64,6 +64,21 @@ fun TvPlayerUpNext() = JellystackTvGoldenFixture(TvGoldenFixture.PLAYER_UP_NEXT)
 fun TvHomeHero() = JellystackTvGoldenFixture(TvGoldenFixture.HOME_HERO)
 
 @PreviewTest
+@Preview(name = "1080p", device = TV_1080P)
+@Composable
+fun TvHomeHeroKeyHints() = JellystackTvGoldenFixture(TvGoldenFixture.HOME_HERO_HINTS)
+
+@PreviewTest
+@Preview(name = "1080p", device = TV_1080P)
+@Composable
+fun TvHomeSettings() = JellystackTvGoldenFixture(TvGoldenFixture.HOME_SETTINGS)
+
+@PreviewTest
+@Preview(name = "German 150% 1080p", device = TV_1080P, locale = "de", fontScale = 1.5f)
+@Composable
+fun TvHomeSettingsGermanLarge() = JellystackTvGoldenFixture(TvGoldenFixture.HOME_SETTINGS, AppLanguage.GERMAN)
+
+@PreviewTest
 @Preview(name = "German 150% 1080p", device = TV_1080P, locale = "de", fontScale = 1.5f)
 @Composable
 fun TvHomeHeroGermanLarge() = JellystackTvGoldenFixture(TvGoldenFixture.HOME_HERO, AppLanguage.GERMAN)

@@ -77,6 +77,8 @@ import dev.jellystack.core.jellyseerr.JellyseerrRecommendationRail
 import dev.jellystack.core.jellyseerr.JellyseerrRecommendationsState
 import dev.jellystack.core.jellyseerr.JellyseerrRequestsState
 import dev.jellystack.core.jellyseerr.JellyseerrSearchItem
+import dev.jellystack.core.preferences.HomeRowPreferences
+import dev.jellystack.core.preferences.visibleRowIds
 import dev.jellystack.core.profile.MediaIdentity
 import dev.jellystack.core.profile.MyListEntry
 import dev.jellystack.players.AndroidPlayerEngine
@@ -168,6 +170,9 @@ internal fun TvHomeScreen(
     myList: List<MyListEntry> = emptyList(),
     onMyListEntry: (MyListEntry) -> Unit = {},
     spotlightAutoAdvance: Boolean = false,
+    rowPreferences: HomeRowPreferences = HomeRowPreferences(),
+    heroHintsSeen: Boolean = true,
+    onHeroHintsUsed: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val heroPresentation =
@@ -181,42 +186,24 @@ internal fun TvHomeScreen(
             .orEmpty()
             .filter { it.items.isNotEmpty() }
             .distinctBy { it.id }
+    // The rows as built, then as the user arranged them: hidden ones drop out, new ones follow at the end.
+    val orderedRowIds =
+        remember(state, homeSections, myList, strings, rowPreferences) {
+            rowPreferences.visibleRowIds(tvHomeRowOptions(state, homeSections, myList.isNotEmpty(), strings).map { it.id })
+        }
     val focusRows =
-        remember(visibleSections, homeSections, state.continueWatching, state.nextUp, state.libraries, myList) {
-            buildList {
-                var lazyColumnIndex = 0
-                if (myList.isNotEmpty()) {
-                    add(
-                        TvHomeFocusRow(
-                            id = "my-list",
-                            lazyColumnIndex = lazyColumnIndex++,
-                            itemIds = myList.map { it.identity.tvMyListKey() },
-                            landscape = true,
-                        ),
-                    )
-                }
-                if (homeSections is HomeSectionsState.Ready) {
-                    visibleSections.forEach { section ->
-                        add(
-                            TvHomeFocusRow(
-                                id = "plugin:${section.id}",
-                                lazyColumnIndex = lazyColumnIndex++,
-                                itemIds = section.items.map { it.id },
-                                landscape = true,
-                            ),
-                        )
+        remember(visibleSections, state.continueWatching, state.nextUp, state.libraries, myList, orderedRowIds) {
+            val sectionsById = visibleSections.associateBy { tvHomePluginRowId(it.id) }
+            orderedRowIds.mapIndexedNotNull { lazyColumnIndex, rowId ->
+                val itemIds =
+                    when (rowId) {
+                        TV_HOME_MY_LIST_ROW -> myList.map { it.identity.tvMyListKey() }
+                        TV_HOME_CONTINUE_ROW -> state.continueWatching.map { it.id }
+                        TV_HOME_NEXT_UP_ROW -> state.nextUp.map { it.id }
+                        TV_HOME_LIBRARIES_ROW -> state.libraries.map { it.id }
+                        else -> sectionsById[rowId]?.items?.map { it.id }
                     }
-                } else {
-                    if (state.continueWatching.isNotEmpty()) {
-                        add(TvHomeFocusRow("continue", lazyColumnIndex++, state.continueWatching.map { it.id }, landscape = true))
-                    }
-                    if (state.nextUp.isNotEmpty()) {
-                        add(TvHomeFocusRow("next", lazyColumnIndex++, state.nextUp.map { it.id }, landscape = true))
-                    }
-                    if (state.libraries.isNotEmpty()) {
-                        add(TvHomeFocusRow("libraries", lazyColumnIndex, state.libraries.map { it.id }, landscape = true))
-                    }
-                }
+                itemIds?.let { TvHomeFocusRow(rowId, lazyColumnIndex, it, landscape = true) }
             }
         }
     val homeListState = rememberLazyListState()
@@ -238,15 +225,7 @@ internal fun TvHomeScreen(
         laidOutRowIds = homeRowIds
         if (heroHasFocus || (rowsChanged && !rowsHaveFocus)) homeListState.scrollToItem(0)
     }
-    val errorLazyColumnIndex =
-        (if (myList.isNotEmpty()) 1 else 0) +
-            if (homeSections is HomeSectionsState.Ready) {
-                visibleSections.size
-            } else {
-                (if (state.continueWatching.isNotEmpty()) 1 else 0) +
-                    (if (state.nextUp.isNotEmpty()) 1 else 0) +
-                    1
-            }
+    val errorLazyColumnIndex = orderedRowIds.size
     val homeFocusLocations =
         buildMap {
             put(TV_HOME_PRIMARY_TARGET, TvLazyFocusLocation(verticalIndex = 0))
@@ -348,7 +327,7 @@ internal fun TvHomeScreen(
             enabled = spotlightAutoAdvance,
             candidateCount = candidateIds.size,
             reducedMotion = LocalTvFocusAppearance.current.reducedMotion,
-            cardStaged = stagedCard != null,
+            heroFocused = heroHasFocus && stagedCard == null,
             trailerActive = trailerPreviewState is TvTrailerPreviewState.Armed || trailerPreviewState is TvTrailerPreviewState.Playing,
         )
     LaunchedEffect(autoAdvanceHero, candidateIds, carouselState.selectedId, heroInteractions) {
@@ -376,6 +355,7 @@ internal fun TvHomeScreen(
                 showCarouselContext = stagedCard == null,
                 imageBaseUrl = state.imageBaseUrl,
                 imageAccessToken = state.imageAccessToken,
+                showKeyHints = !heroHintsSeen,
             )
         }
     val stageTrailerPlaying =
@@ -414,6 +394,7 @@ internal fun TvHomeScreen(
                             onVerticalMove = { direction -> onVerticalMove(TvHomeFocusOrigin.Hero, direction, null) },
                             // The hero shows its own spotlight again at once, so Play and Details act on it.
                             onHeroFocused = stageDwell::onSpotlightFocused,
+                            onHintsUsed = onHeroHintsUsed,
                             onCarouselMove = { direction ->
                                 val move = moveTvHomeCarouselManually(candidateIds, carouselState, direction)
                                 if (move.openNavigationRail) openNavigationRail?.invoke() else carouselState = move.state
@@ -458,41 +439,32 @@ internal fun TvHomeScreen(
                 contentPadding = TvHomeRowsPadding,
                 verticalArrangement = Arrangement.spacedBy(20.dp),
             ) {
-                if (myList.isNotEmpty()) {
-                    item(key = "my-list", contentType = "media-row") {
-                        TvRowScroll(rowScrollSpec) {
-                            TvMyListRow(
-                                entries = myList,
-                                state = state,
-                                strings = strings,
-                                focusMemory = focusMemory,
-                                listState = rowListStates.getValue("my-list"),
-                                onEntry = onMyListEntry,
-                                onPreviewFocus = stageDwell::onCardFocused,
-                                onPreviewBlur = { item, presentationId ->
-                                    stageDwell.onCardBlurred(item, presentationId)
-                                    onPreviewBlur(TvTrailerPreviewOwner.CARD, item, presentationId)
-                                },
-                                onVerticalMove = { entry, direction ->
-                                    onVerticalMove(
-                                        TvHomeFocusOrigin.Row("my-list", entry.identity.tvMyListKey()),
-                                        direction,
-                                        entry.jellyfinItem,
-                                    )
-                                },
-                            )
-                        }
-                    }
-                }
-                when (homeSections) {
-                    is HomeSectionsState.Ready -> {
-                        items(
-                            visibleSections,
-                            key = { "plugin:${it.id}" },
-                            contentType = { "media-row" },
-                        ) { section ->
-                            val rowId = "plugin:${section.id}"
-                            TvRowScroll(rowScrollSpec) {
+                items(orderedRowIds, key = { it }, contentType = { "media-row" }) { rowId ->
+                    val section = visibleSections.firstOrNull { tvHomePluginRowId(it.id) == rowId }
+                    TvRowScroll(rowScrollSpec) {
+                        when {
+                            rowId == TV_HOME_MY_LIST_ROW ->
+                                TvMyListRow(
+                                    entries = myList,
+                                    state = state,
+                                    strings = strings,
+                                    focusMemory = focusMemory,
+                                    listState = rowListStates.getValue(rowId),
+                                    onEntry = onMyListEntry,
+                                    onPreviewFocus = stageDwell::onCardFocused,
+                                    onPreviewBlur = { item, presentationId ->
+                                        stageDwell.onCardBlurred(item, presentationId)
+                                        onPreviewBlur(TvTrailerPreviewOwner.CARD, item, presentationId)
+                                    },
+                                    onVerticalMove = { entry, direction ->
+                                        onVerticalMove(
+                                            TvHomeFocusOrigin.Row(rowId, entry.identity.tvMyListKey()),
+                                            direction,
+                                            entry.jellyfinItem,
+                                        )
+                                    },
+                                )
+                            section != null && homeSections is HomeSectionsState.Ready ->
                                 TvHomeSectionRow(
                                     section = section,
                                     strings = strings,
@@ -512,60 +484,7 @@ internal fun TvHomeScreen(
                                         onVerticalMove(TvHomeFocusOrigin.Row(rowId, itemId), direction, item)
                                     },
                                 )
-                            }
-                        }
-                    }
-                    else -> {
-                        if (state.continueWatching.isNotEmpty()) {
-                            item("continue") {
-                                TvRowScroll(rowScrollSpec) {
-                                    TvJellyfinRow(
-                                        strings.continueWatching,
-                                        state.continueWatching,
-                                        state,
-                                        strings,
-                                        focusMemory,
-                                        onItem,
-                                        onPreviewFocus = stageDwell::onCardFocused,
-                                        onPreviewBlur = { item, presentationId ->
-                                            stageDwell.onCardBlurred(item, presentationId)
-                                            onPreviewBlur(TvTrailerPreviewOwner.CARD, item, presentationId)
-                                        },
-                                        listState = rowListStates.getValue("continue"),
-                                        focusTargetId = { itemId -> tvHomeCardTargetId("continue", itemId) },
-                                        onVerticalMove = { item, direction ->
-                                            onVerticalMove(TvHomeFocusOrigin.Row("continue", item.id), direction, item)
-                                        },
-                                    )
-                                }
-                            }
-                        }
-                        if (state.nextUp.isNotEmpty()) {
-                            item("next") {
-                                TvRowScroll(rowScrollSpec) {
-                                    TvJellyfinRow(
-                                        strings.nextUp,
-                                        state.nextUp,
-                                        state,
-                                        strings,
-                                        focusMemory,
-                                        onItem,
-                                        onPreviewFocus = stageDwell::onCardFocused,
-                                        onPreviewBlur = { item, presentationId ->
-                                            stageDwell.onCardBlurred(item, presentationId)
-                                            onPreviewBlur(TvTrailerPreviewOwner.CARD, item, presentationId)
-                                        },
-                                        listState = rowListStates.getValue("next"),
-                                        focusTargetId = { itemId -> tvHomeCardTargetId("next", itemId) },
-                                        onVerticalMove = { item, direction ->
-                                            onVerticalMove(TvHomeFocusOrigin.Row("next", item.id), direction, item)
-                                        },
-                                    )
-                                }
-                            }
-                        }
-                        item("libraries") {
-                            TvRowScroll(rowScrollSpec) {
+                            rowId == TV_HOME_LIBRARIES_ROW ->
                                 TvLibraryRow(
                                     state.libraries,
                                     state,
@@ -573,9 +492,29 @@ internal fun TvHomeScreen(
                                     strings,
                                     focusMemory,
                                     onLibrary,
-                                    listState = rowListStates.getValue("libraries"),
+                                    listState = rowListStates.getValue(rowId),
                                     onVerticalMove = { libraryId, direction ->
-                                        onVerticalMove(TvHomeFocusOrigin.Row("libraries", libraryId), direction, null)
+                                        onVerticalMove(TvHomeFocusOrigin.Row(rowId, libraryId), direction, null)
+                                    },
+                                )
+                            else -> {
+                                val isContinue = rowId == TV_HOME_CONTINUE_ROW
+                                TvJellyfinRow(
+                                    if (isContinue) strings.continueWatching else strings.nextUp,
+                                    if (isContinue) state.continueWatching else state.nextUp,
+                                    state,
+                                    strings,
+                                    focusMemory,
+                                    onItem,
+                                    onPreviewFocus = stageDwell::onCardFocused,
+                                    onPreviewBlur = { item, presentationId ->
+                                        stageDwell.onCardBlurred(item, presentationId)
+                                        onPreviewBlur(TvTrailerPreviewOwner.CARD, item, presentationId)
+                                    },
+                                    listState = rowListStates.getValue(rowId),
+                                    focusTargetId = { itemId -> tvHomeCardTargetId(rowId, itemId) },
+                                    onVerticalMove = { item, direction ->
+                                        onVerticalMove(TvHomeFocusOrigin.Row(rowId, item.id), direction, item)
                                     },
                                 )
                             }

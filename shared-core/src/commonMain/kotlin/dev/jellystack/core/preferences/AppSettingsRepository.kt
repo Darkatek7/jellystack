@@ -98,6 +98,14 @@ class AppSettingsRepository(
 
     fun setWatchNextEnabled(value: Boolean) = update(KEY_WATCH_NEXT_ENABLED, value) { copy(watchNextEnabled = value) }
 
+    fun setHeroHintsSeen(value: Boolean) = update(KEY_HERO_HINTS_SEEN, value) { copy(heroHintsSeen = value) }
+
+    fun setHomeRows(value: HomeRowPreferences) {
+        storage.putString(KEY_HOME_ROW_ORDER, value.encodeOrder())
+        storage.putString(KEY_HOME_HIDDEN_ROWS, value.encodeHidden())
+        publish { copy(homeRows = value) }
+    }
+
     private fun readSettings(): AppSettings =
         AppSettings(
             appLanguage = enumValue(KEY_APP_LANGUAGE, AppLanguage.SYSTEM),
@@ -137,6 +145,12 @@ class AppSettingsRepository(
             videoScale = enumValue(KEY_VIDEO_SCALE, VideoScale.FIT),
             matchRefreshRate = storage.getBoolean(KEY_MATCH_REFRESH_RATE, false),
             watchNextEnabled = storage.getBoolean(KEY_WATCH_NEXT_ENABLED, true),
+            heroHintsSeen = storage.getBoolean(KEY_HERO_HINTS_SEEN, false),
+            homeRows =
+                HomeRowPreferences(
+                    order = decodeHomeRowIds(storage.getStringOrNull(KEY_HOME_ROW_ORDER)),
+                    hidden = decodeHomeRowIds(storage.getStringOrNull(KEY_HOME_HIDDEN_ROWS)).toSet(),
+                ),
         )
 
     private inline fun <reified T : Enum<T>> enumValue(
@@ -211,6 +225,9 @@ class AppSettingsRepository(
         const val KEY_VIDEO_SCALE = "settings.video_scale"
         const val KEY_MATCH_REFRESH_RATE = "settings.match_refresh_rate"
         const val KEY_WATCH_NEXT_ENABLED = "settings.watch_next_enabled"
+        const val KEY_HERO_HINTS_SEEN = "settings.hero_hints_seen"
+        const val KEY_HOME_ROW_ORDER = "settings.home_row_order"
+        const val KEY_HOME_HIDDEN_ROWS = "settings.home_hidden_rows"
         val SEEK_SECONDS = setOf(5, 10, 15, 30, 60)
         val SPOTLIGHT_INTERVAL_SECONDS = setOf(6, 8, 10, 15)
         val PLAYBACK_SPEEDS = setOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)

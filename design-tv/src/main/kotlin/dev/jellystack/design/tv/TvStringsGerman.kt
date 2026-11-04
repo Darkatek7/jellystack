@@ -30,6 +30,18 @@ private val germanMessageStrings =
         untitled = "Ohne Titel",
     )
 
+private val germanHomeSettingsStrings =
+    TvHomeSettingsStrings(
+        categoryTitle = "Startseite",
+        categoryDescription = "Zeilen ein- und ausblenden und anordnen",
+        intro = "Mit OK blendest du eine Zeile ein oder aus. Mit den Pfeilen verschiebst du sie nach oben oder unten.",
+        shown = "Angezeigt",
+        hidden = "Ausgeblendet",
+        moveUp = "Nach oben",
+        moveDown = "Nach unten",
+        empty = "Die Zeilen erscheinen hier, sobald die Startseite geladen ist.",
+    )
+
 private val germanDiagnosticStrings =
     TvDiagnosticsStrings(
         categoryTitle = "Diagnose",
@@ -344,6 +356,7 @@ internal val TvStringsGerman: TvStrings =
                 decimalSeparator = ",",
             ),
         diagnostics = germanDiagnosticStrings,
+        homeSettings = germanHomeSettingsStrings,
         itemSingular = "Element",
         itemPlural = "Elemente",
     )
