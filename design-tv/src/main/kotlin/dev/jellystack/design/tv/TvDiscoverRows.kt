@@ -123,7 +123,7 @@ private fun JellyseerrSearchItem.toCinematicCard(
         title = title.ifBlank { untitled },
         subtitle = releaseYear,
         overview = overview,
-        artworkUrl = tmdbImageUrl(backdropPath ?: posterPath, backdrop = backdropPath != null),
+        artworkUrl = tmdbCardImageUrl(backdropPath ?: posterPath, backdrop = backdropPath != null),
         backdropUrl = tmdbImageUrl(backdropPath ?: posterPath, backdrop = backdropPath != null),
         selected = selected,
     )

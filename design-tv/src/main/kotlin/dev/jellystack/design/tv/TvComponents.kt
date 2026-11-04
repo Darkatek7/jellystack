@@ -871,3 +871,12 @@ internal fun tmdbImageUrl(
     path: String?,
     backdrop: Boolean = false,
 ): String? = path?.takeIf { it.isNotBlank() }?.let { "https://image.tmdb.org/t/p/${if (backdrop) "w1280" else "w500"}$it" }
+
+/**
+ * A TMDB image for a landscape card, which is 176 dp wide: the full-screen sizes of [tmdbImageUrl] cost download, JPEG
+ * decode and texture memory for pixels a card never shows.
+ */
+internal fun tmdbCardImageUrl(
+    path: String?,
+    backdrop: Boolean,
+): String? = path?.takeIf { it.isNotBlank() }?.let { "https://image.tmdb.org/t/p/${if (backdrop) "w300" else "w342"}$it" }
