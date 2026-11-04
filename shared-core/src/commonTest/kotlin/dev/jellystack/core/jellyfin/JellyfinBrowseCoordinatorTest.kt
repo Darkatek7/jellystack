@@ -513,6 +513,31 @@ class JellyfinBrowseCoordinatorTest {
         }
 
     @Test
+    fun libraryLatestLoadsOncePerLibraryAndAFailureLeavesNoEntry() =
+        runTest {
+            val calls = mutableListOf<String>()
+            val repository =
+                FakeBrowseRepository(
+                    loadLatest = { id ->
+                        calls += id
+                        if (id == "broken") error("offline") else listOf(favoriteJellyfinItem("new-$id"))
+                    },
+                )
+            val coordinator =
+                JellyfinBrowseCoordinator(repository, backgroundScope, favoritesStore = FakeJellyfinFavoritesStore(), autoBootstrap = false)
+            val music = JellyfinLibrary("music", "Music", "music", null, null)
+
+            coordinator.loadLibraryLatest(music)
+            coordinator.loadLibraryLatest(music)
+            coordinator.loadLibraryLatest(JellyfinLibrary("broken", "Broken", "books", null, null))
+            val state = awaitState(coordinator) { "music" in it.libraryLatest }
+
+            assertEquals(listOf("new-music"), state.libraryLatest.getValue("music").map { it.id })
+            assertFalse("broken" in state.libraryLatest)
+            assertEquals(1, calls.count { it == "music" })
+        }
+
+    @Test
     fun letterJumpLoadsThroughTheTargetAndKeepsPagingAligned() =
         runTest {
             val rangeCalls = mutableListOf<Pair<Int, Int>>()
@@ -1756,8 +1781,15 @@ class JellyfinBrowseCoordinatorTest {
         private val loadCachedContinueWatching: suspend (Int) -> List<JellyfinItem> = { emptyList() },
         private val loadContinueWatching: suspend (Int) -> List<JellyfinItem> = { emptyList() },
         private val countBefore: suspend (String) -> Long? = { null },
+        private val loadLatest: suspend (String) -> List<JellyfinItem> = { emptyList() },
         private val loadRange: suspend (Int, Int) -> LibraryPage = { _, _ -> LibraryPage(emptyList(), null) },
     ) : JellyfinBrowseRepositoryApi {
+        override suspend fun refreshLatestForLibrary(
+            libraryId: String,
+            collectionType: String?,
+            limit: Int,
+        ): List<JellyfinItem> = loadLatest(libraryId)
+
         override suspend fun countLibraryItemsBefore(
             libraryId: String,
             query: LibraryBrowseQuery,

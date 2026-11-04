@@ -95,20 +95,22 @@ class TvLibraryControlsLogicTest {
         val libraries =
             listOf(
                 JellyfinLibrary("movies", "Movies", "movies", 10, null),
+                JellyfinLibrary("books", "Books", "books", 4, null),
                 JellyfinLibrary("music", "Music", "music", 4, null),
                 JellyfinLibrary("shows", "Shows", "tvshows", 7, null),
             )
-        val recent =
-            listOf(
-                goldenItem("Series", "Harbor Lights").copy(libraryId = "shows"),
-                goldenItem("Movie", "Paper Moon").copy(libraryId = "movies"),
-                goldenItem("Movie", "Paper Moon").copy(libraryId = "movies"),
-                goldenItem("Movie", "Late Tide").copy(libraryId = "movies"),
+        val latest =
+            mapOf(
+                "shows" to listOf(goldenItem("Series", "Harbor Lights")),
+                "music" to listOf(goldenItem("MusicAlbum", "Glass Harbor")),
+                "books" to emptyList(),
+                "movies" to
+                    listOf("Paper Moon", "Paper Moon", "Late Tide").map { goldenItem("Movie", it) },
             )
 
-        val rows = tvLibraryLandingRows(libraries, recent)
+        val rows = tvLibraryLandingRows(libraries, latest)
 
-        assertEquals(listOf("movies", "shows"), rows.map { it.library.id })
+        assertEquals(listOf("movies", "music", "shows"), rows.map { it.library.id })
         assertEquals(listOf("Paper Moon", "Late Tide"), rows[0].items.map { it.name })
     }
 }

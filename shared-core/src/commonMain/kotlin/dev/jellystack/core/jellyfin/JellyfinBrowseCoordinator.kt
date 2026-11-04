@@ -39,6 +39,8 @@ data class JellyfinHomeState(
     val libraryBrowseQuery: LibraryBrowseQuery = LibraryBrowseQuery.DEFAULT,
     /** An A-Z jump whose target item is loaded and waits for the screen to scroll to it. */
     val libraryLetterJump: LibraryLetterJump? = null,
+    /** The newest items per library id, for the library landing; a library without a key has not loaded yet. */
+    val libraryLatest: Map<String, List<JellyfinItem>> = emptyMap(),
 ) {
     val errorMessage: String?
         get() = homeErrorMessage ?: libraryErrorMessage
@@ -133,6 +135,7 @@ class JellyfinBrowseCoordinator internal constructor(
     )
 
     private var letterJumpRequests = 0L
+    private val latestRequests = mutableSetOf<String>()
 
     private val mutableFavorites = MutableStateFlow<Set<String>>(favoritesStore.snapshot())
     val favorites: StateFlow<Set<String>> = mutableFavorites.asStateFlow()
@@ -582,6 +585,23 @@ class JellyfinBrowseCoordinator internal constructor(
                     updateBrowseStateIfCurrent(generation, libraryId, emptyList()) { it.copy(isPageLoading = false) }
                 }
             }
+    }
+
+    /** Loads the newest items of [library] once; a failure leaves the library without a row. */
+    fun loadLibraryLatest(library: JellyfinLibrary) {
+        if (library.id in mutableState.value.libraryLatest || !latestRequests.add(library.id)) return
+        scope.launch {
+            try {
+                val items = repository.refreshLatestForLibrary(library.id, library.collectionType, LIBRARY_LATEST_LIMIT)
+                mutableState.update { it.copy(libraryLatest = it.libraryLatest + (library.id to items)) }
+            } catch (cancellation: CancellationException) {
+                latestRequests.remove(library.id)
+                throw cancellation
+            } catch (t: Throwable) {
+                JellystackLog.w("Latest items of a library failed", t)
+                latestRequests.remove(library.id)
+            }
+        }
     }
 
     fun consumeLibraryLetterJump(requestId: Long) {
@@ -1042,6 +1062,7 @@ class JellyfinBrowseCoordinator internal constructor(
     private companion object {
         private const val HOME_SECTION_ITEM_LIMIT = 12
         private const val LETTER_JUMP_CHUNK_PAGES = 10
+        private const val LIBRARY_LATEST_LIMIT = 16
         private const val FAVORITES_FILTER = "IsFavorite"
         private const val FAVORITES_LIBRARY_SENTINEL = "__favorites__"
     }

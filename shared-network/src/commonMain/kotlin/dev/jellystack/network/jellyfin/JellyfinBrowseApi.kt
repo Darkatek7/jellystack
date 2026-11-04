@@ -122,7 +122,7 @@ class JellyfinBrowseApi(
         userId: String,
         libraryId: String,
         limit: Int,
-        includeItemTypes: String,
+        includeItemTypes: String?,
     ): List<JellyfinItemDto> =
         client
             .request {
@@ -131,7 +131,7 @@ class JellyfinBrowseApi(
                 parameter("UserId", userId)
                 parameter("ParentId", libraryId)
                 parameter("Limit", limit)
-                parameter("IncludeItemTypes", includeItemTypes)
+                includeItemTypes?.takeIf { it.isNotBlank() }?.let { parameter("IncludeItemTypes", it) }
                 parameter("Fields", REQUIRED_FIELDS)
                 parameter("ImageTypeLimit", 1)
                 parameter("EnableImageTypes", "Primary,Backdrop,Thumb,Logo")

@@ -102,11 +102,15 @@ internal fun GoldenLibraryLanding(strings: TvStrings) {
         state =
             JellyfinHomeState(
                 libraries = GOLDEN_LIBRARIES,
-                recentMovies = items.take(8),
-                recentShows =
-                    listOf(
-                        goldenItem("Series", "Harbor Lights").copy(libraryId = "shows", productionYear = 2021),
-                        goldenItem("Series", "Quiet Signal").copy(libraryId = "shows", productionYear = 2019),
+                libraryLatest =
+                    mapOf(
+                        "movies" to items.take(8),
+                        "shows" to
+                            listOf(
+                                goldenItem("Series", "Harbor Lights").copy(productionYear = 2021),
+                                goldenItem("Series", "Quiet Signal").copy(productionYear = 2019),
+                            ),
+                        "music" to listOf(goldenItem("MusicAlbum", "Glass Harbor").copy(productionYear = 2023)),
                     ),
             ),
         strings = strings,

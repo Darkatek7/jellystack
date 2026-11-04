@@ -56,10 +56,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Text
 import dev.jellystack.core.jellyfin.HomeSectionAction
@@ -677,53 +673,29 @@ internal fun TvLibraryGridCard(
             if (cardShape == TvLibraryCardShape.PORTRAIT) TvArtworkSize.PORTRAIT_CARD else TvArtworkSize.LANDSCAPE_CARD,
         )
     val progress = item.tvCardText(strings).progress
-    Column(
-        verticalArrangement = Arrangement.spacedBy(5.dp),
-        modifier = Modifier.semantics(mergeDescendants = true) { contentDescription = listOfNotNull(title, year).joinToString(", ") },
-    ) {
-        TvMediaCard(
-            // The text below names the title; a poster with artwork shows none of its own. Without artwork the card
-            // would repeat it, so it gets a blank title.
-            title = if (imageUrl != null) title else " ",
-            subtitle = null,
-            imageUrl = imageUrl,
-            selected = item.id in favorites,
-            watched = item.isPlayed || (item.playedPercentage ?: 0.0) >= WATCHED_PERCENTAGE,
-            progress = progress?.takeIf { it in 0.01f..0.99f },
-            format = if (cardShape == TvLibraryCardShape.PORTRAIT) TvMediaCardFormat.POSTER else TvMediaCardFormat.LANDSCAPE,
-            artworkFit =
-                if (artwork?.imageType == "Primary") {
-                    TvMediaCardArtworkFit.CONTAIN_PORTRAIT
-                } else {
-                    TvMediaCardArtworkFit.CROP
-                },
-            fillWidth = true,
-            titleInArtwork = true,
-            onClick = onClick,
-            onFocused = { focusMemory.remember(routeKey, "items", item.id, index + 1, index) },
-            focusTargetId = targetId,
-            providedFocusRequester = focusRequester,
-            focusToNavigationRailOnLeft = isTvGridLeftEdge(index, columns),
-            modifier = Modifier.tvScreenEntryFocus(entryFocus, targetId).testTag("tv-library-all-title-${item.id}"),
-        )
-        Text(
-            text = title,
-            color = TvText,
-            fontSize = TvTextSize.BodySmall,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp),
-        )
-        Text(
-            text = year.orEmpty(),
-            color = TvTextMuted,
-            fontSize = TvTextSize.Label,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp),
-        )
-    }
+    TvMediaCard(
+        title = title,
+        subtitle = year,
+        imageUrl = imageUrl,
+        selected = item.id in favorites,
+        badge = tvJellyfinCardBadge(item, strings),
+        watched = item.playedPercentage?.let { it >= WATCHED_PERCENTAGE } == true,
+        progress = progress?.takeIf { it in 0.01f..0.99f },
+        format = if (cardShape == TvLibraryCardShape.PORTRAIT) TvMediaCardFormat.POSTER else TvMediaCardFormat.LANDSCAPE,
+        artworkFit =
+            if (artwork?.imageType == "Primary") {
+                TvMediaCardArtworkFit.CONTAIN_PORTRAIT
+            } else {
+                TvMediaCardArtworkFit.CROP
+            },
+        fillWidth = true,
+        onClick = onClick,
+        onFocused = { focusMemory.remember(routeKey, "items", item.id, index + 1, index) },
+        focusTargetId = targetId,
+        providedFocusRequester = focusRequester,
+        focusToNavigationRailOnLeft = isTvGridLeftEdge(index, columns),
+        modifier = Modifier.tvScreenEntryFocus(entryFocus, targetId).testTag("tv-library-all-title-${item.id}"),
+    )
 }
 
 private const val WATCHED_PERCENTAGE = 90.0

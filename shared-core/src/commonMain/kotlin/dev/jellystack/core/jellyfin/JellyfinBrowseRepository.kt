@@ -74,6 +74,18 @@ internal fun libraryQueryForCollectionType(collectionType: String?): LibraryQuer
         else -> LibraryQuery(includeItemTypes = null, recursive = false)
     }
 
+/** The item kinds "recently added" shows for a library; null leaves the choice to the server. */
+internal fun latestItemTypesForCollection(collectionType: String?): String? =
+    when (collectionType?.lowercase()) {
+        "movies" -> "Movie"
+        "tvshows", "series" -> "Series,Episode"
+        "music" -> "MusicAlbum"
+        "musicvideos" -> "MusicVideo"
+        "books" -> "Book,AudioBook"
+        "boxsets", "collections" -> "BoxSet"
+        else -> null
+    }
+
 internal interface JellyfinBrowseRepositoryApi {
     suspend fun refreshLibraries(): List<JellyfinLibrary>
 
@@ -164,6 +176,13 @@ internal interface JellyfinBrowseRepositoryApi {
         libraryId: String,
         limit: Int,
     ): List<JellyfinItem>
+
+    /** The newest items of any kind of library, for the library landing; empty when there are none. */
+    suspend fun refreshLatestForLibrary(
+        libraryId: String,
+        collectionType: String?,
+        limit: Int,
+    ): List<JellyfinItem> = emptyList()
 
     suspend fun currentServerBaseUrl(): String?
 
@@ -808,10 +827,16 @@ class JellyfinBrowseRepository(
         }
     }
 
+    override suspend fun refreshLatestForLibrary(
+        libraryId: String,
+        collectionType: String?,
+        limit: Int,
+    ): List<JellyfinItem> = refreshRecentlyAdded(libraryId, limit, latestItemTypesForCollection(collectionType))
+
     private suspend fun refreshRecentlyAdded(
         libraryId: String,
         limit: Int,
-        includeItemTypes: String,
+        includeItemTypes: String?,
     ): List<JellyfinItem> {
         val environment = environmentProvider.current() ?: return emptyList()
         val api = apiFor(environment)

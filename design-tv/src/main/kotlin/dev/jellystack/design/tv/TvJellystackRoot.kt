@@ -1523,6 +1523,7 @@ private fun TvAuthenticatedApp(
                                             },
                                             onLoadMore = browseCoordinator::loadNextPage,
                                             onJumpToLetter = browseCoordinator::jumpToLibraryLetter,
+                                            onLoadLatest = browseCoordinator::loadLibraryLatest,
                                             onLetterJumpHandled = browseCoordinator::consumeLibraryLetterJump,
                                             onRetry = {
                                                 if (route.libraryId == null) {
