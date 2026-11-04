@@ -1390,6 +1390,7 @@ private fun TvAuthenticatedApp(
     Box(
         Modifier
             .fillMaxSize()
+            .tvMenuKeyOpensProfilePicker(currentRoute, dialogOpen = showExitConfirmation, onOpenProfilePicker = onOpenProfiles)
             .onPreviewKeyEvent { event ->
                 if (event.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
                     trailerPreviewCoordinator.onUserInteraction()

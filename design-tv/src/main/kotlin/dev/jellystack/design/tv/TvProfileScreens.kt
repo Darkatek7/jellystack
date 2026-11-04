@@ -122,6 +122,7 @@ internal fun TvProfilePickerScreen(
             item(key = "profile-add") { TvAddProfileTile(strings.profile.addProfile, onAdd) }
         }
         TvActionButton(strings.profile.manageProfiles, onManage, focusTargetId = "profile:manage")
+        Text(strings.profile.menuKeyTip, color = TvTextMuted, fontSize = 16.sp, textAlign = TextAlign.Center)
     }
 }
 

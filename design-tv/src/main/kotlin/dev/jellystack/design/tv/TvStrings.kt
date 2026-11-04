@@ -529,6 +529,7 @@ internal data class TvStrings(
                         confirmProfilePin = "Confirm the new PIN",
                         removeProfilePin = "Remove PIN",
                         pinMismatch = "PINs did not match. Try again.",
+                        menuKeyTip = "Tip: press ≡ Menu on any main screen to switch profile",
                     ),
                 mediaTypeLabels = englishMediaTypeStrings,
                 emptyStates = englishEmptyStateStrings,
