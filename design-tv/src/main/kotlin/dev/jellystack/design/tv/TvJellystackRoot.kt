@@ -28,7 +28,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -101,7 +100,6 @@ import dev.jellystack.players.PlaybackQueue
 import dev.jellystack.players.PlaybackState
 import dev.jellystack.players.syncplay.SyncPlayCoordinator
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
 
@@ -1510,15 +1508,16 @@ private fun TvAuthenticatedApp(
                                         )
                                     is TvRoute.Library -> {
                                         val library = homeState.libraries.firstOrNull { it.id == route.libraryId }
-                                        val rememberedQueryFlow =
+                                        // The saved query is the screen's starting point only; reading it again on every save could
+                                        // reset a newer choice when a write lands late.
+                                        val rememberedQuery =
                                             remember(activeProfileId, route.libraryId) {
                                                 if (activeProfileId != null && route.libraryId != null) {
-                                                    profilePreferencesRepository.libraryBrowseQuery(activeProfileId, route.libraryId)
+                                                    profilePreferencesRepository.libraryBrowseQuery(activeProfileId, route.libraryId).value
                                                 } else {
-                                                    MutableStateFlow(dev.jellystack.core.jellyfin.LibraryBrowseQuery.DEFAULT)
+                                                    dev.jellystack.core.jellyfin.LibraryBrowseQuery.DEFAULT
                                                 }
                                             }
-                                        val rememberedQuery by rememberedQueryFlow.collectAsState()
                                         TvLibraryScreen(
                                             route = route,
                                             state = homeState,
