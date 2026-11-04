@@ -684,7 +684,11 @@ internal fun TvAuthenticatedApp(
     LaunchedEffect(appUiState.railExpanded, currentRoute) {
         if (appUiState.railExpanded || !currentRoute.allowsTrailerPreview()) trailerPreviewCoordinator.clearFocus()
     }
-    val routeContext =
+
+    // Built where a route's content composes, not here: the states it reads (home, search, trailer progress, ...)
+    // then recompose only that route's content instead of the whole app shell, as they did before the routes moved
+    // into their own files.
+    fun routeContext(): TvRouteContext =
         TvRouteContext(
             ui =
                 TvRouteUi(
@@ -827,7 +831,7 @@ internal fun TvAuthenticatedApp(
                                     if (route is TvRoute.Library) homeState.browsePath.map { it.id } else emptyList(),
                                 )
                             TvRouteFocusScope(focusCoordinator, entryRouteKey, focusMemory) {
-                                TvRouteContent(route, entryRouteKey, homeBackState, routeContext)
+                                TvRouteContent(route, entryRouteKey, homeBackState, routeContext())
                             }
                         }
                     },
