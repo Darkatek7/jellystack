@@ -53,6 +53,12 @@ enum class TvGoldenFixture {
     NAVIGATION_RAIL_OPEN,
     RESUME_DIALOG,
     DISCOVER_ROWS,
+    SIGN_IN_EMPTY,
+    SIGN_IN_QUICK_CONNECT,
+    SIGN_IN_HINT,
+    SIGN_IN_ERROR,
+    SIGN_IN_LONG_MESSAGE,
+    SIGN_IN_PASSWORD,
 }
 
 private val GOLDEN_HERO_FIXTURES =
@@ -73,11 +79,11 @@ fun JellystackTvGoldenFixture(
     modifier: Modifier = Modifier,
 ) {
     val strings = TvStrings.current(language)
-    if (fixture in GOLDEN_PLAYER_FIXTURES || fixture in GOLDEN_STATE_FIXTURES) {
-        if (fixture in GOLDEN_STATE_FIXTURES) {
-            GoldenStateFixture(fixture, strings, modifier)
-        } else {
-            JellystackTvTheme { GoldenPlayer(strings, fixture, modifier) }
+    if (fixture in GOLDEN_FULL_SCREEN_FIXTURES) {
+        when (fixture) {
+            in GOLDEN_SIGN_IN_FIXTURES -> GoldenSignInFixture(fixture, strings, modifier)
+            in GOLDEN_STATE_FIXTURES -> GoldenStateFixture(fixture, strings, modifier)
+            else -> JellystackTvTheme { GoldenPlayer(strings, fixture, modifier) }
         }
         return
     }
@@ -130,6 +136,12 @@ fun JellystackTvGoldenFixture(
                 TvGoldenFixture.NAVIGATION_RAIL_OPEN,
                 TvGoldenFixture.RESUME_DIALOG,
                 TvGoldenFixture.DISCOVER_ROWS,
+                TvGoldenFixture.SIGN_IN_EMPTY,
+                TvGoldenFixture.SIGN_IN_QUICK_CONNECT,
+                TvGoldenFixture.SIGN_IN_HINT,
+                TvGoldenFixture.SIGN_IN_ERROR,
+                TvGoldenFixture.SIGN_IN_LONG_MESSAGE,
+                TvGoldenFixture.SIGN_IN_PASSWORD,
                 -> Unit
             }
         }
@@ -383,7 +395,7 @@ private fun GoldenTrickplayFrame() {
     )
 }
 
-private val GOLDEN_PLAYER_FIXTURES =
+internal val GOLDEN_PLAYER_FIXTURES =
     setOf(TvGoldenFixture.PLAYER_CONTROLS, TvGoldenFixture.PLAYER_SCRUB, TvGoldenFixture.PLAYER_UP_NEXT)
 
 private fun goldenSkipIntroActions(strings: TvStrings) =

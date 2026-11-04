@@ -26,6 +26,7 @@ desugar-jdk-libs = "2.1.5"
 compose-material-icons = "1.7.0"
 kotlin = "2.2.10"
 coil3 = "3.0.0"
+zxing = "3.5.3"
 androidx-appcompat = "1.7.0"
 multiplatform-settings = "1.1.1"
 sqlite-jdbc = "3.45.3.0"
@@ -91,6 +92,7 @@ androidx-tracing = { module = "androidx.tracing:tracing", version.ref = "android
 androidx-security-crypto = { module = "androidx.security:security-crypto", version.ref = "androidx-security-crypto" }
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil3" }
 coil-network-ktor3 = { module = "io.coil-kt.coil3:coil-network-ktor3", version.ref = "coil3" }
+zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
 androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "androidx-appcompat" }
 multiplatform-settings = { module = "com.russhwolf:multiplatform-settings", version.ref = "multiplatform-settings" }
 sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version.ref = "sqlite-jdbc" }
