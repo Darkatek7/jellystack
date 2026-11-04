@@ -122,6 +122,7 @@ private fun GoldenBrightArtwork() {
             ),
     )
 }
+
 /** Settings > Home: Continue watching hidden, the rest in a custom order. */
 @Composable
 internal fun GoldenHomeSettings(
