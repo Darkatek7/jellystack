@@ -114,7 +114,7 @@ private fun TvProfileAuthenticatedContent(
         activeProfileName = profile.displayName,
         activeProfileId = profile.id,
         activeProfileGeneration = actions.state.generation,
-        onOpenProfiles = actions::openProfilePicker,
+        onOpenProfiles = { actions.openProfilePicker() },
         onAuthenticationExpired = { actions.onAuthenticationExpired(profile) },
         voiceSearch = app.environment.platform.voiceSearch,
         integrations = app.environment.platform.integrations,

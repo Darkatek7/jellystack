@@ -25,6 +25,7 @@ internal fun TvProfileHostEffects(
     TvProfilePinClockEffect(actions.state)
     TvProfileActivationEffect(actions, inputs)
     TvProfileHostBackHandler(actions.state)
+    TvProfilePickerBackHandler(actions, inputs)
 }
 
 @Composable
@@ -216,5 +217,30 @@ private fun TvProfileHostBackHandler(state: TvProfileHostState) {
             state.managedProfileId != null -> state.managedProfileId = null
             state.profileManagementVisible -> state.profileManagementVisible = false
         }
+    }
+}
+
+/** Back from a picker the user opened (Menu or the rail) returns to the profile that was active. */
+@Composable
+private fun TvProfilePickerBackHandler(
+    actions: TvProfileHostActions,
+    inputs: TvProfileHostInputs,
+) {
+    val state = actions.state
+    val profiles = inputs.profiles
+    val target =
+        tvPickerBackTarget(
+            returnProfileId = state.pickerReturnProfileId,
+            profileIds = profiles.map { it.id },
+            subScreenOpen =
+                state.addProfile ||
+                    state.reconnectProfile != null ||
+                    state.pinProfile != null ||
+                    state.configuringPinProfile != null ||
+                    state.profileManagementVisible ||
+                    state.switchingProfile != null,
+        )
+    BackHandler(enabled = state.pickerVisible && target != null) {
+        profiles.firstOrNull { it.id == target }?.let(actions::beginActivation)
     }
 }

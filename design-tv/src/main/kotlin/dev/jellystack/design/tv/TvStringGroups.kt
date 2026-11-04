@@ -56,6 +56,7 @@ internal data class TvProfileStrings(
     val confirmProfilePin: String,
     val removeProfilePin: String,
     val pinMismatch: String,
+    val menuKeyTip: String,
 )
 
 internal data class TvBrowseStrings(

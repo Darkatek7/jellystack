@@ -365,6 +365,7 @@ internal val TvStringsGerman: TvStrings =
                 confirmProfilePin = "Neue PIN bestätigen",
                 removeProfilePin = "PIN entfernen",
                 pinMismatch = "Die PINs stimmen nicht überein. Versuche es erneut.",
+                menuKeyTip = "Tipp: Mit ≡ Menü wechselst du auf jedem Hauptbildschirm das Profil",
             ),
         mediaTypeLabels = germanMediaTypeStrings,
         emptyStates = germanEmptyStateStrings,

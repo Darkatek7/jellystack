@@ -23,6 +23,9 @@ internal class TvProfileHostState {
     /** Not saveable: a restored activity re-runs the profile gate (as a cold launch after process death). */
     var initialized by mutableStateOf(false)
     var pickerVisible by mutableStateOf(false)
+
+    /** The profile Back returns to from a picker the user opened; null for a picker the gate opened. */
+    var pickerReturnProfileId by mutableStateOf<String?>(null)
     var profileManagementVisible by mutableStateOf(false)
     var managedProfileId by mutableStateOf<String?>(null)
     var selectedProfileId by mutableStateOf<String?>(null)
@@ -91,6 +94,7 @@ private val TvProfileHostStateSaver =
                 state.reconnectConnectionId,
                 state.recoverPinProfileId,
                 state.addProfile,
+                state.pickerReturnProfileId,
             )
         },
         restore = { saved ->
@@ -112,6 +116,7 @@ private val TvProfileHostStateSaver =
                 reconnectConnectionId = saved[14] as String?
                 recoverPinProfileId = saved[15] as String?
                 addProfile = saved[16] as Boolean
+                pickerReturnProfileId = saved[17] as String?
             }
         },
     )

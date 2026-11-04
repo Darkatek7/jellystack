@@ -116,7 +116,7 @@ internal fun TvProfileHost(
     TvProfileGateEffect(
         enabled = state.activatedProfileId != null && !state.pickerVisible,
         profileCount = inputs.profiles.size,
-        onGate = actions::openProfilePicker,
+        onGate = { actions.openProfilePicker(userOpened = false) },
     )
     val app = TvProfileHostApp(handles, environment, settingsRepository, serverRepository, koin)
     Box(modifier.fillMaxSize().background(TvBackground)) {

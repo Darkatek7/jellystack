@@ -45,6 +45,7 @@ internal class TvProfileHostActions(
 ) {
     fun beginActivation(profile: HouseholdProfile) {
         state.switchingProfile = profile
+        state.pickerReturnProfileId = null
         state.pinProfile = null
         state.pinValue = ""
         scope.launch {
@@ -112,7 +113,8 @@ internal class TvProfileHostActions(
         scope.launch { openProfile(profile) }
     }
 
-    fun openProfilePicker() {
+    fun openProfilePicker(userOpened: Boolean = true) {
+        state.pickerReturnProfileId = tvPickerReturnProfileId(userOpened, state.activatedProfileId)
         playback.stopPlayback()
         playback.stopTrailerPreview()
         services.activeProfiles.clear()
