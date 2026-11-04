@@ -198,12 +198,12 @@ private fun BoxScope.TvDetailEpisodeStillOverlays(
 }
 
 /**
- * The Episodes section: a title, the row of episodes and, under the row, a fixed-height overview of the focused
+ * The Episodes section: a [title] (null under season tabs), the row of episodes and, under the row, a fixed-height overview of the focused
  * episode (two lines) so the page below does not move while the user scrolls along the row.
  */
 @Composable
 internal fun TvDetailEpisodeRow(
-    title: String,
+    title: String?,
     section: TvDetailSection.Episodes,
     homeState: JellyfinHomeState,
     strings: TvStrings,
@@ -222,7 +222,7 @@ internal fun TvDetailEpisodeRow(
             .then(focusModifiers.navigationModifier),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        TvSectionTitle(title)
+        title?.let { TvSectionTitle(it) }
         LazyRow(
             state = focusModifiers.horizontalListState,
             modifier = Modifier.tvRowBleed(start = TV_DETAIL_START_DP.dp, end = 48.dp),

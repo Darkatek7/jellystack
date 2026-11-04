@@ -231,10 +231,11 @@ internal fun LazyListScope.tvJellyfinDetailSections(
                 }
             is TvDetailSection.Episodes ->
                 item(section.id) {
+                    // Season tabs right above already say what the row holds.
                     val title =
                         section.moreFromSeason
                             ?.let { strings.detailScreen.moreFromSeasonFormat.format(it) }
-                            ?: strings.episodes
+                            ?: strings.episodes.takeIf { uiState.sections.none { it is TvDetailSection.Seasons } }
                     TvDetailEpisodeRow(title, section, homeState, strings, onOpenItem, sectionFocusModifiers.getValue(section.id))
                 }
             is TvDetailSection.Cast ->

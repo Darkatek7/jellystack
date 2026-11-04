@@ -9,9 +9,20 @@ import kotlin.math.floor
 /** The jump targets of the A-Z rail: the first item, then one per letter. */
 internal val TV_LIBRARY_JUMP_LETTERS: List<String> = listOf("#") + ('A'..'Z').map(Char::toString)
 
-/** The rail only helps while the list is in name order from A; the server index of a letter is that order's. */
-internal fun tvLibraryShowsLetterRail(query: LibraryBrowseQuery): Boolean =
-    query.sort == LibraryBrowseSort.TITLE && query.direction == LibraryBrowseDirection.ASCENDING
+/** Below this many titles a few presses reach every item, so the A-Z rail would only take space. */
+internal const val TV_LIBRARY_RAIL_MIN_ITEMS = 30
+
+/**
+ * The rail only helps while the list is in name order from A (the server index of a letter is that order's) and
+ * holds enough titles to need a jump; [totalItems] is null while the count is unknown.
+ */
+internal fun tvLibraryShowsLetterRail(
+    query: LibraryBrowseQuery,
+    totalItems: Int? = null,
+): Boolean =
+    query.sort == LibraryBrowseSort.TITLE &&
+        query.direction == LibraryBrowseDirection.ASCENDING &&
+        (totalItems ?: TV_LIBRARY_RAIL_MIN_ITEMS) >= TV_LIBRARY_RAIL_MIN_ITEMS
 
 /** The number of filter groups in use, as the Filter button shows it; the sort order is not a filter. */
 internal fun tvLibraryActiveFilterCount(query: LibraryBrowseQuery): Int =

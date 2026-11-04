@@ -424,7 +424,10 @@ internal fun TvLibraryAllTitles(
     // Previews and screenshot tests have no back dispatcher.
     if (LocalOnBackPressedDispatcherOwner.current != null) BackHandler(enabled = panelVisible, onBack = closePanel)
     val query = state.libraryBrowseQuery
-    val showsRail = tvLibraryShowsLetterRail(query) && state.browsePath.isEmpty() && state.libraryItems.isNotEmpty()
+    val showsRail =
+        tvLibraryShowsLetterRail(query, state.totalLibraryItemCount?.toInt() ?: state.libraryItems.size) &&
+            state.browsePath.isEmpty() &&
+            state.libraryItems.isNotEmpty()
     BoxWithConstraints(modifier.fillMaxSize()) {
         val fontScale = LocalDensity.current.fontScale
         val cardShape = tvLibraryCardShape(collectionType, reliablePosters = tvLibraryHasReliablePosters(state.libraryItems))

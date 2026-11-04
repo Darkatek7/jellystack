@@ -93,6 +93,20 @@ class TvSeasonPresentationTest {
     }
 
     @Test
+    fun defaultIndexOpensTheFirstSeasonWithAnUnwatchedEpisode() {
+        val groups =
+            buildTvSeasonGroups(
+                listOf(
+                    episode("special", 0, 1),
+                    episode("s1e1", 1, 1).copy(isPlayed = true),
+                    episode("s1e2", 1, 2).copy(isPlayed = true),
+                    episode("s2e1", 2, 1),
+                ),
+            )
+        assertEquals(groups.indexOfFirst { it.seasonNumber == 2 }, defaultTvSeasonIndex(groups))
+    }
+
+    @Test
     fun defaultIndexDefaultsToFirstSeason() {
         val groups =
             buildTvSeasonGroups(

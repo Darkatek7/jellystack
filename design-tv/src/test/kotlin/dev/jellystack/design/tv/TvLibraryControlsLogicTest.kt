@@ -50,6 +50,8 @@ class TvLibraryControlsLogicTest {
         assertTrue(tvLibraryShowsLetterRail(LibraryBrowseQuery(genres = setOf("Drama"))))
         assertFalse(tvLibraryShowsLetterRail(LibraryBrowseQuery(sort = LibraryBrowseSort.DATE_ADDED)))
         assertFalse(tvLibraryShowsLetterRail(LibraryBrowseQuery(direction = LibraryBrowseDirection.DESCENDING)))
+        assertFalse(tvLibraryShowsLetterRail(LibraryBrowseQuery.DEFAULT, totalItems = 2))
+        assertTrue(tvLibraryShowsLetterRail(LibraryBrowseQuery.DEFAULT, totalItems = TV_LIBRARY_RAIL_MIN_ITEMS))
         assertEquals(27, TV_LIBRARY_JUMP_LETTERS.size)
         assertEquals(listOf("#", "A", "B"), TV_LIBRARY_JUMP_LETTERS.take(3))
         assertEquals("Z", TV_LIBRARY_JUMP_LETTERS.last())

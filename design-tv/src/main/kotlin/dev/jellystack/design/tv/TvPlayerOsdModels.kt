@@ -53,7 +53,11 @@ internal fun tvAudioButtonLabel(
 ): String? {
     track ?: return null
     val language = tvLanguageName(track.language, locale) ?: track.title?.takeIf(String::isNotBlank)
-    val channels = jellyfinChannelLayout(track.channels)?.label()?.takeIf { withChannels }
+    // A server title such as "AAC - Mono" already names the layout, so it is not repeated.
+    val channels =
+        jellyfinChannelLayout(track.channels)
+            ?.label()
+            ?.takeIf { withChannels && language?.contains(it, ignoreCase = true) != true }
     return listOfNotNull(language, channels).joinToString(" ").ifBlank { null }
 }
 
