@@ -303,6 +303,54 @@ class TvTrailerPreviewControllerTest {
         }
 
     @Test
+    fun stoppingByUserKeepsFocusAndOnlyAnotherCardStartsTheNextTrailer() =
+        runTest {
+            val player = FakePreviewPlayer()
+            val controller =
+                TvTrailerPreviewController(scope = this, resolve = { source(it.itemId) }, player = player)
+            val first = request(TvTrailerPreviewOwner.CARD, "a")
+
+            controller.focus(first)
+            advanceTimeBy(1_500L)
+            runCurrent()
+            assertTrue(controller.isPlaying)
+
+            controller.stopByUser()
+            assertFalse(controller.isPlaying)
+            assertEquals(1, player.stops)
+            assertIs<TvTrailerPreviewState.Idle>(controller.state.value)
+
+            // The screen asks for the same card again (recomposition, interaction): it stays stopped.
+            controller.focus(first)
+            advanceTimeBy(5_000L)
+            runCurrent()
+            assertEquals(listOf("a"), player.played.map { it.item.id })
+
+            controller.focus(request(TvTrailerPreviewOwner.CARD, "b"))
+            advanceTimeBy(1_500L)
+            runCurrent()
+            assertEquals(listOf("a", "b"), player.played.map { it.item.id })
+            controller.release()
+        }
+
+    @Test
+    fun stoppingByUserWithoutAPlayingTrailerChangesNothing() =
+        runTest {
+            val player = FakePreviewPlayer()
+            val controller =
+                TvTrailerPreviewController(scope = this, resolve = { source(it.itemId) }, player = player)
+            val card = request(TvTrailerPreviewOwner.CARD, "a")
+
+            controller.focus(card)
+            controller.stopByUser()
+            assertIs<TvTrailerPreviewState.Armed>(controller.state.value)
+            advanceTimeBy(1_500L)
+            runCurrent()
+            assertEquals(listOf("a"), player.played.map { it.item.id })
+            controller.release()
+        }
+
+    @Test
     fun restingFocusResolvesOnceAfterDwellAndStillPlaysAtTheFocusDelay() =
         runTest {
             val lookups = mutableListOf<String>()

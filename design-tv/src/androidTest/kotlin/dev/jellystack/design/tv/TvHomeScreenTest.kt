@@ -46,6 +46,7 @@ import kotlinx.coroutines.delay
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -134,6 +135,41 @@ class TvHomeScreenTest {
         }
         composeRule.runOnIdle { shown.value = true }
         composeRule.onNodeWithContentDescription("Row 4 item 10").assertIsFocused()
+        composeRule.runOnIdle(engine::release)
+    }
+
+    @Test
+    fun backOnHomeStopsAPlayingTrailerBeforeTheNormalWalk() {
+        lateinit var engine: AndroidPlayerEngine
+        val holder = TvAppStateHolder()
+        val homeBack = TvHomeBackState()
+        var playing = true
+        val dispatcher =
+            TvAppBackDispatcher(
+                holder = holder,
+                library = TvLibraryBackAccess(pathDepth = { 0 }, selectedLibraryId = { null }, popPath = {}),
+                cancelFocusRestoration = {},
+                homeBack = homeBack,
+                trailerBack = TvTrailerBackState(isPlaying = { playing }, stopTrailer = { playing = false }),
+            )
+        composeRule.setContent {
+            val context = LocalContext.current
+            engine = rememberTestPlayerEngine(context)
+            TestHomeScreen(
+                state = JellyfinHomeState(recentMovies = listOf(item("hero", "Hero", Clock.System.now().toString()))),
+                sections = HomeSectionsState.Unavailable,
+                engine = engine,
+                provideEntryFocus = false,
+                homeBack = homeBack,
+            )
+        }
+
+        composeRule.runOnIdle {
+            assertEquals(TvBackAction.STOP_TRAILER, dispatcher.action)
+            assertTrue(dispatcher.dispatch())
+            assertEquals(TvBackAction.OPEN_RAIL, dispatcher.action)
+            assertFalse(holder.state.railExpanded)
+        }
         composeRule.runOnIdle(engine::release)
     }
 
