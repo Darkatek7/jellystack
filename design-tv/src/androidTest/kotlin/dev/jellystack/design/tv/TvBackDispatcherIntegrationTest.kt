@@ -16,7 +16,7 @@ import androidx.test.espresso.Espresso.pressBack
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.jellystack.core.preferences.AppLanguage
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -27,11 +27,12 @@ class TvBackDispatcherIntegrationTest {
     val composeRule = createTvComposeRule()
 
     @Test
-    fun navigation3BackUsesFolderBeforePreviousEntryThenClosesTopLevelRail() {
+    fun navigation3BackUsesFolderBeforePreviousEntryThenClosesRailOnNonHomeRoutes() {
         val holder = TvAppStateHolder().apply { push(TvRoute.Library("shows")) }
         val pathDepth = mutableIntStateOf(1)
         val systemExits = mutableIntStateOf(0)
-        composeRule.setContent { BackHarness(holder, pathDepth, systemExits) }
+        val exitRequests = mutableIntStateOf(0)
+        composeRule.setContent { BackHarness(holder, pathDepth, systemExits, exitRequests = exitRequests) }
 
         pressBack()
         composeRule.runOnIdle {
@@ -41,10 +42,15 @@ class TvBackDispatcherIntegrationTest {
         pressBack()
         composeRule.runOnIdle { assertEquals(listOf(TvRoute.Home), holder.state.backStack) }
 
-        composeRule.runOnIdle { holder.openRail() }
+        // Home: the first Back opens the rail, the next one asks to exit.
         pressBack()
         composeRule.runOnIdle {
-            assertFalse(holder.state.railExpanded)
+            assertTrue(holder.state.railExpanded)
+            assertEquals(0, exitRequests.intValue)
+        }
+        pressBack()
+        composeRule.runOnIdle {
+            assertEquals(1, exitRequests.intValue)
             assertEquals(0, systemExits.intValue)
         }
     }
@@ -61,9 +67,11 @@ class TvBackDispatcherIntegrationTest {
         composeRule.runOnIdle {
             assertEquals(listOf(TvRoute.Home), holder.state.backStack)
             assertEquals(0, systemExits.intValue)
-            assertEquals(1, exitRequests.intValue)
-            assertFalse(holder.state.railExpanded)
+            assertEquals(0, exitRequests.intValue)
+            assertTrue(holder.state.railExpanded)
         }
+        pressBack()
+        composeRule.runOnIdle { assertEquals(1, exitRequests.intValue) }
     }
 
     @Test
@@ -79,6 +87,9 @@ class TvBackDispatcherIntegrationTest {
             assertEquals(0, exitRequests.intValue)
             assertEquals(0, systemExits.intValue)
         }
+
+        pressBack()
+        composeRule.runOnIdle { assertEquals(0, exitRequests.intValue) }
 
         pressBack()
         composeRule.runOnIdle {
@@ -134,9 +145,12 @@ class TvBackDispatcherIntegrationTest {
         val dispatcher =
             TvAppBackDispatcher(
                 holder = holder,
-                libraryPathDepth = { pathDepth.value },
-                selectedLibraryId = { "shows" },
-                popLibraryPath = { pathDepth.value -= 1 },
+                library =
+                    TvLibraryBackAccess(
+                        pathDepth = { pathDepth.value },
+                        selectedLibraryId = { "shows" },
+                        popPath = { pathDepth.value -= 1 },
+                    ),
                 cancelFocusRestoration = {},
             )
         TvAppBackHandler(dispatcher) { exitRequests?.value = (exitRequests?.value ?: 0) + 1 }
