@@ -91,7 +91,7 @@ class TvCinematicSearchDiscoverTest {
 
         composeRule.onNodeWithTag("cinematic-card-discover-trends-movie:1").assertExists()
         composeRule.onNodeWithTag("cinematic-preview-stage").assertExists()
-        composeRule.onNodeWithContentDescription(strings.discoverLoadFailed).assertExists()
+        composeRule.onNodeWithContentDescription(strings.seerr.discoverLoadFailed).assertExists()
         composeRule.onNodeWithContentDescription(strings.retry).assertDoesNotExist()
     }
 

@@ -88,7 +88,7 @@ internal fun TvDetailTrackPickerDialog(
                     )
                 }
             }
-            TvActionButton(strings.applyLabel, onClick = onDismiss, primary = true, modifier = Modifier.width(230.dp))
+            TvActionButton(strings.browse.applyLabel, onClick = onDismiss, primary = true, modifier = Modifier.width(230.dp))
         }
     }
 }

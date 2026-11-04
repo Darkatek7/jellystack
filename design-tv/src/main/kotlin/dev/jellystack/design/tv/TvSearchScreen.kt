@@ -254,11 +254,11 @@ private fun ColumnScope.TvSearchResults(
             ),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
-        indices.searching?.let { item("searching") { TvStatusAnchor(strings.searching) } }
+        indices.searching?.let { item("searching") { TvStatusAnchor(strings.searchScreen.searching) } }
         indices.jellyfinFailure?.let {
             item("jellyfin-error") {
                 TvSearchSourceFailure(
-                    message = strings.jellyfinSearchFailed,
+                    message = strings.searchScreen.jellyfinSearchFailed,
                     retryLabel = strings.retry,
                     focusTargetId = TV_SEARCH_JELLYFIN_RETRY_TARGET,
                     modifier = Modifier.padding(start = TV_SEARCH_ROW_EDGE),
@@ -289,7 +289,7 @@ private fun ColumnScope.TvSearchResults(
         indices.seerrFailure?.let {
             item("seerr-error") {
                 TvSearchSourceFailure(
-                    message = strings.seerrSearchFailed,
+                    message = strings.seerr.seerrSearchFailed,
                     retryLabel = strings.retry,
                     focusTargetId = TV_SEARCH_SEERR_RETRY_TARGET,
                     modifier = Modifier.padding(start = TV_SEARCH_ROW_EDGE),
@@ -319,7 +319,11 @@ private fun ColumnScope.TvSearchResults(
 
 @Composable
 private fun TvSearchEmpty(strings: TvStrings) =
-    TvEmptyState(icon = Icons.Default.Search, title = strings.noResults, hint = strings.emptyStates.searchHint)
+    TvEmptyState(
+        icon = Icons.Default.Search,
+        title = strings.searchScreen.noResults,
+        hint = strings.emptyStates.searchHint,
+    )
 
 /** Positions of the result list's items; the header is not part of the list. */
 internal class TvSearchListIndices(
@@ -381,7 +385,7 @@ private fun TvSearchHeader(
         OutlinedTextField(
             value = sessionState.query,
             onValueChange = actions::onQueryChanged,
-            placeholder = { Text(strings.searchHint) },
+            placeholder = { Text(strings.searchScreen.searchHint) },
             singleLine = true,
             readOnly = sessionState.mode == TvSearchMode.BROWSE,
             colors = tvOutlinedTextFieldColors(),
@@ -447,7 +451,7 @@ private fun TvSearchSourceChips(
         }
         if (searchState.showVoiceAction) {
             TvActionButton(
-                label = if (searchState.isVoiceListening) strings.searching else strings.search,
+                label = if (searchState.isVoiceListening) strings.searchScreen.searching else strings.search,
                 onClick = actions::onVoiceSearch,
                 enabled = !searchState.isVoiceListening,
                 leading = { Icon(Icons.Default.Mic, contentDescription = null, tint = TvText) },

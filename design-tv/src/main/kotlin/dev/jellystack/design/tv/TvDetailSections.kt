@@ -68,11 +68,11 @@ internal fun TvDetailDetailsSection(
             },
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        TvSectionTitle(strings.details)
+        TvSectionTitle(strings.detailText.details)
         section.tagline?.let {
             Text(it, color = TvPurple, fontSize = TvTextSize.BodyLarge, fontWeight = FontWeight.SemiBold)
         }
-        Text(section.text ?: strings.noOverview, color = TvText, fontSize = TvTextSize.BodyLarge, lineHeight = 27.sp)
+        Text(section.text ?: strings.detailText.noOverview, color = TvText, fontSize = TvTextSize.BodyLarge, lineHeight = 27.sp)
         section.rows.forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text(row.label, color = TvTextMuted, fontSize = TvTextSize.Body, modifier = Modifier.width(150.dp))
@@ -104,7 +104,7 @@ internal fun TvDetailSeasonTabs(
             contentPadding = PaddingValues(start = TV_DETAIL_START_DP.dp - 6.dp, end = 48.dp, top = 6.dp, bottom = 6.dp),
         ) {
             itemsIndexed(section.groups, key = { _, group -> "season-${group.seasonNumber ?: Int.MAX_VALUE}" }) { index, group ->
-                val label = group.seasonNumber?.let { strings.seasonNumber.format(it) } ?: strings.specials
+                val label = group.seasonNumber?.let { strings.detailText.seasonNumber.format(it) } ?: strings.detailText.specials
                 val itemId = section.itemIds[index]
                 TvDetailSeasonTab(
                     label = label,
@@ -235,7 +235,7 @@ internal fun LazyListScope.tvJellyfinDetailSections(
                     val title =
                         section.moreFromSeason
                             ?.let { strings.detailScreen.moreFromSeasonFormat.format(it) }
-                            ?: strings.episodes.takeIf { uiState.sections.none { it is TvDetailSection.Seasons } }
+                            ?: strings.detailText.episodes.takeIf { uiState.sections.none { it is TvDetailSection.Seasons } }
                     TvDetailEpisodeRow(title, section, homeState, strings, onOpenItem, sectionFocusModifiers.getValue(section.id))
                 }
             is TvDetailSection.Cast ->
@@ -259,12 +259,12 @@ internal fun LazyListScope.tvJellyfinDetailSections(
                                 onClick = { onOpenPerson(person) },
                             )
                         }
-                    TvDetailCastRow(strings.cast, cards, sectionFocusModifiers.getValue(section.id))
+                    TvDetailCastRow(strings.detailText.cast, cards, sectionFocusModifiers.getValue(section.id))
                 }
             is TvDetailSection.Similar ->
                 item(section.id) {
                     val items = section.items.mapNotNull { (it as? TvDetailSimilarItem.Jellyfin)?.item }
-                    TvDetailSimilarRow(strings.similar, items, homeState, onOpenItem, sectionFocusModifiers.getValue(section.id))
+                    TvDetailSimilarRow(strings.detailText.similar, items, homeState, onOpenItem, sectionFocusModifiers.getValue(section.id))
                 }
             is TvDetailSection.Details ->
                 item(section.id) { TvDetailDetailsSection(section, bodyFocusModifier, strings) }

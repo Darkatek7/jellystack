@@ -242,7 +242,7 @@ class TvSearchInteractionTest {
             }
         }
 
-        composeRule.onNodeWithContentDescription(strings.discoverLoadFailed).assertExists()
+        composeRule.onNodeWithContentDescription(strings.seerr.discoverLoadFailed).assertExists()
         composeRule.onNodeWithContentDescription(strings.retry).assertDoesNotExist()
         composeRule.onNodeWithContentDescription("Available movie").assertExists()
     }

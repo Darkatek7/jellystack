@@ -74,7 +74,8 @@ internal fun tvSeerrCardBadge(
 ): TvMediaCardBadge? {
     val statuses = listOf(availability.standard, availability.`4k`)
     return when {
-        JellyseerrMediaStatus.AVAILABLE in statuses -> TvMediaCardBadge.SeerrAvailable(strings.availabilityAvailable)
+        JellyseerrMediaStatus.AVAILABLE in statuses ->
+            TvMediaCardBadge.SeerrAvailable(strings.seerr.availabilityAvailable)
         statuses.any { it == JellyseerrMediaStatus.PARTIALLY_AVAILABLE } ->
             TvMediaCardBadge.SeerrPartial(
                 strings.messages.cardBadges.partial,

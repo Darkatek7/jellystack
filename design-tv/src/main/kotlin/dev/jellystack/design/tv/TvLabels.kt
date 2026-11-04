@@ -31,21 +31,21 @@ internal const val TV_KEY_OK = "OK"
 /** User-facing labels for shared enums so no raw enum names reach the screen. */
 internal fun JellyseerrRecommendationRail.label(strings: TvStrings): String =
     when (this) {
-        JellyseerrRecommendationRail.TRENDS -> strings.railTrending
-        JellyseerrRecommendationRail.POPULAR_MOVIES -> strings.railPopularMovies
-        JellyseerrRecommendationRail.POPULAR_SHOWS -> strings.railPopularShows
-        JellyseerrRecommendationRail.UPCOMING_MOVIES -> strings.railUpcomingMovies
-        JellyseerrRecommendationRail.UPCOMING_SHOWS -> strings.railUpcomingShows
+        JellyseerrRecommendationRail.TRENDS -> strings.seerr.railTrending
+        JellyseerrRecommendationRail.POPULAR_MOVIES -> strings.seerr.railPopularMovies
+        JellyseerrRecommendationRail.POPULAR_SHOWS -> strings.seerr.railPopularShows
+        JellyseerrRecommendationRail.UPCOMING_MOVIES -> strings.seerr.railUpcomingMovies
+        JellyseerrRecommendationRail.UPCOMING_SHOWS -> strings.seerr.railUpcomingShows
     }
 
 internal fun JellyseerrRequestStatus.label(strings: TvStrings): String =
     when (this) {
-        JellyseerrRequestStatus.PENDING -> strings.requestPending
-        JellyseerrRequestStatus.APPROVED -> strings.requestApproved
-        JellyseerrRequestStatus.DECLINED -> strings.requestDeclined
-        JellyseerrRequestStatus.FAILED -> strings.requestFailedStatus
-        JellyseerrRequestStatus.COMPLETED -> strings.requestCompleted
-        JellyseerrRequestStatus.UNKNOWN -> strings.requestUnknown
+        JellyseerrRequestStatus.PENDING -> strings.seerr.requestPending
+        JellyseerrRequestStatus.APPROVED -> strings.seerr.requestApproved
+        JellyseerrRequestStatus.DECLINED -> strings.seerr.requestDeclined
+        JellyseerrRequestStatus.FAILED -> strings.seerr.requestFailedStatus
+        JellyseerrRequestStatus.COMPLETED -> strings.seerr.requestCompleted
+        JellyseerrRequestStatus.UNKNOWN -> strings.seerr.requestUnknown
     }
 
 internal fun JellyseerrMediaStatus?.label(strings: TvStrings): String =
@@ -53,14 +53,14 @@ internal fun JellyseerrMediaStatus?.label(strings: TvStrings): String =
         null,
         JellyseerrMediaStatus.UNKNOWN,
         JellyseerrMediaStatus.PENDING,
-        -> strings.requestPending
+        -> strings.seerr.requestPending
 
-        JellyseerrMediaStatus.PROCESSING -> strings.availabilityProcessing
-        JellyseerrMediaStatus.PARTIALLY_AVAILABLE -> strings.availabilityPartiallyAvailable
-        JellyseerrMediaStatus.AVAILABLE -> strings.availabilityAvailable
+        JellyseerrMediaStatus.PROCESSING -> strings.seerr.availabilityProcessing
+        JellyseerrMediaStatus.PARTIALLY_AVAILABLE -> strings.seerr.availabilityPartiallyAvailable
+        JellyseerrMediaStatus.AVAILABLE -> strings.seerr.availabilityAvailable
         JellyseerrMediaStatus.BLACKLISTED,
         JellyseerrMediaStatus.DELETED,
-        -> strings.availabilityUnavailable
+        -> strings.seerr.availabilityUnavailable
     }
 
 // Format names such as Dolby Vision, DTS:X and 5.1 are not translated either.
@@ -99,7 +99,7 @@ internal fun JellyfinMediaFeatures.badgeLabels(strings: TvStrings): List<String>
 
 internal fun PlaybackMode.label(strings: TvStrings): String =
     when (this) {
-        PlaybackMode.DIRECT -> strings.modeDirect
-        PlaybackMode.HLS -> strings.modeHls
-        PlaybackMode.LOCAL -> strings.modeLocal
+        PlaybackMode.DIRECT -> strings.playbackUi.modeDirect
+        PlaybackMode.HLS -> strings.playbackUi.modeHls
+        PlaybackMode.LOCAL -> strings.playbackUi.modeLocal
     }

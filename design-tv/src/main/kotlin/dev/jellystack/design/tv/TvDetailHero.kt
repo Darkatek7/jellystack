@@ -144,7 +144,7 @@ internal fun TvSeerrDetailLoadingLine(
                 CircularProgressIndicator(Modifier.size(18.dp), color = TvPurple, strokeWidth = 2.dp)
                 Text(strings.messages.loadingDetails, color = TvTextMuted, fontSize = TvTextSize.BodyLarge)
             }
-        TvSeerrDetailStatus.FAILED -> Text(strings.detailLoadFailed, color = TvError, fontSize = TvTextSize.BodyLarge)
+        TvSeerrDetailStatus.FAILED -> Text(strings.detailText.detailLoadFailed, color = TvError, fontSize = TvTextSize.BodyLarge)
         TvSeerrDetailStatus.READY -> Unit
     }
 }

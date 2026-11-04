@@ -453,7 +453,7 @@ private fun GoldenSeerrDetail(
         modifier,
         hero = {
             TvDetailHero(model) {
-                TvDetailStatusChip(strings.availabilityPartiallyAvailable)
+                TvDetailStatusChip(strings.seerr.availabilityPartiallyAvailable)
                 TvSeerrHeroActions(
                     state =
                         TvSeerrHeroActionsState(

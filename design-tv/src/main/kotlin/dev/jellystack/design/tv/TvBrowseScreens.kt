@@ -431,7 +431,7 @@ internal fun TvHomeScreen(
         TvHomeFadeLayer(homeUiAlpha, Modifier.align(Alignment.TopEnd)) { TvHomeClock(rememberTvClockLabel()) }
         if (stageTrailerPlaying) {
             TvTrailerPillUnderClock(
-                strings.trailer,
+                strings.detailText.trailer,
                 heroTrailer.soundEnabled,
                 heroTrailer.progress,
                 Modifier.align(Alignment.TopEnd),
@@ -506,7 +506,7 @@ internal fun TvHomeScreen(
                                 TvLibraryRow(
                                     state.libraries,
                                     state,
-                                    strings.myMedia,
+                                    strings.browse.myMedia,
                                     strings,
                                     focusMemory,
                                     onLibrary,
@@ -518,7 +518,7 @@ internal fun TvHomeScreen(
                             else -> {
                                 val isContinue = rowId == TV_HOME_CONTINUE_ROW
                                 TvJellyfinRow(
-                                    if (isContinue) strings.continueWatching else strings.nextUp,
+                                    if (isContinue) strings.homeRows.continueWatching else strings.homeRows.nextUp,
                                     if (isContinue) state.continueWatching else state.nextUp,
                                     state,
                                     strings,
@@ -567,7 +567,7 @@ private fun TvMyListRow(
     onVerticalMove: (MyListEntry, TvHomeVerticalDirection) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        TvSectionTitle(strings.myList)
+        TvSectionTitle(strings.browse.myList)
         LazyRow(
             state = listState,
             modifier = Modifier.tvRowBleed(),
@@ -580,7 +580,7 @@ private fun TvMyListRow(
                 val targetId = tvHomeCardTargetId("my-list", entry.identity.tvMyListKey())
                 TvMediaCard(
                     title = entry.title,
-                    subtitle = if (entry.available) strings.play else strings.request,
+                    subtitle = if (entry.available) strings.play else strings.seerr.request,
                     imageUrl =
                         if (item != null) {
                             jellyfinImageUrl(state.imageBaseUrl, state.imageAccessToken, artwork)
@@ -1103,7 +1103,7 @@ internal fun TvLibraryScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    Text(strings.libraryLoadFailed, color = TvError, fontSize = 18.sp)
+                    Text(strings.browse.libraryLoadFailed, color = TvError, fontSize = 18.sp)
                     TvActionButton(
                         strings.retry,
                         when (tvLibraryRetryAction(state.libraryErrorKind)) {
@@ -1396,9 +1396,9 @@ internal fun TvDiscoverScreen(
             TvDiscoverAvailability.MissingConnection ->
                 item("connect") {
                     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                        Text(strings.connectSeerrPrompt, color = TvTextMuted)
+                        Text(strings.seerr.connectSeerrPrompt, color = TvTextMuted)
                         TvActionButton(
-                            strings.connectSeerr,
+                            strings.signIn.connectSeerr,
                             onConnectSeerr,
                             modifier = Modifier.tvScreenEntryFocus(focusTargetId = TV_DISCOVER_CONNECT_TARGET),
                             primary = true,
@@ -1412,7 +1412,7 @@ internal fun TvDiscoverScreen(
             is TvDiscoverAvailability.Failure ->
                 item("error") {
                     TvSearchSourceFailure(
-                        message = strings.discoverLoadFailed,
+                        message = strings.seerr.discoverLoadFailed,
                         retryLabel = strings.retry,
                         focusTargetId = TV_DISCOVER_RETRY_TARGET,
                         onRetry = ::retryAndRestoreFocus,
@@ -1421,7 +1421,7 @@ internal fun TvDiscoverScreen(
             is TvDiscoverAvailability.Content -> {
                 if (availability.hasRailFailures) {
                     item("partial-error") {
-                        TvStatusAnchor(strings.discoverLoadFailed)
+                        TvStatusAnchor(strings.seerr.discoverLoadFailed)
                     }
                 }
                 JellyseerrRecommendationRail.entries.forEach { rail ->
@@ -1447,7 +1447,7 @@ internal fun TvDiscoverScreen(
         if (requestItems.isNotEmpty()) {
             item("requests") {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    TvSectionTitle(strings.requests)
+                    TvSectionTitle(strings.seerr.requests)
                     LazyRow(
                         state = rowStates.getValue("requests"),
                         modifier = Modifier.tvRowBleed(),

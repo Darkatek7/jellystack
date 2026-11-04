@@ -74,7 +74,7 @@ internal fun TvNavigationRail(
     ) {
         TvNavigationRailPanel {
             TvNavigationRailProfile(
-                label = "${strings.profiles}: $profileName",
+                label = "${strings.profile.profiles}: $profileName",
                 profileName = profileName,
                 expanded = expanded,
                 onProfile = callbacks.onProfile,

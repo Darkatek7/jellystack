@@ -66,7 +66,7 @@ internal fun GoldenStateFixture(
                     )
                 TvGoldenFixture.ERROR_STATE ->
                     TvSearchSourceFailure(
-                        message = strings.discoverLoadFailed,
+                        message = strings.seerr.discoverLoadFailed,
                         retryLabel = strings.retry,
                         focusTargetId = TV_DISCOVER_RETRY_TARGET,
                         modifier = Modifier.align(Alignment.Center),
@@ -74,7 +74,7 @@ internal fun GoldenStateFixture(
                     )
                 TvGoldenFixture.SKELETON_ROWS -> TvSkeletonRows(strings.loading, rowCount = 2)
                 TvGoldenFixture.DETAIL_LOAD_ERROR ->
-                    TvDetailLoadError(strings.detailLoadFailed, strings.retry, onRetry = {})
+                    TvDetailLoadError(strings.detailText.detailLoadFailed, strings.retry, onRetry = {})
                 TvGoldenFixture.NAVIGATION_RAIL_OPEN -> GoldenNavigationRail(strings)
                 TvGoldenFixture.DISCOVER_ROWS -> GoldenDiscoverRows(strings)
                 TvGoldenFixture.RESUME_DIALOG ->

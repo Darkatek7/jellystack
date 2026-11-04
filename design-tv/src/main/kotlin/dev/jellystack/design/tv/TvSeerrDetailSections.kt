@@ -108,7 +108,7 @@ internal fun LazyListScope.tvSeerrDetailSections(
             is TvDetailSection.Cast ->
                 item(section.id) {
                     TvSeerrCastSection(
-                        title = strings.cast,
+                        title = strings.detailText.cast,
                         people = section.items.mapNotNull { it as? TvDetailCastItem.Seerr },
                         notFoundMessage = strings.detailScreen.castNotInLibrary,
                         actions = castActions,
@@ -118,7 +118,7 @@ internal fun LazyListScope.tvSeerrDetailSections(
             is TvDetailSection.Similar ->
                 item(section.id) {
                     TvSeerrSimilarRow(
-                        strings.similar,
+                        strings.detailText.similar,
                         section.items.mapNotNull { it as? TvDetailSimilarItem.Seerr },
                         sectionFocusModifiers.getValue(section.id),
                         onOpenItem,

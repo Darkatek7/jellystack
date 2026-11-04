@@ -287,7 +287,7 @@ internal fun TvSelectedLibraryScreen(
                         state = state,
                         library = library,
                         rowTitle = strings.library,
-                        cardTitle = strings.allTitles,
+                        cardTitle = strings.browse.allTitles,
                         itemCount = library?.itemCount?.let(strings::itemCount),
                     )
             }
@@ -307,7 +307,7 @@ internal fun TvSelectedLibraryScreen(
                         TvCinematicHintLabels(
                             play = strings.play,
                             resume = strings.continueLabel,
-                            details = strings.details,
+                            details = strings.detailText.details,
                             endsAt = strings.player.endsAt,
                         ),
                     canPlay = { card -> allKnownItems[card.id]?.isBrowseContainer() == false },
@@ -345,7 +345,7 @@ internal fun TvSelectedLibraryScreen(
             playback = playback,
             trailer =
                 trailerPreviewEngine?.takeIf { trailerPlaying }?.let { engine ->
-                    TvCinematicTrailer(engine, strings.trailer, previewSoundEnabled, previewProgress ?: TvNoTrailerProgress)
+                    TvCinematicTrailer(engine, strings.detailText.trailer, previewSoundEnabled, previewProgress ?: TvNoTrailerProgress)
                 },
             modifier = modifier,
         )
@@ -603,7 +603,7 @@ private fun LazyGridScope.libraryGridStatusItems(
     } else if (state.libraryErrorMessage != null) {
         item(key = "all-titles-error", span = { GridItemSpan(maxLineSpan) }) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(strings.libraryLoadFailed, color = TvError)
+                Text(strings.browse.libraryLoadFailed, color = TvError)
                 TvActionButton(strings.retry, onRetry, modifier = Modifier.width(220.dp), focusTargetId = TV_LIBRARY_RETRY_TARGET)
             }
         }
@@ -611,7 +611,7 @@ private fun LazyGridScope.libraryGridStatusItems(
         item(key = "all-titles-empty", span = { GridItemSpan(maxLineSpan) }) {
             TvEmptyState(
                 icon = Icons.Default.VideoLibrary,
-                title = strings.noResults,
+                title = strings.searchScreen.noResults,
                 hint = if (state.libraryBrowseQuery.isDefault) strings.emptyStates.libraryHint else strings.emptyStates.filterHint,
             )
         }
@@ -745,32 +745,32 @@ private fun JellyfinItem.open(
 
 internal fun TvStrings.libraryBrowseLabels() =
     TvLibraryBrowseLabels(
-        continueWatching = continueWatching,
-        nextUp = nextUp,
-        recentlyAdded = recentlyAdded,
-        myList = myList,
+        continueWatching = homeRows.continueWatching,
+        nextUp = homeRows.nextUp,
+        recentlyAdded = homeRows.recentlyAdded,
+        myList = browse.myList,
         minutesLeft = metadata.minutesLeft,
         untitled = messages.untitled,
     )
 
 private fun TvStrings.tvLibraryQueryLabels() =
     TvLibraryQueryLabels(
-        sort = sort,
-        title = titleSort,
-        dateAdded = dateAddedSort,
-        releaseYear = releaseYearSort,
-        ascending = ascending,
-        descending = descending,
-        played = playedFilter,
-        unplayed = unplayed,
-        favoritesOnly = favoritesOnly,
-        genre = genre,
-        year = releaseYearSort,
-        mediaType = mediaType,
+        sort = browse.sort,
+        title = browse.titleSort,
+        dateAdded = browse.dateAddedSort,
+        releaseYear = browse.releaseYearSort,
+        ascending = browse.ascending,
+        descending = browse.descending,
+        played = browse.playedFilter,
+        unplayed = browse.unplayed,
+        favoritesOnly = browse.favoritesOnly,
+        genre = browse.genre,
+        year = browse.releaseYearSort,
+        mediaType = browse.mediaType,
         mediaTypeNames = mediaTypeLabels,
         all = all,
-        clear = clearFilters,
-        apply = applyLabel,
+        clear = browse.clearFilters,
+        apply = browse.applyLabel,
         cancel = cancel,
     )
 

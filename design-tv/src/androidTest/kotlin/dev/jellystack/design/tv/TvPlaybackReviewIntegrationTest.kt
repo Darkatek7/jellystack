@@ -216,7 +216,7 @@ class TvPlaybackReviewIntegrationTest {
             }
         }
 
-        composeRule.onNodeWithContentDescription(strings.episodes).performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.onNodeWithContentDescription(strings.detailText.episodes).performSemanticsAction(SemanticsActions.OnClick)
         composeRule.waitForIdle()
         composeRule.onNodeWithContentDescription("1. Pilot").assertIsFocused()
         composeRule.onRoot().performKeyInput { pressKey(Key.Back) }
@@ -224,7 +224,7 @@ class TvPlaybackReviewIntegrationTest {
         composeRule.onNodeWithContentDescription("1. Pilot").assertDoesNotExist()
         composeRule.onNodeWithContentDescription("Pause").assertIsFocused()
 
-        composeRule.onNodeWithContentDescription(strings.episodes).performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.onNodeWithContentDescription(strings.detailText.episodes).performSemanticsAction(SemanticsActions.OnClick)
         composeRule.waitForIdle()
         composeRule.onNodeWithContentDescription("2. Second Tide").performSemanticsAction(SemanticsActions.OnClick)
         composeRule.waitForIdle()

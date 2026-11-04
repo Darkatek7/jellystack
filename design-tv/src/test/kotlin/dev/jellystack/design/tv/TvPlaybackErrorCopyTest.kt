@@ -9,7 +9,7 @@ class TvPlaybackErrorCopyTest {
         val strings = TvStrings.current(dev.jellystack.core.preferences.AppLanguage.ENGLISH)
 
         assertEquals(
-            strings.playbackFailedMessage,
+            strings.playbackUi.playbackFailedMessage,
             tvPlaybackErrorMessage(
                 "MediaCodecAudioRenderer error, index=1, format=Format(audio/mp4a-latm)",
                 strings,

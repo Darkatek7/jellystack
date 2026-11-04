@@ -61,7 +61,7 @@ internal fun buildTvDiscoverRows(
                     .collapsedByMedia()
                     .mapNotNull { it.toSearchItem(strings.messages::untitledRequest) }
             val requestCards = cardsOf(requested) { "request:${it.cinematicKey()}" }
-            tvCinematicRowOrNull(DISCOVER_REQUESTS_ROW, strings.requests, requestCards)?.let(::add)
+            tvCinematicRowOrNull(DISCOVER_REQUESTS_ROW, strings.seerr.requests, requestCards)?.let(::add)
         }
     return TvDiscoverRows(rows, itemsByCardId)
 }

@@ -94,7 +94,7 @@ internal fun TvProfilePickerScreen(
         verticalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterVertically),
     ) {
         Text(
-            strings.chooseProfile,
+            strings.profile.chooseProfile,
             color = TvText,
             fontSize = 42.sp,
             fontWeight = FontWeight.Bold,
@@ -113,15 +113,15 @@ internal fun TvProfilePickerScreen(
             items(profiles, key = TvProfilePresentation::id) { profile ->
                 TvProfileTile(
                     profile = profile,
-                    pinLabel = strings.profilePin,
+                    pinLabel = strings.profile.profilePin,
                     onClick = { onSelect(profile.id) },
                     focusRequester = initialFocusRequester.takeIf { profile.id == initialProfileId },
                     tagPrefix = "profile",
                 )
             }
-            item(key = "profile-add") { TvAddProfileTile(strings.addProfile, onAdd) }
+            item(key = "profile-add") { TvAddProfileTile(strings.profile.addProfile, onAdd) }
         }
-        TvActionButton(strings.manageProfiles, onManage, focusTargetId = "profile:manage")
+        TvActionButton(strings.profile.manageProfiles, onManage, focusTargetId = "profile:manage")
     }
 }
 
@@ -213,7 +213,7 @@ internal fun TvProfileManagementScreen(
         verticalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterVertically),
     ) {
         Text(
-            selected?.displayName ?: strings.manageProfiles,
+            selected?.displayName ?: strings.profile.manageProfiles,
             color = TvText,
             fontSize = 38.sp,
             fontWeight = FontWeight.Bold,
@@ -229,7 +229,7 @@ internal fun TvProfileManagementScreen(
                 items(profiles, key = TvProfilePresentation::id) { profile ->
                     TvProfileTile(
                         profile = profile,
-                        pinLabel = strings.profilePin,
+                        pinLabel = strings.profile.profilePin,
                         onClick = { onSelectProfile(profile.id) },
                         focusRequester = null,
                         tagPrefix = "profile-management",
@@ -240,13 +240,13 @@ internal fun TvProfileManagementScreen(
             TvProfileAvatar(profile = selected, size = 132.dp)
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 TvActionButton(
-                    label = "${strings.profilePin}: ${selected.displayName}",
+                    label = "${strings.profile.profilePin}: ${selected.displayName}",
                     onClick = { onManagePin(selected.id) },
                     primary = true,
                     focusTargetId = "profile-management:${selected.id}:pin",
                 )
                 TvActionButton(
-                    label = "${strings.removeProfile}: ${selected.displayName}",
+                    label = "${strings.profile.removeProfile}: ${selected.displayName}",
                     onClick = { onRemove(selected.id) },
                     leading = { Icon(Icons.Default.Delete, null) },
                     destructive = true,
@@ -352,7 +352,7 @@ internal fun TvProfilePinScreen(
     onDelete: () -> Unit,
     onSubmit: () -> Unit,
     onCancel: () -> Unit,
-    title: String = "${strings.enterProfilePin}: ${profile.displayName}",
+    title: String = "${strings.profile.enterProfilePin}: ${profile.displayName}",
     secondaryActionLabel: String? = null,
     onSecondaryAction: (() -> Unit)? = null,
 ) {
@@ -383,7 +383,7 @@ internal fun TvProfilePinScreen(
         )
         Text(
             if (locked) {
-                strings.profileLocked
+                strings.profile.profileLocked
             } else {
                 "●".repeat(pin.length) + "○".repeat((TV_PIN_LENGTH - pin.length).coerceAtLeast(0))
             },
@@ -393,7 +393,7 @@ internal fun TvProfilePinScreen(
                 Modifier.semantics {
                     contentDescription =
                         if (locked) {
-                            strings.profileLocked
+                            strings.profile.profileLocked
                         } else {
                             strings.messages.pinDigitsEntered(pin.length, TV_PIN_LENGTH)
                         }
@@ -466,15 +466,15 @@ internal fun TvRemoveProfileDialog(
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             Text(
-                "${strings.removeProfile}: ${profile.displayName}?",
+                "${strings.profile.removeProfile}: ${profile.displayName}?",
                 color = TvText,
                 fontSize = 28.sp,
                 fontWeight = FontWeight.Bold,
             )
-            Text(strings.removeProfileMessage, color = TvTextMuted, fontSize = 18.sp)
+            Text(strings.profile.removeProfileMessage, color = TvTextMuted, fontSize = 18.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 TvActionButton(strings.cancel, onDismiss, focusRequester = cancelFocus)
-                TvActionButton(strings.removeProfile, onConfirm, destructive = true)
+                TvActionButton(strings.profile.removeProfile, onConfirm, destructive = true)
             }
         }
     }

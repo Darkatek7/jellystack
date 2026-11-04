@@ -183,7 +183,7 @@ private fun BoxScope.TvHomeSpotlightContent(
     if (showKeyHints) {
         TvPlayKeyHints(
             playLabel = playLabel,
-            detailsLabel = strings.details,
+            detailsLabel = strings.detailText.details,
             modifier =
                 Modifier
                     .align(Alignment.BottomStart)
@@ -288,17 +288,17 @@ private fun TvHeroModeLabel(
         Icon(Icons.Default.AutoAwesome, null, tint = TvPurple, modifier = Modifier.size(19.dp))
         Text(
             when (mode) {
-                TvHomeHeroMode.RECENT -> strings.recentlyAdded
-                TvHomeHeroMode.LATEST -> strings.latestAdditions
-                TvHomeHeroMode.LIBRARY -> strings.fromYourLibrary
-                TvHomeHeroMode.EMPTY -> strings.fromYourLibrary
+                TvHomeHeroMode.RECENT -> strings.homeRows.recentlyAdded
+                TvHomeHeroMode.LATEST -> strings.homeRows.latestAdditions
+                TvHomeHeroMode.LIBRARY -> strings.homeRows.fromYourLibrary
+                TvHomeHeroMode.EMPTY -> strings.homeRows.fromYourLibrary
             },
             color = TvPurple,
             fontSize = TvTextSize.Body,
             fontWeight = FontWeight.SemiBold,
         )
         if (mode == TvHomeHeroMode.RECENT) {
-            Text("·  ${strings.lastThirtyDays}", color = TvTextMuted, fontSize = TvTextSize.CardTitle)
+            Text("·  ${strings.homeRows.lastThirtyDays}", color = TvTextMuted, fontSize = TvTextSize.CardTitle)
         }
     }
 }
