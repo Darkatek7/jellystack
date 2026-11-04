@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -20,19 +19,29 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 
-/** Height of the hero of a movie or episode; the content column sits on its bottom edge. */
+/** Minimum height of the hero of a movie or episode; the content column sits on its bottom edge. */
 internal const val TV_DETAIL_HERO_HEIGHT_DP = 520
 
-/** Series are shorter so the season tabs peek above the fold. */
-internal const val TV_DETAIL_SERIES_HERO_HEIGHT_DP = 392
+/** Series have no minimum: the hero wraps its content so the season tabs sit right under the buttons. */
+internal const val TV_DETAIL_SERIES_HERO_HEIGHT_DP = 0
 
 internal const val TV_DETAIL_START_DP = 108
+
+/** Room under the actions; series use [TV_DETAIL_SERIES_HERO_BOTTOM_DP] because the rows below follow directly. */
+internal const val TV_DETAIL_HERO_BOTTOM_DP = 30
+
+/** The actions already reserve a focus-label slot, so a small margin suffices before the season tabs. */
+internal const val TV_DETAIL_SERIES_HERO_BOTTOM_DP = 4
 private const val TV_DETAIL_OVERVIEW_LINES = 3
+
+internal fun tvDetailHeroBottomPadding(isSeries: Boolean): Dp =
+    (if (isSeries) TV_DETAIL_SERIES_HERO_BOTTOM_DP else TV_DETAIL_HERO_BOTTOM_DP).dp
 
 /**
  * Backdrop, then the information a viewer decides by: title or logo, the one-line facts, genres or series line,
@@ -41,19 +50,20 @@ private const val TV_DETAIL_OVERVIEW_LINES = 3
 @Composable
 internal fun BoxScope.TvDetailHero(
     model: TvDetailHeroModel,
+    bottomPadding: Dp = TV_DETAIL_HERO_BOTTOM_DP.dp,
     actions: @Composable () -> Unit,
 ) {
     AsyncImage(
         model = model.backdropUrl,
         contentDescription = model.title,
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.matchParentSize(),
         contentScale = ContentScale.Crop,
     )
-    Box(Modifier.fillMaxSize().tvBakedScrim(TvScrim.DETAIL_HERO))
+    Box(Modifier.matchParentSize().tvBakedScrim(TvScrim.DETAIL_HERO))
     Column(
         Modifier
             .align(Alignment.BottomStart)
-            .padding(start = TV_DETAIL_START_DP.dp, end = 48.dp, bottom = 30.dp)
+            .padding(start = TV_DETAIL_START_DP.dp, top = 40.dp, end = 48.dp, bottom = bottomPadding)
             .widthIn(max = 760.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {

@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -82,7 +82,7 @@ private fun GoldenDetailPage(
         userScrollEnabled = false,
         verticalArrangement = Arrangement.spacedBy(26.dp),
     ) {
-        item { Box(Modifier.fillMaxWidth().height(heroHeightDp.dp), content = hero) }
+        item { Box(Modifier.fillMaxWidth().heightIn(min = heroHeightDp.dp), content = hero) }
         sections()
     }
 }
@@ -331,7 +331,7 @@ private fun GoldenSeriesDetail(
         TV_DETAIL_SERIES_HERO_HEIGHT_DP,
         modifier,
         hero = {
-            TvDetailHero(model) {
+            TvDetailHero(model, bottomPadding = TV_DETAIL_SERIES_HERO_BOTTOM_DP.dp) {
                 GoldenActions(strings, tvDetailPrimaryLabel(null, true, next, strings), startOver = true, trailer = true, summary = null)
             }
         },

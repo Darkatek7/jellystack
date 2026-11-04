@@ -37,6 +37,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontFamily
@@ -51,6 +52,10 @@ import androidx.compose.ui.unit.sp
 import dev.jellystack.core.server.JellyfinSignInMethod
 
 private val QR_SIZE = 208.dp
+
+/** Smaller, still scannable QR code once large text needs the height for the code and its explanation. */
+private val QR_SIZE_LARGE_TEXT = 176.dp
+private const val LARGE_TEXT_FONT_SCALE = 1.2f
 
 /** Everything the sign-in card shows; the stateful [TvConnectionScreen] owns it, goldens pass fixed values. */
 internal data class TvConnectionFormState(
@@ -134,7 +139,7 @@ internal fun TvConnectionContent(
 ) {
     val inProgress = state.waitingCode != null || state.busy
     val contentMode = connectionContentMode(inProgress)
-    val layout = connectionFormLayout(state.method)
+    val layout = connectionFormLayout(state.method, state.waitingCode != null)
     Box(modifier.fillMaxSize().background(TvBackground), contentAlignment = Alignment.Center) {
         Row(
             modifier =
@@ -278,9 +283,10 @@ private fun TvQuickConnectCode(
     strings: TvStrings,
 ) {
     val pageUrl = remember(baseUrl) { quickConnectPageUrl(baseUrl) }
+    val qrSize = if (LocalDensity.current.fontScale > LARGE_TEXT_FONT_SCALE) QR_SIZE_LARGE_TEXT else QR_SIZE
     Row(
         Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(40.dp),
+        horizontalArrangement = Arrangement.spacedBy(28.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -299,11 +305,11 @@ private fun TvQuickConnectCode(
         }
         if (pageUrl != null) {
             Column(
-                Modifier.width(QR_SIZE),
+                Modifier.width(qrSize),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                TvQrCode(pageUrl, QR_SIZE, strings.messages.quickConnectScan)
+                TvQrCode(pageUrl, qrSize, strings.messages.quickConnectScan)
                 Text(
                     strings.messages.quickConnectScan,
                     color = TvTextMuted,
@@ -405,8 +411,18 @@ internal data class TvConnectionFormLayout(
     val textFieldHeight: Dp,
 )
 
-internal fun connectionFormLayout(method: JellyfinSignInMethod): TvConnectionFormLayout =
-    if (method == JellyfinSignInMethod.PASSWORD) {
+internal fun connectionFormLayout(
+    method: JellyfinSignInMethod,
+    waiting: Boolean = false,
+): TvConnectionFormLayout =
+    if (waiting) {
+        TvConnectionFormLayout(
+            screenVerticalPadding = 16.dp,
+            cardVerticalPadding = 18.dp,
+            itemSpacing = 12.dp,
+            textFieldHeight = 64.dp,
+        )
+    } else if (method == JellyfinSignInMethod.PASSWORD) {
         TvConnectionFormLayout(
             screenVerticalPadding = 28.dp,
             cardVerticalPadding = 24.dp,
