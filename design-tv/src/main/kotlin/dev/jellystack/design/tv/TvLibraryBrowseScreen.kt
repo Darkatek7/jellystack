@@ -507,8 +507,11 @@ internal fun TvLibraryAllTitles(
                 },
                 sortFocus = sortFocus,
                 filterFocus = filterFocus,
-                // While the first page loads there is no card yet, so focus starts on the first control.
-                entryFocus = state.libraryItems.isEmpty(),
+                // Only a library known to be empty starts on the controls. Otherwise the first card claims focus once it
+                // arrives: the header taking it while the first page loaded kept it there.
+                entryFocus =
+                    state.libraryItems.isEmpty() &&
+                        (state.totalLibraryItemCount ?: library?.itemCount) == 0L,
                 modifier = Modifier.padding(horizontal = TvLayoutTokens.FocusHaloPadding / 2),
             )
             Row(Modifier.fillMaxSize()) {
