@@ -64,6 +64,7 @@ dependencies {
     implementation(libs.koin.compose)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.ktor3)
+    implementation(libs.zxing.core)
 
     testImplementation(kotlin("test"))
     testImplementation(libs.coroutines.test)

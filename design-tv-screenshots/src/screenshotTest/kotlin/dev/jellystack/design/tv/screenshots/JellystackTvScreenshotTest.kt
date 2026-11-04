@@ -201,3 +201,38 @@ fun TvDiscoverRows() = JellystackTvGoldenFixture(TvGoldenFixture.DISCOVER_ROWS)
 @Preview(name = "German 150% 1080p", device = TV_1080P, locale = "de", fontScale = 1.5f)
 @Composable
 fun TvDiscoverRowsGermanLarge() = JellystackTvGoldenFixture(TvGoldenFixture.DISCOVER_ROWS, AppLanguage.GERMAN)
+
+@PreviewTest
+@Preview(name = "1080p", device = TV_1080P)
+@Composable
+fun TvSignInEmpty() = JellystackTvGoldenFixture(TvGoldenFixture.SIGN_IN_EMPTY)
+
+@PreviewTest
+@Preview(name = "1080p", device = TV_1080P)
+@Composable
+fun TvSignInQuickConnect() = JellystackTvGoldenFixture(TvGoldenFixture.SIGN_IN_QUICK_CONNECT)
+
+@PreviewTest
+@Preview(name = "German 150% 1080p", device = TV_1080P, locale = "de", fontScale = 1.5f)
+@Composable
+fun TvSignInQuickConnectGermanLarge() = JellystackTvGoldenFixture(TvGoldenFixture.SIGN_IN_QUICK_CONNECT, AppLanguage.GERMAN)
+
+@PreviewTest
+@Preview(name = "1080p", device = TV_1080P)
+@Composable
+fun TvSignInHint() = JellystackTvGoldenFixture(TvGoldenFixture.SIGN_IN_HINT)
+
+@PreviewTest
+@Preview(name = "1080p", device = TV_1080P)
+@Composable
+fun TvSignInError() = JellystackTvGoldenFixture(TvGoldenFixture.SIGN_IN_ERROR)
+
+@PreviewTest
+@Preview(name = "German 150% 1080p", device = TV_1080P, locale = "de", fontScale = 1.5f)
+@Composable
+fun TvSignInLongMessageGermanLarge() = JellystackTvGoldenFixture(TvGoldenFixture.SIGN_IN_LONG_MESSAGE, AppLanguage.GERMAN)
+
+@PreviewTest
+@Preview(name = "1080p", device = TV_1080P)
+@Composable
+fun TvSignInPassword() = JellystackTvGoldenFixture(TvGoldenFixture.SIGN_IN_PASSWORD)
