@@ -323,6 +323,7 @@ internal val TvStringsGerman: TvStrings =
         mediaTypeLabels = germanMediaTypeStrings,
         emptyStates = germanEmptyStateStrings,
         applyLabel = "Übernehmen",
+        libraryScreen = germanLibraryStrings,
         messages = germanMessageStrings,
         metadata =
             TvMetadataStrings(

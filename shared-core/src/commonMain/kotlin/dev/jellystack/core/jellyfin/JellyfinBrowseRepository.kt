@@ -116,6 +116,24 @@ internal interface JellyfinBrowseRepositoryApi {
             filters = query.takeIf { it.favoritesOnly }?.let { "IsFavorite" },
         )
 
+    /**
+     * How many items of the library sort before [name] under [query]'s filters and sort name: the index of the first
+     * item that sorts at or after it. Null when it cannot be determined.
+     */
+    suspend fun countLibraryItemsBefore(
+        libraryId: String,
+        query: LibraryBrowseQuery,
+        name: String,
+    ): Long? = null
+
+    /** Items [startIndex] until [startIndex] + [limit] of the library under [query]; never touches the cache. */
+    suspend fun loadLibraryRange(
+        libraryId: String,
+        startIndex: Int,
+        limit: Int,
+        query: LibraryBrowseQuery,
+    ): LibraryPage = LibraryPage(emptyList(), null)
+
     suspend fun cachedLibraryPage(
         libraryId: String,
         page: Int,
@@ -310,28 +328,57 @@ class JellyfinBrowseRepository(
         if (cachePolicy == LibraryCachePolicy.CANONICAL_DEFAULT) {
             return loadLibraryPage(libraryId, page, pageSize, refresh = page == 0, filters = null)
         }
+        return loadLibraryRange(libraryId, startIndex = page * pageSize, limit = pageSize, query = query)
+    }
+
+    override suspend fun loadLibraryRange(
+        libraryId: String,
+        startIndex: Int,
+        limit: Int,
+        query: LibraryBrowseQuery,
+    ): LibraryPage {
         val environment = environmentProvider.current() ?: return LibraryPage(emptyList(), null)
-        val libraryQuery = queryForLibrary(environment.serverKey, libraryId)
-        val includeItemTypes = query.networkMediaTypes() ?: libraryQuery.includeItemTypes
-        val response =
-            apiFor(environment).fetchLibraryItems(
-                userId = environment.userId,
-                libraryId = libraryId,
-                startIndex = page * pageSize,
-                limit = pageSize,
-                includeItemTypes = includeItemTypes,
-                recursive = libraryQuery.recursive,
-                filters = query.takeIf { it.favoritesOnly }?.let { "IsFavorite" },
-                sortBy = query.networkSortBy(),
-                sortOrder = query.networkSortOrder(),
-                isPlayed = query.networkPlayed(),
-                genres = query.networkGenres(),
-                years = query.networkYears(),
-            )
+        val response = fetchQueryItems(environment, libraryId, startIndex, limit, query, nameLessThan = null)
         val now = clock.now()
         return LibraryPage(
             items = response.items.map { it.toRecord(environment, libraryId, now).toDomain() },
             totalRecordCount = response.totalRecordCount,
+        )
+    }
+
+    override suspend fun countLibraryItemsBefore(
+        libraryId: String,
+        query: LibraryBrowseQuery,
+        name: String,
+    ): Long? {
+        val environment = environmentProvider.current() ?: return null
+        return fetchQueryItems(environment, libraryId, startIndex = 0, limit = 1, query = query, nameLessThan = name)
+            .totalRecordCount
+    }
+
+    private suspend fun fetchQueryItems(
+        environment: JellyfinEnvironment,
+        libraryId: String,
+        startIndex: Int,
+        limit: Int,
+        query: LibraryBrowseQuery,
+        nameLessThan: String?,
+    ): JellyfinItemsResponse {
+        val libraryQuery = queryForLibrary(environment.serverKey, libraryId)
+        return apiFor(environment).fetchLibraryItems(
+            userId = environment.userId,
+            libraryId = libraryId,
+            startIndex = startIndex,
+            limit = limit,
+            includeItemTypes = query.networkMediaTypes() ?: libraryQuery.includeItemTypes,
+            recursive = libraryQuery.recursive,
+            filters = query.takeIf { it.favoritesOnly }?.let { "IsFavorite" },
+            sortBy = query.networkSortBy(),
+            sortOrder = query.networkSortOrder(),
+            isPlayed = query.networkPlayed(),
+            genres = query.networkGenres(),
+            years = query.networkYears(),
+            nameLessThan = nameLessThan,
         )
     }
 

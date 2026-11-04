@@ -862,6 +862,20 @@ class JellyfinBrowseRepositoryTest {
         }
 
     @Test
+    fun letterLookupReadsTheTotalAndRangeLoadsLeaveTheCacheAlone() =
+        runTest {
+            repository.refreshLibraries()
+            val cachedBefore = repository.cachedLibraryPage("lib-1", page = 0, pageSize = 30)
+
+            val index = repository.countLibraryItemsBefore("lib-1", LibraryBrowseQuery.DEFAULT, "M")
+            val range = repository.loadLibraryRange("lib-1", startIndex = 30, limit = 60, query = LibraryBrowseQuery.DEFAULT)
+
+            assertEquals(2L, index)
+            assertEquals(2, range.items.size)
+            assertEquals(cachedBefore, repository.cachedLibraryPage("lib-1", page = 0, pageSize = 30))
+        }
+
+    @Test
     fun nonDefaultQueryCannotUseCanonicalCachePolicy() =
         runTest {
             assertFailsWith<IllegalArgumentException> {

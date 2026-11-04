@@ -800,15 +800,14 @@ private fun TvLibraryRow(
                 contentType = { _, _ -> "library-card" },
             ) { index, library ->
                 val targetId = tvHomeCardTargetId(rowKey, library.id)
-                TvMediaCard(
-                    title = library.name,
+                TvLibraryTile(
+                    name = library.name,
+                    collectionType = library.collectionType,
+                    imageUrl = tvLibraryTileImageUrl(state.imageBaseUrl, state.imageAccessToken, library),
                     subtitle = library.itemCount?.let(strings::itemCount),
-                    imageUrl = jellyfinImageUrl(state.imageBaseUrl, state.imageAccessToken, library.id, library.primaryImageTag),
-                    artworkFit = TvMediaCardArtworkFit.CONTAIN_PORTRAIT,
-                    titleInArtwork = true,
                     onClick = { onLibrary(library) },
                     onFocused = { focusMemory.remember("home", "libraries", library.id, horizontalIndex = index) },
-                    modifier =
+                    tileModifier =
                         Modifier
                             .tvScreenEntryFocus(screenEntry && index == 0, targetId)
                             .tvHomeVerticalFocus { direction -> onVerticalMove(library.id, direction) },
@@ -944,6 +943,8 @@ internal fun TvLibraryScreen(
     onModeChanged: (TvLibraryMode) -> Unit = {},
     onQueryChanged: (LibraryBrowseQuery) -> Unit = {},
     onPlayItem: (JellyfinItem) -> Unit = {},
+    onJumpToLetter: (String) -> Unit = {},
+    onLetterJumpHandled: (Long) -> Unit = {},
     cinematicModesEnabled: Boolean = false,
     modifier: Modifier = Modifier,
     trailerPreviewState: TvTrailerPreviewState = TvTrailerPreviewState.Idle,
@@ -954,7 +955,20 @@ internal fun TvLibraryScreen(
     onPreviewClear: () -> Unit = {},
 ) {
     LaunchedEffect(route.libraryId) { route.libraryId?.let(onSelectLibrary) }
-    if (route.libraryId != null && cinematicModesEnabled) {
+    if (route.libraryId == null) {
+        TvLibraryLandingScreen(
+            state = state,
+            strings = strings,
+            focusMemory = focusMemory,
+            routeKey = route.focusRouteKey(state.browsePath.map { it.id }),
+            onSelectLibrary = onSelectLibrary,
+            onOpenItem = onOpenItem,
+            onRetry = onRetry,
+            modifier = modifier,
+        )
+        return
+    }
+    if (cinematicModesEnabled) {
         TvSelectedLibraryScreen(
             route = route,
             state = state,
@@ -972,6 +986,8 @@ internal fun TvLibraryScreen(
             onLoadMore = onLoadMore,
             onRetry = onRetry,
             modifier = modifier,
+            onJumpToLetter = onJumpToLetter,
+            onLetterJumpHandled = onLetterJumpHandled,
             trailerPreviewState = trailerPreviewState,
             trailerPreviewEngine = trailerPreviewEngine,
             previewSoundEnabled = previewSoundEnabled,

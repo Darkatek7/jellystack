@@ -228,6 +228,41 @@ class JellyfinBrowseApiTest {
         }
 
     @Test
+    fun nameLessThanCountsTheItemsBeforeALetter() =
+        runTest {
+            val requests = mutableListOf<HttpRequestData>()
+            val engine =
+                MockEngine { request ->
+                    requests += request
+                    respond(
+                        """{"Items":[],"TotalRecordCount":412}""",
+                        HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                    )
+                }
+            val client = NetworkClientFactory.create(ClientConfig(engine = engine, installLogging = false))
+            val api = JellyfinBrowseApi(client, baseUrl = "https://example.test", accessToken = "dummy-access-token")
+
+            val response =
+                api.fetchLibraryItems(
+                    userId = "u-1",
+                    libraryId = "movies",
+                    startIndex = 0,
+                    limit = 1,
+                    includeItemTypes = "Movie",
+                    genres = listOf("Drama"),
+                    nameLessThan = "M",
+                )
+            api.fetchLibraryItems(userId = "u-1", libraryId = "movies", startIndex = 0, limit = 1, nameLessThan = " ")
+
+            assertEquals(412L, response.totalRecordCount)
+            assertEquals("M", requests[0].url.parameters["NameLessThan"])
+            assertEquals("Drama", requests[0].url.parameters["Genres"])
+            assertNull(requests[1].url.parameters["NameLessThan"])
+            client.close()
+        }
+
+    @Test
     fun personFilmographyQueryFiltersByPersonAcrossTheWholeLibrary() =
         runTest {
             var parameters: Map<String, List<String>> = emptyMap()
