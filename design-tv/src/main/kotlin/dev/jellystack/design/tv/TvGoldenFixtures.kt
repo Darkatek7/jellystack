@@ -39,6 +39,9 @@ enum class TvGoldenFixture {
     HOME_HERO_HINTS,
     HOME_SETTINGS,
     DETAIL_HERO,
+    DETAIL_SERIES,
+    DETAIL_EPISODE,
+    DETAIL_SEERR,
     LIBRARY_GRID,
     LIBRARY_FILTER_PANEL,
     LIBRARY_LANDING,
@@ -56,7 +59,6 @@ private val GOLDEN_HERO_FIXTURES =
         TvGoldenFixture.HOME_HERO,
         TvGoldenFixture.HOME_HERO_HINTS,
         TvGoldenFixture.HOME_SETTINGS,
-        TvGoldenFixture.DETAIL_HERO,
     )
 
 /** Screenshot-test entry point; production code never calls it. */
@@ -75,13 +77,13 @@ fun JellystackTvGoldenFixture(
         }
         return
     }
-    if (fixture in GOLDEN_HERO_FIXTURES) {
+    if (fixture in GOLDEN_HERO_FIXTURES || fixture in GOLDEN_DETAIL_FIXTURES) {
         JellystackTvTheme {
             when (fixture) {
                 TvGoldenFixture.HOME_HERO -> GoldenHomeHero(strings, modifier, showKeyHints = false, pageIndex = 5)
                 TvGoldenFixture.HOME_HERO_HINTS -> GoldenHomeHero(strings, modifier, showKeyHints = true, pageIndex = 0)
                 TvGoldenFixture.HOME_SETTINGS -> GoldenHomeSettings(strings, modifier)
-                else -> GoldenDetailHero(strings, modifier)
+                else -> GoldenDetailScreen(fixture, strings, modifier)
             }
         }
         return
@@ -106,6 +108,9 @@ fun JellystackTvGoldenFixture(
                 TvGoldenFixture.PLAYER_SCRUB,
                 TvGoldenFixture.PLAYER_UP_NEXT,
                 TvGoldenFixture.DETAIL_HERO,
+                TvGoldenFixture.DETAIL_SERIES,
+                TvGoldenFixture.DETAIL_EPISODE,
+                TvGoldenFixture.DETAIL_SEERR,
                 TvGoldenFixture.LIBRARY_GRID,
                 TvGoldenFixture.LIBRARY_FILTER_PANEL,
                 TvGoldenFixture.LIBRARY_LANDING,

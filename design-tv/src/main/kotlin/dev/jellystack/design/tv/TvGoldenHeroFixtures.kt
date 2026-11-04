@@ -22,11 +22,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import dev.jellystack.core.jellyfin.JellyfinChannelLayout
-import dev.jellystack.core.jellyfin.JellyfinDynamicRange
-import dev.jellystack.core.jellyfin.JellyfinImmersiveAudio
-import dev.jellystack.core.jellyfin.JellyfinMediaFeatures
-import dev.jellystack.core.jellyfin.JellyfinVideoResolution
 import dev.jellystack.core.preferences.HomeRowPreferences
 
 // Hero states for TvGoldenFixture.HOME_HERO and DETAIL_HERO: fictional titles, no network artwork, no trailer.
@@ -127,55 +122,6 @@ private fun GoldenBrightArtwork() {
             ),
     )
 }
-
-@Composable
-internal fun GoldenDetailHero(
-    strings: TvStrings,
-    modifier: Modifier,
-) {
-    Column(modifier.fillMaxSize().background(TvBackground)) {
-        Box(Modifier.fillMaxWidth().height(TV_DETAIL_HERO_HEIGHT_DP.dp)) {
-            TvDetailHero(
-                TvDetailHeroModel(
-                    title = "The Last Horizon",
-                    backdropUrl = null,
-                    logoUrl = null,
-                    titleColor = TvText,
-                    subtitle = "Drama  •  Mystery  •  Thriller",
-                    badges =
-                        JellyfinMediaFeatures(
-                            resolution = JellyfinVideoResolution.UHD_4K,
-                            dynamicRange = JellyfinDynamicRange.DOLBY_VISION,
-                            immersiveAudio = JellyfinImmersiveAudio.DOLBY_ATMOS,
-                            surround = JellyfinChannelLayout.SURROUND_7_1,
-                            hearingImpairedSubtitles = true,
-                        ).badgeLabels(strings),
-                ),
-            ) {
-                TvDetailHeroActions(
-                    state =
-                        TvDetailHeroActionsState(
-                            resume = true,
-                            favorite = true,
-                            played = false,
-                            trailerError = false,
-                        ),
-                    callbacks =
-                        TvDetailHeroActionCallbacks(
-                            onPlay = {},
-                            onToggleFavorite = {},
-                            onTogglePlayed = {},
-                            onTrailer = {},
-                        ),
-                    strings = strings,
-                    primaryActionModifier = Modifier,
-                    actionRowModifier = Modifier,
-                )
-            }
-        }
-    }
-}
-
 /** Settings > Home: Continue watching hidden, the rest in a custom order. */
 @Composable
 internal fun GoldenHomeSettings(

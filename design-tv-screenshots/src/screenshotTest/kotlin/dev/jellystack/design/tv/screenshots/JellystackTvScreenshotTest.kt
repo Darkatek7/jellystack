@@ -11,6 +11,7 @@ import dev.jellystack.design.tv.TvGoldenFixture
 
 private const val TV_720P = "spec:width=960dp,height=540dp,dpi=213"
 private const val TV_1080P = "spec:width=960dp,height=540dp,dpi=320"
+private const val TV_FULL_PAGE = "spec:width=960dp,height=1180dp,dpi=320"
 private const val TV_4K = "spec:width=960dp,height=540dp,dpi=640"
 
 @Preview(name = "720p", device = TV_720P)
@@ -92,6 +93,39 @@ fun TvDetailHero() = JellystackTvGoldenFixture(TvGoldenFixture.DETAIL_HERO)
 @Preview(name = "German 150% 1080p", device = TV_1080P, locale = "de", fontScale = 1.5f)
 @Composable
 fun TvDetailHeroGermanLarge() = JellystackTvGoldenFixture(TvGoldenFixture.DETAIL_HERO, AppLanguage.GERMAN)
+
+@PreviewTest
+@Preview(name = "German 1080p", device = TV_1080P, locale = "de")
+@Composable
+fun TvDetailHeroGerman() = JellystackTvGoldenFixture(TvGoldenFixture.DETAIL_HERO, AppLanguage.GERMAN)
+
+@PreviewTest
+@Preview(name = "Full page", device = TV_FULL_PAGE)
+@Composable
+fun TvDetailMovieFullPage() = JellystackTvGoldenFixture(TvGoldenFixture.DETAIL_HERO)
+
+@PreviewTest
+@Preview(name = "1080p", device = TV_1080P)
+@Preview(name = "Full page", device = TV_FULL_PAGE)
+@Composable
+fun TvDetailSeries() = JellystackTvGoldenFixture(TvGoldenFixture.DETAIL_SERIES)
+
+@PreviewTest
+@Preview(name = "German 1080p", device = TV_1080P, locale = "de")
+@Composable
+fun TvDetailSeriesGerman() = JellystackTvGoldenFixture(TvGoldenFixture.DETAIL_SERIES, AppLanguage.GERMAN)
+
+@PreviewTest
+@Preview(name = "1080p", device = TV_1080P)
+@Preview(name = "Full page", device = TV_FULL_PAGE)
+@Composable
+fun TvDetailEpisode() = JellystackTvGoldenFixture(TvGoldenFixture.DETAIL_EPISODE)
+
+@PreviewTest
+@Preview(name = "1080p", device = TV_1080P)
+@Preview(name = "Full page", device = TV_FULL_PAGE)
+@Composable
+fun TvDetailSeerr() = JellystackTvGoldenFixture(TvGoldenFixture.DETAIL_SEERR)
 
 @PreviewTest
 @Preview(name = "1080p", device = TV_1080P)
