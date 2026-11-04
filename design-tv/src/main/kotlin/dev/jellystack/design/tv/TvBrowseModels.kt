@@ -3,6 +3,7 @@ package dev.jellystack.design.tv
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.State
+import androidx.media3.common.util.UnstableApi
 import dev.jellystack.core.preferences.MotionPreference
 import dev.jellystack.players.AndroidPlayerEngine
 
@@ -125,6 +126,7 @@ internal data class TvCinematicHintLabels(
 )
 
 /** The focused card's trailer while it plays behind a cinematic browse screen. */
+@androidx.annotation.OptIn(UnstableApi::class)
 @Stable
 internal class TvCinematicTrailer(
     val engine: AndroidPlayerEngine,

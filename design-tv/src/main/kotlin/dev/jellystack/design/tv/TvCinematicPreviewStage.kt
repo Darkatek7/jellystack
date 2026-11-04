@@ -28,6 +28,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.media3.common.util.UnstableApi
 import androidx.tv.material3.Text
 import dev.jellystack.players.AndroidPlayerEngine
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -40,6 +41,7 @@ internal val TV_CINEMATIC_STAGE_HEIGHT: Dp = TV_CINEMATIC_ROWS_TOP
  * The focused card's artwork behind the whole screen, as on the home screen; a playing trailer replaces it once it
  * shows a frame. The scrims only keep the text readable, so they fade with [uiAlpha] while the trailer has the screen.
  */
+@androidx.annotation.OptIn(UnstableApi::class)
 @Composable
 internal fun TvCinematicBackdropLayer(
     backdrop: TvCinematicBackdrop,

@@ -60,7 +60,8 @@ class TvBackDispatcherIntegrationTest {
         val holder = TvAppStateHolder()
         val systemExits = mutableIntStateOf(0)
         val exitRequests = mutableIntStateOf(0)
-        composeRule.setContent { BackHarness(holder, mutableIntStateOf(0), systemExits, exitRequests = exitRequests) }
+        val pathDepth = mutableIntStateOf(0)
+        composeRule.setContent { BackHarness(holder, pathDepth, systemExits, exitRequests = exitRequests) }
 
         pressBack()
 
@@ -79,7 +80,8 @@ class TvBackDispatcherIntegrationTest {
         val holder = TvAppStateHolder().apply { selectTopLevel(TvRoute.Discover) }
         val systemExits = mutableIntStateOf(0)
         val exitRequests = mutableIntStateOf(0)
-        composeRule.setContent { BackHarness(holder, mutableIntStateOf(0), systemExits, exitRequests = exitRequests) }
+        val pathDepth = mutableIntStateOf(0)
+        composeRule.setContent { BackHarness(holder, pathDepth, systemExits, exitRequests = exitRequests) }
 
         pressBack()
         composeRule.runOnIdle {
@@ -103,7 +105,8 @@ class TvBackDispatcherIntegrationTest {
         val holder = TvAppStateHolder().apply { push(TvRoute.Player) }
         val systemExits = mutableIntStateOf(0)
         val playerBacks = mutableIntStateOf(0)
-        composeRule.setContent { BackHarness(holder, mutableIntStateOf(0), systemExits, playerBacks) }
+        val pathDepth = mutableIntStateOf(0)
+        composeRule.setContent { BackHarness(holder, pathDepth, systemExits, playerBacks) }
 
         pressBack()
 

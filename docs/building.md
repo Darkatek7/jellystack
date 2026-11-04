@@ -53,6 +53,8 @@ The full CI gate (static checks, resource parity, manifest allowlists, unit test
   :design:testDebugUnitTest \
   :design-tv:testDebugUnitTest \
   :app-android:testDebugUnitTest \
+  :design-tv:lintDebug \
+  :app-tv:lintDebug \
   :design-screenshots:validateDebugScreenshotTest \
   :design-tv-screenshots:validateDebugScreenshotTest \
   :app-android:assembleDebug \

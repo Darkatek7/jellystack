@@ -691,7 +691,7 @@ internal fun TvPlaybackActions(
     ) {
         actions.forEachIndexed { index, action ->
             key(action.id) {
-                val requester = requesters.getOrPut(action.id) { FocusRequester() }
+                val requester = remember { requesters.getOrPut(action.id) { FocusRequester() } }
                 if (action.kind == TvPlaybackActionKind.PLAY_NEXT && action.detail != null) {
                     TvUpNextCard(
                         action = action,
