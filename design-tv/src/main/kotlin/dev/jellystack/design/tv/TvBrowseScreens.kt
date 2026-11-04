@@ -885,6 +885,7 @@ internal fun TvLibraryScreen(
     onPlayItem: (JellyfinItem) -> Unit = {},
     onJumpToLetter: (String) -> Unit = {},
     onLetterJumpHandled: (Long) -> Unit = {},
+    onLoadLatest: (JellyfinLibrary) -> Unit = {},
     cinematicModesEnabled: Boolean = false,
     modifier: Modifier = Modifier,
     trailerPreviewState: TvTrailerPreviewState = TvTrailerPreviewState.Idle,
@@ -905,6 +906,7 @@ internal fun TvLibraryScreen(
             onOpenItem = onOpenItem,
             onRetry = onRetry,
             modifier = modifier,
+            onLoadLatest = onLoadLatest,
         )
         return
     }
@@ -939,12 +941,7 @@ internal fun TvLibraryScreen(
     }
     val routeKey = route.focusRouteKey(state.browsePath.map { it.id })
     val gridState = rememberLazyGridState()
-    val itemTargetIds =
-        if (route.libraryId == null) {
-            state.libraries.map { tvLibraryTargetId(it.id, "libraries") }
-        } else {
-            state.libraryItems.map { tvLibraryTargetId(it.id) }
-        }
+    val itemTargetIds = state.libraryItems.map { tvLibraryTargetId(it.id) }
     // The empty state of this screen has an action, and focus belongs on it.
     val terminalTarget =
         tvLibraryTerminalFocusTarget(
@@ -975,7 +972,6 @@ internal fun TvLibraryScreen(
         state.endReached,
         state.libraryErrorMessage,
     ) {
-        if (route.libraryId == null) return@LaunchedEffect
         snapshotFlow {
             val lastGridIndex =
                 gridState.layoutInfo.visibleItemsInfo
@@ -1014,122 +1010,83 @@ internal fun TvLibraryScreen(
                 fontWeight = FontWeight.Bold,
             )
         }
-        if (route.libraryId == null) {
-            gridItemsIndexed(
-                state.libraries,
-                key = { _, library -> library.id },
-                contentType = { _, _ -> "library-card" },
-            ) { index, library ->
-                val targetId = tvLibraryTargetId(library.id, "libraries")
-                TvMediaCard(
-                    title = library.name,
-                    subtitle = library.itemCount?.let(strings::itemCount),
-                    imageUrl = jellyfinImageUrl(state.imageBaseUrl, state.imageAccessToken, library.id, library.primaryImageTag),
-                    artworkFit = TvMediaCardArtworkFit.CONTAIN_PORTRAIT,
-                    titleInArtwork = true,
-                    onClick = { onSelectLibrary(library.id) },
-                    onFocused = { focusMemory.remember(routeKey, "libraries", library.id, index + 1, index) },
+        gridItemsIndexed(
+            state.libraryItems,
+            key = { _, item -> item.id },
+            contentType = { _, _ -> "media-card" },
+        ) { index, item ->
+            val targetId = tvLibraryTargetId(item.id)
+            val artwork = resolveTvJellyfinArtwork(item)
+            TvMediaCard(
+                title = item.name.ifBlank { strings.messages.untitled },
+                subtitle = item.subtitleText(),
+                imageUrl =
+                    jellyfinImageUrl(
+                        state.imageBaseUrl,
+                        state.imageAccessToken,
+                        artwork,
+                    ),
+                artworkFit =
+                    if (artwork?.imageType == "Primary") {
+                        TvMediaCardArtworkFit.CONTAIN_PORTRAIT
+                    } else {
+                        TvMediaCardArtworkFit.CROP
+                    },
+                onClick = { if (item.isBrowseContainer()) onOpenContainer(item) else onOpenItem(item) },
+                onFocused = { focusMemory.remember(routeKey, "items", item.id, index + 1, index) },
+                modifier =
+                    Modifier
+                        .tvScreenEntryFocus(index == 0, targetId),
+                focusTargetId = targetId,
+                fillWidth = true,
+                focusToNavigationRailOnLeft = isTvGridLeftEdge(index, 4),
+            )
+        }
+        if ((state.isLibraryLoading || state.isPageLoading) && state.libraryItems.isEmpty()) {
+            tvSkeletonGridCells(strings.loading, TV_SKELETON_GRID_CELLS, keyPrefix = "library-skeleton")
+        } else if (state.isLibraryLoading || state.isPageLoading) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Box(
                     modifier =
                         Modifier
-                            .tvScreenEntryFocus(index == 0, targetId),
-                    focusTargetId = targetId,
-                    fillWidth = true,
-                    focusToNavigationRailOnLeft = isTvGridLeftEdge(index, 4),
-                )
-            }
-            if (state.libraries.isEmpty()) {
-                if (state.isInitialLoading) {
-                    tvSkeletonGridCells(strings.loading, TV_SKELETON_GRID_CELLS, keyPrefix = "libraries-skeleton")
-                } else {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        TvEmptyState(
-                            icon = Icons.Default.VideoLibrary,
-                            title = strings.emptyStates.noLibraries,
-                            hint = strings.emptyStates.librariesHint,
-                            action = TvEmptyStateAction(strings.retry, TV_LIBRARY_EMPTY_ACTION_TARGET, onRetry),
-                        )
-                    }
+                            .fillMaxWidth()
+                            .height(112.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator(color = TvPurple)
                 }
             }
-        } else {
-            gridItemsIndexed(
-                state.libraryItems,
-                key = { _, item -> item.id },
-                contentType = { _, _ -> "media-card" },
-            ) { index, item ->
-                val targetId = tvLibraryTargetId(item.id)
-                val artwork = resolveTvJellyfinArtwork(item)
-                TvMediaCard(
-                    title = item.name.ifBlank { strings.messages.untitled },
-                    subtitle = item.subtitleText(),
-                    imageUrl =
-                        jellyfinImageUrl(
-                            state.imageBaseUrl,
-                            state.imageAccessToken,
-                            artwork,
-                        ),
-                    artworkFit =
-                        if (artwork?.imageType == "Primary") {
-                            TvMediaCardArtworkFit.CONTAIN_PORTRAIT
-                        } else {
-                            TvMediaCardArtworkFit.CROP
+        } else if (state.libraryErrorMessage != null) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(strings.libraryLoadFailed, color = TvError, fontSize = 18.sp)
+                    TvActionButton(
+                        strings.retry,
+                        when (tvLibraryRetryAction(state.libraryErrorKind)) {
+                            TvLibraryRetryAction.REFRESH -> onRetry
+                            TvLibraryRetryAction.NEXT_PAGE -> onLoadMore
                         },
-                    onClick = { if (item.isBrowseContainer()) onOpenContainer(item) else onOpenItem(item) },
-                    onFocused = { focusMemory.remember(routeKey, "items", item.id, index + 1, index) },
-                    modifier =
-                        Modifier
-                            .tvScreenEntryFocus(index == 0, targetId),
-                    focusTargetId = targetId,
-                    fillWidth = true,
-                    focusToNavigationRailOnLeft = isTvGridLeftEdge(index, 4),
-                )
-            }
-            if ((state.isLibraryLoading || state.isPageLoading) && state.libraryItems.isEmpty()) {
-                tvSkeletonGridCells(strings.loading, TV_SKELETON_GRID_CELLS, keyPrefix = "library-skeleton")
-            } else if (state.isLibraryLoading || state.isPageLoading) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    Box(
                         modifier =
                             Modifier
-                                .fillMaxWidth()
-                                .height(112.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        CircularProgressIndicator(color = TvPurple)
-                    }
-                }
-            } else if (state.libraryErrorMessage != null) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        Text(strings.libraryLoadFailed, color = TvError, fontSize = 18.sp)
-                        TvActionButton(
-                            strings.retry,
-                            when (tvLibraryRetryAction(state.libraryErrorKind)) {
-                                TvLibraryRetryAction.REFRESH -> onRetry
-                                TvLibraryRetryAction.NEXT_PAGE -> onLoadMore
-                            },
-                            modifier =
-                                Modifier
-                                    .tvScreenEntryFocus(state.libraryItems.isEmpty(), TV_LIBRARY_RETRY_TARGET)
-                                    .width(220.dp),
-                            focusToNavigationRailOnLeft = true,
-                            focusTargetId = TV_LIBRARY_RETRY_TARGET,
-                        )
-                    }
-                }
-            } else if (state.libraryItems.isEmpty()) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    TvEmptyState(
-                        icon = Icons.Default.VideoLibrary,
-                        title = strings.emptyStates.nothingYet,
-                        hint = strings.emptyStates.libraryHint,
-                        action = TvEmptyStateAction(strings.retry, TV_LIBRARY_EMPTY_ACTION_TARGET, onRetry),
+                                .tvScreenEntryFocus(state.libraryItems.isEmpty(), TV_LIBRARY_RETRY_TARGET)
+                                .width(220.dp),
+                        focusToNavigationRailOnLeft = true,
+                        focusTargetId = TV_LIBRARY_RETRY_TARGET,
                     )
                 }
+            }
+        } else if (state.libraryItems.isEmpty()) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                TvEmptyState(
+                    icon = Icons.Default.VideoLibrary,
+                    title = strings.emptyStates.nothingYet,
+                    hint = strings.emptyStates.libraryHint,
+                    action = TvEmptyStateAction(strings.retry, TV_LIBRARY_EMPTY_ACTION_TARGET, onRetry),
+                )
             }
         }
     }

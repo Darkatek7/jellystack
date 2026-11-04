@@ -405,7 +405,6 @@ internal data class TvStrings(
     val mediaTypeLabels: TvMediaTypeStrings,
     val emptyStates: TvEmptyStateStrings,
     val applyLabel: String,
-    val libraryScreen: TvLibraryStrings,
     val messages: TvMessageStrings,
     val metadata: TvMetadataStrings,
     val settingsLabels: TvSettingsStrings,
@@ -417,6 +416,10 @@ internal data class TvStrings(
     /** Locale of these strings, for names the platform localizes (track languages); the system locale may differ. */
     val locale: Locale
         get() = messages.locale
+
+    /** Library screen labels; not a constructor field, the constructor is at the JVM limit of 255 parameters. */
+    val libraryScreen: TvLibraryStrings
+        get() = if (locale.language == "de") germanLibraryStrings else englishLibraryStrings
 
     fun itemCount(count: Long): String = "$count ${if (count == 1L) itemSingular else itemPlural}"
 
@@ -701,7 +704,6 @@ internal data class TvStrings(
                 mediaTypeLabels = englishMediaTypeStrings,
                 emptyStates = englishEmptyStateStrings,
                 applyLabel = "Apply",
-                libraryScreen = englishLibraryStrings,
                 messages = englishMessageStrings,
                 metadata =
                     TvMetadataStrings(

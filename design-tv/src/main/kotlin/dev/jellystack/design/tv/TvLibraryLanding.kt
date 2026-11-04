@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
@@ -33,18 +34,18 @@ internal data class TvLibraryLandingRow(
 )
 
 /**
- * A row per library that has recently added items, in the order of the libraries. The home feeds hold the newest movies
- * and shows of the server, so a library whose items are not among them has no row.
+ * A row per library that has recently added items, in the order of the libraries; the items load per library.
  */
 internal fun tvLibraryLandingRows(
     libraries: List<JellyfinLibrary>,
-    recentItems: List<JellyfinItem>,
-): List<TvLibraryLandingRow> {
-    val byLibrary = recentItems.distinctBy(JellyfinItem::id).groupBy(JellyfinItem::libraryId)
-    return libraries.mapNotNull { library ->
-        byLibrary[library.id]?.takeIf(List<JellyfinItem>::isNotEmpty)?.let { TvLibraryLandingRow(library, it) }
+    latestByLibrary: Map<String, List<JellyfinItem>>,
+): List<TvLibraryLandingRow> =
+    libraries.mapNotNull { library ->
+        latestByLibrary[library.id]
+            ?.distinctBy(JellyfinItem::id)
+            ?.takeIf(List<JellyfinItem>::isNotEmpty)
+            ?.let { TvLibraryLandingRow(library, it) }
     }
-}
 
 private const val LANDING_TILES_KEY = "tiles"
 
@@ -67,11 +68,13 @@ internal fun TvLibraryLandingScreen(
     onOpenItem: (JellyfinItem) -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
+    onLoadLatest: (JellyfinLibrary) -> Unit = {},
 ) {
     val libraries = state.libraries
+    LaunchedEffect(libraries) { libraries.forEach(onLoadLatest) }
     val rows =
-        remember(libraries, state.recentMovies, state.recentShows) {
-            tvLibraryLandingRows(libraries, state.recentMovies + state.recentShows)
+        remember(libraries, state.libraryLatest) {
+            tvLibraryLandingRows(libraries, state.libraryLatest)
         }
     val columnState = rememberLazyListState()
     val rowStates = remember(routeKey) { mutableMapOf<String, LazyListState>() }
@@ -193,7 +196,7 @@ internal fun TvLibraryLandingScreen(
                             subtitle = text.subtitle,
                             progress = text.progress,
                             imageUrl = jellyfinImageUrl(state.imageBaseUrl, state.imageAccessToken, artwork),
-                            watched = item.isPlayed,
+                            badge = tvJellyfinCardBadge(item, strings),
                             onClick = { onOpenItem(item) },
                             onFocused = { focusMemory.remember(routeKey, section, item.id, 2 + rowIndex, index) },
                             focusTargetId = targetId,

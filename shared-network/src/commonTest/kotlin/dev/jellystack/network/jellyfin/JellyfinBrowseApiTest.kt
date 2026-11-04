@@ -228,6 +228,32 @@ class JellyfinBrowseApiTest {
         }
 
     @Test
+    fun latestItemsWithoutATypeLeaveTheFilterOut() =
+        runTest {
+            var parameters: Map<String, List<String>> = emptyMap()
+            val engine =
+                MockEngine { request ->
+                    parameters =
+                        request.url.parameters
+                            .entries()
+                            .associate { it.key to it.value }
+                    respond(
+                        "[]",
+                        HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                    )
+                }
+            val client = NetworkClientFactory.create(ClientConfig(engine = engine, installLogging = false))
+            val api = JellyfinBrowseApi(client, baseUrl = "https://example.test", accessToken = "dummy-access-token")
+
+            api.fetchLatestItems("u-1", "books", 16, includeItemTypes = null)
+
+            assertEquals(listOf("books"), parameters["ParentId"])
+            assertNull(parameters["IncludeItemTypes"])
+            client.close()
+        }
+
+    @Test
     fun nameLessThanCountsTheItemsBeforeALetter() =
         runTest {
             val requests = mutableListOf<HttpRequestData>()

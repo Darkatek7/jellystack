@@ -86,6 +86,7 @@ class JellyfinBrowseRepositoryTest {
                         when (request.url.parameters["IncludeItemTypes"]) {
                             "Movie" -> LATEST_MOVIES_JSON
                             "Series,Episode" -> LATEST_SHOWS_JSON
+                            "MusicAlbum" -> LATEST_MOVIES_JSON
                             else -> error("Unexpected includeItemTypes: ${request.url.parameters}")
                         }
                     "/Items" ->
@@ -862,6 +863,17 @@ class JellyfinBrowseRepositoryTest {
 
             assertTrue(repository.hasCachedItemDetail("item-1"))
             assertFalse(repository.hasCachedItemDetail("item-2"))
+        }
+
+    @Test
+    fun latestForALibraryUsesItsKindOfItemsAndReturnsThem() =
+        runTest {
+            val items = repository.refreshLatestForLibrary("music-lib", "music", limit = 8)
+
+            assertTrue(items.isNotEmpty())
+            assertEquals("music-lib", items.first().libraryId ?: "music-lib")
+            assertEquals("MusicAlbum", latestItemTypesForCollection("music"))
+            assertEquals(null, latestItemTypesForCollection("homevideos"))
         }
 
     @Test
