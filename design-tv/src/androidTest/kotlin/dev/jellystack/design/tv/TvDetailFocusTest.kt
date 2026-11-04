@@ -784,7 +784,7 @@ class TvDetailFocusTest {
                     heroContent = { _, _ -> Box(Modifier.fillMaxSize()) },
                 ) { bodyFocusModifier, sectionFocusModifiers ->
                     castListState = sectionFocusModifiers.getValue("cast").horizontalListState
-                    tvSeerrDetailSections(uiState, strings, bodyFocusModifier, sectionFocusModifiers, {})
+                    tvSeerrDetailSections(uiState, strings, bodyFocusModifier, sectionFocusModifiers, onOpenItem = {})
                 }
             }
         }
@@ -825,7 +825,7 @@ class TvDetailFocusTest {
                     modifier = Modifier.fillMaxSize(),
                     heroContent = { _, _ -> Box(Modifier.fillMaxSize()) },
                 ) { bodyFocusModifier, sectionFocusModifiers ->
-                    tvSeerrDetailSections(uiState, strings, bodyFocusModifier, sectionFocusModifiers, {})
+                    tvSeerrDetailSections(uiState, strings, bodyFocusModifier, sectionFocusModifiers, onOpenItem = {})
                 }
             }
         }
@@ -860,7 +860,7 @@ class TvDetailFocusTest {
                     modifier = Modifier.fillMaxSize(),
                     heroContent = { _, _ -> Box(Modifier.fillMaxSize()) },
                 ) { bodyFocusModifier, sectionFocusModifiers ->
-                    tvSeerrDetailSections(uiState, strings, bodyFocusModifier, sectionFocusModifiers, {})
+                    tvSeerrDetailSections(uiState, strings, bodyFocusModifier, sectionFocusModifiers, onOpenItem = {})
                 }
             }
         }
@@ -905,7 +905,7 @@ class TvDetailFocusTest {
                         )
                     },
                 ) { bodyFocusModifier, sectionFocusModifiers ->
-                    tvSeerrDetailSections(uiState, strings, bodyFocusModifier, sectionFocusModifiers, {})
+                    tvSeerrDetailSections(uiState, strings, bodyFocusModifier, sectionFocusModifiers, onOpenItem = {})
                 }
             }
         }

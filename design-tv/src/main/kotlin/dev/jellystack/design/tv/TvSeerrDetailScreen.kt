@@ -42,6 +42,7 @@ internal fun TvSeerrDetailScreen(
     requestsCoordinator: JellyseerrRequestsCoordinator,
     strings: TvStrings,
     onOpenItem: (JellyseerrSearchItem) -> Unit,
+    castActions: TvSeerrCastActions = TvSeerrCastActions.None,
     isInMyList: Boolean = false,
     onToggleMyList: (JellyseerrSearchItem, Boolean) -> Unit = { _, _ -> },
     onRetry: () -> Unit = {},
@@ -125,6 +126,7 @@ internal fun TvSeerrDetailScreen(
             strings = strings,
             bodyFocusModifier = bodyFocusModifier,
             sectionFocusModifiers = sectionFocusModifiers,
+            castActions = castActions,
             onOpenItem = onOpenItem,
         )
     }

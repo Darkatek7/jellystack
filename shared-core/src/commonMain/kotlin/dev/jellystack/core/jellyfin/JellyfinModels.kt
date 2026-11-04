@@ -143,3 +143,12 @@ enum class JellyfinMediaStreamType {
     SUBTITLE,
     OTHER,
 }
+
+/** The candidate whose name equals [name] ignoring case and surrounding blanks; partial matches never count. */
+fun pickExactPerson(
+    name: String,
+    candidates: List<JellyfinPerson>,
+): JellyfinPerson? {
+    val wanted = name.trim()
+    return candidates.firstOrNull { it.name.trim().equals(wanted, ignoreCase = true) }
+}

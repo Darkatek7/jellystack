@@ -1672,6 +1672,7 @@ private fun TvAuthenticatedApp(
                                             requestsCoordinator = requestsCoordinator,
                                             strings = strings,
                                             onOpenItem = ::openSeerr,
+                                            castActions = TvSeerrCastActions(browseRepository::findPersonByName, ::openPerson),
                                             isInMyList = savedMedia.any { it.identity == routeItem.mediaIdentity() },
                                             onToggleMyList = { item, save ->
                                                 scope.launch {

@@ -98,6 +98,7 @@ internal fun LazyListScope.tvSeerrDetailSections(
     strings: TvStrings,
     bodyFocusModifier: Modifier,
     sectionFocusModifiers: Map<String, TvDetailSectionFocusModifiers>,
+    castActions: TvSeerrCastActions = TvSeerrCastActions.None,
     onOpenItem: (JellyseerrSearchItem) -> Unit,
 ) {
     uiState.sections.forEach { section ->
@@ -106,17 +107,13 @@ internal fun LazyListScope.tvSeerrDetailSections(
             is TvDetailSection.Ratings -> item(section.id) { TvSeerrRatingsSection(section.values, strings) }
             is TvDetailSection.Cast ->
                 item(section.id) {
-                    val cards =
-                        section.items.mapNotNull { it as? TvDetailCastItem.Seerr }.map { castItem ->
-                            TvDetailCastCard(
-                                id = castItem.id,
-                                name = castItem.person.name,
-                                role = castItem.person.character,
-                                imageUrl = tmdbImageUrl(castItem.person.profilePath),
-                                onClick = null,
-                            )
-                        }
-                    TvDetailCastRow(strings.cast, cards, sectionFocusModifiers.getValue(section.id))
+                    TvSeerrCastSection(
+                        title = strings.cast,
+                        people = section.items.mapNotNull { it as? TvDetailCastItem.Seerr },
+                        notFoundMessage = strings.detailScreen.castNotInLibrary,
+                        actions = castActions,
+                        focusModifiers = sectionFocusModifiers.getValue(section.id),
+                    )
                 }
             is TvDetailSection.Similar ->
                 item(section.id) {

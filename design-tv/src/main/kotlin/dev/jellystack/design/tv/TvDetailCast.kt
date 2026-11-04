@@ -39,7 +39,7 @@ internal data class TvDetailCastCard(
     val name: String,
     val role: String?,
     val imageUrl: String?,
-    /** Null for people that cannot be opened (Seerr), which still take focus so the row can be scrolled. */
+    /** Null for people that cannot be opened, which still take focus so the row can be scrolled. */
     val onClick: (() -> Unit)?,
 )
 

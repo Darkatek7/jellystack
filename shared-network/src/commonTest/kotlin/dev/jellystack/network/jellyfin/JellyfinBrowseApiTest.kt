@@ -688,6 +688,35 @@ class JellyfinBrowseApiTest {
             client.close()
         }
 
+    @Test
+    fun searchPersonsAsksThePersonsEndpointWithTheNameAndAUserLimit() =
+        runTest {
+            var request: HttpRequestData? = null
+            val engine =
+                MockEngine {
+                    request = it
+                    respond(
+                        """{"Items":[{"Id":"p-1","Name":"Ada Example","Type":"Person"}],"TotalRecordCount":1}""",
+                        HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                    )
+                }
+            val client = NetworkClientFactory.create(ClientConfig(engine = engine, installLogging = false))
+            val api = JellyfinBrowseApi(client, baseUrl = "https://example.test", accessToken = "dummy-access-token")
+
+            val response = api.searchPersons("u-1", "Ada Example", limit = 5)
+
+            val sent = request!!
+            assertEquals(HttpMethod.Get, sent.method)
+            assertEquals("/Persons", sent.url.encodedPath)
+            assertEquals("Ada Example", sent.url.parameters["SearchTerm"])
+            assertEquals("u-1", sent.url.parameters["UserId"])
+            assertEquals("5", sent.url.parameters["Limit"])
+            assertEquals(listOf("p-1"), response.items.map { it.id })
+
+            client.close()
+        }
+
     private fun HttpRequestData.bodyText(): String =
         when (val content = body) {
             is OutgoingContent.ByteArrayContent -> content.bytes().decodeToString()

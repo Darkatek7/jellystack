@@ -98,6 +98,21 @@ class JellyfinBrowseApi(
                 nameLessThan?.takeIf { it.isNotBlank() }?.let { parameter("NameLessThan", it) }
             }.body()
 
+    /** People of the server whose name matches [searchTerm]; Jellyfin returns partial matches, callers pick the exact one. */
+    suspend fun searchPersons(
+        userId: String,
+        searchTerm: String,
+        limit: Int = 10,
+    ): JellyfinItemsResponse =
+        client
+            .request {
+                method = HttpMethod.Get
+                configure("/Persons")
+                parameter("UserId", userId)
+                parameter("SearchTerm", searchTerm)
+                parameter("Limit", limit)
+            }.body()
+
     /** The entries of a playlist in the order the playlist keeps them. */
     suspend fun fetchPlaylistItems(
         userId: String,
