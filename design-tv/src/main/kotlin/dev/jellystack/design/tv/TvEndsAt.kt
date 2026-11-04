@@ -3,11 +3,15 @@ package dev.jellystack.design.tv
 import android.text.format.DateFormat
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.LocalContext
 import java.util.Date
 
 internal const val TV_RUNTIME_TICKS_PER_MINUTE = 600_000_000L
 private const val MILLIS_PER_MINUTE = 60_000L
+
+/** The wall clock behind "Ends at"; screenshot fixtures pin it so their output does not depend on the time of day. */
+internal val LocalTvNowMillis = staticCompositionLocalOf<() -> Long> { System::currentTimeMillis }
 
 /** Minutes of [runTimeTicks] still to watch from [positionTicks]; null without a runtime, never negative. */
 internal fun tvRemainingMinutes(
@@ -45,10 +49,11 @@ internal fun rememberTvEndsAtLabel(
     strings: TvStrings,
 ): String? {
     val format = DateFormat.getTimeFormat(LocalContext.current)
+    val nowMillis = LocalTvNowMillis.current
     // The label is computed once per remaining time: a detail page is not open long enough for it to drift.
-    return remember(remainingMinutes, format, strings) {
+    return remember(remainingMinutes, format, strings, nowMillis) {
         remainingMinutes
             ?.takeIf { it > 0L }
-            ?.let { strings.player.endsAt.format(tvEndsAtClock(System.currentTimeMillis(), it, format)) }
+            ?.let { strings.player.endsAt.format(tvEndsAtClock(nowMillis(), it, format)) }
     }
 }

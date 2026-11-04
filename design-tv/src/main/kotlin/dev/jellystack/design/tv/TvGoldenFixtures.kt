@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,6 +62,9 @@ private val GOLDEN_HERO_FIXTURES =
         TvGoldenFixture.HOME_SETTINGS,
     )
 
+/** 2026-01-15 20:00 UTC, the wall clock of every golden. */
+private const val GOLDEN_NOW_MILLIS = 1_768_507_200_000L
+
 /** Screenshot-test entry point; production code never calls it. */
 @Composable
 fun JellystackTvGoldenFixture(
@@ -79,11 +83,16 @@ fun JellystackTvGoldenFixture(
     }
     if (fixture in GOLDEN_HERO_FIXTURES || fixture in GOLDEN_DETAIL_FIXTURES) {
         JellystackTvTheme {
-            when (fixture) {
-                TvGoldenFixture.HOME_HERO -> GoldenHomeHero(strings, modifier, showKeyHints = false, pageIndex = 5)
-                TvGoldenFixture.HOME_HERO_HINTS -> GoldenHomeHero(strings, modifier, showKeyHints = true, pageIndex = 0)
-                TvGoldenFixture.HOME_SETTINGS -> GoldenHomeSettings(strings, modifier)
-                else -> GoldenDetailScreen(fixture, strings, modifier)
+            // A fixed wall clock keeps "Ends at" in the hero identical on every run.
+            CompositionLocalProvider(LocalTvNowMillis provides { GOLDEN_NOW_MILLIS }) {
+                when (fixture) {
+                    TvGoldenFixture.HOME_HERO ->
+                        GoldenHomeHero(strings, modifier, showKeyHints = false, pageIndex = 5)
+                    TvGoldenFixture.HOME_HERO_HINTS ->
+                        GoldenHomeHero(strings, modifier, showKeyHints = true, pageIndex = 0)
+                    TvGoldenFixture.HOME_SETTINGS -> GoldenHomeSettings(strings, modifier)
+                    else -> GoldenDetailScreen(fixture, strings, modifier)
+                }
             }
         }
         return
