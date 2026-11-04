@@ -270,7 +270,7 @@ private fun TvJellyfinDetailContent(
         lowestHeroControl = trackLineFocus.takeIf { page.trackSummary != null },
         modifier = modifier,
         heroContent = { primaryActionModifier, actionRowModifier ->
-            TvDetailHero(page.hero) {
+            TvDetailHero(page.hero, tvDetailHeroBottomPadding(isSeries)) {
                 TvJellyfinHeroActions(
                     page,
                     callbacks,
