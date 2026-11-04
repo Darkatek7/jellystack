@@ -178,11 +178,16 @@ class JellyfinBrowseCoordinatorTest {
                 coordinator.bootstrap(forceRefresh = false)
                 firstStarted.await()
                 coordinator.bootstrap(forceRefresh = false)
-                awaitState(coordinator) { !it.isHomeLoading && it.libraries == newLibraries }
+                // Wait for the newer bootstrap's first page too, so the check below does not race that load.
+                awaitState(coordinator) {
+                    !it.isHomeLoading && it.libraries == newLibraries && it.libraryItems.map { item -> item.id } == listOf("new-item")
+                }
 
                 releaseFirst.complete(Unit)
                 firstReturned.await()
-                delay(100)
+                // A real pause: the stale bootstrap finishes on Dispatchers.Default, where runTest's virtual time
+                // does not reach.
+                withContext(Dispatchers.Default) { delay(100) }
 
                 assertEquals(newLibraries, coordinator.state.value.libraries)
                 assertEquals("new", coordinator.state.value.selectedLibraryId)
@@ -237,7 +242,7 @@ class JellyfinBrowseCoordinatorTest {
 
                 releaseFirst.complete(Unit)
                 firstReturned.await()
-                delay(100)
+                withContext(Dispatchers.Default) { delay(100) }
 
                 assertEquals(newLibraries, coordinator.state.value.libraries)
                 assertNull(coordinator.state.value.homeErrorMessage)
@@ -288,7 +293,7 @@ class JellyfinBrowseCoordinatorTest {
 
                 releaseFirst.complete(Unit)
                 firstReturned.await()
-                delay(100)
+                withContext(Dispatchers.Default) { delay(100) }
 
                 assertEquals(newLibraries, coordinator.state.value.libraries)
                 assertNull(coordinator.state.value.homeErrorMessage)
