@@ -257,9 +257,13 @@ internal fun TvDetailFocusLayout(
     }
 
     /** Down from the hero enters the first row of the page; a page without rows goes to the Details at its end. */
-    fun focusAfterHero() {
+    fun focusAfterHero(cancelPersistedRestoration: Boolean = true) {
         val first = focusSections.firstOrNull()
-        if (first != null) focusSection(first.id) else focusBody()
+        if (first != null) {
+            focusSection(first.id, cancelPersistedRestoration = cancelPersistedRestoration)
+        } else {
+            focusBody(cancelPersistedRestoration)
+        }
     }
 
     fun recoveryTarget(source: TvFocusAnchor): TvFocusAnchor {
@@ -288,7 +292,7 @@ internal fun TvDetailFocusLayout(
             if (hasPrimaryAction) {
                 focusPrimaryAction(cancelPersistedRestoration = false)
             } else {
-                focusBody(cancelPersistedRestoration = false)
+                focusAfterHero(cancelPersistedRestoration = false)
             }
         } else if (
             pendingPersistedAnchor?.destination == TvFocusDestination.SECTION_ITEM &&
@@ -297,7 +301,7 @@ internal fun TvDetailFocusLayout(
             if (hasPrimaryAction) {
                 focusPrimaryAction(cancelPersistedRestoration = false)
             } else {
-                focusBody(cancelPersistedRestoration = false)
+                focusAfterHero(cancelPersistedRestoration = false)
             }
         }
     }
@@ -316,7 +320,7 @@ internal fun TvDetailFocusLayout(
                 if (hasPrimaryAction) {
                     focusPrimaryAction(cancelPersistedRestoration = false)
                 } else {
-                    focusBody(cancelPersistedRestoration = false)
+                    focusAfterHero(cancelPersistedRestoration = false)
                 }
             TvFocusDestination.PRIMARY_ACTION -> focusPrimaryAction(cancelPersistedRestoration = false)
             TvFocusDestination.BODY -> focusBody(cancelPersistedRestoration = false)

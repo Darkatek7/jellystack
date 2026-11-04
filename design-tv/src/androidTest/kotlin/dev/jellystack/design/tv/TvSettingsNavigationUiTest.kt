@@ -116,7 +116,14 @@ class TvSettingsNavigationUiTest {
                 hasClickAction() and hasAnyDescendant(hasText(strings.settingsPlaybackCategory)),
                 useUnmergedTree = true,
             )
+        val home =
+            composeRule.onNode(
+                hasClickAction() and hasAnyDescendant(hasText(strings.homeSettings.categoryTitle)),
+                useUnmergedTree = true,
+            )
+        // Home is the second tile, Playback the third.
         appearance.assertIsFocused().performKeyInput { pressKey(Key.DirectionRight) }
+        home.assertIsFocused().performKeyInput { pressKey(Key.DirectionRight) }
         playback.assertIsFocused().performKeyInput { pressKey(Key.DirectionCenter) }
 
         val quality =
