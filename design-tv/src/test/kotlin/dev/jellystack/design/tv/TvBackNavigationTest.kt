@@ -71,6 +71,43 @@ class TvBackNavigationTest {
     }
 
     @Test
+    fun playingTrailerTakesBackBeforeEveryOtherStep() {
+        TvBackAction.entries.forEach { next ->
+            assertEquals(TvBackAction.STOP_TRAILER, tvTrailerFirst(trailerPlaying = true, next = next))
+            assertEquals(next, tvTrailerFirst(trailerPlaying = false, next = next))
+        }
+    }
+
+    @Test
+    fun firstBackStopsTheTrailerAndTheNextOneContinuesTheHomeWalk() {
+        val holder = TvAppStateHolder()
+        var playing = true
+        var stops = 0
+        val dispatcher =
+            TvAppBackDispatcher(
+                holder = holder,
+                library = TvLibraryBackAccess(pathDepth = { 0 }, selectedLibraryId = { null }, popPath = {}),
+                cancelFocusRestoration = {},
+                trailerBack =
+                    TvTrailerBackState(
+                        isPlaying = { playing },
+                        stopTrailer = {
+                            stops += 1
+                            playing = false
+                        },
+                    ),
+            )
+
+        assertTrue(dispatcher.dispatch())
+        assertEquals(1, stops)
+        assertFalse(holder.state.railExpanded)
+        assertEquals(TvBackAction.OPEN_RAIL, dispatcher.action)
+        assertTrue(dispatcher.dispatch())
+        assertTrue(holder.state.railExpanded)
+        assertEquals(1, stops)
+    }
+
+    @Test
     fun homeBackStepsThroughTheDispatcherBeforeExit() {
         val holder = TvAppStateHolder()
         val homeBack = TvHomeBackState()

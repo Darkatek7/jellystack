@@ -1353,6 +1353,7 @@ private fun TvAuthenticatedApp(
             )
         }
     val homeBackState = remember { TvHomeBackState() }
+    val trailerBackState = remember(trailerPreviewCoordinator) { trailerPreviewCoordinator.backState() }
     val backDispatcher =
         TvAppBackDispatcher(
             holder = appStateHolder,
@@ -1364,6 +1365,7 @@ private fun TvAuthenticatedApp(
                 ),
             cancelFocusRestoration = focusCoordinator::onUserMovement,
             homeBack = homeBackState,
+            trailerBack = trailerBackState,
         )
     var showExitConfirmation by rememberSaveable(activeProfileGeneration) { mutableStateOf(false) }
     TvAppBackHandler(backDispatcher) { showExitConfirmation = true }

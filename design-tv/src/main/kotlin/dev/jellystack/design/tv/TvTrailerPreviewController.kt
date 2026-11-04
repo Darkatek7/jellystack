@@ -71,6 +71,7 @@ internal class TvTrailerPreviewController(
 
     private val cache = mutableMapOf<TvTrailerPreviewTarget, DetailTrailerSource.Local?>()
     private var focusedRequest: TvTrailerPreviewRequest? = null
+    private var stoppedRequest: TvTrailerPreviewRequest? = null
     private var focusJob: Job? = null
     private var activePlayerRequest: TvTrailerPreviewRequest? = null
     private var enabled = true
@@ -89,7 +90,9 @@ internal class TvTrailerPreviewController(
         }
 
     fun focus(request: TvTrailerPreviewRequest) {
-        if (!enabled || !interactionArmed) return
+        // Back stopped this card's trailer; only focus landing somewhere else starts one again.
+        if (!enabled || !interactionArmed || stoppedRequest == request) return
+        stoppedRequest = null
         if (focusedRequest == request && mutableState.value !is TvTrailerPreviewState.Idle) return
         cancelPendingAndStopPlaying()
         focusedRequest = request
@@ -123,8 +126,20 @@ internal class TvTrailerPreviewController(
             }
     }
 
+    /** True while a trailer plays, which is when Back stops it before anything else. */
+    val isPlaying: Boolean get() = mutableState.value is TvTrailerPreviewState.Playing
+
+    /** Stops the playing trailer and keeps focus; the same card's trailer does not start again by itself. */
+    fun stopByUser() {
+        if (!isPlaying) return
+        stoppedRequest = focusedRequest
+        cancelPendingAndStopPlaying()
+        mutableState.value = TvTrailerPreviewState.Idle
+    }
+
     fun clearFocus() {
         focusedRequest = null
+        stoppedRequest = null
         cancelPendingAndStopPlaying()
         mutableState.value = TvTrailerPreviewState.Idle
     }
@@ -203,3 +218,9 @@ internal class TvTrailerPreviewController(
         const val LOOKUP_DWELL_MILLIS = 400L
     }
 }
+
+internal fun TvTrailerPreviewController.backState(): TvTrailerBackState =
+    TvTrailerBackState(
+        isPlaying = { isPlaying },
+        stopTrailer = ::stopByUser,
+    )

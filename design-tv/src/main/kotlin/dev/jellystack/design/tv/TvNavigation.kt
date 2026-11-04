@@ -168,6 +168,7 @@ internal fun tvRailTargetId(route: TvRoute): String =
         }
 
 internal enum class TvBackAction {
+    STOP_TRAILER,
     POP_LIBRARY_PATH,
     POP_ROUTE,
     CLOSE_RAIL,
@@ -210,6 +211,12 @@ internal fun tvBackAction(
         currentRoute != TvRoute.Home -> TvBackAction.RETURN_HOME
         else -> TvBackAction.SYSTEM_EXIT
     }
+
+/** A playing preview trailer takes Back first, whatever the screen would do next. */
+internal fun tvTrailerFirst(
+    trailerPlaying: Boolean,
+    next: TvBackAction,
+): TvBackAction = if (trailerPlaying) TvBackAction.STOP_TRAILER else next
 
 /**
  * Home walks up in steps: rows back to the hero, then the rail, and only then the exit confirmation. A rail that was
@@ -477,6 +484,7 @@ internal class TvAppBackDispatcher(
     private val library: TvLibraryBackAccess,
     private val cancelFocusRestoration: () -> Unit,
     private val homeBack: TvHomeBackState = TvHomeBackState(),
+    private val trailerBack: TvTrailerBackState = TvTrailerBackState(),
 ) {
     val action: TvBackAction
         get() {
@@ -490,7 +498,8 @@ internal class TvAppBackDispatcher(
                     selectedLibraryId = library.selectedLibraryId(),
                 )
             val atHomeRoot = appState.currentRoute == TvRoute.Home && appState.backStack.size == 1
-            return if (atHomeRoot) tvHomeBackAction(appState.railExpanded, homeBack.atTop) else base
+            val next = if (atHomeRoot) tvHomeBackAction(appState.railExpanded, homeBack.atTop) else base
+            return tvTrailerFirst(trailerBack.playing, next)
         }
 
     /** Navigation3 owns Back whenever it has a previous entry; the root only handles non-route layers. */
@@ -500,6 +509,10 @@ internal class TvAppBackDispatcher(
     fun dispatch(): Boolean {
         val consumed =
             when (action) {
+                TvBackAction.STOP_TRAILER -> {
+                    trailerBack.stop()
+                    true
+                }
                 TvBackAction.POP_LIBRARY_PATH -> {
                     library.popPath()
                     holder.closeRail()
