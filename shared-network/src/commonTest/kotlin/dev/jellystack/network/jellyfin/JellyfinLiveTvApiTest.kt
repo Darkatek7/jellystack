@@ -63,6 +63,7 @@ class JellyfinLiveTvApiTest {
             assertEquals("channel-1,channel-2", request.url.parameters["ChannelIds"])
             assertEquals("2026-11-01T18:00:00Z", request.url.parameters["MinEndDate"])
             assertEquals("2026-11-02T00:00:00Z", request.url.parameters["MaxStartDate"])
+            assertEquals("Overview", request.url.parameters["Fields"])
             assertEquals("user-1", request.url.parameters["UserId"])
             assertEquals("Example News", programs.single().name)
             assertEquals("2026-11-01T17:30:00.0000000Z", programs.single().startDate)

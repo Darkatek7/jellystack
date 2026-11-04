@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -139,7 +140,9 @@ internal fun TvLiveTvGuide(
                         TvLiveTvGuideRow(index, state, env)
                     }
                 }
-                TvLiveTvGuideNowLine(env, Modifier.padding(start = GUIDE_CHANNEL_WIDTH))
+                // The line ends at the last row instead of running on through the empty space under a short list.
+                val rowsHeight = (GUIDE_ROW_HEIGHT + GUIDE_ROW_GAP) * channels.size - GUIDE_ROW_GAP
+                TvLiveTvGuideNowLine(env, Modifier.padding(start = GUIDE_CHANNEL_WIDTH).heightIn(max = rowsHeight))
             }
             TvLiveTvGuidePane(channels, env)
         }
