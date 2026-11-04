@@ -129,6 +129,10 @@ data class AppSettings(
     val matchRefreshRate: Boolean = false,
     /** Android TV only: publish Continue Watching and Next Up to the system Watch Next row. */
     val watchNextEnabled: Boolean = true,
+    /** Android TV only: the Home spotlight names its keys until the user has used them once. */
+    val heroHintsSeen: Boolean = false,
+    /** Android TV only: which Home rows show, and in which order. */
+    val homeRows: HomeRowPreferences = HomeRowPreferences(),
 )
 
 data class AppPlatformCapabilities(

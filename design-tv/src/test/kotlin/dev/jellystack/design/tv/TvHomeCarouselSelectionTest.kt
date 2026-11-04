@@ -12,21 +12,21 @@ import kotlin.test.assertTrue
 
 class TvHomeCarouselSelectionTest {
     @Test
-    fun spotlightAutoAdvancesOnlyWhileNothingElseClaimsTheStage() {
+    fun spotlightAutoAdvancesOnlyWhileFocusRestsOnIt() {
         fun advance(
             enabled: Boolean = true,
             candidateCount: Int = 3,
             reducedMotion: Boolean = false,
-            cardStaged: Boolean = false,
+            heroFocused: Boolean = true,
             trailerActive: Boolean = false,
-        ) = shouldAutoAdvanceTvHomeHero(enabled, candidateCount, reducedMotion, cardStaged, trailerActive)
+        ) = shouldAutoAdvanceTvHomeHero(enabled, candidateCount, reducedMotion, heroFocused, trailerActive)
 
         assertTrue(advance())
         assertFalse(advance(enabled = false))
         assertFalse(advance(candidateCount = 1), "a single spotlight has nothing to advance to")
         assertFalse(advance(reducedMotion = true))
-        assertFalse(advance(cardStaged = true), "a focused row card owns the stage")
         assertFalse(advance(trailerActive = true), "a trailer must not be cut off")
+        assertFalse(advance(heroFocused = false), "focus in the rows or the rail pauses the spotlight")
     }
 
     @Test

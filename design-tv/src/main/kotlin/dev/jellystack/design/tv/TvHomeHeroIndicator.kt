@@ -24,6 +24,36 @@ internal data class TvHomeHeroPage(
     val count: Int,
 )
 
+/** How many dots show at most; longer carousels slide a window of this size along their pages. */
+internal const val TV_HOME_HERO_INDICATOR_MAX_DOTS = 5
+
+internal enum class TvHeroIndicatorDotSize { SELECTED, NORMAL, SMALL }
+
+/** One dot of the indicator for the page at [pageIndex]. */
+internal data class TvHeroIndicatorDot(
+    val pageIndex: Int,
+    val size: TvHeroIndicatorDotSize,
+)
+
+/**
+ * The dots to draw: one per page up to [TV_HOME_HERO_INDICATOR_MAX_DOTS], else a window that follows the selected
+ * page, whose outer dots are small where more pages lie beyond it.
+ */
+internal fun tvHomeHeroIndicatorDots(page: TvHomeHeroPage): List<TvHeroIndicatorDot> {
+    val shown = minOf(page.count, TV_HOME_HERO_INDICATOR_MAX_DOTS)
+    val start = (page.index - shown / 2).coerceIn(0, page.count - shown)
+    return (start until start + shown).map { index ->
+        val size =
+            when {
+                index == page.index -> TvHeroIndicatorDotSize.SELECTED
+                (index == start && start > 0) || (index == start + shown - 1 && start + shown < page.count) ->
+                    TvHeroIndicatorDotSize.SMALL
+                else -> TvHeroIndicatorDotSize.NORMAL
+            }
+        TvHeroIndicatorDot(index, size)
+    }
+}
+
 /** Page dots of the home spotlight; the spotlight card around them pages with Left and Right. */
 @Composable
 internal fun TvHomeHeroIndicator(
@@ -39,12 +69,21 @@ internal fun TvHomeHeroIndicator(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        repeat(page.count) { index ->
-            val selected = index == page.index
+        tvHomeHeroIndicatorDots(page).forEach { dot ->
             Box(
                 Modifier
-                    .size(width = if (selected) 20.dp else 7.dp, height = 7.dp)
-                    .background(if (selected) TvText else TvTextMuted.copy(alpha = 0.55f), TvShapes.Pill),
+                    .size(
+                        width =
+                            when (dot.size) {
+                                TvHeroIndicatorDotSize.SELECTED -> 20.dp
+                                TvHeroIndicatorDotSize.NORMAL -> 7.dp
+                                TvHeroIndicatorDotSize.SMALL -> 5.dp
+                            },
+                        height = if (dot.size == TvHeroIndicatorDotSize.SMALL) 5.dp else 7.dp,
+                    ).background(
+                        if (dot.size == TvHeroIndicatorDotSize.SELECTED) TvText else TvTextMuted.copy(alpha = 0.55f),
+                        TvShapes.Pill,
+                    ),
             )
         }
     }

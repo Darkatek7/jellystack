@@ -20,12 +20,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import dev.jellystack.core.jellyfin.JellyfinChannelLayout
 import dev.jellystack.core.jellyfin.JellyfinDynamicRange
 import dev.jellystack.core.jellyfin.JellyfinImmersiveAudio
 import dev.jellystack.core.jellyfin.JellyfinMediaFeatures
 import dev.jellystack.core.jellyfin.JellyfinVideoResolution
+import dev.jellystack.core.preferences.HomeRowPreferences
 
 // Hero states for TvGoldenFixture.HOME_HERO and DETAIL_HERO: fictional titles, no network artwork, no trailer.
 
@@ -37,6 +39,8 @@ import dev.jellystack.core.jellyfin.JellyfinVideoResolution
 internal fun GoldenHomeHero(
     strings: TvStrings,
     modifier: Modifier,
+    showKeyHints: Boolean,
+    pageIndex: Int,
 ) {
     val item =
         goldenItem("Movie", "The Last Horizon").copy(
@@ -50,10 +54,11 @@ internal fun GoldenHomeHero(
             stageItem = item,
             stagePresentationId = null,
             mode = TvHomeHeroMode.RECENT,
-            page = TvHomeHeroPage(index = 1, count = 6),
+            page = TvHomeHeroPage(index = pageIndex, count = 10),
             showCarouselContext = true,
             imageBaseUrl = null,
             imageAccessToken = null,
+            showKeyHints = false,
         )
     val trailer =
         TvHomeHeroTrailer(
@@ -80,6 +85,19 @@ internal fun GoldenHomeHero(
                 strings = strings,
                 primaryFocusRequester = remember { FocusRequester() },
             )
+            // The screenshot has no focus, so the hint row is placed where the focused spotlight draws it.
+            if (showKeyHints) {
+                Box(Modifier.fillMaxWidth().height(TV_HOME_SPOTLIGHT_HEIGHT)) {
+                    TvPlayKeyHints(
+                        playLabel = strings.play,
+                        detailsLabel = strings.details,
+                        modifier =
+                            Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(start = TvLayoutTokens.ContentStart, bottom = 26.dp),
+                    )
+                }
+            }
         }
         TvHomeClock("20:41", Modifier.align(Alignment.TopEnd))
         Column(
@@ -155,5 +173,41 @@ internal fun GoldenDetailHero(
                 )
             }
         }
+    }
+}
+
+/** Settings > Home: Continue watching hidden, the rest in a custom order. */
+@Composable
+internal fun GoldenHomeSettings(
+    strings: TvStrings,
+    modifier: Modifier,
+) {
+    val rows =
+        listOf(
+            TvHomeRowOption("continue", strings.continueWatching),
+            TvHomeRowOption("next", strings.nextUp),
+            TvHomeRowOption("plugin:recent-movies", "Recently added movies"),
+            TvHomeRowOption("plugin:recent-shows", "Recently added shows"),
+        )
+    Column(
+        modifier.fillMaxSize().background(TvBackground).padding(TvScreenPadding),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
+    ) {
+        androidx.tv.material3.Text(
+            strings.homeSettings.categoryTitle,
+            color = TvText,
+            fontSize = TvTextSize.Headline,
+            fontWeight = FontWeight.Bold,
+        )
+        TvHomeSettings(
+            options = rows,
+            preferences =
+                HomeRowPreferences(
+                    order = listOf("next", "plugin:recent-movies", "plugin:recent-shows", "continue"),
+                    hidden = setOf("continue"),
+                ),
+            strings = strings,
+            onChange = {},
+        )
     }
 }

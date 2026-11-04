@@ -55,6 +55,8 @@ internal data class TvHomeHeroModel(
     val showCarouselContext: Boolean,
     val imageBaseUrl: String?,
     val imageAccessToken: String?,
+    /** Until the user has used OK or Play once, the focused spotlight names those keys. */
+    val showKeyHints: Boolean = false,
 )
 
 /**
@@ -82,6 +84,8 @@ internal data class TvHomeHeroCallbacks(
     val onVerticalMove: (TvHomeVerticalDirection) -> Unit,
     val onHeroFocused: () -> Unit,
     val onCarouselMove: (TvHomeCarouselDirection) -> Unit,
+    /** The user pressed OK or Play on the spotlight, so the key hints have done their job. */
+    val onHintsUsed: () -> Unit = {},
 )
 
 /** Crossfade between spotlights; instant when the user asked for reduced motion. */
@@ -94,8 +98,8 @@ private const val TV_HOME_HERO_FADE_MS = 240
 
 /**
  * The spotlight is the whole top of the home screen, from edge to edge and down to the rows: text and page dots
- * over [TvHomeBackdrop], no buttons and no frame. Focus shows as a hint row that names the keys; the hero keeps
- * its size, so the rows keep their position.
+ * over [TvHomeBackdrop], no buttons and no frame. While [TvHomeHeroModel.showKeyHints] is set, focus shows a hint
+ * row that names the keys; the hero keeps its size, so the rows keep their position.
  */
 @Composable
 internal fun TvHeroCarousel(
@@ -120,6 +124,7 @@ internal fun TvHeroCarousel(
                     customActions =
                         listOf(
                             CustomAccessibilityAction(playLabel) {
+                                callbacks.onHintsUsed()
                                 callbacks.onPlay()
                                 true
                             },
@@ -135,7 +140,7 @@ internal fun TvHeroCarousel(
     ) {
         // The spotlight keeps its focus while its content fades out for the trailer.
         TvHomeFadeLayer(trailer.homeUiAlpha, Modifier.fillMaxSize()) {
-            TvHomeSpotlightContent(model, trailer, strings, playLabel, focused)
+            TvHomeSpotlightContent(model, trailer, strings, playLabel, focused && model.showKeyHints)
         }
     }
 }
@@ -146,7 +151,7 @@ private fun BoxScope.TvHomeSpotlightContent(
     trailer: TvHomeHeroTrailer,
     strings: TvStrings,
     playLabel: String,
-    focused: Boolean,
+    showKeyHints: Boolean,
 ) {
     val previewing = trailer.state.showsTvHomeStagePreview(model.stageItem.id, model.stagePresentationId)
     val fadeMs = tvHomeHeroFadeMillis()
@@ -172,7 +177,7 @@ private fun BoxScope.TvHomeSpotlightContent(
             )
         }
     }
-    if (focused) {
+    if (showKeyHints) {
         TvPlayKeyHints(
             playLabel = playLabel,
             detailsLabel = strings.details,
@@ -220,7 +225,10 @@ private fun Modifier.tvHomeSpotlightKeys(callbacks: TvHomeHeroCallbacks): Modifi
                 true
             }
             KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
-                if (press && event.nativeKeyEvent.repeatCount == 0) callbacks.onPlay()
+                if (press && event.nativeKeyEvent.repeatCount == 0) {
+                    callbacks.onHintsUsed()
+                    callbacks.onPlay()
+                }
                 true
             }
             else -> false
