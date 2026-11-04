@@ -261,7 +261,18 @@ private fun TvHeroText(
                 modifier = Modifier.weight(1f, fill = false),
             )
         }
-        item.tvStageMetadata()?.let { Text(it, color = TvTextMuted, fontSize = 15.sp) }
+        // A series has no runtime of its own, so only playable titles say when they would end.
+        val endsAt =
+            rememberTvEndsAtLabel(
+                remainingMinutes =
+                    tvRemainingMinutes(item.runTimeTicks, item.positionTicks)
+                        .takeUnless { item.type.equals("Series", ignoreCase = true) },
+                strings = strings,
+            )
+        listOfNotNull(item.tvStageMetadata(), endsAt)
+            .joinToString(TV_CARD_SEPARATOR)
+            .ifBlank { null }
+            ?.let { Text(it, color = TvTextMuted, fontSize = 15.sp) }
     }
 }
 
