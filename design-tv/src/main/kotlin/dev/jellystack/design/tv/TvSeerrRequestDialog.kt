@@ -93,10 +93,10 @@ internal fun TvRequestDialog(
                 overflow = TextOverflow.Ellipsis,
             )
             if (showVersions) {
-                TvSectionTitle(strings.version)
+                TvSectionTitle(strings.seerr.version)
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     TvActionButton(
-                        strings.standard,
+                        strings.seerr.standard,
                         { variant = JellyseerrRequestVariant.STANDARD },
                         primary = variant == JellyseerrRequestVariant.STANDARD,
                         selected = variant == JellyseerrRequestVariant.STANDARD,
@@ -111,7 +111,7 @@ internal fun TvRequestDialog(
                 }
             }
             if (showSeasons) {
-                TvSectionTitle(strings.seasons)
+                TvSectionTitle(strings.seerr.seasons)
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     contentPadding =
@@ -129,7 +129,7 @@ internal fun TvRequestDialog(
                     items(seasons) { season ->
                         val selected = allSeasons || season in selectedSeasons
                         TvActionButton(
-                            "${strings.season} $season",
+                            "${strings.seerr.season} $season",
                             {
                                 if (allSeasons) {
                                     allSeasons = false
@@ -146,7 +146,7 @@ internal fun TvRequestDialog(
                 }
             }
             if (showProfiles) {
-                TvSectionTitle(strings.requestProfile)
+                TvSectionTitle(strings.seerr.requestProfile)
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     contentPadding =
@@ -154,7 +154,7 @@ internal fun TvRequestDialog(
                 ) {
                     item {
                         TvActionButton(
-                            strings.serverDefault,
+                            strings.seerr.serverDefault,
                             { profile = JellyseerrRequestProfileSelection.ServerDefault },
                             primary = profile is JellyseerrRequestProfileSelection.ServerDefault,
                             selected = profile is JellyseerrRequestProfileSelection.ServerDefault,
@@ -172,11 +172,11 @@ internal fun TvRequestDialog(
                 }
             }
             requestsState.message?.takeIf { it.kind.name == "ERROR" }?.let {
-                Text(it.detail ?: strings.requestFailed, color = TvError, fontSize = 17.sp)
+                Text(it.detail ?: strings.seerr.requestFailed, color = TvError, fontSize = 17.sp)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 TvActionButton(
-                    if (requestsState.isPerformingAction) strings.requesting else strings.sendRequest,
+                    if (requestsState.isPerformingAction) strings.seerr.requesting else strings.seerr.sendRequest,
                     modifier = Modifier.width(230.dp),
                     focusRequester = firstFocus.takeIf { !showVersions && !showSeasons && !showProfiles },
                     primary = true,

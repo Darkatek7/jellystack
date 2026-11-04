@@ -40,10 +40,10 @@ class TvProfileScreensTest {
         }
 
         composeRule.onNodeWithTag("profile:bob:tile").assertIsFocused().performClick()
-        composeRule.onNodeWithContentDescription(strings.addProfile).assertHasClickAction()
-        composeRule.onNodeWithContentDescription(strings.manageProfiles).assertHasClickAction()
-        composeRule.onNodeWithText(strings.removeProfile).assertDoesNotExist()
-        composeRule.onNodeWithText(strings.profilePin).assertDoesNotExist()
+        composeRule.onNodeWithContentDescription(strings.profile.addProfile).assertHasClickAction()
+        composeRule.onNodeWithContentDescription(strings.profile.manageProfiles).assertHasClickAction()
+        composeRule.onNodeWithText(strings.profile.removeProfile).assertDoesNotExist()
+        composeRule.onNodeWithText(strings.profile.profilePin).assertDoesNotExist()
         composeRule.onAllNodes(hasClickAction()).assertCountEquals(4)
     }
 
@@ -56,8 +56,8 @@ class TvProfileScreensTest {
             }
         }
 
-        composeRule.onNodeWithText(strings.removeProfileMessage).assertExists()
-        composeRule.onNodeWithContentDescription(strings.removeProfile).performClick()
+        composeRule.onNodeWithText(strings.profile.removeProfileMessage).assertExists()
+        composeRule.onNodeWithContentDescription(strings.profile.removeProfile).performClick()
     }
 
     @Test
@@ -119,8 +119,8 @@ class TvProfileScreensTest {
         }
 
         composeRule.onNodeWithTag("profile-management:alice:tile").assertExists()
-        composeRule.onNodeWithContentDescription("${strings.profilePin}: Alice").assertDoesNotExist()
-        composeRule.onNodeWithContentDescription("${strings.removeProfile}: Alice").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("${strings.profile.profilePin}: Alice").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("${strings.profile.removeProfile}: Alice").assertDoesNotExist()
     }
 
     @Test
@@ -140,9 +140,9 @@ class TvProfileScreensTest {
             }
         }
 
-        composeRule.onNodeWithContentDescription("${strings.profilePin}: Alice").assertHasClickAction()
-        composeRule.onNodeWithContentDescription("${strings.removeProfile}: Alice").assertHasClickAction()
-        composeRule.onNodeWithContentDescription("${strings.profilePin}: Bob").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("${strings.profile.profilePin}: Alice").assertHasClickAction()
+        composeRule.onNodeWithContentDescription("${strings.profile.removeProfile}: Alice").assertHasClickAction()
+        composeRule.onNodeWithContentDescription("${strings.profile.profilePin}: Bob").assertDoesNotExist()
     }
 
     private fun presentation(

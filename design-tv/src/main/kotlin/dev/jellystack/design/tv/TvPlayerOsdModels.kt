@@ -32,7 +32,7 @@ internal fun PlaybackState.Active.toTvPlayerOsdModel(
         isPaused = isPaused,
         markers = playbackTimelineMarkers(durationMs, chapters, timelineSegments),
         chapters = chapters,
-        audioLabel = tvAudioButtonLabel(audioTrack, strings.locale) ?: strings.automatic,
+        audioLabel = tvAudioButtonLabel(audioTrack, strings.locale) ?: strings.preferences.automatic,
         audioCompactLabel = tvAudioButtonLabel(audioTrack, strings.locale, withChannels = false),
         subtitleLabel = subtitleTrack?.let { tvSubtitleButtonLabel(it, strings.locale) } ?: strings.off,
         promptActions = promptActions,
@@ -82,7 +82,8 @@ internal fun tvAudioTrackRows(
 ): List<TvTrackRowText> {
     val titles =
         tracks.mapIndexed { index, track ->
-            tvAudioButtonLabel(track, strings.locale) ?: strings.audioTrack.format(track.streamIndex ?: (index + 1))
+            tvAudioButtonLabel(track, strings.locale)
+                ?: strings.playbackUi.audioTrack.format(track.streamIndex ?: (index + 1))
         }
     return tracks.mapIndexed { index, track ->
         val flags = listOfNotNull(track.codec?.uppercase(), strings.player.defaultTrack.takeIf { track.isDefault })

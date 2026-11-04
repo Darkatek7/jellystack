@@ -139,7 +139,7 @@ internal fun TvSettingsScreen(
         TvSettingsCategory.APPEARANCE ->
             TvSettingsCategoryPage(
                 category = category,
-                title = strings.settingsAppearance,
+                title = strings.preferences.settingsAppearance,
                 targetIds = tvSettingsControlKeys(category, watchNextAvailable).map(::tvSettingsControlTargetId),
                 modifier = modifier,
             ) {
@@ -157,7 +157,7 @@ internal fun TvSettingsScreen(
         TvSettingsCategory.PLAYBACK ->
             TvSettingsCategoryPage(
                 category = category,
-                title = strings.settingsPlaybackCategory,
+                title = strings.preferences.settingsPlaybackCategory,
                 targetIds = tvSettingsControlKeys(category).map(::tvSettingsControlTargetId),
                 modifier = modifier,
             ) {
@@ -173,7 +173,7 @@ internal fun TvSettingsScreen(
         TvSettingsCategory.AUDIO_SUBTITLES ->
             TvSettingsCategoryPage(
                 category = category,
-                title = strings.settingsAudioSubtitles,
+                title = strings.preferences.settingsAudioSubtitles,
                 targetIds = tvSettingsControlKeys(category).map(::tvSettingsControlTargetId),
                 modifier = modifier,
             ) {
@@ -189,7 +189,7 @@ internal fun TvSettingsScreen(
         TvSettingsCategory.SEGMENT_SKIPPING ->
             TvSettingsCategoryPage(
                 category = category,
-                title = strings.segmentSkipping,
+                title = strings.segments.segmentSkipping,
                 targetIds = tvSettingsControlKeys(category).map(::tvSettingsControlTargetId),
                 modifier = modifier,
             ) {
@@ -216,7 +216,7 @@ internal fun TvSettingsScreen(
             )
             TvSettingsCategoryPage(
                 category = category,
-                title = strings.connections,
+                title = strings.signIn.connections,
                 targetIds = targetIds,
                 modifier = modifier,
             ) {
@@ -354,7 +354,7 @@ internal fun TvSettingsLandingScreen(
         item {
             Text(strings.settings, modifier = Modifier.tvHeading(), color = TvText, fontSize = 38.sp, fontWeight = FontWeight.Bold)
         }
-        item { Text(strings.settingsChooseCategory, color = TvTextMuted, fontSize = 19.sp) }
+        item { Text(strings.preferences.settingsChooseCategory, color = TvTextMuted, fontSize = 19.sp) }
         item {
             TvSettingsGrid {
                 TvSettingsCategory.entries.forEachIndexed { index, category ->
@@ -414,20 +414,20 @@ private fun TvAppearanceSettings(
 ) {
     TvSettingsGrid {
         TvSettingTile(
-            strings.language,
+            strings.preferences.language,
             settings.appLanguage.label(strings),
             screenEntry = true,
             focusTargetId = tvSettingsControlTargetId("language"),
         ) {
             showChoices(
-                strings.language,
+                strings.preferences.language,
                 AppLanguage.entries.map { value ->
                     TvChoiceOption(value.label(strings), value == settings.appLanguage) { repository.setAppLanguage(value) }
                 },
             )
         }
         TvSettingTile(
-            strings.homeSections,
+            strings.homeRows.homeSections,
             if (settings.useServerHomeSections) strings.on else strings.off,
             focusTargetId = tvSettingsControlTargetId("home-sections"),
             checked = settings.useServerHomeSections,
@@ -436,7 +436,7 @@ private fun TvAppearanceSettings(
         }
         if (watchNextAvailable) {
             TvSettingTile(
-                strings.watchNextRow,
+                strings.homeRows.watchNextRow,
                 if (settings.watchNextEnabled) strings.on else strings.off,
                 focusTargetId = tvSettingsControlTargetId("watch-next"),
                 checked = settings.watchNextEnabled,
@@ -458,13 +458,13 @@ internal fun TvPlaybackSettings(
 ) {
     TvSettingsGrid {
         TvSettingTile(
-            strings.quality,
+            strings.preferences.quality,
             settings.wifiStreamingQuality.label(strings),
             screenEntry = true,
             focusTargetId = tvSettingsControlTargetId("quality"),
         ) {
             showChoices(
-                strings.quality,
+                strings.preferences.quality,
                 tvQualityOptions().map { value ->
                     TvChoiceOption(value.label(strings), value == settings.wifiStreamingQuality) {
                         repository.setWifiStreamingQuality(value)
@@ -473,12 +473,12 @@ internal fun TvPlaybackSettings(
             )
         }
         TvSettingTile(
-            strings.autoplay,
+            strings.preferences.autoplay,
             settings.autoplayNextMode.label(strings),
             focusTargetId = tvSettingsControlTargetId("autoplay"),
         ) {
             showChoices(
-                strings.autoplay,
+                strings.preferences.autoplay,
                 AutoplayNextMode.entries.map { value ->
                     TvChoiceOption(value.label(strings), value == settings.autoplayNextMode) {
                         if (profileId != null && profilePreferencesRepository != null) {
@@ -491,12 +491,12 @@ internal fun TvPlaybackSettings(
             )
         }
         TvSettingTile(
-            strings.resume,
+            strings.preferences.resume,
             settings.resumeMode.label(strings),
             focusTargetId = tvSettingsControlTargetId("resume"),
         ) {
             showChoices(
-                strings.resume,
+                strings.preferences.resume,
                 ResumeMode.entries.map { value ->
                     TvChoiceOption(value.label(strings), value == settings.resumeMode) {
                         if (profileId != null && profilePreferencesRepository != null) {
@@ -509,36 +509,36 @@ internal fun TvPlaybackSettings(
             )
         }
         TvSettingTile(
-            strings.seekBack,
+            strings.preferences.seekBack,
             "${settings.seekBackSeconds}s",
             focusTargetId = tvSettingsControlTargetId("seek-back"),
         ) {
             showChoices(
-                strings.seekBack,
+                strings.preferences.seekBack,
                 tvSeekOptions().map { value ->
                     TvChoiceOption("${value}s", value == settings.seekBackSeconds) { repository.setSeekBackSeconds(value) }
                 },
             )
         }
         TvSettingTile(
-            strings.seekForward,
+            strings.preferences.seekForward,
             "${settings.seekForwardSeconds}s",
             focusTargetId = tvSettingsControlTargetId("seek-forward"),
         ) {
             showChoices(
-                strings.seekForward,
+                strings.preferences.seekForward,
                 tvSeekOptions().map { value ->
                     TvChoiceOption("${value}s", value == settings.seekForwardSeconds) { repository.setSeekForwardSeconds(value) }
                 },
             )
         }
         TvSettingTile(
-            strings.playbackSpeed,
+            strings.preferences.playbackSpeed,
             "${settings.defaultPlaybackSpeed}x",
             focusTargetId = tvSettingsControlTargetId("playback-speed"),
         ) {
             showChoices(
-                strings.playbackSpeed,
+                strings.preferences.playbackSpeed,
                 tvSpeedOptions().map { value ->
                     TvChoiceOption("${value}x", value == settings.defaultPlaybackSpeed) {
                         if (profileId != null && profilePreferencesRepository != null) {
@@ -551,7 +551,7 @@ internal fun TvPlaybackSettings(
             )
         }
         TvSettingTile(
-            strings.statsForNerds,
+            strings.preferences.statsForNerds,
             if (settings.statsForNerdsEnabled) strings.on else strings.off,
             focusTargetId = tvSettingsControlTargetId("stats"),
             checked = settings.statsForNerdsEnabled,
@@ -567,7 +567,7 @@ internal fun TvPlaybackSettings(
             repository.setMatchRefreshRate(!settings.matchRefreshRate)
         }
         TvSettingTile(
-            strings.trailerPreviews,
+            strings.preferences.trailerPreviews,
             if (settings.trailerPreviewsEnabled) strings.on else strings.off,
             focusTargetId = tvSettingsControlTargetId("trailer-previews"),
             checked = settings.trailerPreviewsEnabled,
@@ -575,7 +575,7 @@ internal fun TvPlaybackSettings(
             repository.setTrailerPreviewsEnabled(!settings.trailerPreviewsEnabled)
         }
         TvSettingTile(
-            strings.trailerPreviewSound,
+            strings.preferences.trailerPreviewSound,
             if (settings.trailerPreviewSoundEnabled) strings.on else strings.off,
             enabled = settings.trailerPreviewsEnabled,
             focusTargetId = tvSettingsControlTargetId("trailer-preview-sound"),
@@ -613,13 +613,13 @@ private fun TvAudioSubtitleSettings(
 ) {
     TvSettingsGrid {
         TvSettingTile(
-            strings.audioLanguage,
-            settings.preferredAudioLanguage ?: strings.serverDefault,
+            strings.preferences.audioLanguage,
+            settings.preferredAudioLanguage ?: strings.seerr.serverDefault,
             screenEntry = true,
             focusTargetId = tvSettingsControlTargetId("audio-language"),
         ) {
             showChoices(
-                strings.audioLanguage,
+                strings.preferences.audioLanguage,
                 preferredLanguageOptions(strings, settings.preferredAudioLanguage) {
                     if (profileId != null && profilePreferencesRepository != null) {
                         profilePreferencesRepository.setPreferredAudioLanguage(profileId, it)
@@ -630,12 +630,12 @@ private fun TvAudioSubtitleSettings(
             )
         }
         TvSettingTile(
-            strings.subtitleLanguage,
-            settings.preferredSubtitleLanguage ?: strings.serverDefault,
+            strings.preferences.subtitleLanguage,
+            settings.preferredSubtitleLanguage ?: strings.seerr.serverDefault,
             focusTargetId = tvSettingsControlTargetId("subtitle-language"),
         ) {
             showChoices(
-                strings.subtitleLanguage,
+                strings.preferences.subtitleLanguage,
                 preferredLanguageOptions(strings, settings.preferredSubtitleLanguage) {
                     if (profileId != null && profilePreferencesRepository != null) {
                         profilePreferencesRepository.setPreferredSubtitleLanguage(profileId, it)
@@ -646,12 +646,12 @@ private fun TvAudioSubtitleSettings(
             )
         }
         TvSettingTile(
-            strings.subtitleMode,
+            strings.preferences.subtitleMode,
             settings.subtitleMode.label(strings),
             focusTargetId = tvSettingsControlTargetId("subtitle-mode"),
         ) {
             showChoices(
-                strings.subtitleMode,
+                strings.preferences.subtitleMode,
                 SubtitleMode.entries.map { value ->
                     TvChoiceOption(value.label(strings), value == settings.subtitleMode) {
                         if (profileId != null && profilePreferencesRepository != null) {
@@ -664,12 +664,12 @@ private fun TvAudioSubtitleSettings(
             )
         }
         TvSettingTile(
-            strings.subtitleSize,
+            strings.preferences.subtitleSize,
             settings.subtitleTextSize.label(strings),
             focusTargetId = tvSettingsControlTargetId("subtitle-size"),
         ) {
             showChoices(
-                strings.subtitleSize,
+                strings.preferences.subtitleSize,
                 SubtitleTextSize.entries.map { value ->
                     TvChoiceOption(value.label(strings), value == settings.subtitleTextSize) {
                         repository.setSubtitleTextSize(value)
@@ -678,12 +678,12 @@ private fun TvAudioSubtitleSettings(
             )
         }
         TvSettingTile(
-            strings.subtitleBackground,
+            strings.preferences.subtitleBackground,
             settings.subtitleBackground.label(strings),
             focusTargetId = tvSettingsControlTargetId("subtitle-background"),
         ) {
             showChoices(
-                strings.subtitleBackground,
+                strings.preferences.subtitleBackground,
                 SubtitleBackground.entries.map { value ->
                     TvChoiceOption(value.label(strings), value == settings.subtitleBackground) {
                         repository.setSubtitleBackground(value)
@@ -716,10 +716,10 @@ private fun TvConnectionsSettings(
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(server.name, color = TvText, fontSize = 21.sp, fontWeight = FontWeight.SemiBold)
-                        Text("${server.type.tvBrandLabel()}  •  ${strings.connected}", color = TvTextMuted)
+                        Text("${server.type.tvBrandLabel()}  •  ${strings.signIn.connected}", color = TvTextMuted)
                     }
                     TvActionButton(
-                        strings.remove,
+                        strings.signIn.remove,
                         { onRemove(server) },
                         destructive = true,
                         focusToNavigationRailOnLeft = true,
@@ -730,14 +730,14 @@ private fun TvConnectionsSettings(
         }
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             TvActionButton(
-                if (jellyfinServer == null) strings.addJellyfin else strings.manageJellyfin,
+                if (jellyfinServer == null) strings.signIn.addJellyfin else strings.signIn.manageJellyfin,
                 onManageJellyfin,
                 primary = jellyfinServer == null,
                 focusToNavigationRailOnLeft = true,
                 focusTargetId = manageJellyfinTarget,
             )
             TvActionButton(
-                if (seerrServer == null) strings.addSeerr else strings.manageSeerr,
+                if (seerrServer == null) strings.signIn.addSeerr else strings.signIn.manageSeerr,
                 onManageSeerr,
                 primary = seerrServer == null,
                 focusTargetId = manageSeerrTarget,
@@ -765,15 +765,15 @@ internal fun TvRemoveServerDialog(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text(
-                strings.removeServerConfirm.format(serverName),
+                strings.signIn.removeServerConfirm.format(serverName),
                 color = TvText,
                 fontSize = 28.sp,
                 fontWeight = FontWeight.Bold,
             )
-            Text(strings.removeServerMessage, color = TvTextMuted, fontSize = 17.sp)
+            Text(strings.signIn.removeServerMessage, color = TvTextMuted, fontSize = 17.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 TvActionButton(
-                    strings.remove,
+                    strings.signIn.remove,
                     onClick = onRemove,
                     destructive = true,
                     modifier = Modifier.width(180.dp),
@@ -790,22 +790,22 @@ internal fun TvRemoveServerDialog(
 
 private fun TvSettingsCategory.title(strings: TvStrings): String =
     when (this) {
-        TvSettingsCategory.APPEARANCE -> strings.settingsAppearance
+        TvSettingsCategory.APPEARANCE -> strings.preferences.settingsAppearance
         TvSettingsCategory.HOME -> strings.homeSettings.categoryTitle
-        TvSettingsCategory.PLAYBACK -> strings.settingsPlaybackCategory
-        TvSettingsCategory.AUDIO_SUBTITLES -> strings.settingsAudioSubtitles
-        TvSettingsCategory.SEGMENT_SKIPPING -> strings.segmentSkipping
-        TvSettingsCategory.CONNECTIONS -> strings.connections
+        TvSettingsCategory.PLAYBACK -> strings.preferences.settingsPlaybackCategory
+        TvSettingsCategory.AUDIO_SUBTITLES -> strings.preferences.settingsAudioSubtitles
+        TvSettingsCategory.SEGMENT_SKIPPING -> strings.segments.segmentSkipping
+        TvSettingsCategory.CONNECTIONS -> strings.signIn.connections
         TvSettingsCategory.DIAGNOSTICS -> strings.diagnostics.categoryTitle
     }
 
 private fun TvSettingsCategory.description(strings: TvStrings): String =
     when (this) {
-        TvSettingsCategory.APPEARANCE -> strings.settingsAppearanceDescription
+        TvSettingsCategory.APPEARANCE -> strings.preferences.settingsAppearanceDescription
         TvSettingsCategory.HOME -> strings.homeSettings.categoryDescription
-        TvSettingsCategory.PLAYBACK -> strings.settingsPlaybackDescription
-        TvSettingsCategory.AUDIO_SUBTITLES -> strings.settingsAudioSubtitlesDescription
-        TvSettingsCategory.SEGMENT_SKIPPING -> strings.settingsSegmentSkippingDescription
-        TvSettingsCategory.CONNECTIONS -> strings.settingsConnectionsDescription
+        TvSettingsCategory.PLAYBACK -> strings.preferences.settingsPlaybackDescription
+        TvSettingsCategory.AUDIO_SUBTITLES -> strings.preferences.settingsAudioSubtitlesDescription
+        TvSettingsCategory.SEGMENT_SKIPPING -> strings.preferences.settingsSegmentSkippingDescription
+        TvSettingsCategory.CONNECTIONS -> strings.preferences.settingsConnectionsDescription
         TvSettingsCategory.DIAGNOSTICS -> strings.diagnostics.categoryDescription
     }

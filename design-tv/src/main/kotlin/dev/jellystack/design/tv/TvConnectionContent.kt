@@ -149,7 +149,7 @@ internal fun TvConnectionContent(
             if (!inProgress) {
                 Column(Modifier.weight(0.7f), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     Text(TV_BRAND_JELLYSTACK, color = TvText, fontSize = 50.sp, fontWeight = FontWeight.Bold)
-                    Text(strings.tvTagline, color = TvTextMuted, fontSize = 22.sp)
+                    Text(strings.signIn.tvTagline, color = TvTextMuted, fontSize = 22.sp)
                 }
             }
             Column(
@@ -159,7 +159,7 @@ internal fun TvConnectionContent(
                     .padding(horizontal = 34.dp, vertical = layout.cardVerticalPadding),
                 verticalArrangement = Arrangement.spacedBy(layout.itemSpacing),
             ) {
-                Text(strings.connectJellyfin, color = TvText, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                Text(strings.signIn.connectJellyfin, color = TvText, fontSize = 30.sp, fontWeight = FontWeight.Bold)
                 // The heading stays put; a long message and the form scroll beneath it instead of being clipped.
                 Column(
                     Modifier.verticalScroll(rememberScrollState()),
@@ -213,7 +213,7 @@ private fun TvConnectionForm(
     }
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         TvActionButton(
-            strings.quickConnect,
+            strings.signIn.quickConnect,
             { actions.onMethodChange(JellyfinSignInMethod.QUICK_CONNECT) },
             modifier =
                 Modifier
@@ -226,7 +226,7 @@ private fun TvConnectionForm(
             selected = state.method == JellyfinSignInMethod.QUICK_CONNECT,
         )
         TvActionButton(
-            strings.password,
+            strings.signIn.password,
             { actions.onMethodChange(JellyfinSignInMethod.PASSWORD) },
             modifier =
                 Modifier
@@ -242,14 +242,14 @@ private fun TvConnectionForm(
     TvTextField(
         state.baseUrl,
         { actions.onFieldChange(TvConnectionField.URL, it) },
-        strings.serverUrl,
+        strings.signIn.serverUrl,
         modifier = fieldModifier(TvConnectionField.URL),
     )
     if (state.editingName) {
         TvTextField(
             state.displayName,
             { actions.onFieldChange(TvConnectionField.DISPLAY_NAME, it) },
-            strings.displayName,
+            strings.signIn.displayName,
             modifier = fieldModifier(TvConnectionField.DISPLAY_NAME),
         )
     }
@@ -257,13 +257,13 @@ private fun TvConnectionForm(
         TvTextField(
             state.username,
             { actions.onFieldChange(TvConnectionField.USERNAME, it) },
-            strings.username,
+            strings.signIn.username,
             modifier = fieldModifier(TvConnectionField.USERNAME),
         )
         TvTextField(
             state.password,
             { actions.onFieldChange(TvConnectionField.PASSWORD, it) },
-            strings.password,
+            strings.signIn.password,
             password = true,
             modifier = fieldModifier(TvConnectionField.PASSWORD),
         )
@@ -294,8 +294,8 @@ private fun TvQuickConnectCode(
                 maxLines = 1,
                 softWrap = false,
             )
-            Text(strings.quickConnectHelp, color = TvTextMuted, fontSize = 17.sp, lineHeight = 24.sp)
-            Text(strings.enterCode, color = TvText, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            Text(strings.signIn.quickConnectHelp, color = TvTextMuted, fontSize = 17.sp, lineHeight = 24.sp)
+            Text(strings.signIn.enterCode, color = TvText, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
         }
         if (pageUrl != null) {
             Column(
@@ -331,7 +331,7 @@ private fun TvConnectionButtons(
     ) {
         if (contentMode.showConnectAction) {
             TvActionButton(
-                label = strings.connect,
+                label = strings.signIn.connect,
                 primary = true,
                 modifier = Modifier.focusRequester(focus.connect),
                 onClick = actions.onConnect,
@@ -340,7 +340,11 @@ private fun TvConnectionButtons(
             if (!state.editingName) TvActionButton(strings.messages.editName, actions.onEditName)
         }
         if (state.waitingCode != null) {
-            TvActionButton(strings.newCode, actions.onConnect, modifier = Modifier.focusRequester(focus.waitingAction))
+            TvActionButton(
+                strings.signIn.newCode,
+                actions.onConnect,
+                modifier = Modifier.focusRequester(focus.waitingAction),
+            )
         }
         if (contentMode.showWaitingInstructions) TvActionButton(strings.cancel, actions.onBack)
         if (state.canDismiss) TvActionButton(strings.back, actions.onBack)

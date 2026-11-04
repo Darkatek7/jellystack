@@ -28,9 +28,9 @@ internal fun tvDetailErrorMessage(
     strings: TvStrings,
 ): String =
     when ((error as? TvDetailLoadException)?.kind) {
-        TvDetailLoadErrorKind.ITEM_UNAVAILABLE -> strings.detailUnavailable
-        TvDetailLoadErrorKind.DETAILS_UNAVAILABLE -> strings.detailLoadFailed
-        null -> strings.detailLoadFailed
+        TvDetailLoadErrorKind.ITEM_UNAVAILABLE -> strings.detailText.detailUnavailable
+        TvDetailLoadErrorKind.DETAILS_UNAVAILABLE -> strings.detailText.detailLoadFailed
+        null -> strings.detailText.detailLoadFailed
     }
 
 internal fun tvJellyfinHeroTitlePresentation(

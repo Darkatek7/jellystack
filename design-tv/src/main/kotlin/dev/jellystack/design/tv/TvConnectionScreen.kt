@@ -99,7 +99,7 @@ internal fun TvConnectionScreen(
                             serverId = existingServerId,
                             refreshExistingAccount = refreshExistingAccount,
                         ),
-                    ) { message -> error = message ?: strings.jellyfinConnectionFailed }
+                    ) { message -> error = message ?: strings.signIn.jellyfinConnectionFailed }
                 fields = fields.copy(password = "")
                 connected?.let(onConnected)
             }
@@ -112,7 +112,7 @@ internal fun TvConnectionScreen(
             onEditName = { editingName = true },
             onConnect = {
                 when {
-                    baseUrl.isBlank() -> error = strings.enterServerUrl
+                    baseUrl.isBlank() -> error = strings.signIn.enterServerUrl
                     method == JellyfinSignInMethod.QUICK_CONNECT -> beginQuickConnect()
                     else -> beginPasswordSignIn()
                 }
@@ -193,10 +193,10 @@ private fun quickConnectErrorMessage(
     strings: TvStrings,
 ): String =
     when (error) {
-        JellyfinQuickConnectError.DISABLED -> strings.quickConnectDisabled
-        JellyfinQuickConnectError.EXPIRED -> strings.quickConnectExpired
-        JellyfinQuickConnectError.TRANSPORT -> strings.serverUnreachable
-        else -> strings.quickConnectFailed
+        JellyfinQuickConnectError.DISABLED -> strings.signIn.quickConnectDisabled
+        JellyfinQuickConnectError.EXPIRED -> strings.signIn.quickConnectExpired
+        JellyfinQuickConnectError.TRANSPORT -> strings.signIn.serverUnreachable
+        else -> strings.signIn.quickConnectFailed
     }
 
 /** Signs in with a password; reports the server's message (or null) through [onFailure] and returns null on failure. */

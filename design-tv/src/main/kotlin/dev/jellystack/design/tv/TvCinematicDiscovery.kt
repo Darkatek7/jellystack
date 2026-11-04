@@ -44,8 +44,8 @@ internal fun TvCinematicDiscoverContent(
     val focusedRow = effectiveFocusedKey?.let { key -> rows.firstOrNull { row -> row.cards.any { it.id == key } } }
     val hero = remember(strings.discover) { TvCinematicHero(title = strings.discover, eyebrow = strings.discover) }
     val inlineStatus =
-        remember(hasPartialFailure, strings.discoverLoadFailed) {
-            if (hasPartialFailure) TvCinematicInlineStatus(strings.discoverLoadFailed, TvCinematicStatusKind.ERROR) else null
+        remember(hasPartialFailure, strings.seerr.discoverLoadFailed) {
+            if (hasPartialFailure) TvCinematicInlineStatus(strings.seerr.discoverLoadFailed, TvCinematicStatusKind.ERROR) else null
         }
     TvCinematicBrowse(
         state =

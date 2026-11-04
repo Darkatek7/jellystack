@@ -29,7 +29,7 @@ internal fun tvHomeRowOptions(
     includeEmpty: Boolean = false,
 ): List<TvHomeRowOption> =
     buildList {
-        if (hasMyList || includeEmpty) add(TvHomeRowOption(TV_HOME_MY_LIST_ROW, strings.myList))
+        if (hasMyList || includeEmpty) add(TvHomeRowOption(TV_HOME_MY_LIST_ROW, strings.browse.myList))
         if (homeSections is HomeSectionsState.Ready) {
             homeSections.sections
                 .filter { includeEmpty || it.items.isNotEmpty() }
@@ -37,11 +37,13 @@ internal fun tvHomeRowOptions(
                 .forEach { add(TvHomeRowOption(tvHomePluginRowId(it.id), it.title)) }
         } else {
             if (includeEmpty || state.continueWatching.isNotEmpty()) {
-                add(TvHomeRowOption(TV_HOME_CONTINUE_ROW, strings.continueWatching))
+                add(TvHomeRowOption(TV_HOME_CONTINUE_ROW, strings.homeRows.continueWatching))
             }
-            if (includeEmpty || state.nextUp.isNotEmpty()) add(TvHomeRowOption(TV_HOME_NEXT_UP_ROW, strings.nextUp))
+            if (includeEmpty || state.nextUp.isNotEmpty()) {
+                add(TvHomeRowOption(TV_HOME_NEXT_UP_ROW, strings.homeRows.nextUp))
+            }
             if (includeEmpty || state.libraries.isNotEmpty()) {
-                add(TvHomeRowOption(TV_HOME_LIBRARIES_ROW, strings.myMedia))
+                add(TvHomeRowOption(TV_HOME_LIBRARIES_ROW, strings.browse.myMedia))
             }
         }
     }

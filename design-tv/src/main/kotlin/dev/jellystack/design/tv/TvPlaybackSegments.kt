@@ -331,27 +331,27 @@ internal fun tvSegmentSkipSettingModels(
     listOf(
         TvSegmentSkipSettingModel(
             PlaybackSegmentType.INTRO,
-            strings.introSegments,
+            strings.segments.introSegments,
             settings.introSkipMode,
         ) { onModeSelected(PlaybackSegmentType.INTRO, it) },
         TvSegmentSkipSettingModel(
             PlaybackSegmentType.RECAP,
-            strings.recapSegments,
+            strings.segments.recapSegments,
             settings.recapSkipMode,
         ) { onModeSelected(PlaybackSegmentType.RECAP, it) },
         TvSegmentSkipSettingModel(
             PlaybackSegmentType.OUTRO,
-            strings.outroSegments,
+            strings.segments.outroSegments,
             settings.outroSkipMode,
         ) { onModeSelected(PlaybackSegmentType.OUTRO, it) },
         TvSegmentSkipSettingModel(
             PlaybackSegmentType.PREVIEW,
-            strings.previewSegments,
+            strings.segments.previewSegments,
             settings.previewSkipMode,
         ) { onModeSelected(PlaybackSegmentType.PREVIEW, it) },
         TvSegmentSkipSettingModel(
             PlaybackSegmentType.COMMERCIAL,
-            strings.commercialSegments,
+            strings.segments.commercialSegments,
             settings.commercialSkipMode,
         ) { onModeSelected(PlaybackSegmentType.COMMERCIAL, it) },
     )

@@ -51,12 +51,12 @@ class TvSettingsNavigationUiTest {
             }
         }
 
-        composeRule.onNodeWithText(strings.settingsAppearance).assertExists()
-        composeRule.onNodeWithText(strings.settingsPlaybackCategory).assertExists()
-        composeRule.onNodeWithText(strings.settingsAudioSubtitles).assertExists()
-        composeRule.onNodeWithText(strings.segmentSkipping).assertExists()
-        composeRule.onNodeWithText(strings.connections).assertExists()
-        composeRule.onNodeWithText(strings.settingsPlaybackCategory).performClick()
+        composeRule.onNodeWithText(strings.preferences.settingsAppearance).assertExists()
+        composeRule.onNodeWithText(strings.preferences.settingsPlaybackCategory).assertExists()
+        composeRule.onNodeWithText(strings.preferences.settingsAudioSubtitles).assertExists()
+        composeRule.onNodeWithText(strings.segments.segmentSkipping).assertExists()
+        composeRule.onNodeWithText(strings.signIn.connections).assertExists()
+        composeRule.onNodeWithText(strings.preferences.settingsPlaybackCategory).performClick()
         composeRule.runOnIdle { assertEquals(TvSettingsCategory.PLAYBACK, selected) }
     }
 
@@ -108,12 +108,12 @@ class TvSettingsNavigationUiTest {
 
         val appearance =
             composeRule.onNode(
-                hasClickAction() and hasAnyDescendant(hasText(strings.settingsAppearance)),
+                hasClickAction() and hasAnyDescendant(hasText(strings.preferences.settingsAppearance)),
                 useUnmergedTree = true,
             )
         val playback =
             composeRule.onNode(
-                hasClickAction() and hasAnyDescendant(hasText(strings.settingsPlaybackCategory)),
+                hasClickAction() and hasAnyDescendant(hasText(strings.preferences.settingsPlaybackCategory)),
                 useUnmergedTree = true,
             )
         val home =
@@ -128,12 +128,12 @@ class TvSettingsNavigationUiTest {
 
         val quality =
             composeRule.onNode(
-                hasClickAction() and hasAnyDescendant(hasText(strings.quality)),
+                hasClickAction() and hasAnyDescendant(hasText(strings.preferences.quality)),
                 useUnmergedTree = true,
             )
         val autoplay =
             composeRule.onNode(
-                hasClickAction() and hasAnyDescendant(hasText(strings.autoplay)),
+                hasClickAction() and hasAnyDescendant(hasText(strings.preferences.autoplay)),
                 useUnmergedTree = true,
             )
         quality.assertIsFocused().performKeyInput { pressKey(Key.DirectionRight) }
@@ -241,25 +241,25 @@ class TvSettingsNavigationUiTest {
                             TvSettingsCategory.PLAYBACK ->
                                 TvSettingsCategoryPage(
                                     category = category,
-                                    title = strings.settingsPlaybackCategory,
+                                    title = strings.preferences.settingsPlaybackCategory,
                                     targetIds = tvSettingsControlKeys(category).map(::tvSettingsControlTargetId),
                                 ) {
                                     TvSettingsGrid {
                                         TvSettingTile(
-                                            title = strings.quality,
+                                            title = strings.preferences.quality,
                                             value = "Auto",
                                             screenEntry = true,
                                             focusTargetId = tvSettingsControlTargetId("quality"),
                                             onClick = {},
                                         )
                                         TvSettingTile(
-                                            title = strings.autoplay,
+                                            title = strings.preferences.autoplay,
                                             value = strings.on,
                                             focusTargetId = tvSettingsControlTargetId("autoplay"),
                                             onClick = {},
                                         )
                                         TvSettingTile(
-                                            title = strings.resume,
+                                            title = strings.preferences.resume,
                                             value = strings.on,
                                             focusTargetId = tvSettingsControlTargetId("resume"),
                                             onClick = {},
@@ -269,7 +269,7 @@ class TvSettingsNavigationUiTest {
                             TvSettingsCategory.CONNECTIONS ->
                                 TvSettingsCategoryPage(
                                     category = category,
-                                    title = strings.connections,
+                                    title = strings.signIn.connections,
                                     targetIds = listOf("manage-jellyfin", "manage-seerr"),
                                 ) {
                                     TvActionButton(

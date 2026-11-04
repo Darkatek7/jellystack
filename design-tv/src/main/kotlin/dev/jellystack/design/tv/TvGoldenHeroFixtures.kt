@@ -85,7 +85,7 @@ internal fun GoldenHomeHero(
                 Box(Modifier.fillMaxWidth().height(TV_HOME_SPOTLIGHT_HEIGHT)) {
                     TvPlayKeyHints(
                         playLabel = strings.play,
-                        detailsLabel = strings.details,
+                        detailsLabel = strings.detailText.details,
                         modifier =
                             Modifier
                                 .align(Alignment.BottomStart)
@@ -99,7 +99,7 @@ internal fun GoldenHomeHero(
             Modifier.padding(start = TvLayoutTokens.ContentStart, top = TV_CINEMATIC_ROWS_TOP),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            TvSectionTitle(strings.continueWatching)
+            TvSectionTitle(strings.homeRows.continueWatching)
             Row(horizontalArrangement = Arrangement.spacedBy(TvLayoutTokens.CardSpacing)) {
                 listOf("Harbor Lights", "Northern Lights", "Paper Moon", "Quiet Signal").forEach { title ->
                     TvMediaCard(title = title, imageUrl = null, onClick = {})
@@ -131,8 +131,8 @@ internal fun GoldenHomeSettings(
 ) {
     val rows =
         listOf(
-            TvHomeRowOption("continue", strings.continueWatching),
-            TvHomeRowOption("next", strings.nextUp),
+            TvHomeRowOption("continue", strings.homeRows.continueWatching),
+            TvHomeRowOption("next", strings.homeRows.nextUp),
             TvHomeRowOption("plugin:recent-movies", "Recently added movies"),
             TvHomeRowOption("plugin:recent-shows", "Recently added shows"),
         )

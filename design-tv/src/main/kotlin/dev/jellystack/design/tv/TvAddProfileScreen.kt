@@ -52,7 +52,7 @@ internal fun TvAddProfileScreen(
             bindings?.let { newProfileJellyfinPrefill(profiles, it, serverRepository.currentServers()) }
         }
     if (settingUp) {
-        TvProfileStatusScreen(strings.settingUpProfile)
+        TvProfileStatusScreen(strings.profile.settingUpProfile)
         return
     }
     TvConnectionScreen(
@@ -78,7 +78,7 @@ internal fun TvAddProfileScreen(
                         throw cancelled
                     } catch (_: Throwable) {
                         JellystackLog.e("Could not set up the new profile")
-                        notice = strings.jellyfinConnectionFailed
+                        notice = strings.signIn.jellyfinConnectionFailed
                         null
                     }
                 if (profile == null) settingUp = false else onCreated(profile)

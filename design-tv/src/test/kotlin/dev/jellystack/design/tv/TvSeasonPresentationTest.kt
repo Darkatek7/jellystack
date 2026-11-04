@@ -121,8 +121,8 @@ class TvSeasonPresentationTest {
         val strings = TvStrings.current(dev.jellystack.core.preferences.AppLanguage.ENGLISH)
         val itemError = TvDetailLoadException(TvDetailLoadErrorKind.ITEM_UNAVAILABLE)
         val detailsError = TvDetailLoadException(TvDetailLoadErrorKind.DETAILS_UNAVAILABLE)
-        assertEquals(strings.detailUnavailable, tvDetailErrorMessage(itemError, strings))
-        assertEquals(strings.detailLoadFailed, tvDetailErrorMessage(detailsError, strings))
-        assertEquals(strings.detailLoadFailed, tvDetailErrorMessage(IllegalStateException("boom"), strings))
+        assertEquals(strings.detailText.detailUnavailable, tvDetailErrorMessage(itemError, strings))
+        assertEquals(strings.detailText.detailLoadFailed, tvDetailErrorMessage(detailsError, strings))
+        assertEquals(strings.detailText.detailLoadFailed, tvDetailErrorMessage(IllegalStateException("boom"), strings))
     }
 }

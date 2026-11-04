@@ -59,7 +59,11 @@ internal fun TvEmptyHomeHero(
             Text(
                 state.homeErrorMessage
                     ?.takeIf { it.isNotBlank() }
-                    ?: if (state.isHomeLoading || state.isInitialLoading) strings.loading else strings.noResults,
+                    ?: if (state.isHomeLoading || state.isInitialLoading) {
+                        strings.loading
+                    } else {
+                        strings.searchScreen.noResults
+                    },
                 color = TvTextMuted,
                 fontSize = 16.sp,
                 maxLines = 2,

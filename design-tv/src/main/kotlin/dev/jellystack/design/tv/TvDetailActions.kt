@@ -110,14 +110,14 @@ internal fun TvDetailHeroActions(
             modifier = actionRowModifier,
         )
         callbacks.onTrailer?.let { onTrailer ->
-            TvDetailRoundButton(Icons.Default.LocalMovies, strings.trailer, onTrailer, actionRowModifier)
+            TvDetailRoundButton(Icons.Default.LocalMovies, strings.detailText.trailer, onTrailer, actionRowModifier)
         }
         callbacks.onMore?.let { onMore ->
             TvDetailRoundButton(Icons.Default.MoreHoriz, strings.more, onMore, actionRowModifier)
         }
     }
     if (state.trailerError) {
-        Text(strings.trailerOpenFailed, color = TvError, fontSize = TvTextSize.Body)
+        Text(strings.detailText.trailerOpenFailed, color = TvError, fontSize = TvTextSize.Body)
     }
     if (state.actionFailed) {
         Text(strings.diagnostics.actionFailed, color = TvError, fontSize = TvTextSize.Body)

@@ -160,7 +160,7 @@ internal fun tvSeerrStatusLabel(
     val command = requestState.command
     return when {
         command.showStatus && !command.permissionDenied -> requestState.mediaStatus.label(strings)
-        requestsReady && command.primaryAction == null -> strings.cannotRequest
+        requestsReady && command.primaryAction == null -> strings.seerr.cannotRequest
         else -> null
     }
 }
@@ -240,14 +240,14 @@ internal fun TvSeerrHeroActions(
         }
         if (state.hasRequestAction) {
             TvActionButton(
-                if (state.requestMoreSeasons) strings.requestMoreSeasons else strings.request,
+                if (state.requestMoreSeasons) strings.seerr.requestMoreSeasons else strings.seerr.request,
                 primary = true,
                 onClick = callbacks.onRequest,
                 modifier = focusFor(TvSeerrPrimaryAction.REQUEST).then(pillWidth),
             )
         }
         TvActionButton(
-            label = if (state.isInMyList) strings.remove else strings.myList,
+            label = if (state.isInMyList) strings.signIn.remove else strings.browse.myList,
             onClick = callbacks.onToggleMyList,
             primary = !state.hasRequestAction && state.primaryAction != TvSeerrPrimaryAction.RETRY,
             selected = state.isInMyList,
@@ -256,7 +256,7 @@ internal fun TvSeerrHeroActions(
         if (state.hasTrailer) {
             TvDetailRoundButton(
                 icon = Icons.Default.LocalMovies,
-                label = strings.trailer,
+                label = strings.detailText.trailer,
                 onClick = callbacks.onTrailer,
                 modifier = focusFor(TvSeerrPrimaryAction.TRAILER),
             )

@@ -489,7 +489,7 @@ private fun TvProfileHost(
         val selectedProfile = profiles.firstOrNull { it.id == selectedProfileId }
         when {
             !legacyChecked || !initialized || loadedProfiles == null -> TvProfileStatusScreen(strings.loading)
-            switchingProfile != null -> TvProfileStatusScreen(strings.switchingProfile)
+            switchingProfile != null -> TvProfileStatusScreen(strings.profile.switchingProfile)
             addProfile ->
                 TvAddProfileScreen(
                     profiles = profiles,
@@ -575,7 +575,7 @@ private fun TvProfileHost(
                         pinValue = ""
                         pinForManagement = false
                     },
-                    secondaryActionLabel = strings.reconnectProfile.takeIf { locked },
+                    secondaryActionLabel = strings.profile.reconnectProfile.takeIf { locked },
                     onSecondaryAction =
                         if (locked) {
                             {
@@ -601,9 +601,9 @@ private fun TvProfileHost(
                     locked = false,
                     title =
                         when {
-                            configurationPinError -> strings.pinMismatch
-                            firstConfiguredPin == null -> strings.setProfilePin
-                            else -> strings.confirmProfilePin
+                            configurationPinError -> strings.profile.pinMismatch
+                            firstConfiguredPin == null -> strings.profile.setProfilePin
+                            else -> strings.profile.confirmProfilePin
                         },
                     onDigit = { if (configurationPin.length < 4) configurationPin += it },
                     onDelete = { if (configurationPin.isNotEmpty()) configurationPin = configurationPin.dropLast(1) },
@@ -634,7 +634,7 @@ private fun TvProfileHost(
                         configurationPin = ""
                         configurationCanRemove = false
                     },
-                    secondaryActionLabel = strings.removeProfilePin.takeIf { configurationCanRemove },
+                    secondaryActionLabel = strings.profile.removeProfilePin.takeIf { configurationCanRemove },
                     onSecondaryAction =
                         if (configurationCanRemove) {
                             {
@@ -651,7 +651,7 @@ private fun TvProfileHost(
                 )
             }
             selectedProfile != null && !pickerVisible && activatedProfileId != selectedProfile.id ->
-                TvProfileStatusScreen(strings.switchingProfile)
+                TvProfileStatusScreen(strings.profile.switchingProfile)
             profiles.isEmpty() ->
                 TvConnectionScreen(
                     coordinator = koin.get<ServerConnectionCoordinator>(),
@@ -783,7 +783,7 @@ private fun TvAuthenticatedApp(
     serverRepository: ServerRepository,
     strings: TvStrings,
     stopPlayback: () -> Unit,
-    activeProfileName: String = strings.profiles,
+    activeProfileName: String = strings.profile.profiles,
     activeProfileId: String? = null,
     activeProfileGeneration: Long = 0L,
     onOpenProfiles: () -> Unit = {},

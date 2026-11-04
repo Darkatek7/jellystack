@@ -45,13 +45,15 @@ internal fun GoldenSignInFixture(
             TvGoldenFixture.SIGN_IN_ERROR ->
                 TvConnectionFormState(
                     baseUrl = GOLDEN_SERVER_URL,
-                    error = strings.quickConnectDisabled,
+                    error = strings.signIn.quickConnectDisabled,
                     canDismiss = true,
                 )
             TvGoldenFixture.SIGN_IN_LONG_MESSAGE ->
                 TvConnectionFormState(
                     baseUrl = GOLDEN_SERVER_URL,
-                    error = "${strings.quickConnectDisabled} ${strings.quickConnectFailed} ${strings.enterServerUrl}",
+                    error =
+                        "${strings.signIn.quickConnectDisabled} ${strings.signIn.quickConnectFailed} " +
+                            strings.signIn.enterServerUrl,
                     canDismiss = true,
                 )
             TvGoldenFixture.SIGN_IN_PASSWORD ->
