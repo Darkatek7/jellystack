@@ -177,6 +177,8 @@ class TvHomeScreenTest {
                 state = JellyfinHomeState(recentMovies = listOf(item("hero", "Hero", Clock.System.now().toString()))),
                 sections = sections,
                 engine = engine,
+                // No entry focus, so Home starts at its top the way it does before the user moves into the rows.
+                provideEntryFocus = false,
                 homeBack = homeBack,
             )
         }
