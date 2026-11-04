@@ -96,8 +96,12 @@ internal class TvTrailerPreviewController(
         mutableState.value = TvTrailerPreviewState.Armed(request)
         focusJob =
             scope.launch {
+                // Network lookups only start once focus has rested; the rest of the playback delay hides their latency.
+                val lookupDwell =
+                    if (cache.containsKey(request.target)) 0L else minOf(focusDelayMillis, LOOKUP_DWELL_MILLIS)
+                delay(lookupDwell)
                 val resolution = async { cachedOrResolve(request.target) }
-                delay(focusDelayMillis)
+                delay(focusDelayMillis - lookupDwell)
                 val source = resolution.await()
                 currentCoroutineContext().ensureActive()
                 if (!enabled || focusedRequest != request) return@launch
@@ -196,5 +200,6 @@ internal class TvTrailerPreviewController(
 
     private companion object {
         const val DEFAULT_FOCUS_DELAY_MILLIS = 1_500L
+        const val LOOKUP_DWELL_MILLIS = 400L
     }
 }
