@@ -300,6 +300,7 @@ private fun ColumnScope.TvSearchResults(
             item("seerr-results") {
                 TvSeerrRow(
                     title = TV_BRAND_SEERR,
+                    strings = strings,
                     items = context.presentation.seerrItems,
                     focusMemory = context.focusMemory,
                     routeKey = "search",
@@ -308,10 +309,7 @@ private fun ColumnScope.TvSearchResults(
                     focusTargetId = { id -> tvSearchResultTargetId("seerr", id) },
                     edgePadding = TV_SEARCH_ROW_EDGE,
                     bleedStart = TvLayoutTokens.ContentStart - TV_SEARCH_ROW_EDGE,
-                    onFocused = { item ->
-                        val backdrop = item.backdropPath
-                        onBackdrop(tmdbImageUrl(backdrop ?: item.posterPath, backdrop = backdrop != null))
-                    },
+                    onFocused = { item -> onBackdrop(item.tvBackdropUrl()) },
                 )
             }
         }

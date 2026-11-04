@@ -511,6 +511,9 @@ data class JellyfinItemUserData(
     val playedPercentage: Double? = null,
     @SerialName("LastPlayedDate")
     val lastPlayedDate: String? = null,
+    /** Series, seasons and folders: how many of their episodes or items the user has not played yet. */
+    @SerialName("UnplayedItemCount")
+    val unplayedItemCount: Int? = null,
 )
 
 @Serializable

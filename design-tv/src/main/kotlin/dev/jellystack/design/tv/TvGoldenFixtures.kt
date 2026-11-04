@@ -44,6 +44,7 @@ enum class TvGoldenFixture {
     DETAIL_LOAD_ERROR,
     NAVIGATION_RAIL_OPEN,
     RESUME_DIALOG,
+    DISCOVER_ROWS,
 }
 
 /** Screenshot-test entry point; production code never calls it. */
@@ -97,6 +98,7 @@ fun JellystackTvGoldenFixture(
                 TvGoldenFixture.DETAIL_LOAD_ERROR,
                 TvGoldenFixture.NAVIGATION_RAIL_OPEN,
                 TvGoldenFixture.RESUME_DIALOG,
+                TvGoldenFixture.DISCOVER_ROWS,
                 -> Unit
             }
         }
@@ -136,8 +138,30 @@ private fun GoldenLandscapeCards(strings: TvStrings) {
                 )
             }
         }
+        Row(horizontalArrangement = Arrangement.spacedBy(TvLayoutTokens.CardSpacing)) {
+            goldenBadgeItems().forEach { item ->
+                val text = item.tvCardText(strings)
+                TvMediaCard(
+                    title = text.title,
+                    subtitle = text.subtitle,
+                    progress = text.progress,
+                    badge = tvJellyfinCardBadge(item, strings),
+                    imageUrl = null,
+                    onClick = {},
+                )
+            }
+        }
     }
 }
+
+/** A series with unplayed episodes, a finished movie, a series with a three-digit count, and a library card. */
+private fun goldenBadgeItems(): List<JellyfinItem> =
+    listOf(
+        goldenItem("Series", "Harbor Lights").copy(productionYear = 2021, unplayedCount = 7),
+        goldenItem("Movie", "Northern Lights").copy(productionYear = 2019, isPlayed = true),
+        goldenItem("Series", "Long Running Show").copy(productionYear = 1999, unplayedCount = 312),
+        goldenItem("Series", "All Caught Up").copy(productionYear = 2023, isPlayed = true),
+    )
 
 @Composable
 private fun GoldenPortraitCards() {
@@ -151,6 +175,23 @@ private fun GoldenPortraitCards() {
             onClick = {},
             subtitle = "1973",
             format = TvMediaCardFormat.POSTER,
+        )
+        TvMediaCard(
+            title = "Harbor Lights",
+            imageUrl = null,
+            onClick = {},
+            subtitle = "2021",
+            format = TvMediaCardFormat.POSTER,
+            badge = TvMediaCardBadge.Unplayed(7, "7 unplayed"),
+        )
+        TvMediaCard(
+            title = "A Poster Title That Is Much Too Long",
+            imageUrl = null,
+            onClick = {},
+            subtitle = "2020",
+            format = TvMediaCardFormat.POSTER,
+            progress = 0.4f,
+            badge = TvMediaCardBadge.Watched("Watched"),
         )
         TvMediaCard(
             title = "Alex Example",

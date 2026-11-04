@@ -122,3 +122,13 @@ fun TvResumeDialog() = JellystackTvGoldenFixture(TvGoldenFixture.RESUME_DIALOG)
 @Preview(name = "German 150% 1080p", device = TV_1080P, locale = "de", fontScale = 1.5f)
 @Composable
 fun TvResumeDialogGermanLarge() = JellystackTvGoldenFixture(TvGoldenFixture.RESUME_DIALOG, AppLanguage.GERMAN)
+
+@PreviewTest
+@Preview(name = "1080p", device = TV_1080P)
+@Composable
+fun TvDiscoverRows() = JellystackTvGoldenFixture(TvGoldenFixture.DISCOVER_ROWS)
+
+@PreviewTest
+@Preview(name = "German 150% 1080p", device = TV_1080P, locale = "de", fontScale = 1.5f)
+@Composable
+fun TvDiscoverRowsGermanLarge() = JellystackTvGoldenFixture(TvGoldenFixture.DISCOVER_ROWS, AppLanguage.GERMAN)

@@ -15,6 +15,7 @@ fun JellyfinItem.withProgressOf(fresher: JellyfinItem): JellyfinItem =
         playedPercentage = fresher.playedPercentage,
         lastPlayed = fresher.lastPlayed,
         isPlayed = fresher.isPlayed,
+        unplayedCount = fresher.unplayedCount ?: unplayedCount,
     )
 
 /**

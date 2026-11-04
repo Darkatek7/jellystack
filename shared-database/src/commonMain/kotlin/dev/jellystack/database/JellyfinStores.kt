@@ -149,6 +149,7 @@ class SqlDelightJellyfinItemStore(
                         date_created,
                         updated_at,
                         played,
+                        unplayed_count,
                     ->
                     mapItemRecord(
                         id = id,
@@ -188,6 +189,7 @@ class SqlDelightJellyfinItemStore(
                         dateCreated = date_created,
                         updatedAt = updated_at,
                         played = played,
+                        unplayedCount = unplayed_count,
                     )
                 }.executeAsList()
         }
@@ -237,6 +239,7 @@ class SqlDelightJellyfinItemStore(
                         date_created,
                         updated_at,
                         played,
+                        unplayed_count,
                     ->
                     mapItemRecord(
                         id = id,
@@ -276,6 +279,7 @@ class SqlDelightJellyfinItemStore(
                         dateCreated = date_created,
                         updatedAt = updated_at,
                         played = played,
+                        unplayedCount = unplayed_count,
                     )
                 }.executeAsList()
         }
@@ -324,6 +328,7 @@ class SqlDelightJellyfinItemStore(
                         date_created,
                         updated_at,
                         played,
+                        unplayed_count,
                     ->
                     mapItemRecord(
                         id = id,
@@ -363,6 +368,7 @@ class SqlDelightJellyfinItemStore(
                         dateCreated = date_created,
                         updatedAt = updated_at,
                         played = played,
+                        unplayedCount = unplayed_count,
                     )
                 }.executeAsList()
         }
@@ -431,6 +437,7 @@ class SqlDelightJellyfinItemStore(
                         date_created,
                         updated_at,
                         played,
+                        unplayed_count,
                     ->
                     mapItemRecord(
                         id = id,
@@ -470,6 +477,7 @@ class SqlDelightJellyfinItemStore(
                         dateCreated = date_created,
                         updatedAt = updated_at,
                         played = played,
+                        unplayedCount = unplayed_count,
                     )
                 }.executeAsList()
         }
@@ -531,6 +539,7 @@ class SqlDelightJellyfinItemStore(
                         date_created,
                         updated_at,
                         played,
+                        unplayed_count,
                     ->
                     mapItemRecord(
                         id = id,
@@ -570,6 +579,7 @@ class SqlDelightJellyfinItemStore(
                         dateCreated = date_created,
                         updatedAt = updated_at,
                         played = played,
+                        unplayedCount = unplayed_count,
                     )
                 }.executeAsList()
         }
@@ -618,6 +628,7 @@ class SqlDelightJellyfinItemStore(
                         date_created,
                         updated_at,
                         played,
+                        unplayed_count,
                     ->
                     mapItemRecord(
                         id = id,
@@ -657,6 +668,7 @@ class SqlDelightJellyfinItemStore(
                         dateCreated = date_created,
                         updatedAt = updated_at,
                         played = played,
+                        unplayedCount = unplayed_count,
                     )
                 }.executeAsList()
         }
@@ -724,6 +736,7 @@ class SqlDelightJellyfinItemStore(
             date_created = record.dateCreated,
             updated_at = record.updatedAt.toEpochMilliseconds(),
             played = if (record.played) 1L else 0L,
+            unplayed_count = record.unplayedCount?.toLong(),
         )
     }
 }
@@ -803,6 +816,7 @@ private fun mapItemRecord(
     dateCreated: String?,
     updatedAt: Long,
     played: Long,
+    unplayedCount: Long?,
 ): JellyfinItemRecord =
     JellyfinItemRecord(
         id = id,
@@ -846,6 +860,7 @@ private fun mapItemRecord(
         dateCreated = dateCreated,
         updatedAt = Instant.fromEpochMilliseconds(updatedAt),
         played = played != 0L,
+        unplayedCount = unplayedCount?.toInt(),
     )
 
 private fun Jellyfin_items.toRecord(): JellyfinItemRecord =
@@ -887,6 +902,7 @@ private fun Jellyfin_items.toRecord(): JellyfinItemRecord =
         dateCreated = date_created,
         updatedAt = updated_at,
         played = played,
+        unplayedCount = unplayed_count,
     )
 
 private fun SelectContinueWatching.toRecord(): JellyfinItemRecord =
@@ -928,6 +944,7 @@ private fun SelectContinueWatching.toRecord(): JellyfinItemRecord =
         dateCreated = date_created,
         updatedAt = updated_at,
         played = played,
+        unplayedCount = unplayed_count,
     )
 
 private fun Jellyfin_item_details.toRecord(): JellyfinItemDetailRecord =

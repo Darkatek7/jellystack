@@ -262,6 +262,8 @@ private fun HomeSectionItemDto.toDomain(baseUrl: String): HomeSectionItem? {
                 seasonId = seasonId,
                 episodeTitle = null,
                 lastPlayed = userData?.lastPlayedDate,
+                isPlayed = userData?.played == true,
+                unplayedCount = userData?.unplayedItemCount,
             )
         }
     val action =

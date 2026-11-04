@@ -52,6 +52,8 @@ data class JellyfinItem(
     val providerIds: MediaProviderIds = MediaProviderIds(sourceLocalId = id),
     /** Whether the user has watched the item, as reported by the server's user data. */
     val isPlayed: Boolean = false,
+    /** Series and seasons: how many episodes the user has not played yet; null when the server did not say. */
+    val unplayedCount: Int? = null,
 )
 
 data class JellyfinItemDetail(
