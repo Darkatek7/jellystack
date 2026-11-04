@@ -64,6 +64,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.media3.common.util.UnstableApi
 import dev.jellystack.core.jellyfin.HomeSection
 import dev.jellystack.core.jellyfin.HomeSectionAction
 import dev.jellystack.core.jellyfin.HomeSectionViewMode
@@ -148,6 +149,7 @@ internal fun tvHomeFirstCardTopDp(): Int = (TV_CINEMATIC_ROWS_TOP + TV_HOME_ROW_
 
 internal enum class TvSearchSource { ALL, JELLYFIN, SEERR }
 
+@androidx.annotation.OptIn(UnstableApi::class)
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun TvHomeScreen(
@@ -905,6 +907,7 @@ private fun TvHomeSectionRow(
     }
 }
 
+@androidx.annotation.OptIn(UnstableApi::class)
 @Composable
 internal fun TvLibraryScreen(
     route: TvRoute.Library,

@@ -81,6 +81,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.util.UnstableApi
 import androidx.tv.material3.Icon
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
@@ -615,6 +616,7 @@ private fun TvMediaCardContent(
     }
 }
 
+@androidx.annotation.OptIn(UnstableApi::class)
 @Composable
 internal fun TvTrailerPreviewSurface(
     previewEngine: AndroidPlayerEngine,

@@ -57,6 +57,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.media3.common.util.UnstableApi
 import androidx.tv.material3.Text
 import dev.jellystack.core.jellyfin.HomeSectionAction
 import dev.jellystack.core.jellyfin.HomeSectionsState
@@ -242,6 +243,7 @@ internal fun tvLibraryCardShape(
         TvLibraryCardShape.LANDSCAPE
     }
 
+@androidx.annotation.OptIn(UnstableApi::class)
 @Composable
 internal fun TvSelectedLibraryScreen(
     route: TvRoute.Library,
