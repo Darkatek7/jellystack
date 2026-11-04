@@ -443,7 +443,6 @@ internal fun Modifier.tvMediaCardSize(
  *
  * [captionBelow] is the one switch for a caller that deliberately shows no text, for instance where another element
  * names the focused item; [TvMediaCardFormat.CAST_PORTRAIT] cards keep their text over the artwork.
- * [titleInArtwork] drops the title for artwork the server made with the title in it (libraries), keeping the subtitle.
  * [badge] wins over the older [watched] flag.
  */
 @Composable
@@ -466,7 +465,6 @@ internal fun TvMediaCard(
     focusToNavigationRailOnLeft: Boolean = false,
     focusTargetId: String? = null,
     providedFocusRequester: FocusRequester? = null,
-    titleInArtwork: Boolean = false,
     captionBelow: Boolean = true,
 ) {
     val shape = TvShapes.Card
@@ -499,8 +497,7 @@ internal fun TvMediaCard(
     val shownImageUrl = imageUrl?.takeUnless { imageFailed }
     val overlaysText = format == TvMediaCardFormat.CAST_PORTRAIT
     val shownBadge = badge ?: TvMediaCardBadge.Watched("").takeIf { watched }
-    val shownTitle = title.takeUnless { titleInArtwork && shownImageUrl != null }
-    val hasCaption = captionBelow && (shownTitle != null || subtitle != null)
+    val hasCaption = captionBelow && (title != null || subtitle != null)
     val description = listOfNotNull(title, subtitle, shownBadge?.description?.takeIf(String::isNotBlank))
     val artModifier =
         modifier
@@ -521,7 +518,7 @@ internal fun TvMediaCard(
             )
             if (overlaysText) {
                 TvMediaCardOverlayText(
-                    title = shownTitle,
+                    title = title,
                     subtitle = subtitle,
                     modifier = Modifier.align(Alignment.BottomStart),
                 )
@@ -543,7 +540,7 @@ internal fun TvMediaCard(
         ) {
             art()
             if (hasCaption) {
-                TvMediaCardCaption(shownTitle, subtitle, Modifier.clearAndSetSemantics {})
+                TvMediaCardCaption(title, subtitle, Modifier.clearAndSetSemantics {})
             }
         }
     }

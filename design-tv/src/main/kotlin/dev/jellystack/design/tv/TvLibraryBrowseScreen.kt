@@ -195,6 +195,7 @@ private fun JellyfinItem.toCinematicCard(
         resumeFraction = text.progress?.takeIf { it in 0.01f..0.99f },
         logoUrl = tvJellyfinLogoUrl(state.imageBaseUrl, state.imageAccessToken, this),
         metadata = tvStageMetadata(),
+        remainingMinutes = tvRemainingMinutes(runTimeTicks, positionTicks).takeUnless { isBrowseContainer() },
     )
 }
 
@@ -300,9 +301,15 @@ internal fun TvSelectedLibraryScreen(
             focusedItem?.let { item -> trailerPreviewState.showsTvStagePreview(item.id, focusedPresentationId) } == true
         val currentOnPlayItem by rememberUpdatedState(onPlayItem)
         val playback =
-            remember(allKnownItems, strings.play, strings.continueLabel, strings.details) {
+            remember(allKnownItems, strings) {
                 TvCinematicCardPlayback(
-                    labels = TvCinematicHintLabels(play = strings.play, resume = strings.continueLabel, details = strings.details),
+                    labels =
+                        TvCinematicHintLabels(
+                            play = strings.play,
+                            resume = strings.continueLabel,
+                            details = strings.details,
+                            endsAt = strings.player.endsAt,
+                        ),
                     canPlay = { card -> allKnownItems[card.id]?.isBrowseContainer() == false },
                     onPlay = { card -> allKnownItems[card.id]?.let(currentOnPlayItem) },
                 )

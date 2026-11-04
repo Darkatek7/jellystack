@@ -50,13 +50,21 @@ internal fun tvEndsAtClock(
 internal fun rememberTvEndsAtLabel(
     remainingMinutes: Long?,
     strings: TvStrings,
+): String? = rememberTvEndsAtLabel(remainingMinutes, strings.player.endsAt)
+
+/** [rememberTvEndsAtLabel] for a caller that only has the "Ends at %s" pattern, such as a cinematic stage. */
+@Composable
+internal fun rememberTvEndsAtLabel(
+    remainingMinutes: Long?,
+    pattern: String?,
 ): String? {
     val format = DateFormat.getTimeFormat(LocalContext.current)
     val nowMillis = LocalTvNowMillis.current
     // The label is computed once per remaining time: a detail page is not open long enough for it to drift.
-    return remember(remainingMinutes, format, strings, nowMillis) {
+    return remember(remainingMinutes, format, pattern, nowMillis) {
+        if (pattern == null) return@remember null
         remainingMinutes
             ?.takeIf { it > 0L }
-            ?.let { strings.player.endsAt.format(tvEndsAtClock(nowMillis(), it, format)) }
+            ?.let { pattern.format(tvEndsAtClock(nowMillis(), it, format)) }
     }
 }

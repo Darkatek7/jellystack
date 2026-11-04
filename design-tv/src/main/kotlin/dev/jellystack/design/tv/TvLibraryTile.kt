@@ -86,6 +86,7 @@ internal fun TvLibraryTile(
     focusToNavigationRailOnLeft: Boolean = false,
     focusTargetId: String? = null,
     tileModifier: Modifier = Modifier,
+    onFocusChanged: ((Boolean) -> Unit)? = null,
 ) {
     val shape = TvShapes.Card
     var imageFailed by remember(imageUrl) { mutableStateOf(false) }
@@ -104,6 +105,7 @@ internal fun TvLibraryTile(
                         onClick = onClick,
                         shape = shape,
                         onFocused = onFocused,
+                        onFocusChanged = onFocusChanged,
                         focusToNavigationRailOnLeft = focusToNavigationRailOnLeft,
                         focusTargetId = focusTargetId,
                     )

@@ -793,9 +793,31 @@ private fun TvHomeSectionRow(
                 val targetId = tvHomeCardTargetId(rowId, item.id)
                 val previewItem = item.tvStagePreviewItem()
                 val cardText = item.jellyfinItem?.tvCardText(strings)
-                val opensLibrary = item.jellyfinItem?.let(::tvHomeJellyfinDestination) is TvHomeJellyfinDestination.Library
+                val libraryDestination =
+                    item.jellyfinItem?.let(::tvHomeJellyfinDestination) as? TvHomeJellyfinDestination.Library
+                if (item.action == HomeSectionAction.JELLYFIN && libraryDestination != null) {
+                    // Libraries look the same whether the Home Sections plugin or the built-in row lists them.
+                    TvLibraryTile(
+                        name = item.name,
+                        collectionType = null,
+                        imageUrl = resolveTvHomeSectionImageUrl(item, imageBaseUrl, imageAccessToken),
+                        subtitle = null,
+                        onClick = { onHomeLibrary(libraryDestination.libraryId, libraryDestination.title) },
+                        onFocused = {
+                            focusKeeper.onFocused(item.id)
+                            focusMemory.remember("home", section.id, item.id, horizontalIndex = index)
+                        },
+                        onFocusChanged = { focused -> if (!focused) focusKeeper.onBlurred(item.id) },
+                        tileModifier =
+                            Modifier
+                                .tvScreenEntryFocus(screenEntry && index == 0, targetId)
+                                .tvHomeVerticalFocus { direction -> onVerticalMove(item.id, previewItem, direction) },
+                        focusTargetId = targetId,
+                        focusToNavigationRailOnLeft = index == 0,
+                    )
+                    return@itemsIndexed
+                }
                 TvMediaCard(
-                    titleInArtwork = opensLibrary,
                     title = cardText?.title ?: item.name,
                     subtitle =
                         cardText?.subtitle ?: listOfNotNull(

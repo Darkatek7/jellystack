@@ -85,6 +85,8 @@ internal fun TvCinematicStage(
             TvCinematicStageText(
                 hero = hero,
                 card = focusedCard,
+                endsAtPattern =
+                    playback?.labels?.endsAt?.takeIf { focusedCard != null && playback.canPlay(focusedCard) },
                 modifier =
                     Modifier
                         .align(Alignment.TopStart)
@@ -113,6 +115,7 @@ internal fun TvCinematicStage(
 private fun TvCinematicStageText(
     hero: TvCinematicHero?,
     card: TvCinematicCard?,
+    endsAtPattern: String?,
     modifier: Modifier,
 ) {
     val fadeMs = tvHomeHeroFadeMillis()
@@ -149,8 +152,10 @@ private fun TvCinematicStageText(
                         modifier = Modifier.weight(1f, fill = false),
                     )
                 }
-                (shown?.metadata ?: shown?.subtitle)?.let {
-                    Text(it, color = TvTextMuted, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                val endsAt = rememberTvEndsAtLabel(shown?.remainingMinutes, endsAtPattern)
+                val line = listOfNotNull(shown?.metadata ?: shown?.subtitle, endsAt).joinToString(TV_CARD_SEPARATOR)
+                if (line.isNotBlank()) {
+                    Text(line, color = TvTextMuted, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
