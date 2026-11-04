@@ -61,4 +61,33 @@ class TvLibraryEntryFocusTest {
             ),
         )
     }
+
+    @Test
+    fun headerControlsWaitForTheCardsWhenTheyMayNotLead() {
+        val session = TvSemanticFocusRestorationSession(snapshot = null, interactionRevision = 0L)
+
+        // Loaded, but the cards register a frame after the header: the header must not take the first focus.
+        assertNull(
+            session.preferredTargetId(
+                listOf(sort, filter),
+                contentAuthoritativelyLoaded = true,
+                queryControlsMayLead = false,
+            ),
+        )
+    }
+
+    @Test
+    fun queryControlsLeadOnlyForTheRoutesOwnEmptyLibrary() {
+        val route = TvRoute.Library(libraryId = "library", mode = TvLibraryMode.ALL_TITLES)
+        val emptyAndLoaded = JellyfinHomeState(selectedLibraryId = "library", endReached = true)
+
+        assertTrue(tvLibraryQueryControlsMayLead(route, emptyAndLoaded))
+        val withItems = emptyAndLoaded.copy(libraryItems = listOf(goldenItem("Movie", "Colour Bars")))
+        assertFalse(tvLibraryQueryControlsMayLead(route, withItems))
+        assertFalse(tvLibraryQueryControlsMayLead(route, emptyAndLoaded.copy(selectedLibraryId = "other")))
+        assertFalse(tvLibraryQueryControlsMayLead(route, JellyfinHomeState(selectedLibraryId = "library")))
+        assertTrue(tvLibraryQueryControlsMayLead(TvRoute.Search, emptyAndLoaded))
+        // A browse route that falls back to the titles grid follows the same rule.
+        assertFalse(tvLibraryQueryControlsMayLead(TvRoute.Library(libraryId = "library"), withItems))
+    }
 }

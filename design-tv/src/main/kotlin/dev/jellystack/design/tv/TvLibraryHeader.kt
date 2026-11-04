@@ -149,3 +149,18 @@ internal fun tvLibraryContentDetermined(state: JellyfinHomeState): Boolean {
     val knownEmpty = (state.totalLibraryItemCount ?: libraryCount) == 0L
     return state.libraryItems.isNotEmpty() || state.endReached || state.libraryErrorMessage != null || knownEmpty
 }
+
+/**
+ * Whether the sort and filter controls may take a library page's first focus: only when [route]'s own library has
+ * answered with no items. While items exist or may still arrive, the first card takes it.
+ */
+internal fun tvLibraryQueryControlsMayLead(
+    route: TvRoute,
+    state: JellyfinHomeState,
+): Boolean {
+    // Any library route: a browse route whose library has too few titles for rows shows the same grid and header.
+    if (route !is TvRoute.Library) return true
+    return state.selectedLibraryId == route.libraryId &&
+        state.libraryItems.isEmpty() &&
+        tvLibraryContentDetermined(state)
+}

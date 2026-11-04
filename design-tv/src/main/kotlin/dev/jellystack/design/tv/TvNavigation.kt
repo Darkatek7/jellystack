@@ -253,13 +253,15 @@ internal class TvSemanticFocusRestorationSession(
     fun preferredTargetId(
         availableTargets: List<TvFocusTarget>,
         contentAuthoritativelyLoaded: Boolean,
+        queryControlsMayLead: Boolean = contentAuthoritativelyLoaded,
     ): String? {
         if (!isPending) return null
         val actionable = availableTargets.filter(TvFocusTarget::actionable)
         val remembered =
             snapshot ?: return actionable
-                // Controls above a grid must not claim the first focus while the grid's items are still on their way.
-                .firstOrNull { contentAuthoritativelyLoaded || !it.isLibraryQueryControl() }
+                // Controls above a grid must not claim the first focus while the grid's items are still on their way,
+                // or before the grid's cards have registered in the frame after the header.
+                .firstOrNull { queryControlsMayLead || !it.isLibraryQueryControl() }
                 ?.targetId
         actionable.firstOrNull { it.anchor == remembered.anchor }?.let { return it.targetId }
         if (!contentAuthoritativelyLoaded) return null

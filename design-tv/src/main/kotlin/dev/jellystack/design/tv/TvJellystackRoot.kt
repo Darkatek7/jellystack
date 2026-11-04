@@ -1378,6 +1378,9 @@ private fun TvAuthenticatedApp(
                 railExpanded = appUiState.railExpanded,
                 isForeground = appUiState.isForeground,
                 contentAuthoritativelyLoaded = focusContentAuthoritativelyLoaded,
+                queryControlsMayLead =
+                    focusContentAuthoritativelyLoaded &&
+                        tvLibraryQueryControlsMayLead(currentRoute, homeState),
             ),
         sessions = TvRootFocusSessions(semanticRestorationSession, railRestorationSession),
     )

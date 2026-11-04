@@ -16,6 +16,8 @@ internal data class TvRootFocusState(
     val railExpanded: Boolean,
     val isForeground: Boolean,
     val contentAuthoritativelyLoaded: Boolean,
+    /** Whether a library's sort and filter controls may take the first focus: only for a library known to be empty. */
+    val queryControlsMayLead: Boolean = contentAuthoritativelyLoaded,
 )
 
 internal class TvRootFocusSessions(
@@ -88,6 +90,7 @@ private suspend fun restoreContentFocus(
         semanticRestorationSession.preferredTargetId(
             availableTargets = focusCoordinator.focusTargets(focus.routeKey),
             contentAuthoritativelyLoaded = focus.contentAuthoritativelyLoaded,
+            queryControlsMayLead = focus.queryControlsMayLead,
         ) ?: return
     val restoration =
         focusCoordinator.restoreFocus(
