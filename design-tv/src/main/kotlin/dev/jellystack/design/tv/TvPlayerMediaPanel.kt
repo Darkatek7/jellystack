@@ -293,7 +293,7 @@ internal fun tvPlayerMediaList(
                 tvEpisodeRows(seasonEpisodes, active.mediaId, strings) { episode ->
                     jellyfinImageUrl(images.baseUrl, images.accessToken, episode.id, episode.primaryImageTag)
                 }
-            TvPlayerMediaList(title = strings.episodes, rows = rows)
+            TvPlayerMediaList(title = strings.detailText.episodes, rows = rows)
         }
         else -> null
     }

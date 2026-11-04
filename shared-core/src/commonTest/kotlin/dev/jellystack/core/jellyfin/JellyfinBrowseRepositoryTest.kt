@@ -86,6 +86,7 @@ class JellyfinBrowseRepositoryTest {
                         when (request.url.parameters["IncludeItemTypes"]) {
                             "Movie" -> LATEST_MOVIES_JSON
                             "Series,Episode" -> LATEST_SHOWS_JSON
+                            "MusicAlbum" -> LATEST_MOVIES_JSON
                             else -> error("Unexpected includeItemTypes: ${request.url.parameters}")
                         }
                     "/Items" ->
@@ -155,6 +156,34 @@ class JellyfinBrowseRepositoryTest {
             assertNull(parameters["ParentId"])
             assertEquals(listOf("film-2", "film-1"), items.map { it.id })
             assertNotNull(itemStore.get("film-1"))
+        }
+
+    @Test
+    fun findPersonByNameTakesOnlyAnExactCaseInsensitiveMatchOfTheServersPartialHits() =
+        runTest {
+            val requests = mutableListOf<Pair<String, Map<String, String>>>()
+            val personsJson =
+                """{"Items":[{"Id":"p-1","Name":"Ada Examples","Type":"Person"},{"Id":"p-2","Name":"ada example","Type":"Person"}],"TotalRecordCount":2}"""
+            val repository = listRepository(requests, personsJson)
+
+            val person = repository.findPersonByName("  Ada Example ")
+
+            assertEquals("p-2", person?.id)
+            val (path, parameters) = requests.single()
+            assertEquals("/Persons", path)
+            assertEquals("Ada Example", parameters["SearchTerm"])
+        }
+
+    @Test
+    fun findPersonByNameIsNullWithoutAnExactHit() =
+        runTest {
+            val requests = mutableListOf<Pair<String, Map<String, String>>>()
+            val repository =
+                listRepository(requests, """{"Items":[{"Id":"p-1","Name":"Ada Examples","Type":"Person"}],"TotalRecordCount":1}""")
+
+            assertNull(repository.findPersonByName("Ada Example"))
+            assertNull(repository.findPersonByName("   "))
+            assertEquals(1, requests.size)
         }
 
     @Test
@@ -677,6 +706,9 @@ class JellyfinBrowseRepositoryTest {
             assertTrue(items.single { it.id == "item-2" }.isPlayed)
             val stored = itemStore.listByLibrary(environment.serverKey, "lib-1", limit = 10, offset = 0)
             assertTrue(stored.single { it.id == "item-2" }.played)
+            assertEquals(4, items.single { it.id == "item-1" }.unplayedCount)
+            assertEquals(null, items.single { it.id == "item-2" }.unplayedCount)
+            assertEquals(4, stored.single { it.id == "item-1" }.unplayedCount)
         }
 
     @Test
@@ -859,6 +891,31 @@ class JellyfinBrowseRepositoryTest {
 
             assertTrue(repository.hasCachedItemDetail("item-1"))
             assertFalse(repository.hasCachedItemDetail("item-2"))
+        }
+
+    @Test
+    fun latestForALibraryUsesItsKindOfItemsAndReturnsThem() =
+        runTest {
+            val items = repository.refreshLatestForLibrary("music-lib", "music", limit = 8)
+
+            assertTrue(items.isNotEmpty())
+            assertEquals("music-lib", items.first().libraryId ?: "music-lib")
+            assertEquals("MusicAlbum", latestItemTypesForCollection("music"))
+            assertEquals(null, latestItemTypesForCollection("homevideos"))
+        }
+
+    @Test
+    fun letterLookupReadsTheTotalAndRangeLoadsLeaveTheCacheAlone() =
+        runTest {
+            repository.refreshLibraries()
+            val cachedBefore = repository.cachedLibraryPage("lib-1", page = 0, pageSize = 30)
+
+            val index = repository.countLibraryItemsBefore("lib-1", LibraryBrowseQuery.DEFAULT, "M")
+            val range = repository.loadLibraryRange("lib-1", startIndex = 30, limit = 60, query = LibraryBrowseQuery.DEFAULT)
+
+            assertEquals(2L, index)
+            assertEquals(2, range.items.size)
+            assertEquals(cachedBefore, repository.cachedLibraryPage("lib-1", page = 0, pageSize = 30))
         }
 
     @Test
@@ -1424,7 +1481,8 @@ class JellyfinBrowseRepositoryTest {
                   "ImageTags": {"Primary": "tag-primary"},
                   "UserData": {
                     "PlaybackPositionTicks": 12000000000,
-                    "PlayedPercentage": 33.3
+                    "PlayedPercentage": 33.3,
+                    "UnplayedItemCount": 4
                   }
                 },
                 {

@@ -12,10 +12,12 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 
@@ -25,6 +27,7 @@ class TvLiveTvCoordinatorTest {
     private val channels = listOf(channel("c1"), channel("c2"), channel("c3"))
     private var channelResult: () -> List<LiveTvChannel> = { channels }
     private val programRequests = mutableListOf<List<String>>()
+    private val windowRequests = mutableListOf<Pair<Instant, Duration>>()
 
     @Test
     fun programsLoadForTheChannelsOnScreenOnly() =
@@ -80,6 +83,62 @@ class TvLiveTvCoordinatorTest {
             assertEquals("Show c1b", ready.nowAndNext("c1").now?.title)
             // The guide is re-evaluated at the boundary (plus a little slack), not at the end of the wait.
             assertEquals(start + 30.minutes + 500.milliseconds, ready.at)
+        }
+
+    @Test
+    fun theGuideGridLoadsItsTimeRangeForTheRowsOnScreenAndAsksAgainOnlyForMore() =
+        runTest {
+            val coordinator = coordinator()
+            coordinator.show()
+            runCurrent()
+
+            coordinator.setGuideWindow(listOf("c1", "c2"), from = start, until = start + 6.hours)
+            runCurrent()
+            assertEquals(listOf(listOf("c1", "c2")), programRequests)
+            assertEquals(listOf(start to 6.hours), windowRequests)
+
+            // The same range, and a shorter one for the same rows, are already there.
+            coordinator.setGuideWindow(listOf("c1", "c2"), from = start, until = start + 6.hours)
+            coordinator.setGuideWindow(listOf("c1", "c2", "c3"), from = start, until = start + 3.hours)
+            runCurrent()
+            assertEquals(listOf(listOf("c1", "c2"), listOf("c3")), programRequests)
+
+            // Scrolling right asks for the rows again, over the longer range.
+            coordinator.setGuideWindow(listOf("c1", "c2"), from = start, until = start + 9.hours)
+            runCurrent()
+            assertEquals(listOf("c1", "c2"), programRequests.last())
+            assertEquals(start to 9.hours, windowRequests.last())
+            val ready = coordinator.state.value as TvLiveTvState.Ready
+            assertEquals(start + 9.hours, ready.guideUntil["c1"])
+        }
+
+    @Test
+    fun theGuideGridKeepsTheProgramsOfEarlierLoadsWhenItLoadsMore() =
+        runTest {
+            val coordinator = coordinator()
+            coordinator.show()
+            runCurrent()
+            coordinator.setVisible(listOf("c1"))
+            runCurrent()
+
+            coordinator.setGuideWindow(listOf("c1"), from = start, until = start + 6.hours)
+            runCurrent()
+
+            val ready = coordinator.state.value as TvLiveTvState.Ready
+            assertEquals(listOf("c1-a", "c1-b", "c1-c"), ready.guide.getValue("c1").map { it.id })
+        }
+
+    @Test
+    fun theChannelListAndTheGuideGridShareOneChoiceForTheSession() =
+        runTest {
+            val coordinator = coordinator()
+            assertFalse(coordinator.guideMode.value)
+
+            coordinator.toggleGuide()
+            assertTrue(coordinator.guideMode.value)
+
+            coordinator.toggleGuide()
+            assertFalse(coordinator.guideMode.value)
         }
 
     @Test
@@ -155,8 +214,10 @@ class TvLiveTvCoordinatorTest {
                     override suspend fun programs(
                         channelIds: List<String>,
                         at: Instant,
+                        window: Duration,
                     ): Map<String, List<LiveTvProgram>> {
                         programRequests += channelIds
+                        windowRequests += at to window
                         check(!failPrograms) { "guide unavailable" }
                         return channelIds.associateWith { id -> programsOf(id) }
                     }

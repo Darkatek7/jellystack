@@ -61,7 +61,7 @@ internal fun buildTvDiscoverRows(
                     .collapsedByMedia()
                     .mapNotNull { it.toSearchItem(strings.messages::untitledRequest) }
             val requestCards = cardsOf(requested) { "request:${it.cinematicKey()}" }
-            tvCinematicRowOrNull(DISCOVER_REQUESTS_ROW, strings.requests, requestCards)?.let(::add)
+            tvCinematicRowOrNull(DISCOVER_REQUESTS_ROW, strings.seerr.requests, requestCards)?.let(::add)
         }
     return TvDiscoverRows(rows, itemsByCardId)
 }
@@ -123,9 +123,15 @@ private fun JellyseerrSearchItem.toCinematicCard(
         title = title.ifBlank { untitled },
         subtitle = releaseYear,
         overview = overview,
-        artworkUrl = tmdbImageUrl(backdropPath ?: posterPath, backdrop = backdropPath != null),
+        artworkUrl = tmdbCardImageUrl(backdropPath ?: posterPath, backdrop = backdropPath != null),
         backdropUrl = tmdbImageUrl(backdropPath ?: posterPath, backdrop = backdropPath != null),
         selected = selected,
     )
 
 internal fun JellyseerrSearchItem.cinematicKey(): String = "${mediaType.name.lowercase()}:$tmdbId"
+
+/** The wide artwork of a Seerr item, or its poster, as the screen backdrop while the item is focused. */
+internal fun JellyseerrSearchItem.tvBackdropUrl(): String? {
+    val backdrop = backdropPath
+    return tmdbImageUrl(backdrop ?: posterPath, backdrop = backdrop != null)
+}

@@ -74,6 +74,18 @@ internal fun libraryQueryForCollectionType(collectionType: String?): LibraryQuer
         else -> LibraryQuery(includeItemTypes = null, recursive = false)
     }
 
+/** The item kinds "recently added" shows for a library; null leaves the choice to the server. */
+internal fun latestItemTypesForCollection(collectionType: String?): String? =
+    when (collectionType?.lowercase()) {
+        "movies" -> "Movie"
+        "tvshows", "series" -> "Series,Episode"
+        "music" -> "MusicAlbum"
+        "musicvideos" -> "MusicVideo"
+        "books" -> "Book,AudioBook"
+        "boxsets", "collections" -> "BoxSet"
+        else -> null
+    }
+
 internal interface JellyfinBrowseRepositoryApi {
     suspend fun refreshLibraries(): List<JellyfinLibrary>
 
@@ -116,6 +128,24 @@ internal interface JellyfinBrowseRepositoryApi {
             filters = query.takeIf { it.favoritesOnly }?.let { "IsFavorite" },
         )
 
+    /**
+     * How many items of the library sort before [name] under [query]'s filters and sort name: the index of the first
+     * item that sorts at or after it. Null when it cannot be determined.
+     */
+    suspend fun countLibraryItemsBefore(
+        libraryId: String,
+        query: LibraryBrowseQuery,
+        name: String,
+    ): Long? = null
+
+    /** Items [startIndex] until [startIndex] + [limit] of the library under [query]; never touches the cache. */
+    suspend fun loadLibraryRange(
+        libraryId: String,
+        startIndex: Int,
+        limit: Int,
+        query: LibraryBrowseQuery,
+    ): LibraryPage = LibraryPage(emptyList(), null)
+
     suspend fun cachedLibraryPage(
         libraryId: String,
         page: Int,
@@ -146,6 +176,13 @@ internal interface JellyfinBrowseRepositoryApi {
         libraryId: String,
         limit: Int,
     ): List<JellyfinItem>
+
+    /** The newest items of any kind of library, for the library landing; empty when there are none. */
+    suspend fun refreshLatestForLibrary(
+        libraryId: String,
+        collectionType: String?,
+        limit: Int,
+    ): List<JellyfinItem> = emptyList()
 
     suspend fun currentServerBaseUrl(): String?
 
@@ -310,28 +347,57 @@ class JellyfinBrowseRepository(
         if (cachePolicy == LibraryCachePolicy.CANONICAL_DEFAULT) {
             return loadLibraryPage(libraryId, page, pageSize, refresh = page == 0, filters = null)
         }
+        return loadLibraryRange(libraryId, startIndex = page * pageSize, limit = pageSize, query = query)
+    }
+
+    override suspend fun loadLibraryRange(
+        libraryId: String,
+        startIndex: Int,
+        limit: Int,
+        query: LibraryBrowseQuery,
+    ): LibraryPage {
         val environment = environmentProvider.current() ?: return LibraryPage(emptyList(), null)
-        val libraryQuery = queryForLibrary(environment.serverKey, libraryId)
-        val includeItemTypes = query.networkMediaTypes() ?: libraryQuery.includeItemTypes
-        val response =
-            apiFor(environment).fetchLibraryItems(
-                userId = environment.userId,
-                libraryId = libraryId,
-                startIndex = page * pageSize,
-                limit = pageSize,
-                includeItemTypes = includeItemTypes,
-                recursive = libraryQuery.recursive,
-                filters = query.takeIf { it.favoritesOnly }?.let { "IsFavorite" },
-                sortBy = query.networkSortBy(),
-                sortOrder = query.networkSortOrder(),
-                isPlayed = query.networkPlayed(),
-                genres = query.networkGenres(),
-                years = query.networkYears(),
-            )
+        val response = fetchQueryItems(environment, libraryId, startIndex, limit, query, nameLessThan = null)
         val now = clock.now()
         return LibraryPage(
             items = response.items.map { it.toRecord(environment, libraryId, now).toDomain() },
             totalRecordCount = response.totalRecordCount,
+        )
+    }
+
+    override suspend fun countLibraryItemsBefore(
+        libraryId: String,
+        query: LibraryBrowseQuery,
+        name: String,
+    ): Long? {
+        val environment = environmentProvider.current() ?: return null
+        return fetchQueryItems(environment, libraryId, startIndex = 0, limit = 1, query = query, nameLessThan = name)
+            .totalRecordCount
+    }
+
+    private suspend fun fetchQueryItems(
+        environment: JellyfinEnvironment,
+        libraryId: String,
+        startIndex: Int,
+        limit: Int,
+        query: LibraryBrowseQuery,
+        nameLessThan: String?,
+    ): JellyfinItemsResponse {
+        val libraryQuery = queryForLibrary(environment.serverKey, libraryId)
+        return apiFor(environment).fetchLibraryItems(
+            userId = environment.userId,
+            libraryId = libraryId,
+            startIndex = startIndex,
+            limit = limit,
+            includeItemTypes = query.networkMediaTypes() ?: libraryQuery.includeItemTypes,
+            recursive = libraryQuery.recursive,
+            filters = query.takeIf { it.favoritesOnly }?.let { "IsFavorite" },
+            sortBy = query.networkSortBy(),
+            sortOrder = query.networkSortOrder(),
+            isPlayed = query.networkPlayed(),
+            genres = query.networkGenres(),
+            years = query.networkYears(),
+            nameLessThan = nameLessThan,
         )
     }
 
@@ -761,10 +827,16 @@ class JellyfinBrowseRepository(
         }
     }
 
+    override suspend fun refreshLatestForLibrary(
+        libraryId: String,
+        collectionType: String?,
+        limit: Int,
+    ): List<JellyfinItem> = refreshRecentlyAdded(libraryId, limit, latestItemTypesForCollection(collectionType))
+
     private suspend fun refreshRecentlyAdded(
         libraryId: String,
         limit: Int,
-        includeItemTypes: String,
+        includeItemTypes: String?,
     ): List<JellyfinItem> {
         val environment = environmentProvider.current() ?: return emptyList()
         val api = apiFor(environment)
@@ -811,6 +883,7 @@ class JellyfinBrowseRepository(
                         playedPercentage = if (userData != null) userData.playedPercentage else existing.playedPercentage,
                         lastPlayed = userData?.lastPlayedDate ?: existing.lastPlayed,
                         played = userData?.played ?: existing.played,
+                        unplayedCount = userData?.unplayedItemCount ?: existing.unplayedCount,
                         updatedAt = now,
                     ),
                 ),
@@ -913,6 +986,15 @@ class JellyfinBrowseRepository(
         if (titles.isNotEmpty()) return titles
         // Series metadata often lists a voice cast only on the episodes; one entry per series is enough here.
         return personItemsOfTypes(environment, personId, PERSON_EPISODE_ITEM_TYPE, limit).distinctBy { it.seriesId ?: it.id }
+    }
+
+    /** The person of the server named exactly [name] (ignoring case), or null when there is none or no server. */
+    suspend fun findPersonByName(name: String): JellyfinPerson? {
+        val trimmed = name.trim()
+        val environment = environmentProvider.current()
+        if (trimmed.isEmpty() || environment == null) return null
+        val hits = apiFor(environment).searchPersons(environment.userId, trimmed).items
+        return pickExactPerson(trimmed, hits.map { JellyfinPerson(it.id, it.name.orEmpty(), null, it.type, null) })
     }
 
     private suspend fun personItemsOfTypes(
@@ -1118,6 +1200,7 @@ private fun JellyfinItemDto.toRecord(
         positionTicks = userData?.playbackPositionTicks,
         playedPercentage = userData?.playedPercentage,
         played = userData?.played == true,
+        unplayedCount = userData?.unplayedItemCount,
         productionYear = productionYear?.toLong(),
         premiereDate = premiereDate,
         communityRating = communityRating,
@@ -1201,6 +1284,7 @@ private fun JellyfinItemRecord.toDomain(): JellyfinItem =
         seriesBannerImageTag = seriesBannerImageTag,
         providerIds = providerIds,
         isPlayed = played,
+        unplayedCount = unplayedCount,
     )
 
 private fun Map<String, String>?.providerValue(name: String): String? =

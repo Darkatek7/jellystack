@@ -9,16 +9,30 @@
 
 package dev.jellystack.design.tv
 
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridScope
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -31,19 +45,19 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.media3.common.util.UnstableApi
 import androidx.tv.material3.Text
 import dev.jellystack.core.jellyfin.HomeSectionAction
 import dev.jellystack.core.jellyfin.HomeSectionsState
@@ -57,7 +71,6 @@ import dev.jellystack.players.AndroidPlayerEngine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
-import kotlin.math.floor
 
 @Serializable
 enum class TvLibraryMode {
@@ -183,6 +196,7 @@ private fun JellyfinItem.toCinematicCard(
         resumeFraction = text.progress?.takeIf { it in 0.01f..0.99f },
         logoUrl = tvJellyfinLogoUrl(state.imageBaseUrl, state.imageAccessToken, this),
         metadata = tvStageMetadata(),
+        remainingMinutes = tvRemainingMinutes(runTimeTicks, positionTicks).takeUnless { isBrowseContainer() },
     )
 }
 
@@ -219,18 +233,6 @@ internal fun tvLibraryAllTitlesRow(
 internal const val TV_LIBRARY_ALL_TITLES_ROW = "all-titles"
 internal const val TV_LIBRARY_ALL_TITLES_CARD = "all-titles"
 
-internal fun tvLibraryAllTitlesColumnCount(
-    widthDp: Float,
-    fontScale: Float,
-): Int {
-    val usableWidth = widthDp - (TvLayoutTokens.SafeInsets.horizontal.value * 2f)
-    val scaledMinimumCardWidth = 136f + ((fontScale.coerceAtLeast(1f) - 1f) * 80f)
-    return floor(
-        (usableWidth + TvLayoutTokens.CardSpacing.value) /
-            (scaledMinimumCardWidth + TvLayoutTokens.CardSpacing.value),
-    ).toInt().coerceIn(1, 7)
-}
-
 internal fun tvLibraryCardShape(
     collectionType: String?,
     reliablePosters: Boolean,
@@ -241,6 +243,7 @@ internal fun tvLibraryCardShape(
         TvLibraryCardShape.LANDSCAPE
     }
 
+@androidx.annotation.OptIn(UnstableApi::class)
 @Composable
 internal fun TvSelectedLibraryScreen(
     route: TvRoute.Library,
@@ -259,6 +262,8 @@ internal fun TvSelectedLibraryScreen(
     onLoadMore: () -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
+    onJumpToLetter: (String) -> Unit = {},
+    onLetterJumpHandled: (Long) -> Unit = {},
     trailerPreviewState: TvTrailerPreviewState = TvTrailerPreviewState.Idle,
     trailerPreviewEngine: AndroidPlayerEngine? = null,
     previewSoundEnabled: Boolean = true,
@@ -284,7 +289,7 @@ internal fun TvSelectedLibraryScreen(
                         state = state,
                         library = library,
                         rowTitle = strings.library,
-                        cardTitle = strings.allTitles,
+                        cardTitle = strings.browse.allTitles,
                         itemCount = library?.itemCount?.let(strings::itemCount),
                     )
             }
@@ -298,9 +303,15 @@ internal fun TvSelectedLibraryScreen(
             focusedItem?.let { item -> trailerPreviewState.showsTvStagePreview(item.id, focusedPresentationId) } == true
         val currentOnPlayItem by rememberUpdatedState(onPlayItem)
         val playback =
-            remember(allKnownItems, strings.play, strings.continueLabel, strings.details) {
+            remember(allKnownItems, strings) {
                 TvCinematicCardPlayback(
-                    labels = TvCinematicHintLabels(play = strings.play, resume = strings.continueLabel, details = strings.details),
+                    labels =
+                        TvCinematicHintLabels(
+                            play = strings.play,
+                            resume = strings.continueLabel,
+                            details = strings.detailText.details,
+                            endsAt = strings.player.endsAt,
+                        ),
                     canPlay = { card -> allKnownItems[card.id]?.isBrowseContainer() == false },
                     onPlay = { card -> allKnownItems[card.id]?.let(currentOnPlayItem) },
                 )
@@ -336,7 +347,7 @@ internal fun TvSelectedLibraryScreen(
             playback = playback,
             trailer =
                 trailerPreviewEngine?.takeIf { trailerPlaying }?.let { engine ->
-                    TvCinematicTrailer(engine, strings.trailer, previewSoundEnabled, previewProgress ?: TvNoTrailerProgress)
+                    TvCinematicTrailer(engine, strings.detailText.trailer, previewSoundEnabled, previewProgress ?: TvNoTrailerProgress)
                 },
             modifier = modifier,
         )
@@ -354,6 +365,8 @@ internal fun TvSelectedLibraryScreen(
                 focusMemory = focusMemory,
                 collectionType = collectionType,
                 onQueryChanged = onQueryChanged,
+                onJumpToLetter = onJumpToLetter,
+                onLetterJumpHandled = onLetterJumpHandled,
                 onOpenItem = onOpenItem,
                 onOpenContainer = onOpenContainer,
                 onLoadMore = onLoadMore,
@@ -365,18 +378,21 @@ internal fun TvSelectedLibraryScreen(
 }
 
 @Composable
-private fun TvLibraryAllTitles(
+internal fun TvLibraryAllTitles(
     route: TvRoute.Library,
     state: JellyfinHomeState,
     strings: TvStrings,
     focusMemory: TvFocusMemory,
     collectionType: String?,
     onQueryChanged: (LibraryBrowseQuery) -> Unit,
+    onJumpToLetter: (String) -> Unit,
+    onLetterJumpHandled: (Long) -> Unit,
     onOpenItem: (JellyfinItem) -> Unit,
     onOpenContainer: (JellyfinItem) -> Unit,
     onLoadMore: () -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier,
+    initialPanel: TvLibraryPanelEntry? = null,
 ) {
     val routeKey = route.focusRouteKey(state.browsePath.map { it.id })
     val gridState = rememberLazyGridState()
@@ -389,7 +405,8 @@ private fun TvLibraryAllTitles(
             isPageLoading = state.isPageLoading,
             hasError = state.libraryErrorMessage != null,
         )
-    val focusLocations = tvLibraryGridFocusLocations(itemTargetIds, terminalTarget)
+    // The header sits outside the grid, so an item's grid index is its list index.
+    val focusLocations = remember(itemTargetIds, terminalTarget) { tvLibraryTitleGridFocusLocations(itemTargetIds, terminalTarget) }
     TvRouteFocusMaterializer(
         ownerId = "library-all-titles:$routeKey",
         targetIds = focusLocations.keys,
@@ -403,17 +420,34 @@ private fun TvLibraryAllTitles(
                 .first { it }
         } ?: false
     }
+    val library = route.libraryId?.let { id -> state.libraries.firstOrNull { it.id == id } }
+    val sortFocus = remember { FocusRequester() }
+    val filterFocus = remember { FocusRequester() }
+    var panelVisible by remember { mutableStateOf(initialPanel != null) }
+    var panelEntry by remember { mutableStateOf(initialPanel ?: TvLibraryPanelEntry.FILTER) }
+    val closePanel: () -> Unit = {
+        panelVisible = false
+        val opener = if (panelEntry == TvLibraryPanelEntry.SORT) sortFocus else filterFocus
+        runCatchingFocus { opener.requestFocus() }
+    }
+    // Previews and screenshot tests have no back dispatcher.
+    if (LocalOnBackPressedDispatcherOwner.current != null) BackHandler(enabled = panelVisible, onBack = closePanel)
+    val query = state.libraryBrowseQuery
+    val showsRail =
+        tvLibraryShowsLetterRail(query, state.totalLibraryItemCount?.toInt() ?: state.libraryItems.size) &&
+            state.browsePath.isEmpty() &&
+            state.libraryItems.isNotEmpty()
     BoxWithConstraints(modifier.fillMaxSize()) {
         val fontScale = LocalDensity.current.fontScale
         val cardShape = tvLibraryCardShape(collectionType, reliablePosters = tvLibraryHasReliablePosters(state.libraryItems))
-        val columns = tvLibraryGridColumns(cardShape, maxWidth.value, fontScale)
+        val railReserve = if (showsRail) TV_LIBRARY_RAIL_WIDTH_DP + TV_LIBRARY_RAIL_GAP_DP else 0f
+        val columns = tvLibraryGridColumns(cardShape, maxWidth.value, fontScale, railReserve)
         LaunchedEffect(state.libraryItems.size, state.endReached, state.isPageLoading, state.libraryErrorMessage, columns) {
             androidx.compose.runtime
                 .snapshotFlow {
                     gridState.layoutInfo.visibleItemsInfo
                         .lastOrNull()
-                        ?.index
-                        ?.minus(1) ?: -1
+                        ?.index ?: -1
                 }.collect { lastVisibleIndex ->
                     if (
                         shouldLoadNextLibraryPage(
@@ -430,85 +464,158 @@ private fun TvLibraryAllTitles(
                     }
                 }
         }
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(columns),
-            state = gridState,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = TvScreenPadding,
-            verticalArrangement = Arrangement.spacedBy(18.dp),
-            horizontalArrangement = Arrangement.spacedBy(TvLayoutTokens.CardSpacing),
+        val jumpFocus = remember { FocusRequester() }
+        var jumpIndex by remember { mutableIntStateOf(-1) }
+        val letterJump = state.libraryLetterJump
+        LaunchedEffect(letterJump?.requestId) {
+            val jump = letterJump ?: return@LaunchedEffect
+            jumpIndex = jump.index
+            gridState.scrollToItem(jump.index)
+            androidx.compose.runtime
+                .snapshotFlow { gridState.layoutInfo.visibleItemsInfo.any { it.index == jump.index } }
+                .first { it }
+            withFrameNanos { }
+            runCatchingFocus { jumpFocus.requestFocus() }
+            onLetterJumpHandled(jump.requestId)
+        }
+        val labels = strings.tvLibraryQueryLabels()
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(
+                    start = TvLayoutTokens.ContentStart,
+                    end = TvLayoutTokens.SafeInsets.horizontal,
+                    top = TvLayoutTokens.SafeInsets.vertical,
+                ),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            item(key = "all-titles-header", span = { GridItemSpan(maxLineSpan) }) {
-                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    TvLibraryAllTitlesHeader(route.title ?: strings.library)
-                    TvLibraryQueryControls(
-                        query = state.libraryBrowseQuery,
-                        labels = strings.tvLibraryQueryLabels(),
-                        availableYears =
-                            state.libraryItems
-                                .mapNotNull(JellyfinItem::productionYear)
-                                .distinct()
-                                .sortedDescending(),
-                        availableMediaTypes = tvLibraryMediaTypes(collectionType),
-                        onQueryChanged = onQueryChanged,
-                        // While the first page loads there is no card yet, so focus starts on the first control.
-                        entryFocus = state.libraryItems.isEmpty(),
-                    )
-                }
-            }
-            itemsIndexed(state.libraryItems, key = { _, item -> item.id }) { index, item ->
-                TvLibraryGridCard(
-                    item = item,
-                    index = index,
-                    columns = columns,
-                    cardShape = cardShape,
-                    images = TvLibraryGridImages(state.imageBaseUrl, state.imageAccessToken),
-                    favorites = state.favorites,
-                    strings = strings,
-                    focusMemory = focusMemory,
-                    routeKey = routeKey,
-                    entryFocus = index == 0,
-                    onClick = { item.open(onOpenItem, onOpenContainer) },
-                )
-            }
-            if ((state.isLibraryLoading || state.isPageLoading) && state.libraryItems.isEmpty()) {
-                tvSkeletonGridCells(
-                    label = strings.loading,
-                    count = columns * 2,
-                    format =
-                        if (cardShape == TvLibraryCardShape.PORTRAIT) {
-                            TvMediaCardFormat.POSTER
-                        } else {
-                            TvMediaCardFormat.LANDSCAPE
-                        },
-                    keyPrefix = "all-titles-skeleton",
-                )
-            } else if (state.isLibraryLoading || state.isPageLoading) {
-                item(key = "all-titles-loading", span = { GridItemSpan(maxLineSpan) }) {
-                    Box(Modifier.fillMaxWidth().height(96.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = TvPurple)
-                    }
-                }
-            } else if (state.libraryErrorMessage != null) {
-                item(key = "all-titles-error", span = { GridItemSpan(maxLineSpan) }) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            strings.libraryLoadFailed,
-                            color =
-                            TvError,
+            val activeFilters = tvLibraryActiveFilterCount(query)
+            TvLibraryHeader(
+                state =
+                    TvLibraryHeaderState(
+                        title = route.title ?: strings.library,
+                        itemCount = (state.totalLibraryItemCount ?: library?.itemCount)?.let(strings::itemCount),
+                        sortLabel = "${labels.sort}: ${query.sort.label(labels)}",
+                        filterLabel = tvLibraryFilterLabel(strings.libraryScreen.filter, activeFilters),
+                        activeFilterCount = activeFilters,
+                    ),
+                onSort = {
+                    panelEntry = TvLibraryPanelEntry.SORT
+                    panelVisible = true
+                },
+                onFilter = {
+                    panelEntry = TvLibraryPanelEntry.FILTER
+                    panelVisible = true
+                },
+                sortFocus = sortFocus,
+                filterFocus = filterFocus,
+                // Only a library known to be empty starts on the controls. Otherwise the first card claims focus once it
+                // arrives: the header taking it while the first page loaded kept it there.
+                entryFocus =
+                    state.libraryItems.isEmpty() &&
+                        (state.totalLibraryItemCount ?: library?.itemCount) == 0L,
+                modifier = Modifier.padding(horizontal = TvLayoutTokens.FocusHaloPadding / 2),
+            )
+            Row(Modifier.fillMaxSize()) {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(columns),
+                    state = gridState,
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    contentPadding = PaddingValues(top = 10.dp, bottom = 54.dp, start = 6.dp, end = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(TV_LIBRARY_GRID_ROW_SPACING_DP.dp),
+                    horizontalArrangement = Arrangement.spacedBy(TvLayoutTokens.CardSpacing),
+                ) {
+                    itemsIndexed(state.libraryItems, key = {
+                            _,
+                            item,
+                        ->
+                        item.id
+                    }, contentType = { _, _ -> "library-title" }) { index, item ->
+                        TvLibraryGridCard(
+                            item = item,
+                            index = index,
+                            columns = columns,
+                            cardShape = cardShape,
+                            images = TvLibraryGridImages(state.imageBaseUrl, state.imageAccessToken),
+                            favorites = state.favorites,
+                            strings = strings,
+                            focusMemory = focusMemory,
+                            routeKey = routeKey,
+                            entryFocus = index == 0,
+                            onClick = { item.open(onOpenItem, onOpenContainer) },
+                            focusRequester = jumpFocus.takeIf { index == jumpIndex },
                         )
-                        TvActionButton(strings.retry, onRetry, modifier = Modifier.width(220.dp), focusTargetId = TV_LIBRARY_RETRY_TARGET)
                     }
+                    libraryGridStatusItems(state, strings, cardShape, columns, onRetry)
                 }
-            } else if (state.libraryItems.isEmpty()) {
-                item(key = "all-titles-empty", span = { GridItemSpan(maxLineSpan) }) {
-                    TvEmptyState(
-                        icon = Icons.Default.VideoLibrary,
-                        title = strings.noResults,
-                        hint = if (state.libraryBrowseQuery.isDefault) strings.emptyStates.libraryHint else strings.emptyStates.filterHint,
+                if (showsRail) {
+                    Spacer(Modifier.width(TV_LIBRARY_RAIL_GAP_DP.dp))
+                    TvLibraryAzRail(
+                        strings = strings.libraryScreen,
+                        onJump = onJumpToLetter,
+                        modifier = Modifier.padding(top = 10.dp, bottom = 54.dp),
                     )
                 }
             }
+        }
+        val reducedMotion = LocalTvFocusAppearance.current.reducedMotion
+        AnimatedVisibility(
+            visible = panelVisible,
+            modifier = Modifier.align(Alignment.CenterEnd),
+            enter = if (reducedMotion) EnterTransition.None else slideInHorizontally(tween(TV_LIBRARY_PANEL_MILLIS)) { it },
+            exit = if (reducedMotion) ExitTransition.None else slideOutHorizontally(tween(TV_LIBRARY_PANEL_MILLIS)) { it },
+        ) {
+            TvLibraryFilterPanel(
+                query = query,
+                labels = labels,
+                panelStrings = strings.libraryScreen,
+                availableYears =
+                    state.libraryItems
+                        .mapNotNull(JellyfinItem::productionYear)
+                        .distinct()
+                        .sortedDescending(),
+                availableMediaTypes = tvLibraryMediaTypes(collectionType),
+                entry = panelEntry,
+                onQueryChanged = onQueryChanged,
+            )
+        }
+    }
+}
+
+private fun LazyGridScope.libraryGridStatusItems(
+    state: JellyfinHomeState,
+    strings: TvStrings,
+    cardShape: TvLibraryCardShape,
+    columns: Int,
+    onRetry: () -> Unit,
+) {
+    if ((state.isLibraryLoading || state.isPageLoading) && state.libraryItems.isEmpty()) {
+        tvSkeletonGridCells(
+            label = strings.loading,
+            count = columns * 2,
+            format = if (cardShape == TvLibraryCardShape.PORTRAIT) TvMediaCardFormat.POSTER else TvMediaCardFormat.LANDSCAPE,
+            keyPrefix = "all-titles-skeleton",
+        )
+    } else if (state.isLibraryLoading || state.isPageLoading) {
+        item(key = "all-titles-loading", span = { GridItemSpan(maxLineSpan) }) {
+            Box(Modifier.fillMaxWidth().height(96.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = TvPurple)
+            }
+        }
+    } else if (state.libraryErrorMessage != null) {
+        item(key = "all-titles-error", span = { GridItemSpan(maxLineSpan) }) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(strings.browse.libraryLoadFailed, color = TvError)
+                TvActionButton(strings.retry, onRetry, modifier = Modifier.width(220.dp), focusTargetId = TV_LIBRARY_RETRY_TARGET)
+            }
+        }
+    } else if (state.libraryItems.isEmpty()) {
+        item(key = "all-titles-empty", span = { GridItemSpan(maxLineSpan) }) {
+            TvEmptyState(
+                icon = Icons.Default.VideoLibrary,
+                title = strings.searchScreen.noResults,
+                hint = if (state.libraryBrowseQuery.isDefault) strings.emptyStates.libraryHint else strings.emptyStates.filterHint,
+            )
         }
     }
 }
@@ -519,18 +626,41 @@ internal data class TvLibraryGridImages(
     val accessToken: String?,
 )
 
+/** Items sit at their list index, since the header is not part of the grid; the status cell follows the last item. */
+internal fun tvLibraryTitleGridFocusLocations(
+    itemTargetIds: List<String>,
+    terminalTarget: String?,
+): Map<String, Int> =
+    buildMap {
+        itemTargetIds.forEachIndexed { index, targetId -> put(targetId, index) }
+        terminalTarget?.let { put(it, itemTargetIds.size) }
+    }
+
 internal fun tvLibraryGridColumns(
     cardShape: TvLibraryCardShape,
     widthDp: Float,
     fontScale: Float,
+    reservedEndDp: Float = 0f,
 ): Int =
     if (cardShape == TvLibraryCardShape.PORTRAIT) {
-        tvLibraryAllTitlesColumnCount(widthDp, fontScale)
+        tvLibraryPosterColumns(widthDp, fontScale, reservedEndDp)
     } else {
-        ((widthDp - (TvLayoutTokens.SafeInsets.horizontal.value * 2f)) / 248f).toInt().coerceAtLeast(1)
+        ((widthDp - (TvLayoutTokens.SafeInsets.horizontal.value * 2f) - reservedEndDp) / 248f).toInt().coerceAtLeast(1)
     }
 
-/** One title of a library grid; the person, collection, and playlist screens show their titles with it too. */
+private const val TV_LIBRARY_RAIL_GAP_DP = 8f
+private const val TV_LIBRARY_GRID_ROW_SPACING_DP = 10
+private const val TV_LIBRARY_PANEL_MILLIS = 200
+
+private inline fun runCatchingFocus(block: () -> Unit) {
+    try {
+        block()
+    } catch (_: IllegalStateException) {
+        // The target is not attached while its screen is leaving; focus then stays where it is.
+    }
+}
+
+/** One title of a library grid: the poster, and below it the title on one line and the year. */
 @Composable
 internal fun TvLibraryGridCard(
     item: JellyfinItem,
@@ -544,20 +674,28 @@ internal fun TvLibraryGridCard(
     routeKey: String,
     entryFocus: Boolean,
     onClick: () -> Unit,
+    focusRequester: FocusRequester? = null,
 ) {
     val artwork = resolveTvJellyfinArtwork(item, landscape = cardShape == TvLibraryCardShape.LANDSCAPE)
     val targetId = tvLibraryTargetId(item.id)
+    val title = item.name.ifBlank { strings.messages.untitled }
+    val year = item.subtitleYear()
+    val imageUrl =
+        jellyfinImageUrl(
+            images.baseUrl,
+            images.accessToken,
+            artwork,
+            if (cardShape == TvLibraryCardShape.PORTRAIT) TvArtworkSize.PORTRAIT_CARD else TvArtworkSize.LANDSCAPE_CARD,
+        )
+    val progress = item.tvCardText(strings).progress
     TvMediaCard(
-        title = item.name.ifBlank { strings.messages.untitled },
-        subtitle = item.subtitleText(),
-        imageUrl =
-            jellyfinImageUrl(
-                images.baseUrl,
-                images.accessToken,
-                artwork,
-                if (cardShape == TvLibraryCardShape.PORTRAIT) TvArtworkSize.PORTRAIT_CARD else TvArtworkSize.LANDSCAPE_CARD,
-            ),
+        title = title,
+        subtitle = year,
+        imageUrl = imageUrl,
         selected = item.id in favorites,
+        badge = tvJellyfinCardBadge(item, strings),
+        watched = item.playedPercentage?.let { it >= WATCHED_PERCENTAGE } == true,
+        progress = progress?.takeIf { it in 0.01f..0.99f },
         format = if (cardShape == TvLibraryCardShape.PORTRAIT) TvMediaCardFormat.POSTER else TvMediaCardFormat.LANDSCAPE,
         artworkFit =
             if (artwork?.imageType == "Primary") {
@@ -567,26 +705,23 @@ internal fun TvLibraryGridCard(
             },
         fillWidth = true,
         onClick = onClick,
-        onFocused = {
-            focusMemory.remember(routeKey, "items", item.id, index + 1, index)
-        },
+        onFocused = { focusMemory.remember(routeKey, "items", item.id, index + 1, index) },
         focusTargetId = targetId,
+        providedFocusRequester = focusRequester,
         focusToNavigationRailOnLeft = isTvGridLeftEdge(index, columns),
         modifier = Modifier.tvScreenEntryFocus(entryFocus, targetId).testTag("tv-library-all-title-${item.id}"),
     )
 }
 
-@Composable
-private fun TvLibraryAllTitlesHeader(title: String) {
-    Text(
-        text = title,
-        color = TvText,
-        fontSize = 30.sp,
-        fontWeight = FontWeight.Bold,
-        maxLines = 1,
-        modifier = Modifier.fillMaxWidth().semantics { heading() }.testTag("tv-library-browse-title"),
-    )
-}
+private const val WATCHED_PERCENTAGE = 90.0
+
+/** The year of a title; an episode shows its season and number instead. */
+private fun JellyfinItem.subtitleYear(): String? =
+    if (type.equals("Episode", ignoreCase = true)) {
+        tvEpisodeCode(parentIndexNumber, indexNumber)
+    } else {
+        productionYear?.toString()
+    }
 
 private fun tvLibraryKnownItems(
     state: JellyfinHomeState,
@@ -612,32 +747,32 @@ private fun JellyfinItem.open(
 
 internal fun TvStrings.libraryBrowseLabels() =
     TvLibraryBrowseLabels(
-        continueWatching = continueWatching,
-        nextUp = nextUp,
-        recentlyAdded = recentlyAdded,
-        myList = myList,
+        continueWatching = homeRows.continueWatching,
+        nextUp = homeRows.nextUp,
+        recentlyAdded = homeRows.recentlyAdded,
+        myList = browse.myList,
         minutesLeft = metadata.minutesLeft,
         untitled = messages.untitled,
     )
 
 private fun TvStrings.tvLibraryQueryLabels() =
     TvLibraryQueryLabels(
-        sort = sort,
-        title = titleSort,
-        dateAdded = dateAddedSort,
-        releaseYear = releaseYearSort,
-        ascending = ascending,
-        descending = descending,
-        played = playedFilter,
-        unplayed = unplayed,
-        favoritesOnly = favoritesOnly,
-        genre = genre,
-        year = releaseYearSort,
-        mediaType = mediaType,
+        sort = browse.sort,
+        title = browse.titleSort,
+        dateAdded = browse.dateAddedSort,
+        releaseYear = browse.releaseYearSort,
+        ascending = browse.ascending,
+        descending = browse.descending,
+        played = browse.playedFilter,
+        unplayed = browse.unplayed,
+        favoritesOnly = browse.favoritesOnly,
+        genre = browse.genre,
+        year = browse.releaseYearSort,
+        mediaType = browse.mediaType,
         mediaTypeNames = mediaTypeLabels,
         all = all,
-        clear = clearFilters,
-        apply = applyLabel,
+        clear = browse.clearFilters,
+        apply = browse.applyLabel,
         cancel = cancel,
     )
 

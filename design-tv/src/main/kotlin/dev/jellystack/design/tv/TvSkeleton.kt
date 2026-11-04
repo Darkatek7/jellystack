@@ -12,6 +12,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -64,12 +65,16 @@ internal fun TvSkeletonCard(
     fillWidth: Boolean = false,
 ) {
     val alpha = rememberTvSkeletonAlpha()
-    Box(
-        modifier
-            .tvMediaCardSize(format, fillWidth)
-            .graphicsLayer { this.alpha = alpha.value }
-            .background(TvSurfaceRaised, TvShapes.Card),
-    )
+    // Room for the caption a real card shows below its artwork, so nothing moves when content arrives.
+    Column(modifier) {
+        Box(
+            Modifier
+                .tvMediaCardSize(format, fillWidth)
+                .graphicsLayer { this.alpha = alpha.value }
+                .background(TvSurfaceRaised, TvShapes.Card),
+        )
+        Spacer(Modifier.height(TV_CARD_CAPTION_HEIGHT))
+    }
 }
 
 /** Rows of placeholder cards laid out like [TvJellyfinRow]s, announced once as [label]. */

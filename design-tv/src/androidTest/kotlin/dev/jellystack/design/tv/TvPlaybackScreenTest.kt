@@ -196,18 +196,18 @@ class TvPlaybackScreenTest {
             }
         }
 
-        composeRule.onNodeWithText(strings.serverSegmentExplanation).assertExists()
+        composeRule.onNodeWithText(strings.segments.serverSegmentExplanation).assertExists()
         val expectedTypes =
             listOf(
-                strings.introSegments to PlaybackSegmentType.INTRO,
-                strings.recapSegments to PlaybackSegmentType.RECAP,
-                strings.outroSegments to PlaybackSegmentType.OUTRO,
-                strings.previewSegments to PlaybackSegmentType.PREVIEW,
-                strings.commercialSegments to PlaybackSegmentType.COMMERCIAL,
+                strings.segments.introSegments to PlaybackSegmentType.INTRO,
+                strings.segments.recapSegments to PlaybackSegmentType.RECAP,
+                strings.segments.outroSegments to PlaybackSegmentType.OUTRO,
+                strings.segments.previewSegments to PlaybackSegmentType.PREVIEW,
+                strings.segments.commercialSegments to PlaybackSegmentType.COMMERCIAL,
             )
         expectedTypes.forEach { (title, _) ->
             composeRule.onNodeWithText(title).performClick()
-            composeRule.onNodeWithText(strings.skipAutomatically).performClick()
+            composeRule.onNodeWithText(strings.segments.skipAutomatically).performClick()
         }
 
         composeRule.runOnIdle {

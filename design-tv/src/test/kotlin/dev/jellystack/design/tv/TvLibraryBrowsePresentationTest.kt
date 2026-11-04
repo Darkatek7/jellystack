@@ -177,9 +177,10 @@ class TvLibraryBrowsePresentationTest {
     }
 
     @Test
-    fun adaptiveGridUsesFiveColumnsAndLargeTextUsesFour() {
-        assertEquals(5, tvLibraryAllTitlesColumnCount(960f, fontScale = 1f))
-        assertEquals(4, tvLibraryAllTitlesColumnCount(960f, fontScale = 1.5f))
+    fun posterGridUsesSixColumnsAndLargeTextFewer() {
+        assertEquals(6, tvLibraryPosterColumns(960f, fontScale = 1f))
+        assertEquals(6, tvLibraryPosterColumns(960f, fontScale = 1f, reservedEndDp = TV_LIBRARY_RAIL_WIDTH_DP + 8f))
+        assertEquals(5, tvLibraryPosterColumns(960f, fontScale = 1.5f))
         assertEquals(TvLibraryCardShape.PORTRAIT, tvLibraryCardShape("movies", reliablePosters = true))
         assertEquals(TvLibraryCardShape.LANDSCAPE, tvLibraryCardShape("music", reliablePosters = false))
     }

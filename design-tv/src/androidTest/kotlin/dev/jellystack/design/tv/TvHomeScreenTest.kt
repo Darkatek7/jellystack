@@ -14,6 +14,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
@@ -45,6 +46,7 @@ import kotlinx.coroutines.delay
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -133,6 +135,105 @@ class TvHomeScreenTest {
         }
         composeRule.runOnIdle { shown.value = true }
         composeRule.onNodeWithContentDescription("Row 4 item 10").assertIsFocused()
+        composeRule.runOnIdle(engine::release)
+    }
+
+    @Test
+    fun backOnHomeStopsAPlayingTrailerBeforeTheNormalWalk() {
+        lateinit var engine: AndroidPlayerEngine
+        val holder = TvAppStateHolder()
+        val homeBack = TvHomeBackState()
+        var playing = true
+        val dispatcher =
+            TvAppBackDispatcher(
+                holder = holder,
+                library = TvLibraryBackAccess(pathDepth = { 0 }, selectedLibraryId = { null }, popPath = {}),
+                cancelFocusRestoration = {},
+                homeBack = homeBack,
+                trailerBack = TvTrailerBackState(isPlaying = { playing }, stopTrailer = { playing = false }),
+            )
+        composeRule.setContent {
+            val context = LocalContext.current
+            engine = rememberTestPlayerEngine(context)
+            TestHomeScreen(
+                state = JellyfinHomeState(recentMovies = listOf(item("hero", "Hero", Clock.System.now().toString()))),
+                sections = HomeSectionsState.Unavailable,
+                engine = engine,
+                provideEntryFocus = false,
+                homeBack = homeBack,
+            )
+        }
+
+        composeRule.runOnIdle {
+            assertEquals(TvBackAction.STOP_TRAILER, dispatcher.action)
+            assertTrue(dispatcher.dispatch())
+            assertEquals(TvBackAction.OPEN_RAIL, dispatcher.action)
+            assertFalse(holder.state.railExpanded)
+        }
+        composeRule.runOnIdle(engine::release)
+    }
+
+    @Test
+    fun backOnHomeWalksFromRowsToTopThenRailThenExit() {
+        lateinit var engine: AndroidPlayerEngine
+        val holder = TvAppStateHolder()
+        val homeBack = TvHomeBackState()
+        val dispatcher =
+            TvAppBackDispatcher(
+                holder = holder,
+                library =
+                    TvLibraryBackAccess(
+                        pathDepth = { 0 },
+                        selectedLibraryId = { null },
+                        popPath = {},
+                    ),
+                cancelFocusRestoration = {},
+                homeBack = homeBack,
+            )
+        val sections =
+            HomeSectionsState.Ready(
+                sections =
+                    (0..1).map { row ->
+                        HomeSection(
+                            id = "row-$row",
+                            title = "Row $row",
+                            viewMode = HomeSectionViewMode.LANDSCAPE,
+                            displayTitle = true,
+                            showDetailsMenu = false,
+                            items = (0..5).map { column -> homeSectionItem(item("row-$row-item-$column", "Row $row item $column")) },
+                        )
+                    },
+                imageBaseUrl = "",
+                imageAccessToken = "",
+            )
+        composeRule.setContent {
+            val context = LocalContext.current
+            engine = rememberTestPlayerEngine(context)
+            TestHomeScreen(
+                state = JellyfinHomeState(recentMovies = listOf(item("hero", "Hero", Clock.System.now().toString()))),
+                sections = sections,
+                engine = engine,
+                // No entry focus, so Home starts at its top the way it does before the user moves into the rows.
+                provideEntryFocus = false,
+                homeBack = homeBack,
+            )
+        }
+
+        composeRule.runOnIdle { assertEquals(TvBackAction.OPEN_RAIL, dispatcher.action) }
+        composeRule.onNodeWithContentDescription("Row 0 item 0").performSemanticsAction(SemanticsActions.RequestFocus)
+        composeRule.onNodeWithContentDescription("Row 0 item 0").performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.onNodeWithContentDescription("Row 1 item 0").assertIsFocused()
+        composeRule.runOnIdle {
+            assertEquals(TvBackAction.FOCUS_HOME_TOP, dispatcher.action)
+            assertTrue(dispatcher.dispatch())
+        }
+        composeRule.onNodeWithContentDescription("Row 1 item 0").assertIsNotFocused()
+        composeRule.runOnIdle {
+            assertEquals(TvBackAction.OPEN_RAIL, dispatcher.action)
+            assertTrue(dispatcher.dispatch())
+            assertTrue(holder.state.railExpanded)
+            assertEquals(TvBackAction.SYSTEM_EXIT, dispatcher.action)
+        }
         composeRule.runOnIdle(engine::release)
     }
 
@@ -1410,6 +1511,7 @@ class TvHomeScreenTest {
         myList: List<MyListEntry> = emptyList(),
         onMyListEntry: (MyListEntry) -> Unit = {},
         spotlightAutoAdvance: Boolean = false,
+        homeBack: TvHomeBackState? = null,
     ) {
         val entryFocusRequester = remember { FocusRequester() }
         val focusCoordinator = remember { TvFocusCoordinator<FocusRequester>() }
@@ -1448,6 +1550,7 @@ class TvHomeScreenTest {
                     myList = myList,
                     onMyListEntry = onMyListEntry,
                     spotlightAutoAdvance = spotlightAutoAdvance,
+                    homeBack = homeBack,
                 )
             }
         }

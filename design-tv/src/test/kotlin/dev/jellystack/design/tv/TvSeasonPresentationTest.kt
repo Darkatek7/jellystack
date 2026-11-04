@@ -93,6 +93,20 @@ class TvSeasonPresentationTest {
     }
 
     @Test
+    fun defaultIndexOpensTheFirstSeasonWithAnUnwatchedEpisode() {
+        val groups =
+            buildTvSeasonGroups(
+                listOf(
+                    episode("special", 0, 1),
+                    episode("s1e1", 1, 1).copy(isPlayed = true, playedPercentage = 100.0),
+                    episode("s1e2", 1, 2).copy(isPlayed = true),
+                    episode("s2e1", 2, 1),
+                ),
+            )
+        assertEquals(groups.indexOfFirst { it.seasonNumber == 2 }, defaultTvSeasonIndex(groups))
+    }
+
+    @Test
     fun defaultIndexDefaultsToFirstSeason() {
         val groups =
             buildTvSeasonGroups(
@@ -107,8 +121,8 @@ class TvSeasonPresentationTest {
         val strings = TvStrings.current(dev.jellystack.core.preferences.AppLanguage.ENGLISH)
         val itemError = TvDetailLoadException(TvDetailLoadErrorKind.ITEM_UNAVAILABLE)
         val detailsError = TvDetailLoadException(TvDetailLoadErrorKind.DETAILS_UNAVAILABLE)
-        assertEquals(strings.detailUnavailable, tvDetailErrorMessage(itemError, strings))
-        assertEquals(strings.detailLoadFailed, tvDetailErrorMessage(detailsError, strings))
-        assertEquals(strings.detailLoadFailed, tvDetailErrorMessage(IllegalStateException("boom"), strings))
+        assertEquals(strings.detailText.detailUnavailable, tvDetailErrorMessage(itemError, strings))
+        assertEquals(strings.detailText.detailLoadFailed, tvDetailErrorMessage(detailsError, strings))
+        assertEquals(strings.detailText.detailLoadFailed, tvDetailErrorMessage(IllegalStateException("boom"), strings))
     }
 }

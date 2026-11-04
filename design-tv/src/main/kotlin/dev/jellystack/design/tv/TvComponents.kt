@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -30,8 +29,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.Composable
@@ -52,6 +49,8 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -71,6 +70,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.SemanticsPropertyReceiver
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.role
@@ -81,6 +81,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.util.UnstableApi
 import androidx.tv.material3.Icon
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
@@ -418,6 +419,10 @@ internal enum class TvMediaCardFormat { LANDSCAPE, POSTER, CAST_PORTRAIT }
 
 internal enum class TvMediaCardArtworkFit { CROP, CONTAIN_PORTRAIT }
 
+/** The width of a card in a row; its caption below the artwork is exactly this wide. */
+internal fun tvMediaCardWidth(format: TvMediaCardFormat): Dp =
+    if (format == TvMediaCardFormat.LANDSCAPE) TvLayoutTokens.LandscapeArtworkWidth else 140.dp
+
 /** The size of a media card, shared with the skeleton that stands in for it so nothing moves when content arrives. */
 internal fun Modifier.tvMediaCardSize(
     format: TvMediaCardFormat,
@@ -430,6 +435,17 @@ internal fun Modifier.tvMediaCardSize(
         then(if (fillWidth) Modifier.fillMaxWidth() else Modifier.width(140.dp)).aspectRatio(2f / 3f)
     }
 
+/**
+ * A media card: artwork with a badge corner and progress bar, and the title and subtitle in a caption below it.
+ *
+ * Only the artwork takes focus, scales and gets the focus ring; the caption stays still so it stays readable. The
+ * caption is always shown (not only on focus), because artwork may carry no title of its own. A row of cards needs
+ * room for it: the card is [tvMediaCardSize] tall plus about [TV_CARD_CAPTION_HEIGHT].
+ *
+ * [captionBelow] is the one switch for a caller that deliberately shows no text, for instance where another element
+ * names the focused item; [TvMediaCardFormat.CAST_PORTRAIT] cards keep their text over the artwork.
+ * [badge] wins over the older [watched] flag.
+ */
 @Composable
 internal fun TvMediaCard(
     title: String,
@@ -439,6 +455,7 @@ internal fun TvMediaCard(
     subtitle: String? = null,
     progress: Float? = null,
     watched: Boolean = false,
+    badge: TvMediaCardBadge? = null,
     selected: Boolean = false,
     format: TvMediaCardFormat = TvMediaCardFormat.LANDSCAPE,
     artworkFit: TvMediaCardArtworkFit = TvMediaCardArtworkFit.CROP,
@@ -449,7 +466,7 @@ internal fun TvMediaCard(
     focusToNavigationRailOnLeft: Boolean = false,
     focusTargetId: String? = null,
     providedFocusRequester: FocusRequester? = null,
-    titleInArtwork: Boolean = false,
+    captionBelow: Boolean = true,
 ) {
     val shape = TvShapes.Card
     var focused by remember { mutableStateOf(false) }
@@ -479,105 +496,82 @@ internal fun TvMediaCard(
         }
     var imageFailed by remember(imageUrl) { mutableStateOf(false) }
     val shownImageUrl = imageUrl?.takeUnless { imageFailed }
-    Box(
-        modifier =
-            modifier
-                .tvMediaCardSize(format, fillWidth)
-                .then(interactionModifier)
-                .bringIntoViewRequester(bringIntoViewRequester)
-                .semantics(mergeDescendants = true) {
-                    contentDescription = listOfNotNull(title, subtitle).joinToString(", ")
-                    this.selected = selected
-                }.background(TvSurface, shape)
-                .drawWithContent {
-                    // Drawn above the artwork; behind it the accent bar was hidden.
-                    drawContent()
-                    if (selected) {
-                        drawRoundRect(
-                            color = TvPurple,
-                            topLeft =
-                                androidx.compose.ui.geometry
-                                    .Offset(3.dp.toPx(), size.height * 0.18f),
-                            size =
-                                androidx.compose.ui.geometry
-                                    .Size(5.dp.toPx(), size.height * 0.64f),
-                            cornerRadius =
-                                androidx.compose.ui.geometry
-                                    .CornerRadius(2.5.dp.toPx()),
-                        )
-                    }
-                }.clip(shape),
-    ) {
-        TvMediaCardContent(
-            imageUrl = shownImageUrl,
-            artworkFit = artworkFit,
-            onImageError = { imageFailed = true },
-        )
-        // Library images made by the server already show the library name, so it would read twice.
-        val shownTitle = title.takeUnless { titleInArtwork && shownImageUrl != null }
-        val showsText = tvMediaCardShowsText(format, artworkFit, hasImage = shownImageUrl != null, focused = focused)
-        if (showsText && (shownTitle != null || subtitle != null)) {
-            TvMediaCardText(
-                title = shownTitle,
-                subtitle = subtitle,
-                large = format == TvMediaCardFormat.CAST_PORTRAIT,
-                modifier = Modifier.align(Alignment.BottomStart),
+    val overlaysText = format == TvMediaCardFormat.CAST_PORTRAIT
+    val shownBadge = badge ?: TvMediaCardBadge.Watched("").takeIf { watched }
+    val hasCaption = captionBelow && (title != null || subtitle != null)
+    val description = listOfNotNull(title, subtitle, shownBadge?.description?.takeIf(String::isNotBlank))
+    val artModifier =
+        modifier
+            .tvMediaCardSize(format, fillWidth)
+            .then(interactionModifier)
+            // The focusable art carries the whole description, so tests and screen readers find one node that is
+            // both the click target and the full text, as before the caption moved below the art.
+            .tvCardSemantics(description, selected)
+            .background(TvSurface, shape)
+            .tvSelectionAccent(selected)
+            .clip(shape)
+    val art: @Composable () -> Unit = {
+        Box(modifier = artModifier) {
+            TvMediaCardContent(
+                imageUrl = shownImageUrl,
+                artworkFit = artworkFit,
+                onImageError = { imageFailed = true },
+            )
+            if (overlaysText) {
+                TvMediaCardOverlayText(
+                    title = title,
+                    subtitle = subtitle,
+                    modifier = Modifier.align(Alignment.BottomStart),
+                )
+            }
+            progress?.let { TvMediaCardProgressBar(it, Modifier.align(Alignment.BottomStart)) }
+            shownBadge?.let { TvMediaCardBadgeView(it, Modifier.align(Alignment.TopEnd).padding(8.dp)) }
+        }
+    }
+    if (overlaysText) {
+        Box(Modifier.bringIntoViewRequester(bringIntoViewRequester)) { art() }
+    } else {
+        // Bringing the column into view keeps the caption on screen; the caption itself is already in the art's
+        // description, so it stays out of the semantics tree.
+        Column(
+            modifier =
+                Modifier
+                    .then(if (fillWidth) Modifier.fillMaxWidth() else Modifier.width(tvMediaCardWidth(format)))
+                    .bringIntoViewRequester(bringIntoViewRequester),
+        ) {
+            art()
+            if (hasCaption) {
+                TvMediaCardCaption(title, subtitle, Modifier.clearAndSetSemantics {})
+            }
+        }
+    }
+}
+
+/** Reads [description] as one node together with the click action of the focusable art. */
+private fun Modifier.tvCardSemantics(
+    description: List<String>,
+    selected: Boolean,
+): Modifier =
+    semantics(mergeDescendants = true) {
+        contentDescription = description.joinToString(", ")
+        this.selected = selected
+    }
+
+/** Accent bar at the left edge of a selected card; drawn above the artwork, behind it the bar was hidden. */
+private fun Modifier.tvSelectionAccent(selected: Boolean): Modifier =
+    if (!selected) {
+        this
+    } else {
+        drawWithContent {
+            drawContent()
+            drawRoundRect(
+                color = TvPurple,
+                topLeft = Offset(3.dp.toPx(), size.height * 0.18f),
+                size = Size(5.dp.toPx(), size.height * 0.64f),
+                cornerRadius = CornerRadius(2.5.dp.toPx()),
             )
         }
-        progress?.let { TvMediaCardProgressBar(it, Modifier.align(Alignment.BottomStart)) }
-        if (watched) TvMediaCardWatchedBadge(Modifier.align(Alignment.TopEnd).padding(8.dp))
     }
-}
-
-/**
- * Text sits inside the artwork. Posters, and posters fitted into landscape cards, usually carry the title in the
- * artwork, so they name it only while focused; without artwork every card names its title.
- */
-private fun tvMediaCardShowsText(
-    format: TvMediaCardFormat,
-    artworkFit: TvMediaCardArtworkFit,
-    hasImage: Boolean,
-    focused: Boolean,
-): Boolean =
-    when {
-        !hasImage || focused -> true
-        format == TvMediaCardFormat.CAST_PORTRAIT -> true
-        else -> format == TvMediaCardFormat.LANDSCAPE && artworkFit == TvMediaCardArtworkFit.CROP
-    }
-
-/** Check mark for watched items; decorative because the card's own semantics are not about state. */
-@Composable
-private fun TvMediaCardWatchedBadge(modifier: Modifier = Modifier) {
-    Box(
-        modifier
-            .size(26.dp)
-            .background(TvBackground.copy(alpha = 0.78f), TvShapes.Pill),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(Icons.Default.Check, contentDescription = null, tint = TvPurple, modifier = Modifier.size(18.dp))
-    }
-}
-
-/** Watch progress along the bottom edge of the artwork. */
-@Composable
-private fun TvMediaCardProgressBar(
-    progress: Float,
-    modifier: Modifier = Modifier,
-) {
-    Box(
-        modifier
-            .fillMaxWidth()
-            .height(4.dp)
-            .background(Color.White.copy(alpha = 0.28f)),
-    ) {
-        Box(
-            Modifier
-                .fillMaxWidth(progress.coerceIn(0f, 1f))
-                .fillMaxHeight()
-                .background(TvPurple),
-        )
-    }
-}
 
 /** The card's artwork, or a placeholder gradient without one; [onImageError] reports artwork that failed to load. */
 @Composable
@@ -622,50 +616,7 @@ private fun TvMediaCardContent(
     }
 }
 
-/** Title and subtitle at the bottom of the artwork, over a scrim that keeps them readable on bright images. */
-@Composable
-private fun TvMediaCardText(
-    title: String?,
-    subtitle: String?,
-    large: Boolean,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .tvBakedScrim(TvScrim.MEDIA_CARD_TEXT)
-                .padding(
-                    start = if (large) 14.dp else 10.dp,
-                    end = if (large) 14.dp else 10.dp,
-                    top = if (large) 28.dp else 18.dp,
-                    // Room for the progress bar, so text sits at the same height on every card in a row.
-                    bottom = if (large) 14.dp else 11.dp,
-                ),
-        verticalArrangement = Arrangement.spacedBy(if (large) 2.dp else 0.dp),
-    ) {
-        title?.let {
-            Text(
-                it,
-                color = TvText,
-                maxLines = if (large) 2 else 1,
-                overflow = TextOverflow.Ellipsis,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = if (large) TvTextSize.Subtitle else TvTextSize.CardTitle,
-            )
-        }
-        subtitle?.let {
-            Text(
-                it,
-                color = TvTextMuted,
-                fontSize = if (large) TvTextSize.BodySmall else TvTextSize.Caption,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
-}
-
+@androidx.annotation.OptIn(UnstableApi::class)
 @Composable
 internal fun TvTrailerPreviewSurface(
     previewEngine: AndroidPlayerEngine,
@@ -922,3 +873,12 @@ internal fun tmdbImageUrl(
     path: String?,
     backdrop: Boolean = false,
 ): String? = path?.takeIf { it.isNotBlank() }?.let { "https://image.tmdb.org/t/p/${if (backdrop) "w1280" else "w500"}$it" }
+
+/**
+ * A TMDB image for a landscape card, which is 176 dp wide: the full-screen sizes of [tmdbImageUrl] cost download, JPEG
+ * decode and texture memory for pixels a card never shows.
+ */
+internal fun tmdbCardImageUrl(
+    path: String?,
+    backdrop: Boolean,
+): String? = path?.takeIf { it.isNotBlank() }?.let { "https://image.tmdb.org/t/p/${if (backdrop) "w300" else "w342"}$it" }

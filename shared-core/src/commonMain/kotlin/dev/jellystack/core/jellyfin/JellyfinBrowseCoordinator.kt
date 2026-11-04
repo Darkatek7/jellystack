@@ -37,10 +37,24 @@ data class JellyfinHomeState(
     val favorites: Set<String> = emptySet(),
     val browsePath: List<LibraryBrowseEntry> = emptyList(),
     val libraryBrowseQuery: LibraryBrowseQuery = LibraryBrowseQuery.DEFAULT,
+    /** An A-Z jump whose target item is loaded and waits for the screen to scroll to it. */
+    val libraryLetterJump: LibraryLetterJump? = null,
+    /** The newest items per library id, for the library landing; a library without a key has not loaded yet. */
+    val libraryLatest: Map<String, List<JellyfinItem>> = emptyMap(),
 ) {
     val errorMessage: String?
         get() = homeErrorMessage ?: libraryErrorMessage
 }
+
+/** The loaded [index] in the library list that an A-Z jump to [letter] ends on; [requestId] tells jumps apart. */
+data class LibraryLetterJump(
+    val letter: String,
+    val index: Int,
+    val requestId: Long,
+)
+
+/** The letter of an A-Z jump that goes to the first item. */
+const val LIBRARY_JUMP_FIRST = "#"
 
 data class LibraryBrowseEntry(
     val id: String,
@@ -119,6 +133,9 @@ class JellyfinBrowseCoordinator internal constructor(
         pageSize = pageSize,
         autoBootstrap = autoBootstrap,
     )
+
+    private var letterJumpRequests = 0L
+    private val latestRequests = mutableSetOf<String>()
 
     private val mutableFavorites = MutableStateFlow<Set<String>>(favoritesStore.snapshot())
     val favorites: StateFlow<Set<String>> = mutableFavorites.asStateFlow()
@@ -432,6 +449,7 @@ class JellyfinBrowseCoordinator internal constructor(
                 endReached = false,
                 totalLibraryItemCount = null,
                 libraryBrowseQuery = LibraryBrowseQuery.DEFAULT,
+                libraryLetterJump = null,
                 libraryErrorMessage = null,
                 libraryErrorKind = null,
             )
@@ -447,6 +465,7 @@ class JellyfinBrowseCoordinator internal constructor(
         mutableState.value =
             current.copy(
                 libraryBrowseQuery = query,
+                libraryLetterJump = null,
                 libraryItems = emptyList(),
                 currentPage = 0,
                 endReached = false,
@@ -538,6 +557,96 @@ class JellyfinBrowseCoordinator internal constructor(
                 libraryErrorKind = null,
             )
         return true
+    }
+
+    /**
+     * Loads the library list through the first item whose sort name is at or after [letter] ([LIBRARY_JUMP_FIRST]
+     * for the very first item) and publishes it as [JellyfinHomeState.libraryLetterJump]. The items between come
+     * in chunks of several pages, so far letters of a big library cost a few requests instead of dozens.
+     */
+    fun jumpToLibraryLetter(letter: String) {
+        val current = mutableState.value
+        val libraryId = current.selectedLibraryId ?: return
+        if (current.browsePath.isNotEmpty() || current.isLibraryLoading) return
+        invalidateBrowseLoad()
+        val generation = browseLoadGeneration
+        val query = current.libraryBrowseQuery
+        letterJumpRequests += 1
+        val requestId = letterJumpRequests
+        browseLoadJob =
+            scope.launch {
+                try {
+                    runLibraryLetterJump(libraryId, letter, query, generation, requestId)
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (t: Throwable) {
+                    JellystackLog.w("Library letter jump failed", t)
+                } finally {
+                    updateBrowseStateIfCurrent(generation, libraryId, emptyList()) { it.copy(isPageLoading = false) }
+                }
+            }
+    }
+
+    /** Loads the newest items of [library] once; a failure leaves the library without a row. */
+    fun loadLibraryLatest(library: JellyfinLibrary) {
+        if (library.id in mutableState.value.libraryLatest || !latestRequests.add(library.id)) return
+        scope.launch {
+            try {
+                val items = repository.refreshLatestForLibrary(library.id, library.collectionType, LIBRARY_LATEST_LIMIT)
+                mutableState.update { it.copy(libraryLatest = it.libraryLatest + (library.id to items)) }
+            } catch (cancellation: CancellationException) {
+                latestRequests.remove(library.id)
+                throw cancellation
+            } catch (t: Throwable) {
+                JellystackLog.w("Latest items of a library failed", t)
+                latestRequests.remove(library.id)
+            }
+        }
+    }
+
+    fun consumeLibraryLetterJump(requestId: Long) {
+        mutableState.update { if (it.libraryLetterJump?.requestId == requestId) it.copy(libraryLetterJump = null) else it }
+    }
+
+    private suspend fun runLibraryLetterJump(
+        libraryId: String,
+        letter: String,
+        query: LibraryBrowseQuery,
+        generation: Long,
+        requestId: Long,
+    ) {
+        val target =
+            if (letter == LIBRARY_JUMP_FIRST) {
+                0
+            } else {
+                (repository.countLibraryItemsBefore(libraryId, query, letter) ?: return).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+            }
+        updateBrowseStateIfCurrent(generation, libraryId, emptyList()) { it.copy(isPageLoading = true) }
+        while (true) {
+            val loaded = mutableState.value
+            if (!isBrowseContextCurrent(generation, libraryId, emptyList())) return
+            if (target < loaded.libraryItems.size || loaded.endReached) break
+            val start = loaded.libraryItems.size
+            val pageAlignedEnd = (target / pageSize + 1) * pageSize
+            val end = minOf(pageAlignedEnd, start + pageSize * LETTER_JUMP_CHUNK_PAGES)
+            val range = repository.loadLibraryRange(libraryId, start, end - start, query)
+            updateBrowseStateIfCurrent(generation, libraryId, emptyList()) { current ->
+                val merged = (current.libraryItems + range.items).distinctBy { it.id }
+                current.copy(
+                    libraryItems = merged,
+                    currentPage = (merged.size + pageSize - 1) / pageSize - 1,
+                    endReached = range.items.size < end - start,
+                )
+            }
+        }
+        updateBrowseStateIfCurrent(generation, libraryId, emptyList()) { current ->
+            val index = target.coerceAtMost(current.libraryItems.lastIndex)
+            if (index < 0) {
+                current.copy(isPageLoading = false)
+            } else {
+                current.copy(isPageLoading = false, libraryLetterJump = LibraryLetterJump(letter, index, requestId))
+            }
+        }
     }
 
     fun loadNextPage() {
@@ -952,6 +1061,8 @@ class JellyfinBrowseCoordinator internal constructor(
 
     private companion object {
         private const val HOME_SECTION_ITEM_LIMIT = 12
+        private const val LETTER_JUMP_CHUNK_PAGES = 10
+        private const val LIBRARY_LATEST_LIMIT = 16
         private const val FAVORITES_FILTER = "IsFavorite"
         private const val FAVORITES_LIBRARY_SENTINEL = "__favorites__"
     }

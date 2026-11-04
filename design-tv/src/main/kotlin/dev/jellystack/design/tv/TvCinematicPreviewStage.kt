@@ -28,6 +28,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.media3.common.util.UnstableApi
 import androidx.tv.material3.Text
 import dev.jellystack.players.AndroidPlayerEngine
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -40,6 +41,7 @@ internal val TV_CINEMATIC_STAGE_HEIGHT: Dp = TV_CINEMATIC_ROWS_TOP
  * The focused card's artwork behind the whole screen, as on the home screen; a playing trailer replaces it once it
  * shows a frame. The scrims only keep the text readable, so they fade with [uiAlpha] while the trailer has the screen.
  */
+@androidx.annotation.OptIn(UnstableApi::class)
 @Composable
 internal fun TvCinematicBackdropLayer(
     backdrop: TvCinematicBackdrop,
@@ -85,6 +87,8 @@ internal fun TvCinematicStage(
             TvCinematicStageText(
                 hero = hero,
                 card = focusedCard,
+                endsAtPattern =
+                    playback?.labels?.endsAt?.takeIf { focusedCard != null && playback.canPlay(focusedCard) },
                 modifier =
                     Modifier
                         .align(Alignment.TopStart)
@@ -113,6 +117,7 @@ internal fun TvCinematicStage(
 private fun TvCinematicStageText(
     hero: TvCinematicHero?,
     card: TvCinematicCard?,
+    endsAtPattern: String?,
     modifier: Modifier,
 ) {
     val fadeMs = tvHomeHeroFadeMillis()
@@ -149,8 +154,10 @@ private fun TvCinematicStageText(
                         modifier = Modifier.weight(1f, fill = false),
                     )
                 }
-                (shown?.metadata ?: shown?.subtitle)?.let {
-                    Text(it, color = TvTextMuted, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                val endsAt = rememberTvEndsAtLabel(shown?.remainingMinutes, endsAtPattern)
+                val line = listOfNotNull(shown?.metadata ?: shown?.subtitle, endsAt).joinToString(TV_CARD_SEPARATOR)
+                if (line.isNotBlank()) {
+                    Text(line, color = TvTextMuted, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         }

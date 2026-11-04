@@ -85,8 +85,8 @@ internal fun TvSegmentSkipSettings(
     var choiceDialog by remember { mutableStateOf<TvChoiceDialogState?>(null) }
     val models = tvSegmentSkipSettingModels(settings, strings, onModeSelected)
     Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        if (showTitle) TvSectionTitle(strings.segmentSkipping)
-        Text(strings.serverSegmentExplanation, color = TvTextMuted, fontSize = 17.sp)
+        if (showTitle) TvSectionTitle(strings.segments.segmentSkipping)
+        Text(strings.segments.serverSegmentExplanation, color = TvTextMuted, fontSize = 17.sp)
         TvSettingsGrid {
             models.forEach { model ->
                 TvSettingTile(
@@ -251,11 +251,11 @@ internal fun TvSeerrConnectDialog(
             Modifier.width(620.dp).background(TvSurfaceRaised, RoundedCornerShape(26.dp)).padding(30.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Text(strings.connectSeerr, color = TvText, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+            Text(strings.signIn.connectSeerr, color = TvText, fontSize = 30.sp, fontWeight = FontWeight.Bold)
             OutlinedTextField(
                 url,
                 { url = it },
-                label = { Text(strings.serverUrl) },
+                label = { Text(strings.signIn.serverUrl) },
                 singleLine = true,
                 colors = tvOutlinedTextFieldColors(),
                 modifier =
@@ -269,7 +269,7 @@ internal fun TvSeerrConnectDialog(
             if (needsCredentials) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     TvActionButton(
-                        strings.jellyfinAccount,
+                        strings.signIn.jellyfinAccount,
                         { useJellyfin = true },
                         modifier =
                             Modifier
@@ -282,7 +282,7 @@ internal fun TvSeerrConnectDialog(
                         selected = useJellyfin,
                     )
                     TvActionButton(
-                        strings.seerrAccount,
+                        strings.signIn.seerrAccount,
                         { useJellyfin = false },
                         modifier =
                             Modifier
@@ -298,7 +298,7 @@ internal fun TvSeerrConnectDialog(
                 OutlinedTextField(
                     username,
                     { username = it },
-                    label = { Text(if (useJellyfin) strings.username else strings.email) },
+                    label = { Text(if (useJellyfin) strings.signIn.username else strings.signIn.email) },
                     singleLine = true,
                     colors = tvOutlinedTextFieldColors(),
                     modifier =
@@ -313,7 +313,7 @@ internal fun TvSeerrConnectDialog(
                 OutlinedTextField(
                     password,
                     { password = it },
-                    label = { Text(strings.password) },
+                    label = { Text(strings.signIn.password) },
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
@@ -331,7 +331,7 @@ internal fun TvSeerrConnectDialog(
             error?.let { Text(it, color = TvError) }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 TvActionButton(
-                    strings.connect,
+                    strings.signIn.connect,
                     primary = true,
                     modifier = Modifier.focusRequester(connectFocus),
                     onClick = {
@@ -383,48 +383,48 @@ internal fun TvSeerrConnectDialog(
 
 internal fun AppLanguage.label(strings: TvStrings): String =
     when (this) {
-        AppLanguage.SYSTEM -> strings.systemDefault
-        AppLanguage.ENGLISH -> strings.english
-        AppLanguage.GERMAN -> strings.german
+        AppLanguage.SYSTEM -> strings.preferences.systemDefault
+        AppLanguage.ENGLISH -> strings.preferences.english
+        AppLanguage.GERMAN -> strings.preferences.german
     }
 
 internal fun SubtitleMode.label(strings: TvStrings): String =
     when (this) {
-        SubtitleMode.SERVER_DEFAULT -> strings.serverDefault
+        SubtitleMode.SERVER_DEFAULT -> strings.seerr.serverDefault
         SubtitleMode.OFF -> strings.off
-        SubtitleMode.FORCED_ONLY -> strings.forcedOnly
-        SubtitleMode.PREFERRED_ALWAYS -> strings.preferredAlways
-        SubtitleMode.PREFERRED_WHEN_AUDIO_DIFFERS -> strings.preferredWhenAudioDiffers
+        SubtitleMode.FORCED_ONLY -> strings.preferences.forcedOnly
+        SubtitleMode.PREFERRED_ALWAYS -> strings.preferences.preferredAlways
+        SubtitleMode.PREFERRED_WHEN_AUDIO_DIFFERS -> strings.preferences.preferredWhenAudioDiffers
     }
 
 internal fun SubtitleTextSize.label(strings: TvStrings): String =
     when (this) {
-        SubtitleTextSize.SYSTEM -> strings.systemDefault
-        SubtitleTextSize.SMALL -> strings.small
-        SubtitleTextSize.MEDIUM -> strings.medium
-        SubtitleTextSize.LARGE -> strings.large
+        SubtitleTextSize.SYSTEM -> strings.preferences.systemDefault
+        SubtitleTextSize.SMALL -> strings.preferences.small
+        SubtitleTextSize.MEDIUM -> strings.preferences.medium
+        SubtitleTextSize.LARGE -> strings.preferences.large
     }
 
 internal fun SubtitleBackground.label(strings: TvStrings): String =
     when (this) {
-        SubtitleBackground.SYSTEM -> strings.systemDefault
+        SubtitleBackground.SYSTEM -> strings.preferences.systemDefault
         SubtitleBackground.NONE -> strings.none
-        SubtitleBackground.TRANSLUCENT -> strings.translucent
-        SubtitleBackground.DARK -> strings.dark
+        SubtitleBackground.TRANSLUCENT -> strings.preferences.translucent
+        SubtitleBackground.DARK -> strings.preferences.dark
     }
 
 internal fun AutoplayNextMode.label(strings: TvStrings): String =
     when (this) {
         AutoplayNextMode.OFF -> strings.off
-        AutoplayNextMode.COUNTDOWN -> strings.countdown
-        AutoplayNextMode.IMMEDIATE -> strings.immediate
+        AutoplayNextMode.COUNTDOWN -> strings.preferences.countdown
+        AutoplayNextMode.IMMEDIATE -> strings.preferences.immediate
     }
 
 internal fun SegmentSkipMode.label(strings: TvStrings): String =
     when (this) {
         SegmentSkipMode.OFF -> strings.off
-        SegmentSkipMode.SHOW_BUTTON -> strings.showSkipButton
-        SegmentSkipMode.AUTO_SKIP -> strings.skipAutomatically
+        SegmentSkipMode.SHOW_BUTTON -> strings.segments.showSkipButton
+        SegmentSkipMode.AUTO_SKIP -> strings.segments.skipAutomatically
     }
 
 internal fun AppSettingsRepository.setSegmentSkipMode(
@@ -446,14 +446,14 @@ private fun tvSettingsSegmentControlTargetId(type: PlaybackSegmentType): String 
 internal fun ResumeMode.label(strings: TvStrings): String =
     when (this) {
         ResumeMode.RESUME -> strings.continueLabel
-        ResumeMode.ASK -> strings.ask
+        ResumeMode.ASK -> strings.preferences.ask
         ResumeMode.RESTART -> strings.restart
     }
 
 internal fun String.label() = lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() }
 
 internal fun StreamingQualityPreference.label(strings: TvStrings): String =
-    maxHeight?.let { "${it}p  •  ${(maxBitrate ?: 0) / 1_000_000f} Mbps" } ?: strings.automatic
+    maxHeight?.let { "${it}p  •  ${(maxBitrate ?: 0) / 1_000_000f} Mbps" } ?: strings.preferences.automatic
 
 internal fun tvQualityOptions(): List<StreamingQualityPreference> =
     listOf(
@@ -475,7 +475,7 @@ internal fun preferredLanguageOptions(
     onSelect: (String?) -> Unit,
 ): List<TvChoiceOption> =
     listOf(
-        TvChoiceOption(strings.serverDefault, selected == null) { onSelect(null) },
-        TvChoiceOption(strings.english, selected == "en") { onSelect("en") },
-        TvChoiceOption(strings.german, selected == "de") { onSelect("de") },
+        TvChoiceOption(strings.seerr.serverDefault, selected == null) { onSelect(null) },
+        TvChoiceOption(strings.preferences.english, selected == "en") { onSelect("en") },
+        TvChoiceOption(strings.preferences.german, selected == "de") { onSelect("de") },
     )

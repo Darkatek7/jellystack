@@ -3,6 +3,7 @@ package dev.jellystack.design.tv
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.State
+import androidx.media3.common.util.UnstableApi
 import dev.jellystack.core.preferences.MotionPreference
 import dev.jellystack.players.AndroidPlayerEngine
 
@@ -34,6 +35,8 @@ internal data class TvCinematicCard(
     val resumeFraction: Float? = null,
     val logoUrl: String? = null,
     val metadata: String? = null,
+    /** Minutes left of a playable title, for the stage's "ends at"; null for containers and unknown runtimes. */
+    val remainingMinutes: Long? = null,
     /** Focusing the card leaves the current backdrop in place, for cards without title artwork of their own. */
     val keepsBackdrop: Boolean = false,
 ) {
@@ -118,9 +121,12 @@ internal data class TvCinematicHintLabels(
     val play: String,
     val resume: String,
     val details: String,
+    /** "Ends at %s"; null leaves the stage without an end time. */
+    val endsAt: String? = null,
 )
 
 /** The focused card's trailer while it plays behind a cinematic browse screen. */
+@androidx.annotation.OptIn(UnstableApi::class)
 @Stable
 internal class TvCinematicTrailer(
     val engine: AndroidPlayerEngine,

@@ -412,11 +412,11 @@ internal fun TvPlaybackScreen(
             TvPlayerOverlay.PREPARING ->
                 TvPlayerPreparing(
                     model = tvPlayerPreparingModel(playbackState, startState, TvPlayerImageSource(imageBaseUrl, imageAccessToken)),
-                    label = strings.preparingPlayback,
+                    label = strings.playbackUi.preparingPlayback,
                 )
             TvPlayerOverlay.PLAYBACK_ERROR ->
                 TvPlaybackError(
-                    title = strings.playbackFailedTitle,
+                    title = strings.playbackUi.playbackFailedTitle,
                     message = tvPlaybackErrorMessage("", strings),
                     onRetry = controller::retry,
                     strings = strings,
@@ -494,7 +494,7 @@ internal fun TvPlaybackScreen(
         val controlsHiddenOverlay = active != null && !controlsVisible && navigation.current == TvPlayerPanel.NONE
         if (controlsHiddenOverlay && active.isPaused) {
             Text(
-                strings.pausedLabel,
+                strings.playbackUi.pausedLabel,
                 color = Color.White,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -691,7 +691,7 @@ internal fun TvPlaybackActions(
     ) {
         actions.forEachIndexed { index, action ->
             key(action.id) {
-                val requester = requesters.getOrPut(action.id) { FocusRequester() }
+                val requester = remember { requesters.getOrPut(action.id) { FocusRequester() } }
                 if (action.kind == TvPlaybackActionKind.PLAY_NEXT && action.detail != null) {
                     TvUpNextCard(
                         action = action,
@@ -736,7 +736,7 @@ internal const val TV_PLAYBACK_SCRUB_OVERLAY_TAG = "tv-playback-scrub-overlay"
 private const val TV_HIDDEN_SCRUB_LINGER_MS = 1_500L
 
 private fun dev.jellystack.players.PlaybackMetadata?.playerPrimaryTitle(strings: TvStrings): String =
-    this?.seriesName?.takeIf(String::isNotBlank) ?: this?.title?.takeIf(String::isNotBlank) ?: strings.playback
+    this?.seriesName?.takeIf(String::isNotBlank) ?: this?.title?.takeIf(String::isNotBlank) ?: strings.playbackUi.playback
 
 private fun dev.jellystack.players.PlaybackMetadata?.playerSecondaryTitle(): String? {
     val metadata = this
@@ -764,4 +764,4 @@ private fun dev.jellystack.players.PlaybackMetadata?.playerSecondaryTitle(): Str
 internal fun tvPlaybackErrorMessage(
     rawMessage: String,
     strings: TvStrings,
-): String = strings.playbackFailedMessage
+): String = strings.playbackUi.playbackFailedMessage

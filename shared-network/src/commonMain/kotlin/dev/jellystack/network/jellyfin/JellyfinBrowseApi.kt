@@ -70,6 +70,7 @@ class JellyfinBrowseApi(
         years: List<Int> = emptyList(),
         personIds: List<String> = emptyList(),
         albumArtistIds: List<String> = emptyList(),
+        nameLessThan: String? = null,
     ): JellyfinItemsResponse =
         client
             .request {
@@ -93,6 +94,23 @@ class JellyfinBrowseApi(
                 years.takeIf(List<Int>::isNotEmpty)?.let { parameter("Years", it.joinToString(",")) }
                 personIds.takeIf(List<String>::isNotEmpty)?.let { parameter("PersonIds", it.joinToString(",")) }
                 albumArtistIds.takeIf(List<String>::isNotEmpty)?.let { parameter("AlbumArtistIds", it.joinToString(",")) }
+                // Items whose sort name sorts before this value; with the same filters, the total is an item's index.
+                nameLessThan?.takeIf { it.isNotBlank() }?.let { parameter("NameLessThan", it) }
+            }.body()
+
+    /** People of the server whose name matches [searchTerm]; Jellyfin returns partial matches, callers pick the exact one. */
+    suspend fun searchPersons(
+        userId: String,
+        searchTerm: String,
+        limit: Int = 10,
+    ): JellyfinItemsResponse =
+        client
+            .request {
+                method = HttpMethod.Get
+                configure("/Persons")
+                parameter("UserId", userId)
+                parameter("SearchTerm", searchTerm)
+                parameter("Limit", limit)
             }.body()
 
     /** The entries of a playlist in the order the playlist keeps them. */
@@ -119,7 +137,7 @@ class JellyfinBrowseApi(
         userId: String,
         libraryId: String,
         limit: Int,
-        includeItemTypes: String,
+        includeItemTypes: String?,
     ): List<JellyfinItemDto> =
         client
             .request {
@@ -128,7 +146,7 @@ class JellyfinBrowseApi(
                 parameter("UserId", userId)
                 parameter("ParentId", libraryId)
                 parameter("Limit", limit)
-                parameter("IncludeItemTypes", includeItemTypes)
+                includeItemTypes?.takeIf { it.isNotBlank() }?.let { parameter("IncludeItemTypes", it) }
                 parameter("Fields", REQUIRED_FIELDS)
                 parameter("ImageTypeLimit", 1)
                 parameter("EnableImageTypes", "Primary,Backdrop,Thumb,Logo")
@@ -511,6 +529,9 @@ data class JellyfinItemUserData(
     val playedPercentage: Double? = null,
     @SerialName("LastPlayedDate")
     val lastPlayedDate: String? = null,
+    /** Series, seasons and folders: how many of their episodes or items the user has not played yet. */
+    @SerialName("UnplayedItemCount")
+    val unplayedItemCount: Int? = null,
 )
 
 @Serializable

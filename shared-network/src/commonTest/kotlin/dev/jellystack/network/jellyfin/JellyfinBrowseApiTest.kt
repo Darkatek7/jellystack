@@ -228,6 +228,67 @@ class JellyfinBrowseApiTest {
         }
 
     @Test
+    fun latestItemsWithoutATypeLeaveTheFilterOut() =
+        runTest {
+            var parameters: Map<String, List<String>> = emptyMap()
+            val engine =
+                MockEngine { request ->
+                    parameters =
+                        request.url.parameters
+                            .entries()
+                            .associate { it.key to it.value }
+                    respond(
+                        "[]",
+                        HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                    )
+                }
+            val client = NetworkClientFactory.create(ClientConfig(engine = engine, installLogging = false))
+            val api = JellyfinBrowseApi(client, baseUrl = "https://example.test", accessToken = "dummy-access-token")
+
+            api.fetchLatestItems("u-1", "books", 16, includeItemTypes = null)
+
+            assertEquals(listOf("books"), parameters["ParentId"])
+            assertNull(parameters["IncludeItemTypes"])
+            client.close()
+        }
+
+    @Test
+    fun nameLessThanCountsTheItemsBeforeALetter() =
+        runTest {
+            val requests = mutableListOf<HttpRequestData>()
+            val engine =
+                MockEngine { request ->
+                    requests += request
+                    respond(
+                        """{"Items":[],"TotalRecordCount":412}""",
+                        HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                    )
+                }
+            val client = NetworkClientFactory.create(ClientConfig(engine = engine, installLogging = false))
+            val api = JellyfinBrowseApi(client, baseUrl = "https://example.test", accessToken = "dummy-access-token")
+
+            val response =
+                api.fetchLibraryItems(
+                    userId = "u-1",
+                    libraryId = "movies",
+                    startIndex = 0,
+                    limit = 1,
+                    includeItemTypes = "Movie",
+                    genres = listOf("Drama"),
+                    nameLessThan = "M",
+                )
+            api.fetchLibraryItems(userId = "u-1", libraryId = "movies", startIndex = 0, limit = 1, nameLessThan = " ")
+
+            assertEquals(412L, response.totalRecordCount)
+            assertEquals("M", requests[0].url.parameters["NameLessThan"])
+            assertEquals("Drama", requests[0].url.parameters["Genres"])
+            assertNull(requests[1].url.parameters["NameLessThan"])
+            client.close()
+        }
+
+    @Test
     fun personFilmographyQueryFiltersByPersonAcrossTheWholeLibrary() =
         runTest {
             var parameters: Map<String, List<String>> = emptyMap()
@@ -623,6 +684,35 @@ class JellyfinBrowseApiTest {
             val ids = api.fetchFavoriteIds("u-1")
 
             assertEquals(setOf("a", "b", "c"), ids)
+
+            client.close()
+        }
+
+    @Test
+    fun searchPersonsAsksThePersonsEndpointWithTheNameAndAUserLimit() =
+        runTest {
+            var request: HttpRequestData? = null
+            val engine =
+                MockEngine {
+                    request = it
+                    respond(
+                        """{"Items":[{"Id":"p-1","Name":"Ada Example","Type":"Person"}],"TotalRecordCount":1}""",
+                        HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                    )
+                }
+            val client = NetworkClientFactory.create(ClientConfig(engine = engine, installLogging = false))
+            val api = JellyfinBrowseApi(client, baseUrl = "https://example.test", accessToken = "dummy-access-token")
+
+            val response = api.searchPersons("u-1", "Ada Example", limit = 5)
+
+            val sent = request!!
+            assertEquals(HttpMethod.Get, sent.method)
+            assertEquals("/Persons", sent.url.encodedPath)
+            assertEquals("Ada Example", sent.url.parameters["SearchTerm"])
+            assertEquals("u-1", sent.url.parameters["UserId"])
+            assertEquals("5", sent.url.parameters["Limit"])
+            assertEquals(listOf("p-1"), response.items.map { it.id })
 
             client.close()
         }

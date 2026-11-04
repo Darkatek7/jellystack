@@ -46,14 +46,14 @@ internal fun TvResumeAskDialogContent(
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
         Text(
-            strings.resumeAskTitle,
+            strings.playbackUi.resumeAskTitle,
             modifier = Modifier.tvHeading(),
             fontSize = 30.sp,
             fontWeight = FontWeight.Bold,
             color = TvText,
         )
         Text(
-            strings.continueFrom.format(positionLabel),
+            strings.playbackUi.continueFrom.format(positionLabel),
             fontSize = 19.sp,
             color = TvTextMuted,
         )

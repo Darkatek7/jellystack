@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,15 +37,40 @@ enum class TvGoldenFixture {
     PLAYER_SCRUB,
     PLAYER_UP_NEXT,
     HOME_HERO,
+    HOME_HERO_HINTS,
+    HOME_SETTINGS,
     DETAIL_HERO,
+    DETAIL_SERIES,
+    DETAIL_EPISODE,
+    DETAIL_SEERR,
     LIBRARY_GRID,
+    LIBRARY_FILTER_PANEL,
+    LIBRARY_LANDING,
     EMPTY_STATE,
     ERROR_STATE,
     SKELETON_ROWS,
     DETAIL_LOAD_ERROR,
     NAVIGATION_RAIL_OPEN,
     RESUME_DIALOG,
+    DISCOVER_ROWS,
+    LIVE_TV_GUIDE,
+    SIGN_IN_EMPTY,
+    SIGN_IN_QUICK_CONNECT,
+    SIGN_IN_HINT,
+    SIGN_IN_ERROR,
+    SIGN_IN_LONG_MESSAGE,
+    SIGN_IN_PASSWORD,
 }
+
+private val GOLDEN_HERO_FIXTURES =
+    setOf(
+        TvGoldenFixture.HOME_HERO,
+        TvGoldenFixture.HOME_HERO_HINTS,
+        TvGoldenFixture.HOME_SETTINGS,
+    )
+
+/** 2026-01-15 20:00 UTC, the wall clock of every golden. */
+private const val GOLDEN_NOW_MILLIS = 1_768_507_200_000L
 
 /** Screenshot-test entry point; production code never calls it. */
 @Composable
@@ -54,20 +80,26 @@ fun JellystackTvGoldenFixture(
     modifier: Modifier = Modifier,
 ) {
     val strings = TvStrings.current(language)
-    if (fixture in GOLDEN_PLAYER_FIXTURES || fixture in GOLDEN_STATE_FIXTURES) {
-        if (fixture in GOLDEN_STATE_FIXTURES) {
-            GoldenStateFixture(fixture, strings, modifier)
-        } else {
-            JellystackTvTheme { GoldenPlayer(strings, fixture, modifier) }
+    if (fixture in GOLDEN_FULL_SCREEN_FIXTURES) {
+        when (fixture) {
+            in GOLDEN_SIGN_IN_FIXTURES -> GoldenSignInFixture(fixture, strings, modifier)
+            in GOLDEN_STATE_FIXTURES -> GoldenStateFixture(fixture, strings, modifier)
+            else -> JellystackTvTheme { GoldenPlayer(strings, fixture, modifier) }
         }
         return
     }
-    if (fixture == TvGoldenFixture.HOME_HERO || fixture == TvGoldenFixture.DETAIL_HERO) {
+    if (fixture in GOLDEN_HERO_FIXTURES || fixture in GOLDEN_DETAIL_FIXTURES) {
         JellystackTvTheme {
-            if (fixture == TvGoldenFixture.HOME_HERO) {
-                GoldenHomeHero(strings, modifier)
-            } else {
-                GoldenDetailHero(strings, modifier)
+            // A fixed wall clock keeps "Ends at" in the hero identical on every run.
+            CompositionLocalProvider(LocalTvNowMillis provides { GOLDEN_NOW_MILLIS }) {
+                when (fixture) {
+                    TvGoldenFixture.HOME_HERO ->
+                        GoldenHomeHero(strings, modifier, showKeyHints = false, pageIndex = 5)
+                    TvGoldenFixture.HOME_HERO_HINTS ->
+                        GoldenHomeHero(strings, modifier, showKeyHints = true, pageIndex = 0)
+                    TvGoldenFixture.HOME_SETTINGS -> GoldenHomeSettings(strings, modifier)
+                    else -> GoldenDetailScreen(fixture, strings, modifier)
+                }
             }
         }
         return
@@ -86,17 +118,32 @@ fun JellystackTvGoldenFixture(
                 TvGoldenFixture.LANDSCAPE_CARDS -> GoldenLandscapeCards(strings)
                 TvGoldenFixture.PORTRAIT_CARDS -> GoldenPortraitCards()
                 TvGoldenFixture.HOME_HERO,
+                TvGoldenFixture.HOME_HERO_HINTS,
+                TvGoldenFixture.HOME_SETTINGS,
                 TvGoldenFixture.PLAYER_CONTROLS,
                 TvGoldenFixture.PLAYER_SCRUB,
                 TvGoldenFixture.PLAYER_UP_NEXT,
                 TvGoldenFixture.DETAIL_HERO,
+                TvGoldenFixture.DETAIL_SERIES,
+                TvGoldenFixture.DETAIL_EPISODE,
+                TvGoldenFixture.DETAIL_SEERR,
                 TvGoldenFixture.LIBRARY_GRID,
+                TvGoldenFixture.LIBRARY_FILTER_PANEL,
+                TvGoldenFixture.LIBRARY_LANDING,
                 TvGoldenFixture.EMPTY_STATE,
                 TvGoldenFixture.ERROR_STATE,
                 TvGoldenFixture.SKELETON_ROWS,
                 TvGoldenFixture.DETAIL_LOAD_ERROR,
                 TvGoldenFixture.NAVIGATION_RAIL_OPEN,
                 TvGoldenFixture.RESUME_DIALOG,
+                TvGoldenFixture.DISCOVER_ROWS,
+                TvGoldenFixture.LIVE_TV_GUIDE,
+                TvGoldenFixture.SIGN_IN_EMPTY,
+                TvGoldenFixture.SIGN_IN_QUICK_CONNECT,
+                TvGoldenFixture.SIGN_IN_HINT,
+                TvGoldenFixture.SIGN_IN_ERROR,
+                TvGoldenFixture.SIGN_IN_LONG_MESSAGE,
+                TvGoldenFixture.SIGN_IN_PASSWORD,
                 -> Unit
             }
         }
@@ -136,8 +183,30 @@ private fun GoldenLandscapeCards(strings: TvStrings) {
                 )
             }
         }
+        Row(horizontalArrangement = Arrangement.spacedBy(TvLayoutTokens.CardSpacing)) {
+            goldenBadgeItems().forEach { item ->
+                val text = item.tvCardText(strings)
+                TvMediaCard(
+                    title = text.title,
+                    subtitle = text.subtitle,
+                    progress = text.progress,
+                    badge = tvJellyfinCardBadge(item, strings),
+                    imageUrl = null,
+                    onClick = {},
+                )
+            }
+        }
     }
 }
+
+/** A series with unplayed episodes, a finished movie, a series with a three-digit count, and a library card. */
+private fun goldenBadgeItems(): List<JellyfinItem> =
+    listOf(
+        goldenItem("Series", "Harbor Lights").copy(productionYear = 2021, unplayedCount = 7),
+        goldenItem("Movie", "Northern Lights").copy(productionYear = 2019, isPlayed = true),
+        goldenItem("Series", "Long Running Show").copy(productionYear = 1999, unplayedCount = 312),
+        goldenItem("Series", "All Caught Up").copy(productionYear = 2023, isPlayed = true),
+    )
 
 @Composable
 private fun GoldenPortraitCards() {
@@ -151,6 +220,23 @@ private fun GoldenPortraitCards() {
             onClick = {},
             subtitle = "1973",
             format = TvMediaCardFormat.POSTER,
+        )
+        TvMediaCard(
+            title = "Harbor Lights",
+            imageUrl = null,
+            onClick = {},
+            subtitle = "2021",
+            format = TvMediaCardFormat.POSTER,
+            badge = TvMediaCardBadge.Unplayed(7, "7 unplayed"),
+        )
+        TvMediaCard(
+            title = "A Poster Title That Is Much Too Long",
+            imageUrl = null,
+            onClick = {},
+            subtitle = "2020",
+            format = TvMediaCardFormat.POSTER,
+            progress = 0.4f,
+            badge = TvMediaCardBadge.Watched("Watched"),
         )
         TvMediaCard(
             title = "Alex Example",
@@ -311,7 +397,7 @@ private fun GoldenTrickplayFrame() {
     )
 }
 
-private val GOLDEN_PLAYER_FIXTURES =
+internal val GOLDEN_PLAYER_FIXTURES =
     setOf(TvGoldenFixture.PLAYER_CONTROLS, TvGoldenFixture.PLAYER_SCRUB, TvGoldenFixture.PLAYER_UP_NEXT)
 
 private fun goldenSkipIntroActions(strings: TvStrings) =

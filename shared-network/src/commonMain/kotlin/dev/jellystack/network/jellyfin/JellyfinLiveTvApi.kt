@@ -76,6 +76,8 @@ class JellyfinLiveTvApi(
                 parameter("EnableTotalRecordCount", false)
                 parameter("EnableImages", false)
                 parameter("EnableUserData", false)
+                // The guide shows the overview of a future program on OK; the server leaves it out unless asked.
+                parameter("Fields", "Overview")
             }.orEmptyWhenUnavailable { JellyfinLiveTvProgramsResponse() }
     }
 

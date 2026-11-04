@@ -35,7 +35,8 @@ class SeriesPlaybackTargetResolver {
             return SeriesPlaybackTarget(inProgress, SeriesPlaybackReason.CONTINUE)
         }
 
-        val unwatched = available.firstOrNull { (it.playedPercentage ?: 0.0) <= 0.0 }
+        // Marked as watched counts even without progress, as Jellyfin reports for episodes watched elsewhere.
+        val unwatched = available.firstOrNull { !it.isPlayed && (it.playedPercentage ?: 0.0) <= 0.0 }
         if (unwatched != null) {
             return SeriesPlaybackTarget(unwatched, SeriesPlaybackReason.PLAY)
         }

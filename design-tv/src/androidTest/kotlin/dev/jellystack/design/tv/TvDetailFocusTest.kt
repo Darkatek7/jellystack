@@ -159,19 +159,17 @@ class TvDetailFocusTest {
         }
         composeRule.waitUntil { restorationStarted.isCompleted }
 
+        // Down enters the first card of the row; the restore of the remembered second card must not win.
         composeRule.onNodeWithTag("tv-detail-primary-action").performKeyInput { pressKey(Key.DirectionDown) }
-        composeRule.onNodeWithTag("tv-detail-body-focus").assertIsFocused()
         releaseRestoration.complete(Unit)
-        composeRule.waitForIdle()
-
-        composeRule.onNodeWithTag("tv-detail-body-focus").assertIsFocused()
+        waitUntilFocused("Actor 0")
         composeRule.runOnIdle {
             assertEquals(
-                TvFocusDestination.BODY,
+                "person-0",
                 holder.focusMemory
                     .restore(routeKey)
                     ?.anchor
-                    ?.destination,
+                    ?.itemId,
             )
         }
     }
@@ -184,7 +182,7 @@ class TvDetailFocusTest {
                     uiState =
                         TvDetailUiState(
                             routeKey = "movie-1",
-                            sections = listOf(TvDetailSection.Overview(null, null)),
+                            sections = listOf(TvDetailSection.Details(null, null)),
                         ),
                     heroContentDescription = "Movie details",
                     modifier = Modifier.fillMaxSize(),
@@ -229,7 +227,6 @@ class TvDetailFocusTest {
                             routeKey = "episode-1",
                             sections =
                                 listOf(
-                                    TvDetailSection.Overview(null, null),
                                     TvDetailSection.Cast(
                                         listOf(
                                             TvDetailCastItem.Jellyfin(jellyfinPerson("person-0")),
@@ -239,6 +236,7 @@ class TvDetailFocusTest {
                                     TvDetailSection.Similar(
                                         listOf(TvDetailSimilarItem.Jellyfin(jellyfinItem("similar-0"))),
                                     ),
+                                    TvDetailSection.Details(null, null),
                                 ),
                         ),
                     heroContentDescription = "Episode details",
@@ -260,10 +258,6 @@ class TvDetailFocusTest {
                 ) { bodyFocusModifier, sectionFocusModifiers ->
                     val castFocusModifiers = sectionFocusModifiers.getValue("cast")
                     val similarFocusModifiers = sectionFocusModifiers.getValue("similar")
-                    item("overview") {
-                        // A viewport-high body: focus then scrolls it to the top, whatever the display density.
-                        Box(bodyFocusModifier.fillMaxWidth().fillParentMaxHeight())
-                    }
                     item("cast") {
                         LazyRow(
                             modifier =
@@ -307,6 +301,10 @@ class TvDetailFocusTest {
                             }
                         }
                     }
+                    item("overview") {
+                        // A viewport-high body: focus then scrolls it to the top, whatever the display density.
+                        Box(bodyFocusModifier.fillMaxWidth().fillParentMaxHeight())
+                    }
                 }
             }
         }
@@ -315,18 +313,7 @@ class TvDetailFocusTest {
         val primary = composeRule.onNodeWithTag("tv-detail-primary-action").assertIsFocused()
 
         primary.performKeyInput { pressKey(Key.DirectionDown) }
-        composeRule.waitUntil(2_000) {
-            runCatching {
-                composeRule.onNodeWithTag("tv-detail-body-focus").assertIsFocused()
-                true
-            }.getOrDefault(false)
-        }
-        val body = composeRule.onNodeWithTag("tv-detail-body-focus").assertIsFocused()
-        // LazyColumn can dispose the hero once navigation scrolls it out of view.
-        hero.assertIsNotDisplayed()
-
-        body.performKeyInput { pressKey(Key.DirectionDown) }
-        composeRule.waitForIdle()
+        waitUntilFocused("Actor 1")
         val firstCast = composeRule.onNodeWithContentDescription("Actor 1").assertIsFocused()
 
         firstCast.performKeyInput { pressKey(Key.Enter) }
@@ -344,6 +331,14 @@ class TvDetailFocusTest {
         similar.performKeyInput { pressKey(Key.DirectionUp) }
         composeRule.waitForIdle()
         firstCast.assertIsFocused()
+
+        // The Details close the page: Down from the last row scrolls them in and focuses them.
+        firstCast.performKeyInput { pressKey(Key.DirectionDown) }
+        waitUntilFocused("Similar")
+        composeRule.onNodeWithContentDescription("Similar").performKeyInput { pressKey(Key.DirectionDown) }
+        waitUntilTagFocused("tv-detail-body-focus")
+        // LazyColumn can dispose the hero once navigation scrolls it out of view.
+        hero.assertIsNotDisplayed()
     }
 
     @Test
@@ -357,7 +352,6 @@ class TvDetailFocusTest {
                             routeKey = "episode-changing",
                             sections =
                                 buildList {
-                                    add(TvDetailSection.Overview(null, null))
                                     if (showCast) {
                                         add(
                                             TvDetailSection.Cast(
@@ -365,6 +359,7 @@ class TvDetailFocusTest {
                                             ),
                                         )
                                     }
+                                    add(TvDetailSection.Details(null, null))
                                 },
                         ),
                     heroContentDescription = "Changing episode details",
@@ -382,9 +377,6 @@ class TvDetailFocusTest {
                         )
                     },
                 ) { bodyFocusModifier, sectionFocusModifiers ->
-                    item("overview") {
-                        Box(bodyFocusModifier.fillMaxWidth().height(900.dp))
-                    }
                     if (showCast) {
                         item("cast") {
                             LazyRow(
@@ -414,19 +406,19 @@ class TvDetailFocusTest {
                             }
                         }
                     }
+                    item("overview") {
+                        Box(bodyFocusModifier.fillMaxWidth().height(900.dp))
+                    }
                 }
             }
         }
 
         composeRule.onNodeWithTag("tv-detail-primary-action").performKeyInput { pressKey(Key.DirectionDown) }
-        val overview = composeRule.onNodeWithTag("tv-detail-body-focus").assertIsFocused()
-        overview.performKeyInput { pressKey(Key.DirectionDown) }
-        composeRule.onNodeWithContentDescription("Temporary actor").assertIsFocused()
+        waitUntilFocused("Temporary actor")
 
         composeRule.runOnIdle { showCast = false }
-        composeRule.waitForIdle()
+        waitUntilTagFocused("tv-detail-body-focus")
 
-        overview.assertIsFocused()
         composeRule.onNodeWithContentDescription("Temporary actor").assertDoesNotExist()
     }
 
@@ -441,7 +433,6 @@ class TvDetailFocusTest {
                             routeKey = "episode-appending",
                             sections =
                                 buildList {
-                                    add(TvDetailSection.Overview(null, null))
                                     add(
                                         TvDetailSection.Cast(
                                             listOf(TvDetailCastItem.Jellyfin(jellyfinPerson("persistent-actor"))),
@@ -454,6 +445,7 @@ class TvDetailFocusTest {
                                             ),
                                         )
                                     }
+                                    add(TvDetailSection.Details(null, null))
                                 },
                         ),
                     heroContentDescription = "Appending episode details",
@@ -471,9 +463,6 @@ class TvDetailFocusTest {
                         )
                     },
                 ) { bodyFocusModifier, sectionFocusModifiers ->
-                    item("overview") {
-                        Box(bodyFocusModifier.fillMaxWidth().height(900.dp))
-                    }
                     item("cast") {
                         LazyRow(
                             modifier =
@@ -501,9 +490,11 @@ class TvDetailFocusTest {
                             }
                         }
                     }
-                    if (showSimilar) {
+                    // The modifiers follow the ui state, which recomposes a frame after showSimilar changes.
+                    val appendedSimilar = sectionFocusModifiers["similar"]
+                    if (appendedSimilar != null) {
                         item("similar") {
-                            val similarFocusModifiers = sectionFocusModifiers.getValue("similar")
+                            val similarFocusModifiers = appendedSimilar
                             LazyRow(
                                 modifier = similarFocusModifiers.navigationModifier,
                                 state = similarFocusModifiers.horizontalListState,
@@ -520,12 +511,14 @@ class TvDetailFocusTest {
                             }
                         }
                     }
+                    item("overview") {
+                        Box(bodyFocusModifier.fillMaxWidth().height(900.dp))
+                    }
                 }
             }
         }
 
         composeRule.onNodeWithTag("tv-detail-primary-action").performKeyInput { pressKey(Key.DirectionDown) }
-        composeRule.onNodeWithTag("tv-detail-body-focus").performKeyInput { pressKey(Key.DirectionDown) }
         val cast = composeRule.onNodeWithContentDescription("Persistent actor").assertIsFocused()
 
         composeRule.runOnIdle { showSimilar = true }
@@ -542,7 +535,7 @@ class TvDetailFocusTest {
                     uiState =
                         TvDetailUiState(
                             routeKey = "seerr-no-action",
-                            sections = listOf(TvDetailSection.Overview(null, null)),
+                            sections = listOf(TvDetailSection.Details(null, null)),
                         ),
                     heroContentDescription = "Seerr details",
                     hasPrimaryAction = false,
@@ -574,7 +567,7 @@ class TvDetailFocusTest {
             val uiState =
                 buildTvJellyfinDetailUiState(
                     routeKey = "series-seasons",
-                    facts = emptyList(),
+                    detailRows = emptyList(),
                     overview = "Overview",
                     tagline = null,
                     seasonGroups = listOf(TvSeasonGroup(1, seasonOne), TvSeasonGroup(2, seasonTwo)),
@@ -615,7 +608,6 @@ class TvDetailFocusTest {
         }
 
         composeRule.onNodeWithTag("tv-detail-primary-action").performKeyInput { pressKey(Key.DirectionDown) }
-        composeRule.onNodeWithTag("tv-detail-body-focus").performKeyInput { pressKey(Key.DirectionDown) }
         val seasonOneTag = "tv-detail-section-seasons-item-season-1"
         val seasonTwoTag = "tv-detail-section-seasons-item-season-2"
         waitUntilTagFocused(seasonOneTag)
@@ -641,7 +633,7 @@ class TvDetailFocusTest {
             val uiState =
                 buildTvJellyfinDetailUiState(
                     routeKey = "series-changing",
-                    facts = emptyList(),
+                    detailRows = emptyList(),
                     overview = "Overview",
                     tagline = null,
                     seasonGroups = listOf(TvSeasonGroup(1, episodes)),
@@ -682,7 +674,6 @@ class TvDetailFocusTest {
         }
 
         composeRule.onNodeWithTag("tv-detail-primary-action").performKeyInput { pressKey(Key.DirectionDown) }
-        composeRule.onNodeWithTag("tv-detail-body-focus").performKeyInput { pressKey(Key.DirectionDown) }
         val episodeTag = "tv-detail-section-episodes-item-episode-1"
         waitUntilTagFocused(episodeTag)
         composeRule.onNodeWithTag(episodeTag).performKeyInput { pressKey(Key.DirectionDown) }
@@ -741,7 +732,6 @@ class TvDetailFocusTest {
             }
         }
 
-        composeRule.onNodeWithTag("tv-detail-body-focus").performKeyInput { pressKey(Key.DirectionDown) }
         waitUntilFocused("Person 1")
         composeRule.onNodeWithContentDescription("Person 1").performKeyInput { pressKey(Key.DirectionDown) }
         waitUntilFocused("Similar 11")
@@ -794,12 +784,11 @@ class TvDetailFocusTest {
                     heroContent = { _, _ -> Box(Modifier.fillMaxSize()) },
                 ) { bodyFocusModifier, sectionFocusModifiers ->
                     castListState = sectionFocusModifiers.getValue("cast").horizontalListState
-                    tvSeerrDetailSections(uiState, strings, bodyFocusModifier, sectionFocusModifiers, {})
+                    tvSeerrDetailSections(uiState, strings, bodyFocusModifier, sectionFocusModifiers, onOpenItem = {})
                 }
             }
         }
 
-        composeRule.onNodeWithTag("tv-detail-body-focus").performKeyInput { pressKey(Key.DirectionDown) }
         moveFocusRightThroughPeople(1..16)
         composeRule.runOnIdle { castScrollScope.launch { castListState.scrollToItem(0) } }
         composeRule.waitUntil(5_000) { castListState.firstVisibleItemIndex == 0 }
@@ -836,12 +825,11 @@ class TvDetailFocusTest {
                     modifier = Modifier.fillMaxSize(),
                     heroContent = { _, _ -> Box(Modifier.fillMaxSize()) },
                 ) { bodyFocusModifier, sectionFocusModifiers ->
-                    tvSeerrDetailSections(uiState, strings, bodyFocusModifier, sectionFocusModifiers, {})
+                    tvSeerrDetailSections(uiState, strings, bodyFocusModifier, sectionFocusModifiers, onOpenItem = {})
                 }
             }
         }
 
-        composeRule.onNodeWithTag("tv-detail-body-focus").performKeyInput { pressKey(Key.DirectionDown) }
         moveFocusRightThroughPeople(1..16)
 
         composeRule.runOnIdle { cast = emptyList() }
@@ -872,12 +860,11 @@ class TvDetailFocusTest {
                     modifier = Modifier.fillMaxSize(),
                     heroContent = { _, _ -> Box(Modifier.fillMaxSize()) },
                 ) { bodyFocusModifier, sectionFocusModifiers ->
-                    tvSeerrDetailSections(uiState, strings, bodyFocusModifier, sectionFocusModifiers, {})
+                    tvSeerrDetailSections(uiState, strings, bodyFocusModifier, sectionFocusModifiers, onOpenItem = {})
                 }
             }
         }
 
-        composeRule.onNodeWithTag("tv-detail-body-focus").performKeyInput { pressKey(Key.DirectionDown) }
         composeRule.onNodeWithTag("tv-detail-section-cast-item-person-1").performKeyInput { pressKey(Key.DirectionRight) }
         waitUntilTagFocused("tv-detail-section-cast-item-person-2")
 
@@ -918,21 +905,21 @@ class TvDetailFocusTest {
                         )
                     },
                 ) { bodyFocusModifier, sectionFocusModifiers ->
-                    tvSeerrDetailSections(uiState, strings, bodyFocusModifier, sectionFocusModifiers, {})
+                    tvSeerrDetailSections(uiState, strings, bodyFocusModifier, sectionFocusModifiers, onOpenItem = {})
                 }
             }
         }
 
         composeRule.onNodeWithTag("tv-detail-primary-action").performKeyInput { pressKey(Key.DirectionDown) }
-        composeRule.onNodeWithTag("tv-detail-body-focus").performKeyInput { pressKey(Key.DirectionDown) }
         moveFocusRightThroughPeople(1..16)
 
         composeRule.mainClock.autoAdvance = false
         composeRule.runOnIdle { cast = emptyList() }
         composeRule.mainClock.advanceTimeByFrame()
-        // Recovery targets another row; explicitly start user navigation from overview.
+        // Recovery targets another row; explicitly start user navigation from that row: Up from the first row
+        // goes to the primary action.
         composeRule
-            .onNodeWithTag("tv-detail-body-focus")
+            .onNodeWithTag("tv-detail-section-similar-item-tv:1")
             .performSemanticsAction(SemanticsActions.RequestFocus)
             .assertIsFocused()
             .performKeyInput { pressKey(Key.DirectionUp) }
@@ -996,7 +983,6 @@ class TvDetailFocusTest {
             }
         }
 
-        composeRule.onNodeWithTag("tv-detail-body-focus").performKeyInput { pressKey(Key.DirectionDown) }
         moveFocusRightThroughPeople(1..16)
         composeRule.runOnIdle {
             pauseRecovery = true
@@ -1049,8 +1035,8 @@ class TvDetailFocusTest {
                     routeKey = routeKey,
                     sections =
                         buildList {
-                            add(TvDetailSection.Overview("Overview", null))
                             cast?.let { add(TvDetailSection.Cast(it)) }
+                            add(TvDetailSection.Details("Overview", null))
                         },
                 )
             CompositionLocalProvider(
@@ -1072,7 +1058,6 @@ class TvDetailFocusTest {
                             )
                         },
                     ) { bodyFocusModifier, sectionFocusModifiers ->
-                        item("overview") { Box(bodyFocusModifier.fillMaxWidth().height(600.dp)) }
                         sectionFocusModifiers["cast"]?.let { castFocus ->
                             item("cast") {
                                 LazyRow(
@@ -1091,6 +1076,7 @@ class TvDetailFocusTest {
                                 }
                             }
                         }
+                        item("overview") { Box(bodyFocusModifier.fillMaxWidth().height(600.dp)) }
                     }
                 }
             }

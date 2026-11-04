@@ -10,6 +10,7 @@ Major components include:
 - SQLDelight — Apache-2.0
 - Koin — Apache-2.0
 - Coil — Apache-2.0
+- ZXing core (`com.google.zxing:core`, QR code generation on Android TV) — Apache-2.0
 - Napier — Apache-2.0
 - Multiplatform Settings — Apache-2.0
 - Jellyfin Media3 FFmpeg decoder (`org.jellyfin.media3:media3-ffmpeg-decoder`, FFmpeg audio decoding on Android TV only) — GPL-3.0

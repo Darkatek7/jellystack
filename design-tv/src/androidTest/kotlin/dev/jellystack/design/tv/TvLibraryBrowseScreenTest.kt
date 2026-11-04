@@ -1,13 +1,17 @@
 package dev.jellystack.design.tv
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -120,11 +124,77 @@ class TvLibraryBrowseScreenTest {
         composeRule.onNodeWithTag("tv-library-query-controls").assertIsDisplayed()
         val allTitlesCard = composeRule.onNodeWithTag("tv-library-all-title-title-0")
         allTitlesCard.assertIsDisplayed().performSemanticsAction(SemanticsActions.RequestFocus).assertIsFocused()
+        // Sort opens the panel; picking a sort field there changes the query.
         composeRule.onNodeWithTag("tv-library-query-sort").performClick()
+        composeRule.onNodeWithTag("tv-library-filter-panel").assertIsDisplayed()
+        composeRule.onNodeWithTag("tv-library-panel-sort-DATE_ADDED").performClick()
         composeRule.runOnIdle { assertFalse(state.libraryBrowseQuery.isDefault) }
 
         composeRule.runOnIdle { route = route.copy(mode = TvLibraryMode.BROWSE) }
         composeRule.onNodeWithTag("cinematic-card-recent-recent").assertIsDisplayed()
+    }
+
+    @Test
+    fun allTitlesGridFocusesTheFirstCardWhenTheItemsArriveAfterTheFirstFrame() {
+        val route = TvRoute.Library("library", "Movies", mode = TvLibraryMode.ALL_TITLES)
+        val routeKey = route.focusRouteKey(emptyList())
+        var state by mutableStateOf(JellyfinHomeState(selectedLibraryId = "library"))
+        composeRule.setContent {
+            val coordinator =
+                remember { TvFocusCoordinator<FocusRequester>(awaitFocusFrame = { androidx.compose.runtime.withFrameNanos { } }) }
+            val entryFocus = remember { FocusRequester() }
+            val holder = remember { TvAppStateHolder() }
+            val sessions =
+                remember(coordinator) {
+                    TvRootFocusSessions(
+                        content = TvSemanticFocusRestorationSession(null, coordinator.currentInteractionRevision),
+                        rail = TvSemanticFocusRestorationSession(null, coordinator.currentInteractionRevision),
+                    )
+                }
+            TvRootFocusRestoration(
+                focusCoordinator = coordinator,
+                appStateHolder = holder,
+                focus =
+                    TvRootFocusState(
+                        currentRoute = route,
+                        routeKey = routeKey,
+                        showRail = true,
+                        railExpanded = false,
+                        isForeground = true,
+                        contentAuthoritativelyLoaded = !state.isLibraryLoading && tvLibraryContentDetermined(state),
+                    ),
+                sessions = sessions,
+            )
+            CompositionLocalProvider(
+                LocalTvScreenEntryFocusRequester provides entryFocus,
+                LocalTvFocusContext provides TvFocusContext(coordinator, routeKey, holder.focusMemory),
+            ) {
+                JellystackTvTheme {
+                    TvLibraryAllTitles(
+                        route = route,
+                        state = state,
+                        strings = TvStrings.current(AppLanguage.ENGLISH),
+                        focusMemory = holder.focusMemory,
+                        collectionType = "movies",
+                        onQueryChanged = {},
+                        onJumpToLetter = {},
+                        onLetterJumpHandled = {},
+                        onOpenItem = {},
+                        onOpenContainer = {},
+                        onLoadMore = {},
+                        onRetry = {},
+                        modifier = Modifier,
+                    )
+                }
+            }
+        }
+
+        // The header is composed first with an empty grid; the first card must still win once the items arrive.
+        composeRule.runOnIdle { state = state.copy(libraryItems = listOf(item("title-0", "Title 0"), item("title-1", "Title 1"))) }
+        composeRule.waitUntil(TEST_TIMEOUT_MS) {
+            runCatching { composeRule.onNodeWithTag("tv-library-all-title-title-0").assertIsFocused() }.isSuccess
+        }
+        composeRule.onNodeWithTag("tv-library-query-sort").assertIsNotFocused()
     }
 
     private fun item(
@@ -164,3 +234,5 @@ class TvLibraryBrowseScreenTest {
         lastPlayed = null,
     )
 }
+
+private const val TEST_TIMEOUT_MS = 5_000L

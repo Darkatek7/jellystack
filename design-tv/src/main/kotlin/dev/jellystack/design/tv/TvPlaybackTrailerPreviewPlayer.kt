@@ -1,5 +1,6 @@
 package dev.jellystack.design.tv
 
+import androidx.media3.common.util.UnstableApi
 import dev.jellystack.core.jellyfin.DetailTrailerSource
 import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
 import dev.jellystack.players.AndroidPlayerEngine
@@ -19,6 +20,7 @@ import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.transformLatest
 
+@androidx.annotation.OptIn(UnstableApi::class)
 internal class TvPlaybackTrailerPreviewPlayer(
     private val controller: PlaybackController,
     private val engine: AndroidPlayerEngine,

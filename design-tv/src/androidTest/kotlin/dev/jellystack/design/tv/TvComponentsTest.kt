@@ -377,7 +377,7 @@ class TvComponentsTest {
 
         composeRule.onNode(hasSetTextAction()).performTextInput("query")
         composeRule.onNodeWithContentDescription("Jellyfin result").assertExists()
-        composeRule.onNodeWithContentDescription(strings.seerrSearchFailed).assertExists()
+        composeRule.onNodeWithContentDescription(strings.seerr.seerrSearchFailed).assertExists()
         composeRule.onNodeWithContentDescription(strings.retry).performClick()
         composeRule.runOnIdle { assertEquals(1, seerrRetries) }
     }
@@ -448,8 +448,8 @@ class TvComponentsTest {
             }
         }
 
-        composeRule.onNodeWithText(strings.connectSeerrPrompt).assertExists()
-        composeRule.onNodeWithContentDescription(strings.connectSeerr).assertExists()
+        composeRule.onNodeWithText(strings.seerr.connectSeerrPrompt).assertExists()
+        composeRule.onNodeWithContentDescription(strings.signIn.connectSeerr).assertExists()
         composeRule.onNodeWithText("${strings.settings}: Seerr").assertDoesNotExist()
     }
 
@@ -471,8 +471,8 @@ class TvComponentsTest {
             }
         }
 
-        composeRule.onNodeWithContentDescription(strings.discoverLoadFailed).assertExists()
-        composeRule.onNodeWithContentDescription(strings.connectSeerr).assertDoesNotExist()
+        composeRule.onNodeWithContentDescription(strings.seerr.discoverLoadFailed).assertExists()
+        composeRule.onNodeWithContentDescription(strings.signIn.connectSeerr).assertDoesNotExist()
         composeRule.onNodeWithContentDescription(strings.retry).performClick()
         composeRule.runOnIdle { assertEquals(1, retries) }
     }
@@ -505,9 +505,9 @@ class TvComponentsTest {
         }
 
         composeRule.onNodeWithContentDescription("Available movie").assertExists()
-        composeRule.onNodeWithContentDescription(strings.discoverLoadFailed).assertExists()
+        composeRule.onNodeWithContentDescription(strings.seerr.discoverLoadFailed).assertExists()
         composeRule.onNodeWithContentDescription(strings.retry).assertDoesNotExist()
-        composeRule.onNodeWithText(strings.noResults).assertDoesNotExist()
+        composeRule.onNodeWithText(strings.searchScreen.noResults).assertDoesNotExist()
     }
 
     @Test

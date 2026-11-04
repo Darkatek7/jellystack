@@ -63,6 +63,7 @@ tasks.register("generateThirdPartyReport") {
                 Triple("SQLDelight", version("sqldelight"), "Apache-2.0"),
                 Triple("Koin", version("koin"), "Apache-2.0"),
                 Triple("Coil", version("coil3"), "Apache-2.0"),
+                Triple("ZXing core (TV Quick Connect QR code)", version("zxing"), "Apache-2.0"),
                 Triple("Napier", version("napier"), "Apache-2.0"),
                 Triple("Multiplatform Settings", version("multiplatform-settings"), "Apache-2.0"),
                 Triple("AndroidX Media3", version("media3"), "Apache-2.0"),

@@ -135,6 +135,8 @@ internal fun tvHomeCardTargetId(
     itemId: String,
 ): String = "home:row:$rowId:item:$itemId"
 
+internal fun TvFocusTarget.isLibraryQueryControl(): Boolean = targetId == TV_LIBRARY_SORT_TARGET || targetId == TV_LIBRARY_FILTER_TARGET
+
 internal fun tvLibraryTargetId(
     itemId: String,
     sectionId: String = "items",
@@ -165,7 +167,16 @@ internal fun tvRailTargetId(route: TvRoute): String =
             else -> route.focusRouteKey()
         }
 
-internal enum class TvBackAction { POP_LIBRARY_PATH, POP_ROUTE, CLOSE_RAIL, RETURN_HOME, SYSTEM_EXIT }
+internal enum class TvBackAction {
+    STOP_TRAILER,
+    POP_LIBRARY_PATH,
+    POP_ROUTE,
+    CLOSE_RAIL,
+    RETURN_HOME,
+    FOCUS_HOME_TOP,
+    OPEN_RAIL,
+    SYSTEM_EXIT,
+}
 
 /**
  * Persists the navigation back stack across process death. TV systems kill background apps
@@ -201,6 +212,25 @@ internal fun tvBackAction(
         else -> TvBackAction.SYSTEM_EXIT
     }
 
+/** A playing preview trailer takes Back first, whatever the screen would do next. */
+internal fun tvTrailerFirst(
+    trailerPlaying: Boolean,
+    next: TvBackAction,
+): TvBackAction = if (trailerPlaying) TvBackAction.STOP_TRAILER else next
+
+/**
+ * Home walks up in steps: rows back to the hero, then the rail, and only then the exit confirmation. A rail that was
+ * opened from the rows closes first, so the walk still passes the top.
+ */
+internal fun tvHomeBackAction(
+    railVisible: Boolean,
+    homeAtTop: Boolean,
+): TvBackAction =
+    when {
+        railVisible -> if (homeAtTop) TvBackAction.SYSTEM_EXIT else TvBackAction.CLOSE_RAIL
+        else -> if (homeAtTop) TvBackAction.OPEN_RAIL else TvBackAction.FOCUS_HOME_TOP
+    }
+
 @Serializable
 internal data class TvFocusSnapshot(
     val anchor: TvFocusAnchor,
@@ -230,10 +260,16 @@ internal class TvSemanticFocusRestorationSession(
     fun preferredTargetId(
         availableTargets: List<TvFocusTarget>,
         contentAuthoritativelyLoaded: Boolean,
+        queryControlsMayLead: Boolean = contentAuthoritativelyLoaded,
     ): String? {
         if (!isPending) return null
         val actionable = availableTargets.filter(TvFocusTarget::actionable)
-        val remembered = snapshot ?: return actionable.firstOrNull()?.targetId
+        val remembered =
+            snapshot ?: return actionable
+                // Controls above a grid must not claim the first focus while the grid's items are still on their way,
+                // or before the grid's cards have registered in the frame after the header.
+                .firstOrNull { queryControlsMayLead || !it.isLibraryQueryControl() }
+                ?.targetId
         actionable.firstOrNull { it.anchor == remembered.anchor }?.let { return it.targetId }
         if (!contentAuthoritativelyLoaded) return null
         val sameSection = actionable.filter { it.anchor.sectionId == remembered.anchor.sectionId }
@@ -435,23 +471,36 @@ internal class TvFocusMemory(
         }
 }
 
+/** What the Back handler reads from and does to the library browse path. */
+internal class TvLibraryBackAccess(
+    val pathDepth: () -> Int,
+    val selectedLibraryId: () -> String?,
+    val popPath: () -> Unit,
+)
+
 /** Executes the one app-level Back hierarchy used by both Navigation3 and the root fallback handler. */
 internal class TvAppBackDispatcher(
     private val holder: TvAppStateHolder,
-    private val libraryPathDepth: () -> Int,
-    private val selectedLibraryId: () -> String?,
-    private val popLibraryPath: () -> Unit,
+    private val library: TvLibraryBackAccess,
     private val cancelFocusRestoration: () -> Unit,
+    private val homeBack: TvHomeBackState = TvHomeBackState(),
+    private val trailerBack: TvTrailerBackState = TvTrailerBackState(),
 ) {
     val action: TvBackAction
-        get() =
-            tvBackAction(
-                currentRoute = holder.state.currentRoute,
-                backStackSize = holder.state.backStack.size,
-                libraryPathDepth = libraryPathDepth(),
-                railVisible = holder.state.railExpanded,
-                selectedLibraryId = selectedLibraryId(),
-            )
+        get() {
+            val appState = holder.state
+            val base =
+                tvBackAction(
+                    currentRoute = appState.currentRoute,
+                    backStackSize = appState.backStack.size,
+                    libraryPathDepth = library.pathDepth(),
+                    railVisible = appState.railExpanded,
+                    selectedLibraryId = library.selectedLibraryId(),
+                )
+            val atHomeRoot = appState.currentRoute == TvRoute.Home && appState.backStack.size == 1
+            val next = if (atHomeRoot) tvHomeBackAction(appState.railExpanded, homeBack.atTop) else base
+            return tvTrailerFirst(trailerBack.playing, next)
+        }
 
     /** Navigation3 owns Back whenever it has a previous entry; the root only handles non-route layers. */
     val rootHandlerEnabled: Boolean
@@ -460,8 +509,12 @@ internal class TvAppBackDispatcher(
     fun dispatch(): Boolean {
         val consumed =
             when (action) {
+                TvBackAction.STOP_TRAILER -> {
+                    trailerBack.stop()
+                    true
+                }
                 TvBackAction.POP_LIBRARY_PATH -> {
-                    popLibraryPath()
+                    library.popPath()
                     holder.closeRail()
                     true
                 }
@@ -472,6 +525,11 @@ internal class TvAppBackDispatcher(
                 }
                 TvBackAction.RETURN_HOME -> {
                     holder.selectTopLevel(TvRoute.Home)
+                    true
+                }
+                TvBackAction.FOCUS_HOME_TOP -> homeBack.returnToTop()
+                TvBackAction.OPEN_RAIL -> {
+                    holder.openRail()
                     true
                 }
                 TvBackAction.SYSTEM_EXIT -> false

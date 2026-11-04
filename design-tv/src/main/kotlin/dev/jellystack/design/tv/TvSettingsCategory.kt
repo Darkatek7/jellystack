@@ -4,6 +4,7 @@ internal enum class TvSettingsCategory(
     val routeKey: String,
 ) {
     APPEARANCE("appearance"),
+    HOME("home"),
     PLAYBACK("playback"),
     AUDIO_SUBTITLES("audio-subtitles"),
     SEGMENT_SKIPPING("segment-skipping"),
@@ -47,6 +48,8 @@ internal fun tvSettingsControlKeys(
             listOf("audio-language", "subtitle-language", "subtitle-mode", "subtitle-size", "subtitle-background")
         TvSettingsCategory.SEGMENT_SKIPPING ->
             listOf("segment-intro", "segment-recap", "segment-outro", "segment-preview", "segment-commercial")
+        // The rows come from the loaded home screen, so the page lists its own targets.
+        TvSettingsCategory.HOME -> emptyList()
         TvSettingsCategory.CONNECTIONS -> emptyList()
         TvSettingsCategory.DIAGNOSTICS -> listOf(TV_DIAGNOSTICS_REFRESH_KEY)
     }

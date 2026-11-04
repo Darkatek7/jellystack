@@ -273,6 +273,178 @@ class TvTrailerPreviewControllerTest {
         }
 
     @Test
+    fun scrubbingAcrossCardsFasterThanTheLookupDwellResolvesNothing() =
+        runTest {
+            val lookups = mutableListOf<String>()
+            val player = FakePreviewPlayer()
+            val controller =
+                TvTrailerPreviewController(
+                    scope = this,
+                    resolve = { target ->
+                        lookups += target.itemId
+                        source(target.itemId)
+                    },
+                    player = player,
+                )
+
+            repeat(10) { index ->
+                controller.focus(request(TvTrailerPreviewOwner.CARD, "card$index"))
+                advanceTimeBy(300L)
+                runCurrent()
+            }
+            assertEquals(emptyList(), lookups)
+
+            controller.clearFocus()
+            advanceTimeBy(3_000L)
+            runCurrent()
+            assertEquals(emptyList(), lookups)
+            assertEquals(0, player.played.size)
+            controller.release()
+        }
+
+    @Test
+    fun stoppingByUserKeepsFocusAndOnlyAnotherCardStartsTheNextTrailer() =
+        runTest {
+            val player = FakePreviewPlayer()
+            val controller =
+                TvTrailerPreviewController(scope = this, resolve = { source(it.itemId) }, player = player)
+            val first = request(TvTrailerPreviewOwner.CARD, "a")
+
+            controller.focus(first)
+            advanceTimeBy(1_500L)
+            runCurrent()
+            assertTrue(controller.isPlaying)
+
+            controller.stopByUser()
+            assertFalse(controller.isPlaying)
+            assertEquals(1, player.stops)
+            assertIs<TvTrailerPreviewState.Idle>(controller.state.value)
+
+            // The screen asks for the same card again (recomposition, interaction): it stays stopped.
+            controller.focus(first)
+            advanceTimeBy(5_000L)
+            runCurrent()
+            assertEquals(listOf("a"), player.played.map { it.item.id })
+
+            controller.focus(request(TvTrailerPreviewOwner.CARD, "b"))
+            advanceTimeBy(1_500L)
+            runCurrent()
+            assertEquals(listOf("a", "b"), player.played.map { it.item.id })
+            controller.release()
+        }
+
+    @Test
+    fun stoppingByUserWithoutAPlayingTrailerChangesNothing() =
+        runTest {
+            val player = FakePreviewPlayer()
+            val controller =
+                TvTrailerPreviewController(scope = this, resolve = { source(it.itemId) }, player = player)
+            val card = request(TvTrailerPreviewOwner.CARD, "a")
+
+            controller.focus(card)
+            controller.stopByUser()
+            assertIs<TvTrailerPreviewState.Armed>(controller.state.value)
+            advanceTimeBy(1_500L)
+            runCurrent()
+            assertEquals(listOf("a"), player.played.map { it.item.id })
+            controller.release()
+        }
+
+    @Test
+    fun restingFocusResolvesOnceAfterDwellAndStillPlaysAtTheFocusDelay() =
+        runTest {
+            val lookups = mutableListOf<String>()
+            val player = FakePreviewPlayer()
+            val controller =
+                TvTrailerPreviewController(
+                    scope = this,
+                    resolve = { target ->
+                        lookups += target.itemId
+                        source(target.itemId)
+                    },
+                    player = player,
+                )
+
+            controller.focus(request(TvTrailerPreviewOwner.CARD, "a"))
+            controller.focus(request(TvTrailerPreviewOwner.CARD, "b"))
+            advanceTimeBy(399L)
+            runCurrent()
+            assertEquals(emptyList(), lookups)
+
+            advanceTimeBy(1L)
+            runCurrent()
+            assertEquals(listOf("b"), lookups)
+            advanceTimeBy(1_099L)
+            runCurrent()
+            assertEquals(0, player.played.size)
+
+            advanceTimeBy(1L)
+            runCurrent()
+            assertEquals(listOf("b"), player.played.map { it.item.id })
+            assertEquals(listOf("b"), lookups)
+            controller.release()
+        }
+
+    @Test
+    fun cachedTargetSkipsTheLookupAndKeepsThePlaybackDelay() =
+        runTest {
+            var lookups = 0
+            val player = FakePreviewPlayer()
+            val controller =
+                TvTrailerPreviewController(
+                    scope = this,
+                    resolve = {
+                        lookups += 1
+                        source("trailer")
+                    },
+                    player = player,
+                )
+            val request = request(TvTrailerPreviewOwner.CARD, "movie")
+
+            controller.focus(request)
+            advanceTimeBy(1_500L)
+            runCurrent()
+            controller.clearFocus()
+            assertEquals(1, lookups)
+            assertEquals(1, player.played.size)
+
+            controller.focus(request)
+            runCurrent()
+            advanceTimeBy(1_499L)
+            runCurrent()
+            assertEquals(1, player.played.size)
+            advanceTimeBy(1L)
+            runCurrent()
+
+            assertEquals(2, player.played.size)
+            assertEquals(1, lookups)
+            controller.release()
+        }
+
+    @Test
+    fun shortFocusDelayShortensTheLookupDwellToTheDelay() =
+        runTest {
+            val player = FakePreviewPlayer()
+            val controller =
+                TvTrailerPreviewController(
+                    scope = this,
+                    resolve = { source("trailer") },
+                    player = player,
+                    focusDelayMillis = 200L,
+                )
+
+            controller.focus(request(TvTrailerPreviewOwner.CARD, "movie"))
+            advanceTimeBy(199L)
+            runCurrent()
+            assertEquals(0, player.played.size)
+            advanceTimeBy(1L)
+            runCurrent()
+
+            assertEquals(1, player.played.size)
+            controller.release()
+        }
+
+    @Test
     fun backgroundRequiresFreshInteractionAndFreshDwellBeforePreviewCanRestart() =
         runTest {
             val player = FakePreviewPlayer()

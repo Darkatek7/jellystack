@@ -211,12 +211,12 @@ private fun TvAudioPlayerOverlay(
         TvPlayerOverlay.PREPARING ->
             TvPlayerPreparing(
                 model = tvPlayerPreparingModel(state.playback, state.start, state.images),
-                label = strings.preparingPlayback,
+                label = strings.playbackUi.preparingPlayback,
             )
         TvPlayerOverlay.PLAYBACK_ERROR ->
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 TvPlaybackError(
-                    title = strings.playbackFailedTitle,
+                    title = strings.playbackUi.playbackFailedTitle,
                     message = tvPlaybackErrorMessage("", strings),
                     onRetry = errors.onRetryPlayback,
                     strings = strings,
@@ -257,7 +257,7 @@ internal fun TvAudioPlayerControls(
         )
         TvPlayerIconButton(
             if (isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
-            if (isPaused) strings.play else strings.pause,
+            if (isPaused) strings.play else strings.playbackUi.pause,
             { transport.onSetPaused(!isPaused) },
             Modifier.focusRequester(playPauseFocus).testTag("tv-audio-play-pause"),
             size = 78.dp,

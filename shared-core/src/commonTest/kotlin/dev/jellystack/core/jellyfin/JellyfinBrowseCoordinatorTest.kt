@@ -178,11 +178,16 @@ class JellyfinBrowseCoordinatorTest {
                 coordinator.bootstrap(forceRefresh = false)
                 firstStarted.await()
                 coordinator.bootstrap(forceRefresh = false)
-                awaitState(coordinator) { !it.isHomeLoading && it.libraries == newLibraries }
+                // Wait for the newer bootstrap's first page too, so the check below does not race that load.
+                awaitState(coordinator) {
+                    !it.isHomeLoading && it.libraries == newLibraries && it.libraryItems.map { item -> item.id } == listOf("new-item")
+                }
 
                 releaseFirst.complete(Unit)
                 firstReturned.await()
-                delay(100)
+                // A real pause: the stale bootstrap finishes on Dispatchers.Default, where runTest's virtual time
+                // does not reach.
+                withContext(Dispatchers.Default) { delay(100) }
 
                 assertEquals(newLibraries, coordinator.state.value.libraries)
                 assertEquals("new", coordinator.state.value.selectedLibraryId)
@@ -237,7 +242,7 @@ class JellyfinBrowseCoordinatorTest {
 
                 releaseFirst.complete(Unit)
                 firstReturned.await()
-                delay(100)
+                withContext(Dispatchers.Default) { delay(100) }
 
                 assertEquals(newLibraries, coordinator.state.value.libraries)
                 assertNull(coordinator.state.value.homeErrorMessage)
@@ -288,7 +293,7 @@ class JellyfinBrowseCoordinatorTest {
 
                 releaseFirst.complete(Unit)
                 firstReturned.await()
-                delay(100)
+                withContext(Dispatchers.Default) { delay(100) }
 
                 assertEquals(newLibraries, coordinator.state.value.libraries)
                 assertNull(coordinator.state.value.homeErrorMessage)
@@ -510,6 +515,100 @@ class JellyfinBrowseCoordinatorTest {
             )
             assertTrue(secondPage.endReached)
             assertEquals(listOf(0 to query, 1 to query), queryCalls)
+        }
+
+    @Test
+    fun libraryLatestLoadsOncePerLibraryAndAFailureLeavesNoEntry() =
+        runTest {
+            val calls = mutableListOf<String>()
+            val repository =
+                FakeBrowseRepository(
+                    loadLatest = { id ->
+                        calls += id
+                        if (id == "broken") error("offline") else listOf(favoriteJellyfinItem("new-$id"))
+                    },
+                )
+            val coordinator =
+                JellyfinBrowseCoordinator(repository, backgroundScope, favoritesStore = FakeJellyfinFavoritesStore(), autoBootstrap = false)
+            val music = JellyfinLibrary("music", "Music", "music", null, null)
+
+            coordinator.loadLibraryLatest(music)
+            coordinator.loadLibraryLatest(music)
+            coordinator.loadLibraryLatest(JellyfinLibrary("broken", "Broken", "books", null, null))
+            val state = awaitState(coordinator) { "music" in it.libraryLatest }
+
+            assertEquals(listOf("new-music"), state.libraryLatest.getValue("music").map { it.id })
+            assertFalse("broken" in state.libraryLatest)
+            assertEquals(1, calls.count { it == "music" })
+        }
+
+    @Test
+    fun letterJumpLoadsThroughTheTargetAndKeepsPagingAligned() =
+        runTest {
+            val rangeCalls = mutableListOf<Pair<Int, Int>>()
+            val pageCalls = mutableListOf<Int>()
+            val repository =
+                FakeBrowseRepository(
+                    loadPage = { _, page, size, _, _ ->
+                        pageCalls += page
+                        LibraryPage((page * size until (page + 1) * size).map { favoriteJellyfinItem("item-$it") }, 20)
+                    },
+                    countBefore = { letter -> if (letter == "M") 7L else null },
+                    loadRange = { start, limit ->
+                        rangeCalls += start to limit
+                        LibraryPage((start until start + limit).map { favoriteJellyfinItem("item-$it") }, 20)
+                    },
+                )
+            val coordinator =
+                JellyfinBrowseCoordinator(
+                    repository,
+                    backgroundScope,
+                    favoritesStore = FakeJellyfinFavoritesStore(),
+                    pageSize = 3,
+                    autoBootstrap = false,
+                )
+            coordinator.selectLibrary("lib-1")
+            awaitState(coordinator) { !it.isLibraryLoading && it.libraryItems.size == 3 }
+
+            coordinator.jumpToLibraryLetter("M")
+            val jumped = awaitState(coordinator) { it.libraryLetterJump != null }
+
+            assertEquals(listOf(3 to 6), rangeCalls)
+            assertEquals(7, jumped.libraryLetterJump?.index)
+            assertEquals(9, jumped.libraryItems.size)
+            assertEquals(2, jumped.currentPage)
+            assertFalse(jumped.isPageLoading)
+            coordinator.loadNextPage()
+            awaitState(coordinator) { it.libraryItems.size == 12 }
+            assertEquals(listOf(0, 3), pageCalls)
+        }
+
+    @Test
+    fun letterJumpPastTheEndLandsOnTheLastItem() =
+        runTest {
+            val repository =
+                FakeBrowseRepository(
+                    loadPage = { _, _, _, _, _ -> LibraryPage(listOf(favoriteJellyfinItem("a"), favoriteJellyfinItem("b")), 5) },
+                    countBefore = { 5L },
+                    loadRange = { _, _ -> LibraryPage(listOf(favoriteJellyfinItem("c"), favoriteJellyfinItem("d")), 5) },
+                )
+            val coordinator =
+                JellyfinBrowseCoordinator(
+                    repository,
+                    backgroundScope,
+                    favoritesStore = FakeJellyfinFavoritesStore(),
+                    pageSize = 2,
+                    autoBootstrap = false,
+                )
+            coordinator.selectLibrary("lib-1")
+            awaitState(coordinator) { !it.isLibraryLoading && it.libraryItems.size == 2 }
+
+            coordinator.jumpToLibraryLetter("Z")
+            val jumped = awaitState(coordinator) { it.libraryLetterJump != null }
+            coordinator.consumeLibraryLetterJump(requireNotNull(jumped.libraryLetterJump).requestId)
+
+            assertEquals(3, jumped.libraryLetterJump?.index)
+            assertNull(coordinator.state.value.libraryLetterJump)
         }
 
     @Test
@@ -1686,7 +1785,29 @@ class JellyfinBrowseCoordinatorTest {
         private val refreshLibraryCatalog: suspend () -> List<JellyfinLibrary> = { libraries },
         private val loadCachedContinueWatching: suspend (Int) -> List<JellyfinItem> = { emptyList() },
         private val loadContinueWatching: suspend (Int) -> List<JellyfinItem> = { emptyList() },
+        private val countBefore: suspend (String) -> Long? = { null },
+        private val loadLatest: suspend (String) -> List<JellyfinItem> = { emptyList() },
+        private val loadRange: suspend (Int, Int) -> LibraryPage = { _, _ -> LibraryPage(emptyList(), null) },
     ) : JellyfinBrowseRepositoryApi {
+        override suspend fun refreshLatestForLibrary(
+            libraryId: String,
+            collectionType: String?,
+            limit: Int,
+        ): List<JellyfinItem> = loadLatest(libraryId)
+
+        override suspend fun countLibraryItemsBefore(
+            libraryId: String,
+            query: LibraryBrowseQuery,
+            name: String,
+        ): Long? = countBefore(name)
+
+        override suspend fun loadLibraryRange(
+            libraryId: String,
+            startIndex: Int,
+            limit: Int,
+            query: LibraryBrowseQuery,
+        ): LibraryPage = loadRange(startIndex, limit)
+
         override suspend fun refreshLibraries(): List<JellyfinLibrary> = refreshLibraryCatalog()
 
         override suspend fun listLibraries(): List<JellyfinLibrary> = loadLibraries()

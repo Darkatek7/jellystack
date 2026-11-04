@@ -52,6 +52,8 @@ data class JellyfinItem(
     val providerIds: MediaProviderIds = MediaProviderIds(sourceLocalId = id),
     /** Whether the user has watched the item, as reported by the server's user data. */
     val isPlayed: Boolean = false,
+    /** Series and seasons: how many episodes the user has not played yet; null when the server did not say. */
+    val unplayedCount: Int? = null,
 )
 
 data class JellyfinItemDetail(
@@ -140,4 +142,13 @@ enum class JellyfinMediaStreamType {
     AUDIO,
     SUBTITLE,
     OTHER,
+}
+
+/** The candidate whose name equals [name] ignoring case and surrounding blanks; partial matches never count. */
+fun pickExactPerson(
+    name: String,
+    candidates: List<JellyfinPerson>,
+): JellyfinPerson? {
+    val wanted = name.trim()
+    return candidates.firstOrNull { it.name.trim().equals(wanted, ignoreCase = true) }
 }

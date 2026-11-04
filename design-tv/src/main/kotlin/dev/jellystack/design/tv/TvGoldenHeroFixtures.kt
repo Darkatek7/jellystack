@@ -20,12 +20,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import dev.jellystack.core.jellyfin.JellyfinChannelLayout
-import dev.jellystack.core.jellyfin.JellyfinDynamicRange
-import dev.jellystack.core.jellyfin.JellyfinImmersiveAudio
-import dev.jellystack.core.jellyfin.JellyfinMediaFeatures
-import dev.jellystack.core.jellyfin.JellyfinVideoResolution
+import dev.jellystack.core.preferences.HomeRowPreferences
 
 // Hero states for TvGoldenFixture.HOME_HERO and DETAIL_HERO: fictional titles, no network artwork, no trailer.
 
@@ -37,6 +34,8 @@ import dev.jellystack.core.jellyfin.JellyfinVideoResolution
 internal fun GoldenHomeHero(
     strings: TvStrings,
     modifier: Modifier,
+    showKeyHints: Boolean,
+    pageIndex: Int,
 ) {
     val item =
         goldenItem("Movie", "The Last Horizon").copy(
@@ -50,10 +49,11 @@ internal fun GoldenHomeHero(
             stageItem = item,
             stagePresentationId = null,
             mode = TvHomeHeroMode.RECENT,
-            page = TvHomeHeroPage(index = 1, count = 6),
+            page = TvHomeHeroPage(index = pageIndex, count = 10),
             showCarouselContext = true,
             imageBaseUrl = null,
             imageAccessToken = null,
+            showKeyHints = false,
         )
     val trailer =
         TvHomeHeroTrailer(
@@ -80,13 +80,26 @@ internal fun GoldenHomeHero(
                 strings = strings,
                 primaryFocusRequester = remember { FocusRequester() },
             )
+            // The screenshot has no focus, so the hint row is placed where the focused spotlight draws it.
+            if (showKeyHints) {
+                Box(Modifier.fillMaxWidth().height(TV_HOME_SPOTLIGHT_HEIGHT)) {
+                    TvPlayKeyHints(
+                        playLabel = strings.play,
+                        detailsLabel = strings.detailText.details,
+                        modifier =
+                            Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(start = TvLayoutTokens.ContentStart, bottom = 26.dp),
+                    )
+                }
+            }
         }
         TvHomeClock("20:41", Modifier.align(Alignment.TopEnd))
         Column(
             Modifier.padding(start = TvLayoutTokens.ContentStart, top = TV_CINEMATIC_ROWS_TOP),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            TvSectionTitle(strings.continueWatching)
+            TvSectionTitle(strings.homeRows.continueWatching)
             Row(horizontalArrangement = Arrangement.spacedBy(TvLayoutTokens.CardSpacing)) {
                 listOf("Harbor Lights", "Northern Lights", "Paper Moon", "Quiet Signal").forEach { title ->
                     TvMediaCard(title = title, imageUrl = null, onClick = {})
@@ -110,50 +123,38 @@ private fun GoldenBrightArtwork() {
     )
 }
 
+/** Settings > Home: Continue watching hidden, the rest in a custom order. */
 @Composable
-internal fun GoldenDetailHero(
+internal fun GoldenHomeSettings(
     strings: TvStrings,
     modifier: Modifier,
 ) {
-    Column(modifier.fillMaxSize().background(TvBackground)) {
-        Box(Modifier.fillMaxWidth().height(TV_DETAIL_HERO_HEIGHT_DP.dp)) {
-            TvDetailHero(
-                TvDetailHeroModel(
-                    title = "The Last Horizon",
-                    backdropUrl = null,
-                    logoUrl = null,
-                    titleColor = TvText,
-                    subtitle = "Drama  •  Mystery  •  Thriller",
-                    badges =
-                        JellyfinMediaFeatures(
-                            resolution = JellyfinVideoResolution.UHD_4K,
-                            dynamicRange = JellyfinDynamicRange.DOLBY_VISION,
-                            immersiveAudio = JellyfinImmersiveAudio.DOLBY_ATMOS,
-                            surround = JellyfinChannelLayout.SURROUND_7_1,
-                            hearingImpairedSubtitles = true,
-                        ).badgeLabels(strings),
+    val rows =
+        listOf(
+            TvHomeRowOption("continue", strings.homeRows.continueWatching),
+            TvHomeRowOption("next", strings.homeRows.nextUp),
+            TvHomeRowOption("plugin:recent-movies", "Recently added movies"),
+            TvHomeRowOption("plugin:recent-shows", "Recently added shows"),
+        )
+    Column(
+        modifier.fillMaxSize().background(TvBackground).padding(TvScreenPadding),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
+    ) {
+        androidx.tv.material3.Text(
+            strings.homeSettings.categoryTitle,
+            color = TvText,
+            fontSize = TvTextSize.Headline,
+            fontWeight = FontWeight.Bold,
+        )
+        TvHomeSettings(
+            options = rows,
+            preferences =
+                HomeRowPreferences(
+                    order = listOf("next", "plugin:recent-movies", "plugin:recent-shows", "continue"),
+                    hidden = setOf("continue"),
                 ),
-            ) {
-                TvDetailHeroActions(
-                    state =
-                        TvDetailHeroActionsState(
-                            resume = true,
-                            favorite = true,
-                            played = false,
-                            trailerError = false,
-                        ),
-                    callbacks =
-                        TvDetailHeroActionCallbacks(
-                            onPlay = {},
-                            onToggleFavorite = {},
-                            onTogglePlayed = {},
-                            onTrailer = {},
-                        ),
-                    strings = strings,
-                    primaryActionModifier = Modifier,
-                    actionRowModifier = Modifier,
-                )
-            }
-        }
+            strings = strings,
+            onChange = {},
+        )
     }
 }

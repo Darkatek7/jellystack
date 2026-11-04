@@ -28,6 +28,7 @@ internal interface TvLiveTvLoader {
     suspend fun programs(
         channelIds: List<String>,
         at: Instant,
+        window: Duration,
     ): Map<String, List<LiveTvProgram>>
 }
 
@@ -38,7 +39,8 @@ internal fun LiveTvRepository.tvLoader() =
         override suspend fun programs(
             channelIds: List<String>,
             at: Instant,
-        ) = this@tvLoader.programs(channelIds, at)
+            window: Duration,
+        ) = this@tvLoader.programs(channelIds, at, window)
     }
 
 internal sealed interface TvLiveTvState {
@@ -49,21 +51,40 @@ internal sealed interface TvLiveTvState {
 
     data object Failed : TvLiveTvState
 
-    /** [guide] holds the programs of the channels that were on screen; [at] is when they were last evaluated. */
+    /**
+     * [guide] holds the programs of the channels that were on screen; [at] is when they were last evaluated.
+     * [guideUntil] is, per channel, how far the guide grid has loaded: programs starting before it are all there.
+     */
     data class Ready(
         val channels: List<LiveTvChannel>,
         val guide: Map<String, List<LiveTvProgram>>,
         val at: Instant,
+        val guideUntil: Map<String, Instant> = emptyMap(),
     ) : TvLiveTvState {
         fun nowAndNext(channelId: String): LiveTvNowNext = guide[channelId].orEmpty().nowAndNext(at)
+
+        /** The programs just [loaded] for [ids] join the known ones; [until] is how far the grid has them now. */
+        fun withPrograms(
+            ids: List<String>,
+            loaded: Map<String, List<LiveTvProgram>>,
+            until: Instant?,
+            now: Instant,
+        ): Ready {
+            val merged = ids.associateWith { mergedPrograms(guide[it].orEmpty(), loaded[it].orEmpty()) }
+            val reached = if (until != null) ids.associateWith { until } else emptyMap()
+            return copy(guide = guide + merged, at = now, guideUntil = guideUntil + reached)
+        }
     }
 }
 
 /**
  * Holds the channels and the guide outside the screen, so Back from the player returns to the list as it was.
  *
- * Programs load for the channels on screen only ([setVisible]). One timer waits for the first change among them (a
- * running program ending), then re-evaluates and loads what is missing; there is no polling.
+ * Programs load for the channels on screen only ([setVisible]; the guide grid asks with [setGuideWindow] for the
+ * channels and the time range it shows). One timer waits for the first change among them (a running program ending),
+ * then re-evaluates and loads what is missing; there is no polling.
+ *
+ * Whether the guide grid or the channel list is shown, and where the grid was left, outlive the screen too.
  */
 internal class TvLiveTvCoordinator(
     private val scope: CoroutineScope,
@@ -72,7 +93,15 @@ internal class TvLiveTvCoordinator(
 ) {
     private val mutableState = MutableStateFlow<TvLiveTvState>(TvLiveTvState.Loading)
     val state: StateFlow<TvLiveTvState> = mutableState.asStateFlow()
+    private val mutableGuideMode = MutableStateFlow(false)
+
+    /** Whether the guide grid is shown instead of the channel list; kept for the session. */
+    val guideMode: StateFlow<Boolean> = mutableGuideMode.asStateFlow()
+
+    /** Where the grid was left, so Back from the player returns to it. */
+    val guideMemory = TvLiveTvGuideMemory()
     private var visibleIds: List<String> = emptyList()
+    private var guideRange: GuideRange? = null
     private var channelsJob: Job? = null
     private var guideJob: Job? = null
     private var refreshJob: Job? = null
@@ -82,10 +111,28 @@ internal class TvLiveTvCoordinator(
 
     fun retry() = loadChannels(showLoading = true)
 
+    fun toggleGuide() {
+        mutableGuideMode.update { !it }
+    }
+
     /** The channels on screen; their programs are the only ones loaded. */
     fun setVisible(channelIds: List<String>) {
-        if (channelIds == visibleIds) return
+        if (channelIds == visibleIds && guideRange == null) return
         visibleIds = channelIds
+        guideRange = null
+        loadGuide()
+    }
+
+    /** The channels on screen in the guide grid and the time range it shows: programs from [from] until [until]. */
+    fun setGuideWindow(
+        channelIds: List<String>,
+        from: Instant,
+        until: Instant,
+    ) {
+        val range = GuideRange(from, until)
+        if (channelIds == visibleIds && range == guideRange) return
+        visibleIds = channelIds
+        guideRange = range
         loadGuide()
     }
 
@@ -108,14 +155,22 @@ internal class TvLiveTvCoordinator(
     private fun TvLiveTvState.withChannels(channels: List<LiveTvChannel>): TvLiveTvState {
         if (channels.isEmpty()) return TvLiveTvState.Empty
         val ids = channels.mapTo(HashSet(), LiveTvChannel::id)
-        val known = (this as? TvLiveTvState.Ready)?.guide.orEmpty().filterKeys { it in ids }
-        return TvLiveTvState.Ready(channels, known, clock.now())
+        val previous = this as? TvLiveTvState.Ready
+        val known = previous?.guide.orEmpty().filterKeys { it in ids }
+        val until = previous?.guideUntil.orEmpty().filterKeys { it in ids }
+        return TvLiveTvState.Ready(channels, known, clock.now(), until)
     }
 
     private fun loadGuide() {
         val ready = mutableState.value as? TvLiveTvState.Ready ?: return
         val now = clock.now()
-        val missing = visibleIds.filter { id -> ready.nowAndNextAt(id, now).isIncomplete() }
+        val range = guideRange
+        val missing =
+            if (range != null) {
+                visibleIds.filter { id -> (ready.guideUntil[id] ?: Instant.DISTANT_PAST) < range.until }
+            } else {
+                visibleIds.filter { id -> ready.nowAndNextAt(id, now).isIncomplete() }
+            }
         guideJob?.cancel()
         if (missing.isEmpty()) {
             scheduleRefresh()
@@ -124,11 +179,12 @@ internal class TvLiveTvCoordinator(
         guideJob =
             scope.launch {
                 // The guide is advisory: a failed load leaves what is shown, and the channels stay playable.
-                runSuspendCatching { loader.programs(missing, now) }.onSuccess { loaded ->
+                val from = range?.from ?: now
+                val window = range?.let { it.until - it.from } ?: LiveTvRepository.DEFAULT_PROGRAM_WINDOW
+                runSuspendCatching { loader.programs(missing, from, window) }.onSuccess { loaded ->
                     mutableState.update { current ->
                         if (current is TvLiveTvState.Ready) {
-                            val loadedGuide = missing.associateWith { loaded[it].orEmpty() }
-                            current.copy(guide = current.guide + loadedGuide, at = clock.now())
+                            current.withPrograms(missing, loaded, range?.until, clock.now())
                         } else {
                             current
                         }
@@ -153,8 +209,10 @@ internal class TvLiveTvCoordinator(
             }
     }
 
-    /** Without a running or a following program the guide may be stale or short; ask again. */
-    private fun LiveTvNowNext.isIncomplete() = now == null || next == null
+    private data class GuideRange(
+        val from: Instant,
+        val until: Instant,
+    )
 
     private fun TvLiveTvState.Ready.nowAndNextAt(
         channelId: String,
@@ -170,6 +228,18 @@ internal class TvLiveTvCoordinator(
     }
 }
 
+/** The loaded programs win over the known ones of the same id; programs outside the loaded range stay. */
+private fun mergedPrograms(
+    known: List<LiveTvProgram>,
+    loaded: List<LiveTvProgram>,
+): List<LiveTvProgram> {
+    if (known.isEmpty()) return loaded
+    return (loaded + known).distinctBy(LiveTvProgram::id).sortedBy(LiveTvProgram::start)
+}
+
+/** Without a running or a following program the guide may be stale or short; ask again. */
+private fun LiveTvNowNext.isIncomplete() = now == null || next == null
+
 /** What the Live TV screen draws with, and where it remembers focus. */
 internal class TvLiveTvContext(
     val images: TvLibraryGridImages,
@@ -178,11 +248,22 @@ internal class TvLiveTvContext(
     val focusMemory: TvFocusMemory,
 )
 
-/** What the Live TV screen can do: play a channel, load again, and learn which channels are on screen. */
+/**
+ * What the Live TV screen can do: play a channel, load again, learn which channels are on screen (the list) or which
+ * channels and time range (the guide grid), and switch between the two views.
+ */
 internal class TvLiveTvActions(
     val onPlay: (LiveTvChannel) -> Unit,
     val onRetry: () -> Unit,
     val onVisibleChannels: (List<String>) -> Unit,
+    val guide: TvLiveTvGuideActions = TvLiveTvGuideActions(),
+)
+
+/** What the guide grid and its header button do besides what the list does too. */
+internal class TvLiveTvGuideActions(
+    val onWindow: (channelIds: List<String>, from: Instant, until: Instant) -> Unit = { _, _, _ -> },
+    val onToggle: () -> Unit = {},
+    val memory: TvLiveTvGuideMemory = TvLiveTvGuideMemory(),
 )
 
 /** The channel as a playable item for the launcher: a name and the picture are all the player start needs. */

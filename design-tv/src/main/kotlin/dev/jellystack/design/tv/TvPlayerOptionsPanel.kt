@@ -255,7 +255,7 @@ internal fun TvPlayerOptionsPanel(
                     item {
                         TvPlayerOptionRow(
                             Icons.AutoMirrored.Filled.VolumeUp,
-                            strings.audio,
+                            strings.playbackUi.audio,
                             state.audioSummary(strings),
                             false,
                             { onOpenFromMore(TvPlayerPanel.AUDIO) },
@@ -265,7 +265,7 @@ internal fun TvPlayerOptionsPanel(
                     item {
                         TvPlayerOptionRow(
                             Icons.Default.Subtitles,
-                            strings.subtitles,
+                            strings.playbackUi.subtitles,
                             state.subtitleSummary(strings),
                             false,
                             { onOpenFromMore(TvPlayerPanel.SUBTITLES) },
@@ -287,7 +287,7 @@ internal fun TvPlayerOptionsPanel(
                     item {
                         TvPlayerOptionRow(
                             Icons.Default.HighQuality,
-                            strings.quality,
+                            strings.preferences.quality,
                             state.qualitySummary(strings),
                             false,
                             { onOpenFromMore(TvPlayerPanel.QUALITY) },
@@ -297,7 +297,7 @@ internal fun TvPlayerOptionsPanel(
                     item {
                         TvPlayerOptionRow(
                             Icons.Default.Speed,
-                            strings.playbackSpeed,
+                            strings.preferences.playbackSpeed,
                             "${state.playbackSpeed.cleanSpeed()}x",
                             false,
                             { onOpenFromMore(TvPlayerPanel.SPEED) },
@@ -329,7 +329,7 @@ internal fun TvPlayerOptionsPanel(
                     item {
                         TvPlayerOptionRow(
                             Icons.Default.QueryStats,
-                            strings.statsForNerds,
+                            strings.preferences.statsForNerds,
                             if (state.statsForNerdsEnabled) strings.on else strings.off,
                             state.statsForNerdsEnabled,
                             { onStatsToggled(!state.statsForNerdsEnabled) },
@@ -341,8 +341,8 @@ internal fun TvPlayerOptionsPanel(
                     item {
                         TvPlayerOptionRow(
                             Icons.Default.Groups,
-                            strings.syncPlay,
-                            if (syncState.canJoin) syncState.currentGroup?.name ?: strings.off else strings.syncPlayNoPermission,
+                            strings.playbackUi.syncPlay,
+                            if (syncState.canJoin) syncState.currentGroup?.name ?: strings.off else strings.playbackUi.syncPlayNoPermission,
                             false,
                             {
                                 if (syncState.canJoin) syncPlay.refresh()
@@ -358,7 +358,7 @@ internal fun TvPlayerOptionsPanel(
                         item {
                             TvPlayerOptionRow(
                                 Icons.AutoMirrored.Filled.VolumeUp,
-                                strings.noResults,
+                                strings.searchScreen.noResults,
                                 null,
                                 false,
                                 onBack,
@@ -410,7 +410,7 @@ internal fun TvPlayerOptionsPanel(
                         item {
                             TvPlayerOptionRow(
                                 Icons.Default.HighQuality,
-                                strings.noResults,
+                                strings.searchScreen.noResults,
                                 null,
                                 false,
                                 onBack,
@@ -423,7 +423,7 @@ internal fun TvPlayerOptionsPanel(
                         val selectedIndex = state.qualityOptions.indexOfFirst { it.id == state.selectedQualityId }.takeIf { it >= 0 } ?: 0
                         val selected = index == selectedIndex
                         TvPlayerSelectionRow(
-                            option.label.ifBlank { strings.automatic },
+                            option.label.ifBlank { strings.preferences.automatic },
                             option.mode.label(strings),
                             selected,
                             { onQualitySelected(option.id) },
@@ -473,7 +473,7 @@ internal fun TvPlayerOptionsPanel(
                         item {
                             TvPlayerOptionRow(
                                 Icons.Default.Groups,
-                                strings.syncPlayNoPermission,
+                                strings.playbackUi.syncPlayNoPermission,
                                 null,
                                 false,
                                 onBack,
@@ -486,7 +486,7 @@ internal fun TvPlayerOptionsPanel(
                             item {
                                 TvPlayerOptionRow(
                                     Icons.Default.Groups,
-                                    strings.useCurrentItemAsQueue,
+                                    strings.playbackUi.useCurrentItemAsQueue,
                                     group.name,
                                     false,
                                     syncPlay::setCurrentPlaybackAsQueue,
@@ -497,7 +497,7 @@ internal fun TvPlayerOptionsPanel(
                             item {
                                 TvPlayerOptionRow(
                                     Icons.Default.Close,
-                                    strings.leaveGroup,
+                                    strings.playbackUi.leaveGroup,
                                     group.name,
                                     false,
                                     syncPlay::leaveGroup,
@@ -509,7 +509,7 @@ internal fun TvPlayerOptionsPanel(
                                 item {
                                     TvPlayerOptionRow(
                                         Icons.Default.Groups,
-                                        strings.createGroup,
+                                        strings.playbackUi.createGroup,
                                         null,
                                         false,
                                         { syncPlay.createGroup("Jellystack TV") },
@@ -522,7 +522,7 @@ internal fun TvPlayerOptionsPanel(
                                 item {
                                     TvPlayerOptionRow(
                                         Icons.Default.Groups,
-                                        strings.noResults,
+                                        strings.searchScreen.noResults,
                                         null,
                                         false,
                                         onBack,
@@ -540,7 +540,7 @@ internal fun TvPlayerOptionsPanel(
                                     }
                                 TvPlayerOptionRow(
                                     Icons.Default.Groups,
-                                    strings.joinGroup.format(group.name),
+                                    strings.playbackUi.joinGroup.format(group.name),
                                     group.state,
                                     false,
                                     { syncPlay.joinGroup(group) },
@@ -603,26 +603,29 @@ internal fun TvStatsForNerdsOverlay(
     val stats = state.runtimeStats
     val entries =
         listOfNotNull(
-            stats.playbackMode?.let { strings.mode to it },
-            stats.width?.let { width -> stats.height?.let { strings.resolution to "$width × $it" } },
-            listOfNotNull(stats.videoCodec, stats.audioCodec).joinToString(" / ").takeIf(String::isNotBlank)?.let { strings.video to it },
-            stats.videoBitrate?.let { strings.bitrate to "%.1f Mbps".format(it / 1_000_000f) },
+            stats.playbackMode?.let { strings.playbackUi.mode to it },
+            stats.width?.let { width -> stats.height?.let { strings.playbackUi.resolution to "$width × $it" } },
+            listOfNotNull(stats.videoCodec, stats.audioCodec).joinToString(" / ").takeIf(String::isNotBlank)?.let {
+                strings.playbackUi.video to
+                    it
+            },
+            stats.videoBitrate?.let { strings.playbackUi.bitrate to "%.1f Mbps".format(it / 1_000_000f) },
             stats.frameRate?.let(::formatFrameRate)?.let { strings.metadata.frameRate to it },
             stats.hdr?.let { strings.metadata.dynamicRange to it },
             stats.bufferedDurationMs?.let { strings.metadata.buffer to "%.1f s".format(it / 1_000f) },
-            stats.droppedFrames?.let { strings.droppedFrames to it.toString() },
+            stats.droppedFrames?.let { strings.playbackUi.droppedFrames to it.toString() },
         )
     Column(
         modifier.background(Color.Black.copy(alpha = 0.82f), RoundedCornerShape(16.dp)).padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
-        Text(strings.statsForNerds, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+        Text(strings.preferences.statsForNerds, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 17.sp)
         entries.forEach { (label, value) -> Text("$label: $value", color = TvTextMuted, fontSize = 14.sp) }
     }
 }
 
 private fun PlaybackState.Active.audioSummary(strings: TvStrings): String =
-    tvAudioButtonLabel(audioTrack, strings.locale) ?: strings.automatic
+    tvAudioButtonLabel(audioTrack, strings.locale) ?: strings.preferences.automatic
 
 private fun PlaybackState.Active.subtitleSummary(strings: TvStrings): String =
     subtitleTrack?.let { track ->
@@ -631,7 +634,7 @@ private fun PlaybackState.Active.subtitleSummary(strings: TvStrings): String =
     } ?: strings.off
 
 private fun PlaybackState.Active.qualitySummary(strings: TvStrings): String =
-    qualityOptions.firstOrNull { it.id == selectedQualityId }?.label?.takeIf(String::isNotBlank) ?: strings.automatic
+    qualityOptions.firstOrNull { it.id == selectedQualityId }?.label?.takeIf(String::isNotBlank) ?: strings.preferences.automatic
 
 private fun VideoScale.label(strings: TvStrings): String =
     when (this) {
@@ -643,31 +646,31 @@ private fun VideoScale.label(strings: TvStrings): String =
 /** The non-zero delays, such as `Audio +150 ms · Subtitles -50 ms`. */
 private fun TvPlaybackDelays.summary(strings: TvStrings): String =
     listOfNotNull(
-        "${strings.audio} ${formatDelayMs(audioMs)}".takeIf { audioMs != 0 },
-        "${strings.subtitles} ${formatDelayMs(subtitleMs)}".takeIf { subtitleMs != 0 },
+        "${strings.playbackUi.audio} ${formatDelayMs(audioMs)}".takeIf { audioMs != 0 },
+        "${strings.playbackUi.subtitles} ${formatDelayMs(subtitleMs)}".takeIf { subtitleMs != 0 },
     ).joinToString(" · ").ifEmpty { strings.player.sync.adjustmentNone }
 
 private fun Float.cleanSpeed(): String = if (this % 1f == 0f) toInt().toString() else toString()
 
 private fun SyncPlayErrorCode.message(strings: TvStrings): String =
     when (this) {
-        SyncPlayErrorCode.ACCESS_DENIED -> strings.syncPlayNoPermission
-        SyncPlayErrorCode.UNAUTHORIZED -> strings.syncPlayUnauthorized
-        SyncPlayErrorCode.NETWORK -> strings.syncPlayNetworkError
-        SyncPlayErrorCode.INVALID_RESPONSE -> strings.syncPlayInvalidResponse
+        SyncPlayErrorCode.ACCESS_DENIED -> strings.playbackUi.syncPlayNoPermission
+        SyncPlayErrorCode.UNAUTHORIZED -> strings.playbackUi.syncPlayUnauthorized
+        SyncPlayErrorCode.NETWORK -> strings.playbackUi.syncPlayNetworkError
+        SyncPlayErrorCode.INVALID_RESPONSE -> strings.playbackUi.syncPlayInvalidResponse
     }
 
 private fun TvPlayerPanel.title(strings: TvStrings): String =
     when (this) {
-        TvPlayerPanel.MORE -> strings.moreOptions
-        TvPlayerPanel.AUDIO -> strings.audio
-        TvPlayerPanel.SUBTITLES -> strings.subtitles
-        TvPlayerPanel.QUALITY -> strings.quality
-        TvPlayerPanel.SPEED -> strings.playbackSpeed
+        TvPlayerPanel.MORE -> strings.playbackUi.moreOptions
+        TvPlayerPanel.AUDIO -> strings.playbackUi.audio
+        TvPlayerPanel.SUBTITLES -> strings.playbackUi.subtitles
+        TvPlayerPanel.QUALITY -> strings.preferences.quality
+        TvPlayerPanel.SPEED -> strings.preferences.playbackSpeed
         TvPlayerPanel.VIDEO_SCALE -> strings.player.videoScale
         TvPlayerPanel.SYNC -> strings.player.sync.adjustment
-        TvPlayerPanel.SYNCPLAY -> strings.syncPlay
+        TvPlayerPanel.SYNCPLAY -> strings.playbackUi.syncPlay
         TvPlayerPanel.CHAPTERS -> strings.player.chapters
-        TvPlayerPanel.EPISODES -> strings.episodes
+        TvPlayerPanel.EPISODES -> strings.detailText.episodes
         TvPlayerPanel.NONE -> ""
     }

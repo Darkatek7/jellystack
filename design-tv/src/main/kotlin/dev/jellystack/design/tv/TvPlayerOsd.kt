@@ -152,7 +152,7 @@ internal fun TvPlayerControls(
                 if (!model.isLive) {
                     TvPlayerIconButton(
                         tvSeekBackIcon(model.seekBackSeconds),
-                        "${strings.seekBack} ${model.seekBackSeconds}",
+                        "${strings.preferences.seekBack} ${model.seekBackSeconds}",
                         { actions.onSeekTo(model.seekTarget(-model.seekBackSeconds)) },
                         size = 64.dp,
                         iconSize = 34.dp,
@@ -160,7 +160,7 @@ internal fun TvPlayerControls(
                 }
                 TvPlayerIconButton(
                     if (model.isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
-                    if (model.isPaused) strings.play else strings.pause,
+                    if (model.isPaused) strings.play else strings.playbackUi.pause,
                     actions.onTogglePlayPause,
                     Modifier
                         .focusRequester(interaction.controlsFocus)
@@ -177,7 +177,7 @@ internal fun TvPlayerControls(
                 if (!model.isLive) {
                     TvPlayerIconButton(
                         tvSeekForwardIcon(model.seekForwardSeconds),
-                        "${strings.seekForward} ${model.seekForwardSeconds}",
+                        "${strings.preferences.seekForward} ${model.seekForwardSeconds}",
                         { actions.onSeekTo(model.seekTarget(model.seekForwardSeconds)) },
                         size = 64.dp,
                         iconSize = 34.dp,
@@ -186,10 +186,10 @@ internal fun TvPlayerControls(
             }
             Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End)) {
                 if (model.canShowEpisodes) {
-                    TvPlayerIconButton(Icons.Default.VideoLibrary, strings.episodes, actions.onEpisodes)
+                    TvPlayerIconButton(Icons.Default.VideoLibrary, strings.detailText.episodes, actions.onEpisodes)
                 }
                 if (model.canPlayNext) {
-                    TvPlayerIconButton(Icons.Default.SkipNext, strings.nextEpisode, actions.onPlayNext)
+                    TvPlayerIconButton(Icons.Default.SkipNext, strings.playbackUi.nextEpisode, actions.onPlayNext)
                 }
                 TvPlayerIconButton(Icons.Default.MoreVert, strings.more, actions.onMore)
             }
@@ -210,14 +210,14 @@ private fun TvPlayerTrackChips(
         TvPlayerTextButton(
             Icons.AutoMirrored.Filled.VolumeUp,
             TvPlayerChipLabel(model.audioLabel, compact = model.audioCompactLabel),
-            strings.audio,
+            strings.playbackUi.audio,
             actions.onAudio,
             Modifier.weight(1f, fill = false),
         )
         TvPlayerTextButton(
             Icons.Default.Subtitles,
             TvPlayerChipLabel(model.subtitleLabel),
-            strings.subtitles,
+            strings.playbackUi.subtitles,
             actions.onSubtitles,
         )
     }

@@ -63,6 +63,82 @@ class TvBackNavigationTest {
     }
 
     @Test
+    fun homeBackWalksFromRowsToTopToRailBeforeExit() {
+        assertEquals(TvBackAction.FOCUS_HOME_TOP, tvHomeBackAction(railVisible = false, homeAtTop = false))
+        assertEquals(TvBackAction.OPEN_RAIL, tvHomeBackAction(railVisible = false, homeAtTop = true))
+        assertEquals(TvBackAction.SYSTEM_EXIT, tvHomeBackAction(railVisible = true, homeAtTop = true))
+        assertEquals(TvBackAction.CLOSE_RAIL, tvHomeBackAction(railVisible = true, homeAtTop = false))
+    }
+
+    @Test
+    fun playingTrailerTakesBackBeforeEveryOtherStep() {
+        TvBackAction.entries.forEach { next ->
+            assertEquals(TvBackAction.STOP_TRAILER, tvTrailerFirst(trailerPlaying = true, next = next))
+            assertEquals(next, tvTrailerFirst(trailerPlaying = false, next = next))
+        }
+    }
+
+    @Test
+    fun firstBackStopsTheTrailerAndTheNextOneContinuesTheHomeWalk() {
+        val holder = TvAppStateHolder()
+        var playing = true
+        var stops = 0
+        val dispatcher =
+            TvAppBackDispatcher(
+                holder = holder,
+                library = TvLibraryBackAccess(pathDepth = { 0 }, selectedLibraryId = { null }, popPath = {}),
+                cancelFocusRestoration = {},
+                trailerBack =
+                    TvTrailerBackState(
+                        isPlaying = { playing },
+                        stopTrailer = {
+                            stops += 1
+                            playing = false
+                        },
+                    ),
+            )
+
+        assertTrue(dispatcher.dispatch())
+        assertEquals(1, stops)
+        assertFalse(holder.state.railExpanded)
+        assertEquals(TvBackAction.OPEN_RAIL, dispatcher.action)
+        assertTrue(dispatcher.dispatch())
+        assertTrue(holder.state.railExpanded)
+        assertEquals(1, stops)
+    }
+
+    @Test
+    fun homeBackStepsThroughTheDispatcherBeforeExit() {
+        val holder = TvAppStateHolder()
+        val homeBack = TvHomeBackState()
+        var focusedTop = 0
+        homeBack.bind {
+            focusedTop += 1
+            homeBack.atTop = true
+        }
+        homeBack.atTop = false
+        val dispatcher =
+            TvAppBackDispatcher(
+                holder = holder,
+                library =
+                    TvLibraryBackAccess(
+                        pathDepth = { 0 },
+                        selectedLibraryId = { null },
+                        popPath = {},
+                    ),
+                cancelFocusRestoration = {},
+                homeBack = homeBack,
+            )
+
+        assertTrue(dispatcher.dispatch())
+        assertEquals(1, focusedTop)
+        assertFalse(holder.state.railExpanded)
+        assertTrue(dispatcher.dispatch())
+        assertTrue(holder.state.railExpanded)
+        assertFalse(dispatcher.dispatch())
+    }
+
+    @Test
     fun onlyHomeDelegatesCollapsedTopLevelBackToExit() {
         assertEquals(
             TvBackAction.SYSTEM_EXIT,
@@ -92,13 +168,18 @@ class TvBackNavigationTest {
         val dispatcher =
             TvAppBackDispatcher(
                 holder = holder,
-                libraryPathDepth = { 0 },
-                selectedLibraryId = { null },
-                popLibraryPath = {},
+                library =
+                    TvLibraryBackAccess(
+                        pathDepth = { 0 },
+                        selectedLibraryId = { null },
+                        popPath = {},
+                    ),
                 cancelFocusRestoration = {},
             )
 
         assertTrue(dispatcher.rootHandlerEnabled)
+        assertTrue(dispatcher.dispatch())
+        assertTrue(holder.state.railExpanded)
         assertFalse(dispatcher.dispatch())
     }
 
@@ -108,9 +189,12 @@ class TvBackNavigationTest {
         val dispatcher =
             TvAppBackDispatcher(
                 holder = holder,
-                libraryPathDepth = { 0 },
-                selectedLibraryId = { null },
-                popLibraryPath = {},
+                library =
+                    TvLibraryBackAccess(
+                        pathDepth = { 0 },
+                        selectedLibraryId = { null },
+                        popPath = {},
+                    ),
                 cancelFocusRestoration = {},
             )
 
@@ -119,11 +203,11 @@ class TvBackNavigationTest {
     }
 
     @Test
-    fun backClosesRailAtTopLevelRoot() {
+    fun backClosesRailOnTopLevelRoutes() {
         assertEquals(
             TvBackAction.CLOSE_RAIL,
             tvBackAction(
-                TvRoute.Home,
+                TvRoute.Discover,
                 backStackSize = 1,
                 libraryPathDepth = 0,
                 railVisible = true,
@@ -185,7 +269,7 @@ class TvBackNavigationTest {
     }
 
     @Test
-    fun noBackStateOpensTheRail() {
+    fun noBackStateWalksTheTopLevelRoutes() {
         val routes = listOf(TvRoute.Home, TvRoute.Library(), TvRoute.Search, TvRoute.Discover, TvRoute.Settings())
 
         routes.forEach { route ->
@@ -220,9 +304,12 @@ class TvBackNavigationTest {
         val dispatcher =
             TvAppBackDispatcher(
                 holder = holder,
-                libraryPathDepth = { pathDepth },
-                selectedLibraryId = { "shows" },
-                popLibraryPath = { pathDepth -= 1 },
+                library =
+                    TvLibraryBackAccess(
+                        pathDepth = { pathDepth },
+                        selectedLibraryId = { "shows" },
+                        popPath = { pathDepth -= 1 },
+                    ),
                 cancelFocusRestoration = { cancellations += 1 },
             )
 
@@ -238,9 +325,8 @@ class TvBackNavigationTest {
         assertFalse(holder.state.railExpanded)
         holder.openRail()
         assertTrue(dispatcher.rootHandlerEnabled)
-        assertTrue(dispatcher.dispatch())
-        assertFalse(holder.state.railExpanded)
         assertFalse(dispatcher.dispatch())
-        assertEquals(4, cancellations)
+        assertTrue(holder.state.railExpanded)
+        assertEquals(3, cancellations)
     }
 }

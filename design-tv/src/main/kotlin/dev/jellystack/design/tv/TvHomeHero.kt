@@ -55,6 +55,8 @@ internal data class TvHomeHeroModel(
     val showCarouselContext: Boolean,
     val imageBaseUrl: String?,
     val imageAccessToken: String?,
+    /** Until the user has used OK or Play once, the focused spotlight names those keys. */
+    val showKeyHints: Boolean = false,
 )
 
 /**
@@ -82,6 +84,8 @@ internal data class TvHomeHeroCallbacks(
     val onVerticalMove: (TvHomeVerticalDirection) -> Unit,
     val onHeroFocused: () -> Unit,
     val onCarouselMove: (TvHomeCarouselDirection) -> Unit,
+    /** The user pressed OK or Play on the spotlight, so the key hints have done their job. */
+    val onHintsUsed: () -> Unit = {},
 )
 
 /** Crossfade between spotlights; instant when the user asked for reduced motion. */
@@ -94,8 +98,8 @@ private const val TV_HOME_HERO_FADE_MS = 240
 
 /**
  * The spotlight is the whole top of the home screen, from edge to edge and down to the rows: text and page dots
- * over [TvHomeBackdrop], no buttons and no frame. Focus shows as a hint row that names the keys; the hero keeps
- * its size, so the rows keep their position.
+ * over [TvHomeBackdrop], no buttons and no frame. While [TvHomeHeroModel.showKeyHints] is set, focus shows a hint
+ * row that names the keys; the hero keeps its size, so the rows keep their position.
  */
 @Composable
 internal fun TvHeroCarousel(
@@ -120,12 +124,16 @@ internal fun TvHeroCarousel(
                     customActions =
                         listOf(
                             CustomAccessibilityAction(playLabel) {
+                                callbacks.onHintsUsed()
                                 callbacks.onPlay()
                                 true
                             },
                         )
                 }.tvFocusable(
-                    onClick = callbacks.onDetails,
+                    onClick = {
+                        callbacks.onHintsUsed()
+                        callbacks.onDetails()
+                    },
                     shape = TV_HOME_SPOTLIGHT_SHAPE,
                     scale = 1f,
                     onFocusChanged = { focused = it },
@@ -135,7 +143,7 @@ internal fun TvHeroCarousel(
     ) {
         // The spotlight keeps its focus while its content fades out for the trailer.
         TvHomeFadeLayer(trailer.homeUiAlpha, Modifier.fillMaxSize()) {
-            TvHomeSpotlightContent(model, trailer, strings, playLabel, focused)
+            TvHomeSpotlightContent(model, trailer, strings, playLabel, focused && model.showKeyHints)
         }
     }
 }
@@ -146,7 +154,7 @@ private fun BoxScope.TvHomeSpotlightContent(
     trailer: TvHomeHeroTrailer,
     strings: TvStrings,
     playLabel: String,
-    focused: Boolean,
+    showKeyHints: Boolean,
 ) {
     val previewing = trailer.state.showsTvHomeStagePreview(model.stageItem.id, model.stagePresentationId)
     val fadeMs = tvHomeHeroFadeMillis()
@@ -172,10 +180,10 @@ private fun BoxScope.TvHomeSpotlightContent(
             )
         }
     }
-    if (focused) {
+    if (showKeyHints) {
         TvPlayKeyHints(
             playLabel = playLabel,
-            detailsLabel = strings.details,
+            detailsLabel = strings.detailText.details,
             modifier =
                 Modifier
                     .align(Alignment.BottomStart)
@@ -220,7 +228,10 @@ private fun Modifier.tvHomeSpotlightKeys(callbacks: TvHomeHeroCallbacks): Modifi
                 true
             }
             KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
-                if (press && event.nativeKeyEvent.repeatCount == 0) callbacks.onPlay()
+                if (press && event.nativeKeyEvent.repeatCount == 0) {
+                    callbacks.onHintsUsed()
+                    callbacks.onPlay()
+                }
                 true
             }
             else -> false
@@ -253,7 +264,18 @@ private fun TvHeroText(
                 modifier = Modifier.weight(1f, fill = false),
             )
         }
-        item.tvStageMetadata()?.let { Text(it, color = TvTextMuted, fontSize = 15.sp) }
+        // A series has no runtime of its own, so only playable titles say when they would end.
+        val endsAt =
+            rememberTvEndsAtLabel(
+                remainingMinutes =
+                    tvRemainingMinutes(item.runTimeTicks, item.positionTicks)
+                        .takeUnless { item.type.equals("Series", ignoreCase = true) },
+                strings = strings,
+            )
+        listOfNotNull(item.tvStageMetadata(), endsAt)
+            .joinToString(TV_CARD_SEPARATOR)
+            .ifBlank { null }
+            ?.let { Text(it, color = TvTextMuted, fontSize = 15.sp) }
     }
 }
 
@@ -266,17 +288,17 @@ private fun TvHeroModeLabel(
         Icon(Icons.Default.AutoAwesome, null, tint = TvPurple, modifier = Modifier.size(19.dp))
         Text(
             when (mode) {
-                TvHomeHeroMode.RECENT -> strings.recentlyAdded
-                TvHomeHeroMode.LATEST -> strings.latestAdditions
-                TvHomeHeroMode.LIBRARY -> strings.fromYourLibrary
-                TvHomeHeroMode.EMPTY -> strings.fromYourLibrary
+                TvHomeHeroMode.RECENT -> strings.homeRows.recentlyAdded
+                TvHomeHeroMode.LATEST -> strings.homeRows.latestAdditions
+                TvHomeHeroMode.LIBRARY -> strings.homeRows.fromYourLibrary
+                TvHomeHeroMode.EMPTY -> strings.homeRows.fromYourLibrary
             },
             color = TvPurple,
             fontSize = TvTextSize.Body,
             fontWeight = FontWeight.SemiBold,
         )
         if (mode == TvHomeHeroMode.RECENT) {
-            Text("·  ${strings.lastThirtyDays}", color = TvTextMuted, fontSize = TvTextSize.CardTitle)
+            Text("·  ${strings.homeRows.lastThirtyDays}", color = TvTextMuted, fontSize = TvTextSize.CardTitle)
         }
     }
 }

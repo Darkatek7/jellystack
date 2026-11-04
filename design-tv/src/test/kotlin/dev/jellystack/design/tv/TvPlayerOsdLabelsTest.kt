@@ -42,6 +42,15 @@ class TvPlayerOsdLabelsTest {
     }
 
     @Test
+    fun aServerTitleThatAlreadyNamesTheLayoutIsNotRepeated() {
+        val english = TvStrings.current(AppLanguage.ENGLISH).locale
+        val untagged = audio("").copy(language = null, title = "AAC - Mono", channels = 1)
+
+        assertEquals("AAC - Mono", tvAudioButtonLabel(untagged, english))
+        assertEquals("Commentary Mono", tvAudioButtonLabel(untagged.copy(title = "Commentary"), english))
+    }
+
+    @Test
     fun trackRowsUseTheChipLabelAndKeepRepeatedTracksApart() {
         val strings = TvStrings.current(AppLanguage.GERMAN)
         val audioTracks =
