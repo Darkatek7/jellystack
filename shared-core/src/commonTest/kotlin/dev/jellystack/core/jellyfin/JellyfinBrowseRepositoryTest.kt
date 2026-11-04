@@ -677,6 +677,9 @@ class JellyfinBrowseRepositoryTest {
             assertTrue(items.single { it.id == "item-2" }.isPlayed)
             val stored = itemStore.listByLibrary(environment.serverKey, "lib-1", limit = 10, offset = 0)
             assertTrue(stored.single { it.id == "item-2" }.played)
+            assertEquals(4, items.single { it.id == "item-1" }.unplayedCount)
+            assertEquals(null, items.single { it.id == "item-2" }.unplayedCount)
+            assertEquals(4, stored.single { it.id == "item-1" }.unplayedCount)
         }
 
     @Test
@@ -1424,7 +1427,8 @@ class JellyfinBrowseRepositoryTest {
                   "ImageTags": {"Primary": "tag-primary"},
                   "UserData": {
                     "PlaybackPositionTicks": 12000000000,
-                    "PlayedPercentage": 33.3
+                    "PlayedPercentage": 33.3,
+                    "UnplayedItemCount": 4
                   }
                 },
                 {

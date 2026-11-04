@@ -129,3 +129,9 @@ private fun JellyseerrSearchItem.toCinematicCard(
     )
 
 internal fun JellyseerrSearchItem.cinematicKey(): String = "${mediaType.name.lowercase()}:$tmdbId"
+
+/** The wide artwork of a Seerr item, or its poster, as the screen backdrop while the item is focused. */
+internal fun JellyseerrSearchItem.tvBackdropUrl(): String? {
+    val backdrop = backdropPath
+    return tmdbImageUrl(backdrop ?: posterPath, backdrop = backdrop != null)
+}

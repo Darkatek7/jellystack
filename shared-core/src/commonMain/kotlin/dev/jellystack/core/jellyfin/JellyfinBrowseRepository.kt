@@ -811,6 +811,7 @@ class JellyfinBrowseRepository(
                         playedPercentage = if (userData != null) userData.playedPercentage else existing.playedPercentage,
                         lastPlayed = userData?.lastPlayedDate ?: existing.lastPlayed,
                         played = userData?.played ?: existing.played,
+                        unplayedCount = userData?.unplayedItemCount ?: existing.unplayedCount,
                         updatedAt = now,
                     ),
                 ),
@@ -1118,6 +1119,7 @@ private fun JellyfinItemDto.toRecord(
         positionTicks = userData?.playbackPositionTicks,
         playedPercentage = userData?.playedPercentage,
         played = userData?.played == true,
+        unplayedCount = userData?.unplayedItemCount,
         productionYear = productionYear?.toLong(),
         premiereDate = premiereDate,
         communityRating = communityRating,
@@ -1201,6 +1203,7 @@ private fun JellyfinItemRecord.toDomain(): JellyfinItem =
         seriesBannerImageTag = seriesBannerImageTag,
         providerIds = providerIds,
         isPlayed = played,
+        unplayedCount = unplayedCount,
     )
 
 private fun Map<String, String>?.providerValue(name: String): String? =

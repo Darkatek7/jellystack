@@ -33,6 +33,7 @@ internal val GOLDEN_STATE_FIXTURES =
         TvGoldenFixture.DETAIL_LOAD_ERROR,
         TvGoldenFixture.NAVIGATION_RAIL_OPEN,
         TvGoldenFixture.RESUME_DIALOG,
+        TvGoldenFixture.DISCOVER_ROWS,
     )
 
 /** Reduced motion keeps the loading placeholders still, so the images are the same on every run. */
@@ -74,6 +75,7 @@ internal fun GoldenStateFixture(
                 TvGoldenFixture.DETAIL_LOAD_ERROR ->
                     TvDetailLoadError(strings.detailLoadFailed, strings.retry, onRetry = {})
                 TvGoldenFixture.NAVIGATION_RAIL_OPEN -> GoldenNavigationRail(strings)
+                TvGoldenFixture.DISCOVER_ROWS -> GoldenDiscoverRows(strings)
                 TvGoldenFixture.RESUME_DIALOG ->
                     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)), Alignment.Center) {
                         TvResumeAskDialogContent("12:34", strings) {}

@@ -15,6 +15,7 @@ private val germanMessageStrings =
         playlistLabel = "Wiedergabeliste",
         music = TvMusicStrings.GERMAN,
         liveTv = TvLiveTvStrings.GERMAN,
+        cardBadges = TvCardBadgeStrings.GERMAN,
         accountHasProfileFormat = "%s hat schon ein Profil. Für ein weiteres Konto gib den Code mit diesem Konto frei.",
         voiceSearchUnavailable = "Die Sprachsuche ist auf diesem Gerät nicht verfügbar.",
         voiceSearchNoSpeech = "Es wurde keine Sprache erkannt. Versuche es erneut.",

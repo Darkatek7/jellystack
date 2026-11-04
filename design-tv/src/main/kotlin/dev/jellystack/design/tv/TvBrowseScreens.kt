@@ -735,7 +735,7 @@ internal fun TvJellyfinRow(
                     title = cardText.title,
                     subtitle = cardText.subtitle,
                     progress = cardText.progress,
-                    watched = displayItem.isPlayed,
+                    badge = tvJellyfinCardBadge(displayItem, strings),
                     imageUrl =
                         jellyfinImageUrl(
                             state.imageBaseUrl,
@@ -864,6 +864,7 @@ private fun TvHomeSectionRow(
                             tvRatingLabel(item.communityRating),
                         ).joinToString("  •  ").ifBlank { null },
                     progress = cardText?.progress,
+                    badge = item.jellyfinItem?.let { tvJellyfinCardBadge(it, strings) },
                     imageUrl = resolveTvHomeSectionImageUrl(item, imageBaseUrl, imageAccessToken),
                     artworkFit =
                         if (section.viewMode == HomeSectionViewMode.PORTRAIT ||
@@ -1477,6 +1478,7 @@ internal fun TvDiscoverScreen(
                         item(rail.name) {
                             TvSeerrRow(
                                 rail.label(strings),
+                                strings,
                                 railState.items,
                                 focusMemory,
                                 "discover",
@@ -1513,7 +1515,8 @@ internal fun TvDiscoverScreen(
                                     listOfNotNull(
                                         request.requestStatus.label(strings),
                                         request.availability.standard.label(strings),
-                                    ).joinToString("  •  "),
+                                    ).distinct().joinToString(TV_CARD_SEPARATOR),
+                                badge = tvSeerrCardBadge(request.availability, listOf(request), strings),
                                 imageUrl = tmdbImageUrl(request.backdropPath ?: request.posterPath, request.backdropPath != null),
                                 artworkFit =
                                     if (request.backdropPath == null && request.posterPath != null) {
@@ -1577,6 +1580,7 @@ internal fun tvSeerrCardArtwork(
 @Composable
 internal fun TvSeerrRow(
     title: String,
+    strings: TvStrings,
     items: List<JellyseerrSearchItem>,
     focusMemory: TvFocusMemory,
     routeKey: String,
@@ -1607,6 +1611,7 @@ internal fun TvSeerrRow(
                 TvMediaCard(
                     title = item.title,
                     subtitle = item.releaseYear,
+                    badge = tvSeerrCardBadge(item.availability, item.requests, strings),
                     imageUrl = tmdbImageUrl(artwork.path, backdrop = artwork.isBackdrop),
                     artworkFit = artwork.fit,
                     onClick = { onItem(item) },
