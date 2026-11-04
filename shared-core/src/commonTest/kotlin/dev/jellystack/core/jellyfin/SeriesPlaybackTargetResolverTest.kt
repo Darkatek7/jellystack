@@ -38,6 +38,20 @@ class SeriesPlaybackTargetResolverTest {
     }
 
     @Test
+    fun `skips episodes marked as watched without progress`() {
+        val episodes =
+            listOf(
+                episode("s1e1", season = 1, number = 1).copy(isPlayed = true),
+                episode("s1e2", season = 1, number = 2),
+            )
+
+        val target = resolver.resolve(episodes, completedDownloadIds = emptySet())
+
+        assertEquals("s1e2", target?.episode?.id)
+        assertEquals(SeriesPlaybackReason.PLAY, target?.reason)
+    }
+
+    @Test
     fun `uses season two when season one is unavailable`() {
         val episodes =
             listOf(

@@ -229,6 +229,8 @@ internal fun TvDetailFocusLayout(
             preferredItemId?.takeIf(section.itemIds::contains)
                 // Entering the season row lands on the season being shown, not on the first one.
                 ?: (section as? TvDetailSection.Seasons)?.let { it.itemIds.getOrNull(it.selectedIndex) }
+                // and the season siblings of an episode land on that episode.
+                ?: (section as? TvDetailSection.Episodes)?.currentEpisodeId?.takeIf(section.itemIds::contains)
                 ?: section.itemIds.firstOrNull()
                 ?: return focusBody(cancelPersistedRestoration)
         val lazyItemIndex =
