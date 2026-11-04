@@ -99,6 +99,26 @@ fun TvDetailHeroGermanLarge() = JellystackTvGoldenFixture(TvGoldenFixture.DETAIL
 fun TvLibraryGrid() = JellystackTvGoldenFixture(TvGoldenFixture.LIBRARY_GRID)
 
 @PreviewTest
+@Preview(name = "German 150% 1080p", device = TV_1080P, locale = "de", fontScale = 1.5f)
+@Composable
+fun TvLibraryGridGermanLarge() = JellystackTvGoldenFixture(TvGoldenFixture.LIBRARY_GRID, AppLanguage.GERMAN)
+
+@PreviewTest
+@Preview(name = "1080p", device = TV_1080P)
+@Composable
+fun TvLibraryFilterPanel() = JellystackTvGoldenFixture(TvGoldenFixture.LIBRARY_FILTER_PANEL)
+
+@PreviewTest
+@Preview(name = "German 150% 1080p", device = TV_1080P, locale = "de", fontScale = 1.5f)
+@Composable
+fun TvLibraryFilterPanelGermanLarge() = JellystackTvGoldenFixture(TvGoldenFixture.LIBRARY_FILTER_PANEL, AppLanguage.GERMAN)
+
+@PreviewTest
+@Preview(name = "1080p", device = TV_1080P)
+@Composable
+fun TvLibraryLanding() = JellystackTvGoldenFixture(TvGoldenFixture.LIBRARY_LANDING)
+
+@PreviewTest
 @Preview(name = "1080p", device = TV_1080P)
 @Composable
 fun TvEmptyState() = JellystackTvGoldenFixture(TvGoldenFixture.EMPTY_STATE)

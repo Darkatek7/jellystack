@@ -120,7 +120,10 @@ class TvLibraryBrowseScreenTest {
         composeRule.onNodeWithTag("tv-library-query-controls").assertIsDisplayed()
         val allTitlesCard = composeRule.onNodeWithTag("tv-library-all-title-title-0")
         allTitlesCard.assertIsDisplayed().performSemanticsAction(SemanticsActions.RequestFocus).assertIsFocused()
+        // Sort opens the panel; picking a sort field there changes the query.
         composeRule.onNodeWithTag("tv-library-query-sort").performClick()
+        composeRule.onNodeWithTag("tv-library-filter-panel").assertIsDisplayed()
+        composeRule.onNodeWithTag("tv-library-panel-sort-DATE_ADDED").performClick()
         composeRule.runOnIdle { assertFalse(state.libraryBrowseQuery.isDefault) }
 
         composeRule.runOnIdle { route = route.copy(mode = TvLibraryMode.BROWSE) }

@@ -70,6 +70,7 @@ class JellyfinBrowseApi(
         years: List<Int> = emptyList(),
         personIds: List<String> = emptyList(),
         albumArtistIds: List<String> = emptyList(),
+        nameLessThan: String? = null,
     ): JellyfinItemsResponse =
         client
             .request {
@@ -93,6 +94,8 @@ class JellyfinBrowseApi(
                 years.takeIf(List<Int>::isNotEmpty)?.let { parameter("Years", it.joinToString(",")) }
                 personIds.takeIf(List<String>::isNotEmpty)?.let { parameter("PersonIds", it.joinToString(",")) }
                 albumArtistIds.takeIf(List<String>::isNotEmpty)?.let { parameter("AlbumArtistIds", it.joinToString(",")) }
+                // Items whose sort name sorts before this value; with the same filters, the total is an item's index.
+                nameLessThan?.takeIf { it.isNotBlank() }?.let { parameter("NameLessThan", it) }
             }.body()
 
     /** The entries of a playlist in the order the playlist keeps them. */

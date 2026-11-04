@@ -1522,6 +1522,8 @@ private fun TvAuthenticatedApp(
                                                 container.itemListRoute()?.let(::push) ?: browseCoordinator.openContainer(container)
                                             },
                                             onLoadMore = browseCoordinator::loadNextPage,
+                                            onJumpToLetter = browseCoordinator::jumpToLibraryLetter,
+                                            onLetterJumpHandled = browseCoordinator::consumeLibraryLetterJump,
                                             onRetry = {
                                                 if (route.libraryId == null) {
                                                     browseCoordinator.refreshLibraries()

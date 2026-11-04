@@ -3,30 +3,25 @@
 package dev.jellystack.design.tv
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.tv.material3.Text
 import dev.jellystack.core.preferences.MotionPreference
 
 /** Screen states the golden fixtures draw with the production composables; see [TvGoldenFixture]. */
 internal val GOLDEN_STATE_FIXTURES =
     setOf(
         TvGoldenFixture.LIBRARY_GRID,
+        TvGoldenFixture.LIBRARY_FILTER_PANEL,
+        TvGoldenFixture.LIBRARY_LANDING,
         TvGoldenFixture.EMPTY_STATE,
         TvGoldenFixture.ERROR_STATE,
         TvGoldenFixture.SKELETON_ROWS,
@@ -35,6 +30,10 @@ internal val GOLDEN_STATE_FIXTURES =
         TvGoldenFixture.RESUME_DIALOG,
         TvGoldenFixture.DISCOVER_ROWS,
     )
+
+/** The library screens draw their own safe-area padding. */
+private val GOLDEN_LIBRARY_FIXTURES =
+    setOf(TvGoldenFixture.LIBRARY_GRID, TvGoldenFixture.LIBRARY_FILTER_PANEL, TvGoldenFixture.LIBRARY_LANDING)
 
 /** Reduced motion keeps the loading placeholders still, so the images are the same on every run. */
 @Composable
@@ -49,12 +48,14 @@ internal fun GoldenStateFixture(
                 .fillMaxSize()
                 .background(TvBackground)
                 .padding(
-                    horizontal = TvLayoutTokens.SafeInsets.horizontal,
-                    vertical = TvLayoutTokens.SafeInsets.vertical,
+                    horizontal = if (fixture in GOLDEN_LIBRARY_FIXTURES) 0.dp else TvLayoutTokens.SafeInsets.horizontal,
+                    vertical = if (fixture in GOLDEN_LIBRARY_FIXTURES) 0.dp else TvLayoutTokens.SafeInsets.vertical,
                 ),
         ) {
             when (fixture) {
-                TvGoldenFixture.LIBRARY_GRID -> GoldenLibraryGrid(strings)
+                TvGoldenFixture.LIBRARY_GRID -> GoldenLibraryGrid(strings, panelOpen = false)
+                TvGoldenFixture.LIBRARY_FILTER_PANEL -> GoldenLibraryGrid(strings, panelOpen = true)
+                TvGoldenFixture.LIBRARY_LANDING -> GoldenLibraryLanding(strings)
                 TvGoldenFixture.EMPTY_STATE ->
                     TvEmptyState(
                         icon = Icons.Default.VideoLibrary,
@@ -81,44 +82,6 @@ internal fun GoldenStateFixture(
                         TvResumeAskDialogContent("12:34", strings) {}
                     }
                 else -> Unit
-            }
-        }
-    }
-}
-
-@Composable
-private fun GoldenLibraryGrid(strings: TvStrings) {
-    val titles =
-        listOf(
-            "The Last Horizon",
-            "Northern Lights",
-            "Paper Moon",
-            "Harbor Lights",
-            "Quiet Signal",
-            "Northbound",
-            "Glass Harbor",
-            "Late Tide",
-        )
-    Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
-        Text(strings.library, color = TvText, fontSize = 38.sp, fontWeight = FontWeight.Bold)
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(4),
-            userScrollEnabled = false,
-            verticalArrangement = Arrangement.spacedBy(18.dp),
-            horizontalArrangement = Arrangement.spacedBy(18.dp),
-        ) {
-            titles.forEachIndexed { index, title ->
-                item(key = title) {
-                    TvMediaCard(
-                        title = title,
-                        subtitle = (2015 + index).toString(),
-                        imageUrl = null,
-                        onClick = {},
-                        fillWidth = true,
-                        selected = index == 1,
-                        watched = index == 2,
-                    )
-                }
             }
         }
     }

@@ -405,6 +405,7 @@ internal data class TvStrings(
     val mediaTypeLabels: TvMediaTypeStrings,
     val emptyStates: TvEmptyStateStrings,
     val applyLabel: String,
+    val libraryScreen: TvLibraryStrings,
     val messages: TvMessageStrings,
     val metadata: TvMetadataStrings,
     val settingsLabels: TvSettingsStrings,
@@ -700,6 +701,7 @@ internal data class TvStrings(
                 mediaTypeLabels = englishMediaTypeStrings,
                 emptyStates = englishEmptyStateStrings,
                 applyLabel = "Apply",
+                libraryScreen = englishLibraryStrings,
                 messages = englishMessageStrings,
                 metadata =
                     TvMetadataStrings(

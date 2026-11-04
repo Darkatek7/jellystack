@@ -513,6 +513,75 @@ class JellyfinBrowseCoordinatorTest {
         }
 
     @Test
+    fun letterJumpLoadsThroughTheTargetAndKeepsPagingAligned() =
+        runTest {
+            val rangeCalls = mutableListOf<Pair<Int, Int>>()
+            val pageCalls = mutableListOf<Int>()
+            val repository =
+                FakeBrowseRepository(
+                    loadPage = { _, page, size, _, _ ->
+                        pageCalls += page
+                        LibraryPage((page * size until (page + 1) * size).map { favoriteJellyfinItem("item-$it") }, 20)
+                    },
+                    countBefore = { letter -> if (letter == "M") 7L else null },
+                    loadRange = { start, limit ->
+                        rangeCalls += start to limit
+                        LibraryPage((start until start + limit).map { favoriteJellyfinItem("item-$it") }, 20)
+                    },
+                )
+            val coordinator =
+                JellyfinBrowseCoordinator(
+                    repository,
+                    backgroundScope,
+                    favoritesStore = FakeJellyfinFavoritesStore(),
+                    pageSize = 3,
+                    autoBootstrap = false,
+                )
+            coordinator.selectLibrary("lib-1")
+            awaitState(coordinator) { !it.isLibraryLoading && it.libraryItems.size == 3 }
+
+            coordinator.jumpToLibraryLetter("M")
+            val jumped = awaitState(coordinator) { it.libraryLetterJump != null }
+
+            assertEquals(listOf(3 to 6), rangeCalls)
+            assertEquals(7, jumped.libraryLetterJump?.index)
+            assertEquals(9, jumped.libraryItems.size)
+            assertEquals(2, jumped.currentPage)
+            assertFalse(jumped.isPageLoading)
+            coordinator.loadNextPage()
+            awaitState(coordinator) { it.libraryItems.size == 12 }
+            assertEquals(listOf(0, 3), pageCalls)
+        }
+
+    @Test
+    fun letterJumpPastTheEndLandsOnTheLastItem() =
+        runTest {
+            val repository =
+                FakeBrowseRepository(
+                    loadPage = { _, _, _, _, _ -> LibraryPage(listOf(favoriteJellyfinItem("a"), favoriteJellyfinItem("b")), 5) },
+                    countBefore = { 5L },
+                    loadRange = { _, _ -> LibraryPage(listOf(favoriteJellyfinItem("c"), favoriteJellyfinItem("d")), 5) },
+                )
+            val coordinator =
+                JellyfinBrowseCoordinator(
+                    repository,
+                    backgroundScope,
+                    favoritesStore = FakeJellyfinFavoritesStore(),
+                    pageSize = 2,
+                    autoBootstrap = false,
+                )
+            coordinator.selectLibrary("lib-1")
+            awaitState(coordinator) { !it.isLibraryLoading && it.libraryItems.size == 2 }
+
+            coordinator.jumpToLibraryLetter("Z")
+            val jumped = awaitState(coordinator) { it.libraryLetterJump != null }
+            coordinator.consumeLibraryLetterJump(requireNotNull(jumped.libraryLetterJump).requestId)
+
+            assertEquals(3, jumped.libraryLetterJump?.index)
+            assertNull(coordinator.state.value.libraryLetterJump)
+        }
+
+    @Test
     fun replacingQueryCancelsPreviousGenerationBeforeItCanPublish() =
         runTest {
             val firstStarted = CompletableDeferred<Unit>()
@@ -1686,7 +1755,22 @@ class JellyfinBrowseCoordinatorTest {
         private val refreshLibraryCatalog: suspend () -> List<JellyfinLibrary> = { libraries },
         private val loadCachedContinueWatching: suspend (Int) -> List<JellyfinItem> = { emptyList() },
         private val loadContinueWatching: suspend (Int) -> List<JellyfinItem> = { emptyList() },
+        private val countBefore: suspend (String) -> Long? = { null },
+        private val loadRange: suspend (Int, Int) -> LibraryPage = { _, _ -> LibraryPage(emptyList(), null) },
     ) : JellyfinBrowseRepositoryApi {
+        override suspend fun countLibraryItemsBefore(
+            libraryId: String,
+            query: LibraryBrowseQuery,
+            name: String,
+        ): Long? = countBefore(name)
+
+        override suspend fun loadLibraryRange(
+            libraryId: String,
+            startIndex: Int,
+            limit: Int,
+            query: LibraryBrowseQuery,
+        ): LibraryPage = loadRange(startIndex, limit)
+
         override suspend fun refreshLibraries(): List<JellyfinLibrary> = refreshLibraryCatalog()
 
         override suspend fun listLibraries(): List<JellyfinLibrary> = loadLibraries()
