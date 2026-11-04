@@ -22,7 +22,7 @@ class TvDetailUiStateTest {
         val state =
             buildTvJellyfinDetailUiState(
                 routeKey = "series-1",
-                facts = listOf("2026", "45 min"),
+                detailRows = listOf(TvDetailRow("Director", "Robin Example")),
                 overview = "Overview",
                 tagline = "Tagline",
                 seasonGroups =
@@ -37,7 +37,7 @@ class TvDetailUiStateTest {
             )
 
         assertEquals(
-            listOf("facts", "overview", "seasons", "episodes", "cast", "similar"),
+            listOf("seasons", "episodes", "cast", "similar", "details"),
             state.sections.map(TvDetailSection::id),
         )
         assertEquals(
@@ -57,7 +57,7 @@ class TvDetailUiStateTest {
         val state =
             buildTvJellyfinDetailUiState(
                 routeKey = "movie-1",
-                facts = emptyList(),
+                detailRows = emptyList(),
                 overview = null,
                 tagline = null,
                 seasonGroups = emptyList(),
@@ -67,10 +67,35 @@ class TvDetailUiStateTest {
                 similar = emptyList(),
             )
 
-        assertEquals(listOf("facts", "overview"), state.sections.map(TvDetailSection::id))
+        assertEquals(listOf("details"), state.sections.map(TvDetailSection::id))
         assertNull(state.section("episodes"))
         assertNull(state.section("cast"))
         assertNull(state.section("similar"))
+    }
+
+    @Test
+    fun episodePagesListTheRestOfTheirSeasonFirstAndMarkTheCurrentEpisode() {
+        val season = listOf(jellyfinItem("episode-1"), jellyfinItem("episode-2"))
+
+        val state =
+            buildTvJellyfinDetailUiState(
+                routeKey = "episode-2",
+                overview = "Overview",
+                tagline = null,
+                detailRows = emptyList(),
+                seasonGroups = emptyList(),
+                selectedSeasonIndex = 0,
+                episodes = season,
+                cast = listOf(jellyfinPerson("person-1")),
+                similar = emptyList(),
+                moreFromSeason = 2,
+                currentEpisodeId = "episode-2",
+            )
+        val episodes = state.section("episodes") as TvDetailSection.Episodes
+
+        assertEquals(listOf("episodes", "cast", "details"), state.sections.map(TvDetailSection::id))
+        assertEquals(2, episodes.moreFromSeason)
+        assertEquals("episode-2", episodes.currentEpisodeId)
     }
 
     @Test
@@ -84,7 +109,7 @@ class TvDetailUiStateTest {
                 cast = emptyList(),
                 similar = emptyList(),
             )
-        val overview = seerr.section("overview") as TvDetailSection.Overview
+        val overview = seerr.section("details") as TvDetailSection.Details
 
         assertNull(overview.text)
         assertNull(overview.tagline)
@@ -112,9 +137,9 @@ class TvDetailUiStateTest {
                 similar = listOf(seerrItem(12), seerrItem(11)),
             )
 
-        assertEquals(listOf("overview", "cast"), initial.sections.map(TvDetailSection::id))
-        assertEquals(listOf("overview", "ratings", "cast", "similar"), changed.sections.map(TvDetailSection::id))
-        assertEquals(TvResolvedFocusAnchor(sectionIndex = 2, itemIndex = 0), changed.resolve(anchor))
+        assertEquals(listOf("cast", "details"), initial.sections.map(TvDetailSection::id))
+        assertEquals(listOf("cast", "similar", "details", "ratings"), changed.sections.map(TvDetailSection::id))
+        assertEquals(TvResolvedFocusAnchor(sectionIndex = 0, itemIndex = 0), changed.resolve(anchor))
         assertEquals(listOf("person-2", "person-1"), changed.section("cast")?.itemIds)
         assertEquals(listOf("tv:12", "tv:11"), changed.section("similar")?.itemIds)
         assertTrue(changed.sections.map(TvDetailSection::id).let { it.size == it.toSet().size })
@@ -131,7 +156,7 @@ class TvDetailUiStateTest {
         val state =
             buildTvJellyfinDetailUiState(
                 routeKey = "series-duplicates",
-                facts = emptyList(),
+                detailRows = emptyList(),
                 overview = null,
                 tagline = null,
                 seasonGroups = emptyList(),

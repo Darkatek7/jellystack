@@ -37,6 +37,9 @@ enum class TvGoldenFixture {
     PLAYER_UP_NEXT,
     HOME_HERO,
     DETAIL_HERO,
+    DETAIL_SERIES,
+    DETAIL_EPISODE,
+    DETAIL_SEERR,
     LIBRARY_GRID,
     EMPTY_STATE,
     ERROR_STATE,
@@ -62,12 +65,12 @@ fun JellystackTvGoldenFixture(
         }
         return
     }
-    if (fixture == TvGoldenFixture.HOME_HERO || fixture == TvGoldenFixture.DETAIL_HERO) {
+    if (fixture == TvGoldenFixture.HOME_HERO || fixture in GOLDEN_DETAIL_FIXTURES) {
         JellystackTvTheme {
             if (fixture == TvGoldenFixture.HOME_HERO) {
                 GoldenHomeHero(strings, modifier)
             } else {
-                GoldenDetailHero(strings, modifier)
+                GoldenDetailScreen(fixture, strings, modifier)
             }
         }
         return
@@ -90,6 +93,9 @@ fun JellystackTvGoldenFixture(
                 TvGoldenFixture.PLAYER_SCRUB,
                 TvGoldenFixture.PLAYER_UP_NEXT,
                 TvGoldenFixture.DETAIL_HERO,
+                TvGoldenFixture.DETAIL_SERIES,
+                TvGoldenFixture.DETAIL_EPISODE,
+                TvGoldenFixture.DETAIL_SEERR,
                 TvGoldenFixture.LIBRARY_GRID,
                 TvGoldenFixture.EMPTY_STATE,
                 TvGoldenFixture.ERROR_STATE,

@@ -32,7 +32,37 @@ internal data class TvResumeAsk(
     val item: JellyfinItem,
     val detail: JellyfinItemDetail?,
     val positionLabel: String,
+    val choice: TvPlayChoice? = null,
 )
+
+/**
+ * Audio, subtitle and version the user picked on the detail screen before playing. Stream indexes are the server's
+ * stream indexes; [subtitlesOff] plays without subtitles, whatever the language preferences say.
+ */
+internal data class TvPlayChoice(
+    val mediaSourceId: String? = null,
+    val audioStreamIndex: Int? = null,
+    val subtitleStreamIndex: Int? = null,
+    val subtitlesOff: Boolean = false,
+)
+
+/** A track id no stream has: the controller then finds no subtitle track to select, so playback starts without. */
+private const val SUBTITLES_OFF_TRACK_ID = "jellystack:subtitles-off"
+
+/** [request] limited to the chosen version and starting with the chosen tracks. */
+internal fun PlaybackRequest.withChoice(choice: TvPlayChoice?): PlaybackRequest {
+    if (choice == null) return this
+    val chosenSource = choice.mediaSourceId?.let { id -> mediaSources.firstOrNull { it.id == id } }
+    return copy(
+        mediaSources = chosenSource?.let(::listOf) ?: mediaSources,
+        preferredAudioTrackId = choice.audioStreamIndex?.toString() ?: preferredAudioTrackId,
+        preferredSubtitleTrackId =
+            when {
+                choice.subtitlesOff -> SUBTITLES_OFF_TRACK_ID
+                else -> choice.subtitleStreamIndex?.toString() ?: preferredSubtitleTrackId
+            },
+    )
+}
 
 /** Where the launcher reads the item detail, the episodes of a series, and the entries of a collection from. */
 internal class TvPlaybackSources(
@@ -116,6 +146,8 @@ private data class TvStartAttempt(
     val groupStartPositionMs: Long? = null,
     /** For a list: play it in a random order instead of its own. */
     val shuffle: Boolean = false,
+    /** The version and tracks picked on the detail screen. */
+    val choice: TvPlayChoice? = null,
 )
 
 /**
@@ -150,29 +182,41 @@ internal class TvPlaybackLauncher(
     private var lastAttempt: TvStartAttempt? = null
 
     /**
-     * Plays [item]; [detail] skips the detail request when the caller already has it. A Live TV channel starts from the
-     * live edge at once: it has no detail to load, never asks to resume, and plays at normal speed.
+     * Plays [item], or from the beginning with [fromStart]; [detail] skips the detail request when the caller already
+     * has it. A Live TV channel starts from the live edge at once: it has no detail to load, never asks to resume, and
+     * plays at normal speed.
      */
     fun play(
         item: JellyfinItem,
         detail: JellyfinItemDetail? = null,
+        choice: TvPlayChoice? = null,
+        fromStart: Boolean = false,
     ) {
-        if (item.opensAsItemList()) {
-            playAll(item)
-            return
-        }
-        sources.queue.clear()
-        if (item.isEpisodeParent() || item.isLiveTvChannel()) {
-            // The episode to play is only known once the episodes are loaded, so the resume rule runs in the start.
-            // A channel has no resume point: the start plays it from the live edge.
-            pendingAsk = null
-            start(TvStartAttempt(item, detail = null, policy = PlaybackStartPolicy.INHERIT))
-            return
-        }
-        when (val decision = item.startDecision(currentSettings().resumeMode)) {
-            is PlaybackStartDecision.Ask ->
-                pendingAsk = TvResumeAsk(item, detail, formatPlaybackTime(decision.resumePositionMs))
-            is PlaybackStartDecision.Start -> start(TvStartAttempt(item, detail, decision.policy))
+        when {
+            fromStart -> {
+                // An explicit "start over" never asks; a series restarts the episode it would have played next.
+                pendingAsk = null
+                sources.queue.clear()
+                val known = detail.takeUnless { item.isEpisodeParent() }
+                start(TvStartAttempt(item, known, PlaybackStartPolicy.RESTART, choice = choice))
+            }
+            item.opensAsItemList() -> playAll(item)
+            item.isEpisodeParent() || item.isLiveTvChannel() -> {
+                // The episode to play is only known once the episodes are loaded, so the resume rule runs in the start.
+                // A channel has no resume point: the start plays it from the live edge.
+                sources.queue.clear()
+                pendingAsk = null
+                start(TvStartAttempt(item, detail = null, policy = PlaybackStartPolicy.INHERIT))
+            }
+            else -> {
+                sources.queue.clear()
+                when (val decision = item.startDecision(currentSettings().resumeMode)) {
+                    is PlaybackStartDecision.Ask ->
+                        pendingAsk = TvResumeAsk(item, detail, formatPlaybackTime(decision.resumePositionMs), choice)
+                    is PlaybackStartDecision.Start ->
+                        start(TvStartAttempt(item, detail, decision.policy, choice = choice))
+                }
+            }
         }
     }
 
@@ -232,7 +276,7 @@ internal class TvPlaybackLauncher(
     fun answerAsk(policy: PlaybackStartPolicy?) {
         val ask = pendingAsk ?: return
         pendingAsk = null
-        if (policy != null) start(TvStartAttempt(ask.item, ask.detail, policy))
+        if (policy != null) start(TvStartAttempt(ask.item, ask.detail, policy, choice = ask.choice))
     }
 
     /** Runs the failed start again. */
@@ -259,7 +303,7 @@ internal class TvPlaybackLauncher(
                         if (attempt.item.isLiveTvChannel()) {
                             beginLive(starter, currentSettings(), attempt.item)
                         } else if (attempt.item.isEpisodeParent() || attempt.item.opensAsItemList()) {
-                            runContainer(attempt.item, attempt.shuffle)
+                            runContainer(attempt.item, attempt.shuffle, attempt.policy)
                         } else {
                             sources.begin(starter, currentSettings(), attempt)
                         }
@@ -285,6 +329,7 @@ internal class TvPlaybackLauncher(
     private suspend fun runContainer(
         container: JellyfinItem,
         shuffle: Boolean,
+        policy: PlaybackStartPolicy,
     ): TvStartOutcome {
         val episodeParent = container.isEpisodeParent()
         val first =
@@ -301,7 +346,14 @@ internal class TvPlaybackLauncher(
             }
         }
         startState = TvPlaybackStartState.Starting(first)
-        return when (val decision = first.startDecision(currentSettings().resumeMode)) {
+        // An explicit "start over" never asks.
+        val decision =
+            if (policy == PlaybackStartPolicy.RESTART) {
+                PlaybackStartDecision.Start(PlaybackStartPolicy.RESTART)
+            } else {
+                first.startDecision(currentSettings().resumeMode)
+            }
+        return when (decision) {
             is PlaybackStartDecision.Ask ->
                 TvStartOutcome.AskResume(TvResumeAsk(first, null, formatPlaybackTime(decision.resumePositionMs)))
             is PlaybackStartDecision.Start -> {
@@ -321,7 +373,7 @@ private suspend fun TvPlaybackSources.begin(
     val detail =
         target.detail ?: loadDetail(target.item.id)
             ?: return TvStartOutcome.Failed(TvStartFailure.COULD_NOT_START, "item detail unavailable")
-    val fromItem = PlaybackRequest.from(target.item, detail, startPolicy = target.policy)
+    val fromItem = PlaybackRequest.from(target.item, detail, startPolicy = target.policy).withChoice(target.choice)
     val groupStart = target.groupStartPositionMs
     // SyncPlay keeps the whole group at normal speed, whatever the default speed setting says.
     val groupTicks = groupStart?.times(TICKS_PER_MILLISECOND)

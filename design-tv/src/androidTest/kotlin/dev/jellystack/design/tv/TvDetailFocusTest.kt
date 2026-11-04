@@ -184,7 +184,7 @@ class TvDetailFocusTest {
                     uiState =
                         TvDetailUiState(
                             routeKey = "movie-1",
-                            sections = listOf(TvDetailSection.Overview(null, null)),
+                            sections = listOf(TvDetailSection.Details(null, null)),
                         ),
                     heroContentDescription = "Movie details",
                     modifier = Modifier.fillMaxSize(),
@@ -229,7 +229,7 @@ class TvDetailFocusTest {
                             routeKey = "episode-1",
                             sections =
                                 listOf(
-                                    TvDetailSection.Overview(null, null),
+                                    TvDetailSection.Details(null, null),
                                     TvDetailSection.Cast(
                                         listOf(
                                             TvDetailCastItem.Jellyfin(jellyfinPerson("person-0")),
@@ -357,7 +357,7 @@ class TvDetailFocusTest {
                             routeKey = "episode-changing",
                             sections =
                                 buildList {
-                                    add(TvDetailSection.Overview(null, null))
+                                    add(TvDetailSection.Details(null, null))
                                     if (showCast) {
                                         add(
                                             TvDetailSection.Cast(
@@ -441,7 +441,7 @@ class TvDetailFocusTest {
                             routeKey = "episode-appending",
                             sections =
                                 buildList {
-                                    add(TvDetailSection.Overview(null, null))
+                                    add(TvDetailSection.Details(null, null))
                                     add(
                                         TvDetailSection.Cast(
                                             listOf(TvDetailCastItem.Jellyfin(jellyfinPerson("persistent-actor"))),
@@ -542,7 +542,7 @@ class TvDetailFocusTest {
                     uiState =
                         TvDetailUiState(
                             routeKey = "seerr-no-action",
-                            sections = listOf(TvDetailSection.Overview(null, null)),
+                            sections = listOf(TvDetailSection.Details(null, null)),
                         ),
                     heroContentDescription = "Seerr details",
                     hasPrimaryAction = false,
@@ -574,7 +574,7 @@ class TvDetailFocusTest {
             val uiState =
                 buildTvJellyfinDetailUiState(
                     routeKey = "series-seasons",
-                    facts = emptyList(),
+                    detailRows = emptyList(),
                     overview = "Overview",
                     tagline = null,
                     seasonGroups = listOf(TvSeasonGroup(1, seasonOne), TvSeasonGroup(2, seasonTwo)),
@@ -641,7 +641,7 @@ class TvDetailFocusTest {
             val uiState =
                 buildTvJellyfinDetailUiState(
                     routeKey = "series-changing",
-                    facts = emptyList(),
+                    detailRows = emptyList(),
                     overview = "Overview",
                     tagline = null,
                     seasonGroups = listOf(TvSeasonGroup(1, episodes)),
@@ -1049,7 +1049,7 @@ class TvDetailFocusTest {
                     routeKey = routeKey,
                     sections =
                         buildList {
-                            add(TvDetailSection.Overview("Overview", null))
+                            add(TvDetailSection.Details("Overview", null))
                             cast?.let { add(TvDetailSection.Cast(it)) }
                         },
                 )
