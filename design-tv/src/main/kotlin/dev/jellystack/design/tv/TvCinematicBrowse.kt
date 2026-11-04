@@ -143,6 +143,7 @@ internal fun TvCinematicBrowse(
         rowState != null
     }
 
+    val stagedCard = rememberTvStagedCard(state.focusedCard)
     val interactions = remember { TvInteractionCounter() }
     val uiAlpha = rememberTvHomeUiAlpha(trailerPlaying = trailer != null, interactions = interactions)
     Box(
@@ -153,7 +154,7 @@ internal fun TvCinematicBrowse(
         },
     ) {
         TvCinematicBackdropLayer(backdrop, trailer?.engine, uiAlpha)
-        TvCinematicStage(state.hero, state.focusedCard, playback, uiAlpha)
+        TvCinematicStage(state.hero, stagedCard, playback, uiAlpha)
         TvHomeFadeLayer(uiAlpha, Modifier.align(Alignment.TopEnd)) { TvHomeClock(rememberTvClockLabel()) }
         trailer?.let { TvTrailerPillUnderClock(it.label, it.soundEnabled, it.progress, Modifier.align(Alignment.TopEnd)) }
         val rowScrollSpec = LocalBringIntoViewSpec.current
