@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Text
+import dev.jellystack.core.jellyfin.JellyfinHomeState
 
 /** What the library header shows: name, size, and the two buttons that open the sort and filter panel. */
 internal data class TvLibraryHeaderState(
@@ -138,3 +139,13 @@ private fun TvLibraryHeaderButton(
 }
 
 private const val TV_LIBRARY_HEADER_BUTTON_HEIGHT_DP = 44
+
+/**
+ * Whether the library's first page has been answered: items are there, the load ended or failed, or the library is
+ * known to be empty. Before that, an empty item list only means the items have not arrived yet.
+ */
+internal fun tvLibraryContentDetermined(state: JellyfinHomeState): Boolean {
+    val libraryCount = state.libraries.firstOrNull { it.id == state.selectedLibraryId }?.itemCount
+    val knownEmpty = (state.totalLibraryItemCount ?: libraryCount) == 0L
+    return state.libraryItems.isNotEmpty() || state.endReached || state.libraryErrorMessage != null || knownEmpty
+}
