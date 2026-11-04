@@ -43,3 +43,19 @@ internal fun Modifier.tvMenuKeyOpensProfilePicker(
         }
         true
     }
+
+/** The profile to remember when the picker opens: only a user-opened picker offers a way back to it. */
+internal fun tvPickerReturnProfileId(
+    userOpened: Boolean,
+    activeProfileId: String?,
+): String? = activeProfileId.takeIf { userOpened }
+
+/**
+ * The profile Back re-activates from the picker, or null to keep the default Back. It is null for a gate-opened
+ * picker, when the remembered profile no longer exists, or while a sub-screen of the picker has its own Back.
+ */
+internal fun tvPickerBackTarget(
+    returnProfileId: String?,
+    profileIds: Collection<String>,
+    subScreenOpen: Boolean,
+): String? = returnProfileId?.takeIf { !subScreenOpen && it in profileIds }

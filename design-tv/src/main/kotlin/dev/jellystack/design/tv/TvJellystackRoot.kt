@@ -208,6 +208,7 @@ private fun TvProfileHost(
     // Not saveable: a restored activity re-runs the profile gate (as a cold launch after process death).
     var initialized by remember { mutableStateOf(false) }
     var pickerVisible by rememberSaveable { mutableStateOf(false) }
+    var pickerReturnProfileId by rememberSaveable { mutableStateOf<String?>(null) }
     var profileManagementVisible by rememberSaveable { mutableStateOf(false) }
     var managedProfileId by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedProfileId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -280,6 +281,7 @@ private fun TvProfileHost(
 
     fun beginActivation(profile: HouseholdProfile) {
         switchingProfile = profile
+        pickerReturnProfileId = null
         pinProfile = null
         pinValue = ""
         scope.launch {
@@ -347,7 +349,8 @@ private fun TvProfileHost(
         scope.launch { openProfile(profile) }
     }
 
-    fun openProfilePicker() {
+    fun openProfilePicker(userOpened: Boolean = true) {
+        pickerReturnProfileId = tvPickerReturnProfileId(userOpened, activatedProfileId)
         stopPlayback()
         trailerPreviewController.stop(saveProgress = false)
         activeProfiles.clear()
@@ -476,6 +479,22 @@ private fun TvProfileHost(
         }
     }
 
+    val pickerBackTarget =
+        tvPickerBackTarget(
+            returnProfileId = pickerReturnProfileId,
+            profileIds = profiles.map { it.id },
+            subScreenOpen =
+                addProfile ||
+                    reconnectProfile != null ||
+                    pinProfile != null ||
+                    configuringPinProfile != null ||
+                    profileManagementVisible ||
+                    switchingProfile != null,
+        )
+    BackHandler(enabled = pickerVisible && pickerBackTarget != null) {
+        profiles.firstOrNull { it.id == pickerBackTarget }?.let(::beginActivation)
+    }
+
     TvDeepLinkSignedOutEffect(
         inbox = integrations.deepLinks,
         signedOut = loadedProfiles != null && (profiles.isEmpty() || reconnectProfile != null),
@@ -483,7 +502,7 @@ private fun TvProfileHost(
     TvProfileGateEffect(
         enabled = activatedProfileId != null && !pickerVisible,
         profileCount = profiles.size,
-        onGate = ::openProfilePicker,
+        onGate = { openProfilePicker(userOpened = false) },
     )
     Box(modifier.fillMaxSize().background(TvBackground)) {
         val selectedProfile = profiles.firstOrNull { it.id == selectedProfileId }
@@ -722,7 +741,7 @@ private fun TvProfileHost(
                     activeProfileName = selectedProfile.displayName,
                     activeProfileId = selectedProfile.id,
                     activeProfileGeneration = generation,
-                    onOpenProfiles = ::openProfilePicker,
+                    onOpenProfiles = { openProfilePicker() },
                     onAuthenticationExpired = {
                         // Parallel reports start the recovery once; only a successful sign-in lifts the mark.
                         if (sessionRecovery.markExpired(selectedProfile.id)) {

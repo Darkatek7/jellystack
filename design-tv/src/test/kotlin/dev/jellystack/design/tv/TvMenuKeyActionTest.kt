@@ -24,3 +24,21 @@ class TvMenuKeyActionTest {
         assertEquals(TvMenuKeyAction.NONE, tvMenuKeyAction(TvRoute.Home, dialogOpen = true))
     }
 }
+
+class TvPickerBackTest {
+    @Test
+    fun onlyAUserOpenedPickerRemembersTheActiveProfile() {
+        assertEquals("a", tvPickerReturnProfileId(userOpened = true, activeProfileId = "a"))
+        assertEquals(null, tvPickerReturnProfileId(userOpened = false, activeProfileId = "a"))
+        assertEquals(null, tvPickerReturnProfileId(userOpened = true, activeProfileId = null))
+    }
+
+    @Test
+    fun backReturnsToTheRememberedProfileOnlyWhenItStillExistsAndNoSubScreenIsOpen() {
+        val ids = listOf("a", "b")
+        assertEquals("a", tvPickerBackTarget("a", ids, subScreenOpen = false))
+        assertEquals(null, tvPickerBackTarget("a", ids, subScreenOpen = true))
+        assertEquals(null, tvPickerBackTarget("gone", ids, subScreenOpen = false))
+        assertEquals(null, tvPickerBackTarget(null, ids, subScreenOpen = false))
+    }
+}
