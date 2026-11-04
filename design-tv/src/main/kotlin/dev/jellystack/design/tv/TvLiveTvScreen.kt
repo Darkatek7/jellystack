@@ -33,6 +33,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -56,33 +57,57 @@ import kotlinx.datetime.Instant
 import java.util.Date
 
 /**
- * The channels as a list (number, logo, name, the program on now) with a pane for the focused channel: the program on
- * now with a progress bar, and the one after it. There is no guide grid: a grid of programs is many more nodes and
- * images than a weak TV GPU draws smoothly, and the pane answers "what is on, and what is next".
+ * Live TV as one of two views of the same channels, switched with the button next to the title (and kept for the
+ * session):
+ * - the channel list (the default): number, logo, name and the program on now, with a pane for the focused channel
+ *   showing the program on now with a progress bar and the one after it;
+ * - the guide grid ([TvLiveTvGuide]): channels as rows and the next three hours as columns, moving by half hours up to
+ *   twelve hours ahead.
+ *
+ * The grid is kept deliberately flat: a window of plain cells with a fill and a focus ring, no program images,
+ * shadows or per-cell layers, because a grid of programs is many more nodes than a weak TV GPU (a Fire TV 4K Max)
+ * draws smoothly. Programs load only for the rows on screen and the time range they show.
  */
 @Composable
 internal fun TvLiveTvScreen(
     state: TvLiveTvState,
     context: TvLiveTvContext,
     actions: TvLiveTvActions,
+    guideMode: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val strings = context.strings
     val copy = strings.messages.liveTv
+    val entry = remember { TvLiveTvGuideEntry(FocusRequester()) }
     Column(modifier.fillMaxSize().padding(TvScreenPadding), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-        Text(
-            copy.title,
-            modifier = Modifier.tvHeading(),
-            color = TvText,
-            fontSize = 38.sp,
-            fontWeight = FontWeight.Bold,
-        )
+        Row(horizontalArrangement = Arrangement.spacedBy(32.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                copy.title,
+                modifier = Modifier.tvHeading(),
+                color = TvText,
+                fontSize = 38.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            if (state is TvLiveTvState.Ready) {
+                TvLiveTvViewToggle(
+                    label = if (guideMode) copy.channelList else copy.guide,
+                    guideMode = guideMode,
+                    onClick = actions.guide.onToggle,
+                    entry = entry,
+                )
+            }
+        }
         when (state) {
             TvLiveTvState.Loading ->
                 TvSkeletonListRows(copy.loading, rowHeight = CHANNEL_ROW_HEIGHT, modifier = Modifier.width(LIST_WIDTH))
             TvLiveTvState.Empty -> TvLiveTvMessage(copy.emptyTitle, copy.emptyHint, strings.retry, actions.onRetry)
             TvLiveTvState.Failed -> TvLiveTvMessage(copy.failedTitle, copy.failedHint, strings.retry, actions.onRetry)
-            is TvLiveTvState.Ready -> TvLiveTvChannels(state, context, actions)
+            is TvLiveTvState.Ready ->
+                if (guideMode) {
+                    TvLiveTvGuide(state, context, actions, entry)
+                } else {
+                    TvLiveTvChannels(state, context, actions)
+                }
         }
     }
 }

@@ -29,11 +29,17 @@ internal val GOLDEN_STATE_FIXTURES =
         TvGoldenFixture.NAVIGATION_RAIL_OPEN,
         TvGoldenFixture.RESUME_DIALOG,
         TvGoldenFixture.DISCOVER_ROWS,
+        TvGoldenFixture.LIVE_TV_GUIDE,
     )
 
-/** The library screens draw their own safe-area padding. */
+/** The library and Live TV screens draw their own safe-area padding. */
 private val GOLDEN_LIBRARY_FIXTURES =
-    setOf(TvGoldenFixture.LIBRARY_GRID, TvGoldenFixture.LIBRARY_FILTER_PANEL, TvGoldenFixture.LIBRARY_LANDING)
+    setOf(
+        TvGoldenFixture.LIBRARY_GRID,
+        TvGoldenFixture.LIBRARY_FILTER_PANEL,
+        TvGoldenFixture.LIBRARY_LANDING,
+        TvGoldenFixture.LIVE_TV_GUIDE,
+    )
 
 /** Reduced motion keeps the loading placeholders still, so the images are the same on every run. */
 @Composable
@@ -56,22 +62,10 @@ internal fun GoldenStateFixture(
                 TvGoldenFixture.LIBRARY_GRID -> GoldenLibraryGrid(strings, panelOpen = false)
                 TvGoldenFixture.LIBRARY_FILTER_PANEL -> GoldenLibraryGrid(strings, panelOpen = true)
                 TvGoldenFixture.LIBRARY_LANDING -> GoldenLibraryLanding(strings)
-                TvGoldenFixture.EMPTY_STATE ->
-                    TvEmptyState(
-                        icon = Icons.Default.VideoLibrary,
-                        title = strings.emptyStates.noLibraries,
-                        hint = strings.emptyStates.librariesHint,
-                        modifier = Modifier.align(Alignment.Center),
-                        action = TvEmptyStateAction(strings.retry, TV_LIBRARY_EMPTY_ACTION_TARGET) {},
-                    )
-                TvGoldenFixture.ERROR_STATE ->
-                    TvSearchSourceFailure(
-                        message = strings.seerr.discoverLoadFailed,
-                        retryLabel = strings.retry,
-                        focusTargetId = TV_DISCOVER_RETRY_TARGET,
-                        modifier = Modifier.align(Alignment.Center),
-                        onRetry = {},
-                    )
+                TvGoldenFixture.EMPTY_STATE,
+                TvGoldenFixture.ERROR_STATE,
+                -> GoldenStatusState(fixture, strings, Modifier.align(Alignment.Center))
+                TvGoldenFixture.LIVE_TV_GUIDE -> GoldenLiveTvGuide(strings)
                 TvGoldenFixture.SKELETON_ROWS -> TvSkeletonRows(strings.loading, rowCount = 2)
                 TvGoldenFixture.DETAIL_LOAD_ERROR ->
                     TvDetailLoadError(strings.detailText.detailLoadFailed, strings.retry, onRetry = {})
@@ -96,6 +90,32 @@ private fun GoldenNavigationRail(strings: TvStrings) {
             strings = strings,
             profileName = "Alex",
             callbacks = TvNavigationRailCallbacks(onProfile = {}, onSelected = {}, onDismiss = {}),
+        )
+    }
+}
+
+/** An empty library, or a Discover source that failed, centred. */
+@Composable
+private fun GoldenStatusState(
+    fixture: TvGoldenFixture,
+    strings: TvStrings,
+    modifier: Modifier,
+) {
+    if (fixture == TvGoldenFixture.EMPTY_STATE) {
+        TvEmptyState(
+            icon = Icons.Default.VideoLibrary,
+            title = strings.emptyStates.noLibraries,
+            hint = strings.emptyStates.librariesHint,
+            modifier = modifier,
+            action = TvEmptyStateAction(strings.retry, TV_LIBRARY_EMPTY_ACTION_TARGET) {},
+        )
+    } else {
+        TvSearchSourceFailure(
+            message = strings.seerr.discoverLoadFailed,
+            retryLabel = strings.retry,
+            focusTargetId = TV_DISCOVER_RETRY_TARGET,
+            modifier = modifier,
+            onRetry = {},
         )
     }
 }

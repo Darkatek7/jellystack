@@ -236,3 +236,13 @@ fun TvSignInLongMessageGermanLarge() = JellystackTvGoldenFixture(TvGoldenFixture
 @Preview(name = "1080p", device = TV_1080P)
 @Composable
 fun TvSignInPassword() = JellystackTvGoldenFixture(TvGoldenFixture.SIGN_IN_PASSWORD)
+
+@PreviewTest
+@Preview(name = "1080p", device = TV_1080P)
+@Composable
+fun TvLiveTvGuide() = JellystackTvGoldenFixture(TvGoldenFixture.LIVE_TV_GUIDE)
+
+@PreviewTest
+@Preview(name = "German 1080p", device = TV_1080P, locale = "de")
+@Composable
+fun TvLiveTvGuideGerman() = JellystackTvGoldenFixture(TvGoldenFixture.LIVE_TV_GUIDE, AppLanguage.GERMAN)
