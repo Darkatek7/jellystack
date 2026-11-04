@@ -607,10 +607,12 @@ internal fun TvDetailFocusLayout(
         verticalArrangement = Arrangement.spacedBy(26.dp),
     ) {
         item("hero-$routeKey") {
+            val wholeHeroInView = remember { TvWholeHeroInView() }
             Box(
                 Modifier
                     .fillMaxWidth()
                     .height(heroHeightDp.dp)
+                    .tvWholeHeroInView(wholeHeroInView)
                     .testTag("tv-detail-hero")
                     .semantics { contentDescription = heroContentDescription },
             ) {
