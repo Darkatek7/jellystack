@@ -327,7 +327,8 @@ internal fun TvHomeScreen(
             enabled = spotlightAutoAdvance,
             candidateCount = candidateIds.size,
             reducedMotion = LocalTvFocusAppearance.current.reducedMotion,
-            heroFocused = heroHasFocus && stagedCard == null,
+            // Rows with focus pause the carousel; so does a staged card. An idle screen without focus keeps moving.
+            heroFocused = !rowsHaveFocus && stagedCard == null,
             trailerActive = trailerPreviewState is TvTrailerPreviewState.Armed || trailerPreviewState is TvTrailerPreviewState.Playing,
         )
     LaunchedEffect(autoAdvanceHero, candidateIds, carouselState.selectedId, heroInteractions) {

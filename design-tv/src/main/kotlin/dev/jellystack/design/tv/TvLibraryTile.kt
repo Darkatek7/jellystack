@@ -33,6 +33,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -91,11 +92,7 @@ internal fun TvLibraryTile(
     val shownImage = imageUrl?.takeUnless { imageFailed }
     Column(
         modifier =
-            modifier
-                .width(width)
-                .semantics(mergeDescendants = true) {
-                    contentDescription = listOfNotNull(name, subtitle).joinToString(", ")
-                },
+            modifier.width(width),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Box(
@@ -109,7 +106,11 @@ internal fun TvLibraryTile(
                         onFocused = onFocused,
                         focusToNavigationRailOnLeft = focusToNavigationRailOnLeft,
                         focusTargetId = focusTargetId,
-                    ).background(TvSurface, shape)
+                    )
+                    // The focusable tile reads the name and count itself, so it is one node with the click action.
+                    .semantics(mergeDescendants = true) {
+                        contentDescription = listOfNotNull(name, subtitle).joinToString(", ")
+                    }.background(TvSurface, shape)
                     .clip(shape),
         ) {
             if (shownImage != null) {
@@ -124,7 +125,7 @@ internal fun TvLibraryTile(
                 TvLibraryTileFallback(tvLibraryTileKind(collectionType))
             }
         }
-        Column(Modifier.padding(horizontal = 2.dp)) {
+        Column(Modifier.padding(horizontal = 2.dp).clearAndSetSemantics {}) {
             Text(
                 name,
                 color = TvText,

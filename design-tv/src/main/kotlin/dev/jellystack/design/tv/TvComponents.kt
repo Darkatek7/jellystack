@@ -70,6 +70,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.SemanticsPropertyReceiver
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.role
@@ -505,7 +506,9 @@ internal fun TvMediaCard(
         modifier
             .tvMediaCardSize(format, fillWidth)
             .then(interactionModifier)
-            .then(if (overlaysText) Modifier.tvCardSemantics(bringIntoViewRequester, description, selected) else Modifier)
+            // The focusable art carries the whole description, so tests and screen readers find one node that is
+            // both the click target and the full text, as before the caption moved below the art.
+            .tvCardSemantics(description, selected)
             .background(TvSurface, shape)
             .tvSelectionAccent(selected)
             .clip(shape)
@@ -528,30 +531,30 @@ internal fun TvMediaCard(
         }
     }
     if (overlaysText) {
-        art()
+        Box(Modifier.bringIntoViewRequester(bringIntoViewRequester)) { art() }
     } else {
-        // The semantics sit on the column so the caption is read with the card; the click action merges up from the art.
+        // Bringing the column into view keeps the caption on screen; the caption itself is already in the art's
+        // description, so it stays out of the semantics tree.
         Column(
             modifier =
                 Modifier
                     .then(if (fillWidth) Modifier.fillMaxWidth() else Modifier.width(tvMediaCardWidth(format)))
-                    .tvCardSemantics(bringIntoViewRequester, description, selected),
+                    .bringIntoViewRequester(bringIntoViewRequester),
         ) {
             art()
             if (hasCaption) {
-                TvMediaCardCaption(shownTitle, subtitle)
+                TvMediaCardCaption(shownTitle, subtitle, Modifier.clearAndSetSemantics {})
             }
         }
     }
 }
 
-/** Brings the whole card, caption included, into view and reads [description] as one node with the click action. */
+/** Reads [description] as one node together with the click action of the focusable art. */
 private fun Modifier.tvCardSemantics(
-    bringIntoViewRequester: BringIntoViewRequester,
     description: List<String>,
     selected: Boolean,
 ): Modifier =
-    bringIntoViewRequester(bringIntoViewRequester).semantics(mergeDescendants = true) {
+    semantics(mergeDescendants = true) {
         contentDescription = description.joinToString(", ")
         this.selected = selected
     }
