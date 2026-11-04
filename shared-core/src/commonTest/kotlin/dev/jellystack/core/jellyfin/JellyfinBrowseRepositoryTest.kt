@@ -159,6 +159,34 @@ class JellyfinBrowseRepositoryTest {
         }
 
     @Test
+    fun findPersonByNameTakesOnlyAnExactCaseInsensitiveMatchOfTheServersPartialHits() =
+        runTest {
+            val requests = mutableListOf<Pair<String, Map<String, String>>>()
+            val personsJson =
+                """{"Items":[{"Id":"p-1","Name":"Ada Examples","Type":"Person"},{"Id":"p-2","Name":"ada example","Type":"Person"}],"TotalRecordCount":2}"""
+            val repository = listRepository(requests, personsJson)
+
+            val person = repository.findPersonByName("  Ada Example ")
+
+            assertEquals("p-2", person?.id)
+            val (path, parameters) = requests.single()
+            assertEquals("/Persons", path)
+            assertEquals("Ada Example", parameters["SearchTerm"])
+        }
+
+    @Test
+    fun findPersonByNameIsNullWithoutAnExactHit() =
+        runTest {
+            val requests = mutableListOf<Pair<String, Map<String, String>>>()
+            val repository =
+                listRepository(requests, """{"Items":[{"Id":"p-1","Name":"Ada Examples","Type":"Person"}],"TotalRecordCount":1}""")
+
+            assertNull(repository.findPersonByName("Ada Example"))
+            assertNull(repository.findPersonByName("   "))
+            assertEquals(1, requests.size)
+        }
+
+    @Test
     fun personItemsFallBackToOneEpisodePerSeriesWithoutTitles() =
         runTest {
             val requests = mutableListOf<Pair<String, Map<String, String>>>()

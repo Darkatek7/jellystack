@@ -988,6 +988,15 @@ class JellyfinBrowseRepository(
         return personItemsOfTypes(environment, personId, PERSON_EPISODE_ITEM_TYPE, limit).distinctBy { it.seriesId ?: it.id }
     }
 
+    /** The person of the server named exactly [name] (ignoring case), or null when there is none or no server. */
+    suspend fun findPersonByName(name: String): JellyfinPerson? {
+        val trimmed = name.trim()
+        val environment = environmentProvider.current()
+        if (trimmed.isEmpty() || environment == null) return null
+        val hits = apiFor(environment).searchPersons(environment.userId, trimmed).items
+        return pickExactPerson(trimmed, hits.map { JellyfinPerson(it.id, it.name.orEmpty(), null, it.type, null) })
+    }
+
     private suspend fun personItemsOfTypes(
         environment: JellyfinEnvironment,
         personId: String,
