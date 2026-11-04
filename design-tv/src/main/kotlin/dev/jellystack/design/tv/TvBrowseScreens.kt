@@ -41,6 +41,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
@@ -173,6 +174,7 @@ internal fun TvHomeScreen(
     rowPreferences: HomeRowPreferences = HomeRowPreferences(),
     heroHintsSeen: Boolean = true,
     onHeroHintsUsed: () -> Unit = {},
+    homeBack: TvHomeBackState? = null,
     modifier: Modifier = Modifier,
 ) {
     val heroPresentation =
@@ -218,6 +220,13 @@ internal fun TvHomeScreen(
     var heroHasFocus by remember { mutableStateOf(false) }
     var rowsHaveFocus by remember { mutableStateOf(false) }
     var laidOutRowIds by remember { mutableStateOf(homeRowIds) }
+    if (homeBack != null) {
+        DisposableEffect(homeBack, heroPrimaryFocusRequester) {
+            // The hero's focus effect below then scrolls the list to its first item without animation.
+            homeBack.bind { runCatching { heroPrimaryFocusRequester.requestFocus() } }
+            onDispose { homeBack.unbind() }
+        }
+    }
     LaunchedEffect(heroHasFocus, homeRowIds) {
         // Rows that load late, as on a cold start, can land above the visible ones, and the list keeps its first
         // visible row. Unless a card in the rows has focus, the rows start at the first row instead.
@@ -383,7 +392,12 @@ internal fun TvHomeScreen(
         },
     ) {
         heroModel?.let { TvHomeBackdrop(it, heroTrailer) }
-        Box(Modifier.fillMaxWidth().onFocusChanged { heroHasFocus = it.hasFocus }) {
+        Box(
+            Modifier.fillMaxWidth().onFocusChanged {
+                heroHasFocus = it.hasFocus
+                if (it.hasFocus) homeBack?.atTop = true
+            },
+        ) {
             if (heroModel != null) {
                 TvHeroCarousel(
                     model = heroModel,
@@ -434,7 +448,10 @@ internal fun TvHomeScreen(
                         .fillMaxSize()
                         .padding(top = TV_CINEMATIC_ROWS_TOP)
                         .tvFadeRowsCutAtTop(homeListState)
-                        .onFocusChanged { rowsHaveFocus = it.hasFocus }
+                        .onFocusChanged {
+                            rowsHaveFocus = it.hasFocus
+                            if (it.hasFocus) homeBack?.atTop = false
+                        }
                         // The rows stay composed so the focused card keeps its focus while the trailer has the screen.
                         .graphicsLayer { alpha = homeUiAlpha.value },
                 contentPadding = TvHomeRowsPadding,

@@ -1349,13 +1349,18 @@ private fun TvAuthenticatedApp(
                 interactionRevision = focusCoordinator.currentInteractionRevision,
             )
         }
+    val homeBackState = remember { TvHomeBackState() }
     val backDispatcher =
         TvAppBackDispatcher(
             holder = appStateHolder,
-            libraryPathDepth = { homeState.browsePath.size },
-            selectedLibraryId = { homeState.selectedLibraryId },
-            popLibraryPath = browseCoordinator::navigateUp,
+            library =
+                TvLibraryBackAccess(
+                    pathDepth = { homeState.browsePath.size },
+                    selectedLibraryId = { homeState.selectedLibraryId },
+                    popPath = browseCoordinator::navigateUp,
+                ),
             cancelFocusRestoration = focusCoordinator::onUserMovement,
+            homeBack = homeBackState,
         )
     var showExitConfirmation by rememberSaveable(activeProfileGeneration) { mutableStateOf(false) }
     TvAppBackHandler(backDispatcher) { showExitConfirmation = true }
@@ -1426,6 +1431,7 @@ private fun TvAuthenticatedApp(
                                 when (route) {
                                     TvRoute.Home ->
                                         TvHomeScreen(
+                                            homeBack = homeBackState,
                                             state = homeState,
                                             homeSections = homeSections,
                                             strings = strings,
