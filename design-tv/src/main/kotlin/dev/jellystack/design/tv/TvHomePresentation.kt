@@ -69,9 +69,8 @@ internal const val TV_HOME_HERO_AUTO_ADVANCE_MS = 10_000L
 internal const val TV_HOME_STAGE_DWELL_MS = 300L
 
 /**
- * The hero only moves on by itself while focus is not in the rows ([heroFocused]); a focused row card shows its own item
- * on the stage and focus in the rail or elsewhere pauses it. A trailer must not be cut off, and Reduced Motion turns
- * automatic movement off.
+ * The hero only moves on by itself while focus is not in the rows ([heroFocused]), since a focused row card shows its
+ * own item on the stage. A trailer must not be cut off, and Reduced Motion turns automatic movement off.
  */
 internal fun shouldAutoAdvanceTvHomeHero(
     enabled: Boolean,
