@@ -130,7 +130,10 @@ internal fun TvHeroCarousel(
                             },
                         )
                 }.tvFocusable(
-                    onClick = callbacks.onDetails,
+                    onClick = {
+                        callbacks.onHintsUsed()
+                        callbacks.onDetails()
+                    },
                     shape = TV_HOME_SPOTLIGHT_SHAPE,
                     scale = 1f,
                     onFocusChanged = { focused = it },

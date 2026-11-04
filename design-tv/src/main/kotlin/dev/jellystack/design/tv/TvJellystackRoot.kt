@@ -1605,7 +1605,14 @@ private fun TvAuthenticatedApp(
                                             profilePreferencesRepository = profilePreferencesRepository,
                                             profileRepository = profileRepository,
                                             watchNextAvailable = integrations.watchNext.supported,
-                                            homeRows = tvHomeRowOptions(homeState, homeSections, myList.isNotEmpty(), strings),
+                                            homeRows =
+                                                tvHomeRowOptions(
+                                                    homeState,
+                                                    homeSections,
+                                                    myList.isNotEmpty(),
+                                                    strings,
+                                                    includeEmpty = true,
+                                                ),
                                         )
                                     is TvRoute.JellyfinDetail ->
                                         TvJellyfinDetailScreen(
